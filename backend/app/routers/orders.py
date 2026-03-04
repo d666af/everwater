@@ -1,0 +1,234 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from datetime import datetime
+from app.database import get_db
+from app.models.order import Order, OrderItem, OrderStatus, Review
+from app.models.product import Product
+from app.models.user import User
+from app.models.courier import Courier
+from app.schemas.order import OrderCreate, OrderOut, ReviewCreate
+from app.config import settings
+
+router = APIRouter(prefix="/orders", tags=["orders"])
+
+
+def calculate_bottle_discount(count: int, volume: float) -> float:
+    if settings.BOTTLE_DISCOUNT_TYPE == "fixed":
+        return count * settings.BOTTLE_DISCOUNT_VALUE
+    return 0.0  # percent handled separately
+
+
+@router.post("/", response_model=OrderOut)
+async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
+    # Fetch user
+    result = await db.execute(select(User).where(User.id == data.user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Calculate subtotal
+    subtotal = 0.0
+    items_data = []
+    for item in data.items:
+        prod_result = await db.execute(select(Product).where(Product.id == item.product_id))
+        product = prod_result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        subtotal += product.price * item.quantity
+        items_data.append((product, item.quantity))
+
+    bottle_discount = calculate_bottle_discount(data.return_bottles_count, data.return_bottles_volume)
+    bonus_used = min(data.bonus_used, user.bonus_points, subtotal)
+    total = max(0.0, subtotal - bottle_discount - bonus_used)
+
+    order = Order(
+        user_id=data.user_id,
+        recipient_phone=data.recipient_phone,
+        address=data.address,
+        extra_info=data.extra_info,
+        delivery_time=data.delivery_time,
+        latitude=data.latitude,
+        longitude=data.longitude,
+        return_bottles_count=data.return_bottles_count,
+        return_bottles_volume=data.return_bottles_volume,
+        bottle_discount=bottle_discount,
+        subtotal=subtotal,
+        total=total,
+        bonus_used=bonus_used,
+        status=OrderStatus.NEW,
+    )
+    db.add(order)
+    await db.flush()
+
+    for product, quantity in items_data:
+        item = OrderItem(order_id=order.id, product_id=product.id, quantity=quantity, price=product.price)
+        db.add(item)
+
+    if bonus_used > 0:
+        user.bonus_points -= bonus_used
+
+    await db.commit()
+    await db.refresh(order)
+
+    result = await db.execute(
+        select(Order).where(Order.id == order.id).options(selectinload(Order.items).selectinload(OrderItem.product))
+    )
+    order = result.scalar_one()
+    return _order_to_out(order)
+
+
+@router.get("/{order_id}", response_model=OrderOut)
+async def get_order(order_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Order).where(Order.id == order_id).options(selectinload(Order.items).selectinload(OrderItem.product))
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return _order_to_out(order)
+
+
+@router.get("/user/{user_id}", response_model=list[OrderOut])
+async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Order).where(Order.user_id == user_id)
+        .options(selectinload(Order.items).selectinload(OrderItem.product))
+        .order_by(Order.created_at.desc())
+    )
+    orders = result.scalars().all()
+    return [_order_to_out(o) for o in orders]
+
+
+@router.get("/", response_model=list[OrderOut])
+async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(get_db)):
+    query = select(Order).options(selectinload(Order.items).selectinload(OrderItem.product))
+    if status:
+        query = query.where(Order.status == status)
+    query = query.order_by(Order.created_at.desc())
+    result = await db.execute(query)
+    orders = result.scalars().all()
+    return [_order_to_out(o) for o in orders]
+
+
+@router.patch("/{order_id}/confirm")
+async def confirm_order(order_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    order.status = OrderStatus.CONFIRMED
+    order.confirmed_at = datetime.utcnow()
+    await db.commit()
+    return {"ok": True, "status": order.status}
+
+
+@router.patch("/{order_id}/reject")
+async def reject_order(order_id: int, reason: str = "", db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    order.status = OrderStatus.REJECTED
+    order.rejection_reason = reason
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/{order_id}/payment_confirmed")
+async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    order.payment_confirmed = True
+    order.status = OrderStatus.AWAITING_CONFIRMATION
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/{order_id}/assign_courier")
+async def assign_courier(order_id: int, courier_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    order.courier_id = courier_id
+    order.status = OrderStatus.ASSIGNED_TO_COURIER
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/{order_id}/in_delivery")
+async def start_delivery(order_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    order.status = OrderStatus.IN_DELIVERY
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/{order_id}/delivered")
+async def mark_delivered(order_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    order.status = OrderStatus.DELIVERED
+    order.delivered_at = datetime.utcnow()
+
+    result = await db.execute(select(User).where(User.id == order.user_id))
+    user = result.scalar_one_or_none()
+    if user:
+        bonus = order.total * 0.05  # 5% кэшбек бонусами
+        user.bonus_points += bonus
+
+    if order.courier_id:
+        result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
+        courier = result.scalar_one_or_none()
+        if courier:
+            courier.total_deliveries += 1
+
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/reviews/", )
+async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
+    review = Review(**data.model_dump())
+    db.add(review)
+    await db.commit()
+    return {"ok": True}
+
+
+async def _get_order(order_id: int, db: AsyncSession) -> Order:
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+def _order_to_out(order: Order) -> OrderOut:
+    from app.schemas.order import OrderItemOut
+    items = [
+        OrderItemOut(
+            id=i.id,
+            product_id=i.product_id,
+            quantity=i.quantity,
+            price=i.price,
+            product_name=i.product.name if i.product else None,
+        )
+        for i in order.items
+    ]
+    return OrderOut(
+        id=order.id,
+        user_id=order.user_id,
+        courier_id=order.courier_id,
+        status=order.status,
+        recipient_phone=order.recipient_phone,
+        address=order.address,
+        extra_info=order.extra_info,
+        delivery_time=order.delivery_time,
+        latitude=order.latitude,
+        longitude=order.longitude,
+        return_bottles_count=order.return_bottles_count,
+        return_bottles_volume=order.return_bottles_volume,
+        bottle_discount=order.bottle_discount,
+        subtotal=order.subtotal,
+        total=order.total,
+        bonus_used=order.bonus_used,
+        rejection_reason=order.rejection_reason,
+        payment_confirmed=order.payment_confirmed,
+        created_at=order.created_at,
+        items=items,
+    )

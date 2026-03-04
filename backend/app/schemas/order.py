@@ -1,0 +1,81 @@
+from pydantic import BaseModel
+from datetime import datetime
+from app.models.order import OrderStatus
+
+
+class OrderItemCreate(BaseModel):
+    product_id: int
+    quantity: int
+
+
+class OrderCreate(BaseModel):
+    user_id: int
+    recipient_phone: str
+    address: str
+    extra_info: str | None = None
+    delivery_time: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    return_bottles_count: int = 0
+    return_bottles_volume: float = 0.0
+    items: list[OrderItemCreate]
+    bonus_used: float = 0.0
+
+
+class OrderItemOut(BaseModel):
+    id: int
+    product_id: int
+    quantity: int
+    price: float
+    product_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class OrderOut(BaseModel):
+    id: int
+    user_id: int
+    courier_id: int | None
+    status: OrderStatus
+    recipient_phone: str
+    address: str
+    extra_info: str | None
+    delivery_time: str | None
+    latitude: float | None
+    longitude: float | None
+    return_bottles_count: int
+    return_bottles_volume: float
+    bottle_discount: float
+    subtotal: float
+    total: float
+    bonus_used: float
+    rejection_reason: str | None
+    payment_confirmed: bool
+    created_at: datetime
+    items: list[OrderItemOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewCreate(BaseModel):
+    user_id: int
+    order_id: int
+    rating: int
+    comment: str | None = None
+
+
+class CourierCreate(BaseModel):
+    telegram_id: int
+    name: str
+    phone: str | None = None
+
+
+class CourierOut(BaseModel):
+    id: int
+    telegram_id: int
+    name: str
+    phone: str | None
+    is_active: bool
+    total_deliveries: int
+
+    model_config = {"from_attributes": True}
