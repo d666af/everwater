@@ -51,7 +51,7 @@ export default function Cart() {
 }
 
 const styles = {
-  page: { display: 'flex', flexDirection: 'column', height: '100vh' },
+  page: { display: 'flex', flexDirection: 'column', minHeight: '100vh' },
   list: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
   item: {
     background: 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
