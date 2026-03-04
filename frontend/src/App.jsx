@@ -1,22 +1,32 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import ProtectedRoute from './components/ProtectedRoute'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 
-// Mini App pages
+// Auth
+import Login from './pages/Login'
+
+// Mini App (client)
 import Catalog from './pages/Catalog'
 import Cart from './pages/Cart'
 import Checkout from './pages/Checkout'
 import OrderHistory from './pages/OrderHistory'
 import Profile from './pages/Profile'
 
-// Admin pages
+// Admin
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminOrders from './pages/admin/AdminOrders'
 import AdminProducts from './pages/admin/AdminProducts'
 import AdminCouriers from './pages/admin/AdminCouriers'
 import AdminSettings from './pages/admin/AdminSettings'
 
-// Courier page
+// Manager
+import ManagerOrders from './pages/manager/ManagerOrders'
+import ManagerClients from './pages/manager/ManagerClients'
+import ManagerCouriers from './pages/manager/ManagerCouriers'
+import ManagerStats from './pages/manager/ManagerStats'
+
+// Courier
 import CourierPanel from './pages/courier/CourierPanel'
 
 export default function App() {
@@ -24,22 +34,94 @@ export default function App() {
     <>
       <Header />
       <Routes>
-        {/* Mini App */}
-        <Route path="/" element={<Catalog />} />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/orders" element={<OrderHistory />} />
-        <Route path="/profile" element={<Profile />} />
+        {/* Public */}
+        <Route path="/login" element={<Login />} />
 
-        {/* Admin Panel */}
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/orders" element={<AdminOrders />} />
-        <Route path="/admin/products" element={<AdminProducts />} />
-        <Route path="/admin/couriers" element={<AdminCouriers />} />
-        <Route path="/admin/settings" element={<AdminSettings />} />
+        {/* Client (default: if Telegram WebApp — skip login) */}
+        <Route path="/" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <Catalog />
+          </ProtectedRoute>
+        } />
+        <Route path="/cart" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <Cart />
+          </ProtectedRoute>
+        } />
+        <Route path="/checkout" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <Checkout />
+          </ProtectedRoute>
+        } />
+        <Route path="/orders" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <OrderHistory />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <Profile />
+          </ProtectedRoute>
+        } />
 
-        {/* Courier Panel */}
-        <Route path="/courier" element={<CourierPanel />} />
+        {/* Admin */}
+        <Route path="/admin" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/orders" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminOrders />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/products" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminProducts />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/couriers" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminCouriers />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/settings" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminSettings />
+          </ProtectedRoute>
+        } />
+
+        {/* Manager */}
+        <Route path="/manager" element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerOrders />
+          </ProtectedRoute>
+        } />
+        <Route path="/manager/clients" element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerClients />
+          </ProtectedRoute>
+        } />
+        <Route path="/manager/couriers" element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerCouriers />
+          </ProtectedRoute>
+        } />
+        <Route path="/manager/stats" element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerStats />
+          </ProtectedRoute>
+        } />
+
+        {/* Courier */}
+        <Route path="/courier" element={
+          <ProtectedRoute allowedRoles={['courier']}>
+            <CourierPanel />
+          </ProtectedRoute>
+        } />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
       <BottomNav />
     </>

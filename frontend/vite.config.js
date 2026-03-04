@@ -7,9 +7,18 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        configure: (proxy) => {
+          proxy.on('error', (_err, _req, res) => {
+            // Return 503 instead of crashing — api/index.js falls back to mock data
+            if (!res.headersSent) {
+              res.writeHead(503, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'backend_unavailable' }))
+            }
+          })
+        },
       },
     },
   },

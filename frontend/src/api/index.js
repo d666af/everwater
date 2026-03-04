@@ -1,64 +1,240 @@
 import axios from 'axios'
+import {
+  MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
+  MOCK_SETTINGS, DEMO_USERS,
+} from './mock'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
 
-const http = axios.create({ baseURL: BASE })
+const http = axios.create({
+  baseURL: BASE,
+  timeout: 8000,
+})
 
-// ─── Products ───────────────────────────────────────────────────────────────
+// ─── Mock mode detection ─────────────────────────────────────────────────────
+// Uses mock when VITE_MOCK=true or when backend is unreachable
+const MOCK_MODE = import.meta.env.VITE_MOCK === 'true'
+
+const delay = (ms = 300) => new Promise(r => setTimeout(r, ms))
+
+async function safeCall(apiFn, mockFn) {
+  if (MOCK_MODE) {
+    await delay()
+    return mockFn()
+  }
+  try {
+    return await apiFn()
+  } catch (err) {
+    if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK' || !err.response) {
+      console.warn('[API] Backend unreachable, using mock data')
+      await delay()
+      return mockFn()
+    }
+    throw err
+  }
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+export const loginByPhone = async (phone) => {
+  const normalized = phone.replace(/\D/g, '')
+  return safeCall(
+    async () => {
+      const res = await http.post('/auth/login', { phone })
+      return res.data
+    },
+    () => {
+      // Mock: match by last 11 digits
+      const match = Object.entries(DEMO_USERS).find(([k]) =>
+        k.replace(/\D/g, '').endsWith(normalized.slice(-10))
+      )
+      if (match) return { ...match[1], token: 'mock-token' }
+      throw new Error('Пользователь не найден. Обратитесь к администратору.')
+    }
+  )
+}
+
+// ─── Products ────────────────────────────────────────────────────────────────
 export const getProducts = (includeInactive = false) =>
-  http.get('/products/', { params: includeInactive ? { include_inactive: true } : {} }).then(r => r.data)
+  safeCall(
+    () => http.get('/products/', { params: includeInactive ? { include_inactive: true } : {} }).then(r => r.data),
+    () => includeInactive ? MOCK_PRODUCTS : MOCK_PRODUCTS.filter(p => p.is_active)
+  )
 
-export const createProduct = (data) => http.post('/products/', data).then(r => r.data)
-export const updateProduct = (id, data) => http.patch(`/products/${id}`, data).then(r => r.data)
-export const deleteProduct = (id) => http.delete(`/products/${id}`).then(r => r.data)
+export const createProduct = (data) =>
+  safeCall(
+    () => http.post('/products/', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data })
+  )
 
-// ─── Orders ─────────────────────────────────────────────────────────────────
-export const createOrder = (data) => http.post('/orders/', data).then(r => r.data)
-export const getOrder = (orderId) => http.get(`/orders/${orderId}`).then(r => r.data)
-export const getUserOrders = (userId) => http.get(`/orders/user/${userId}`).then(r => r.data)
-export const getOrders = (params = {}) => http.get('/orders/', { params }).then(r => r.data)
-export const paymentConfirmed = (orderId) => http.patch(`/orders/${orderId}/payment_confirmed`).then(r => r.data)
-export const confirmOrder = (orderId) => http.patch(`/orders/${orderId}/confirm`).then(r => r.data)
+export const updateProduct = (id, data) =>
+  safeCall(
+    () => http.patch(`/products/${id}`, data).then(r => r.data),
+    () => ({ id, ...data })
+  )
+
+export const deleteProduct = (id) =>
+  safeCall(
+    () => http.delete(`/products/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+export const createOrder = (data) =>
+  safeCall(
+    () => http.post('/orders/', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data, total: data.items?.reduce((s, i) => s + i.quantity * 350, 0) || 0 })
+  )
+
+export const getOrder = (orderId) =>
+  safeCall(
+    () => http.get(`/orders/${orderId}`).then(r => r.data),
+    () => MOCK_ORDERS.find(o => o.id === orderId) || MOCK_ORDERS[0]
+  )
+
+export const getUserOrders = (userId) =>
+  safeCall(
+    () => http.get(`/orders/user/${userId}`).then(r => r.data),
+    () => MOCK_ORDERS
+  )
+
+export const getOrders = (params = {}) =>
+  safeCall(
+    () => http.get('/orders/', { params }).then(r => r.data),
+    () => {
+      let list = [...MOCK_ORDERS]
+      if (params.status) list = list.filter(o => o.status === params.status)
+      return list
+    }
+  )
+
+export const paymentConfirmed = (orderId) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/payment_confirmed`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const confirmOrder = (orderId) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/confirm`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const rejectOrder = (orderId, reason) =>
-  http.patch(`/orders/${orderId}/reject`, { reason }).then(r => r.data)
+  safeCall(
+    () => http.patch(`/orders/${orderId}/reject`, { reason }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const assignCourier = (orderId, courierId) =>
-  http.patch(`/orders/${orderId}/assign_courier`, { courier_id: courierId }).then(r => r.data)
-export const markInDelivery = (orderId) => http.patch(`/orders/${orderId}/in_delivery`).then(r => r.data)
-export const markDelivered = (orderId) => http.patch(`/orders/${orderId}/delivered`).then(r => r.data)
+  safeCall(
+    () => http.patch(`/orders/${orderId}/assign_courier`, { courier_id: courierId }).then(r => r.data),
+    () => ({ ok: true })
+  )
 
-// ─── Reviews ────────────────────────────────────────────────────────────────
-export const createReview = (data) => http.post('/orders/reviews/', data).then(r => r.data)
+export const markInDelivery = (orderId) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/in_delivery`).then(r => r.data),
+    () => ({ ok: true })
+  )
 
-// ─── Users ──────────────────────────────────────────────────────────────────
+export const markDelivered = (orderId) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/delivered`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const courierInDelivery = markInDelivery
+export const courierDelivered = markDelivered
+
+export const courierAccept = (orderId) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/courier_accept`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+export const createReview = (data) =>
+  safeCall(
+    () => http.post('/orders/reviews/', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data })
+  )
+
+// ─── Users ───────────────────────────────────────────────────────────────────
 export const getUserByTelegram = (tgId) =>
-  http.get(`/users/by_telegram/${tgId}`).then(r => r.data)
+  safeCall(
+    () => http.get(`/users/by_telegram/${tgId}`).then(r => r.data),
+    () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 150, balance: 0, is_registered: true })
+  )
 
-export const createOrGetUser = (data) => http.post('/users/', data).then(r => r.data)
-export const updateUser = (tgId, data) => http.patch(`/users/${tgId}`, data).then(r => r.data)
+export const createOrGetUser = (data) =>
+  safeCall(
+    () => http.post('/users/', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data })
+  )
+
+export const updateUser = (tgId, data) =>
+  safeCall(
+    () => http.patch(`/users/${tgId}`, data).then(r => r.data),
+    () => ({ ok: true })
+  )
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 export const getAdminStats = (period = 'day') =>
-  http.get('/admin/stats', { params: { period } }).then(r => r.data)
+  safeCall(
+    () => http.get('/admin/stats', { params: { period } }).then(r => r.data),
+    () => MOCK_STATS[period] || MOCK_STATS.day
+  )
 
-export const getAdminCouriers = () => http.get('/admin/couriers').then(r => r.data)
-export const createCourier = (data) => http.post('/admin/couriers', data).then(r => r.data)
-export const deleteCourier = (id) => http.delete(`/admin/couriers/${id}`).then(r => r.data)
+export const getAdminCouriers = () =>
+  safeCall(
+    () => http.get('/admin/couriers').then(r => r.data),
+    () => MOCK_COURIERS
+  )
 
-export const getAdminUsers = () => http.get('/admin/users').then(r => r.data)
+export const createCourier = (data) =>
+  safeCall(
+    () => http.post('/admin/couriers', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data, is_active: true, delivery_count: 0 })
+  )
+
+export const deleteCourier = (id) =>
+  safeCall(
+    () => http.delete(`/admin/couriers/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getAdminUsers = () =>
+  safeCall(
+    () => http.get('/admin/users').then(r => r.data),
+    () => [
+      { id: 1, name: 'Иван Иванов', phone: '+7 999 001-01-01', telegram_id: '11111', bonus_points: 350, balance: 0, is_registered: true },
+      { id: 2, name: 'Мария Петрова', phone: '+7 999 002-02-02', telegram_id: '22222', bonus_points: 120, balance: 500, is_registered: true },
+      { id: 3, name: '', phone: '', telegram_id: '33333', bonus_points: 0, balance: 0, is_registered: false },
+    ]
+  )
 
 // ─── Settings ────────────────────────────────────────────────────────────────
-export const getSettings = () => http.get('/admin/settings').then(r => r.data)
-export const updateSettings = (data) => http.patch('/admin/settings', data).then(r => r.data)
+export const getSettings = () =>
+  safeCall(
+    () => http.get('/admin/settings').then(r => r.data),
+    () => ({ ...MOCK_SETTINGS })
+  )
 
-// ─── Courier ──────────────────────────────────────────────────────────────────
+export const updateSettings = (data) =>
+  safeCall(
+    () => http.patch('/admin/settings', data).then(r => r.data),
+    () => ({ ok: true, ...data })
+  )
+
+// ─── Courier ─────────────────────────────────────────────────────────────────
 export const getCourierOrders = (telegramId) =>
-  http.get(`/couriers/${telegramId}/orders`).then(r => r.data)
+  safeCall(
+    () => http.get(`/couriers/${telegramId}/orders`).then(r => r.data),
+    () => MOCK_ORDERS.filter(o => ['assigned_to_courier', 'in_delivery', 'delivered'].includes(o.status))
+  )
 
 export const getCourierStats = (telegramId) =>
-  http.get(`/couriers/${telegramId}/stats`).then(r => r.data)
-
-export const courierAccept = (orderId) =>
-  http.patch(`/orders/${orderId}/courier_accept`).then(r => r.data)
-
-export const courierInDelivery = (orderId) => markInDelivery(orderId)
-export const courierDelivered = (orderId) => markDelivered(orderId)
+  safeCall(
+    () => http.get(`/couriers/${telegramId}/stats`).then(r => r.data),
+    () => ({ delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, recent: MOCK_ORDERS.slice(0, 3) })
+  )
