@@ -92,7 +92,7 @@ export default function AdminCouriers() {
                     <span style={styles.statLbl}>доставок</span>
                   </div>
                   <div style={styles.statChip}>
-                    <span style={styles.statVal}>{c.earnings ? `${c.earnings} ₽` : '—'}</span>
+                    <span style={styles.statVal}>{c.earnings ? `${c.earnings} сум` : '—'}</span>
                     <span style={styles.statLbl}>заработано</span>
                   </div>
                   <span style={{ ...styles.activeBadge, background: c.is_active ? '#e8f5e9' : '#fbe9e7', color: c.is_active ? '#2e7d32' : '#c62828' }}>

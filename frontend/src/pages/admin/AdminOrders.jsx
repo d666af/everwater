@@ -102,7 +102,7 @@ export default function AdminOrders() {
                   {order.delivery_time && <div style={styles.orderTime}>🕐 {order.delivery_time}</div>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={styles.orderTotal}>{order.total} ₽</div>
+                  <div style={styles.orderTotal}>{order.total} сум</div>
                   <span style={{ ...styles.statusChip, background: (STATUS_COLORS[order.status] || '#888') + '22', color: STATUS_COLORS[order.status] || '#888' }}>
                     {STATUS_LABELS[order.status] || order.status}
                   </span>
@@ -120,7 +120,7 @@ export default function AdminOrders() {
                     {order.return_bottles_count > 0 && (
                       <div><b>♻️ Возврат:</b> {order.return_bottles_count} бут. ({order.return_bottles_volume} л)</div>
                     )}
-                    <div><b>💰 Итого:</b> {order.total} ₽ {order.bottle_discount > 0 ? `(скидка: −${order.bottle_discount} ₽)` : ''}</div>
+                    <div><b>💰 Итого:</b> {order.total} сум {order.bottle_discount > 0 ? `(скидка: −${order.bottle_discount} сум)` : ''}</div>
                     {order.rejection_reason && <div style={{ color: '#c62828' }}><b>Причина отказа:</b> {order.rejection_reason}</div>}
                   </div>
 
@@ -130,7 +130,7 @@ export default function AdminOrders() {
                       <b>Состав:</b>
                       {order.items.map(i => (
                         <div key={i.id} style={styles.itemRow}>
-                          {i.product_name} × {i.quantity} — {i.price * i.quantity} ₽
+                          {i.product_name} × {i.quantity} — {i.price * i.quantity} сум
                         </div>
                       ))}
                     </div>

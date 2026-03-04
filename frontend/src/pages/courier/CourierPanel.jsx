@@ -149,7 +149,7 @@ export default function CourierPanel() {
               <div style={cs.statsGrid}>
                 <StatCard label="Всего доставок" value={stats.delivery_count || 0} icon="📦" />
                 <StatCard label="Сегодня" value={stats.today_count || 0} icon="🚀" />
-                <StatCard label="Заработано" value={stats.earnings ? `${stats.earnings} ₽` : '—'} icon="💰" />
+                <StatCard label="Заработано" value={stats.earnings ? `${stats.earnings} сум` : '—'} icon="💰" />
                 <StatCard label="Рейтинг" value={stats.rating ? `${stats.rating.toFixed(1)} ⭐` : '—'} icon="⭐" />
               </div>
               {stats.recent && stats.recent.length > 0 && (
@@ -161,7 +161,7 @@ export default function CourierPanel() {
                         <div style={cs.recentId}>Заказ #{o.id}</div>
                         <div style={cs.recentAddr}>{o.address}</div>
                       </div>
-                      <div style={cs.recentTotal}>{o.total} ₽</div>
+                      <div style={cs.recentTotal}>{o.total} сум</div>
                     </div>
                   ))}
                 </div>
@@ -187,7 +187,7 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
           {order.delivery_time && <div style={cs.orderTime}>🕐 {order.delivery_time}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={cs.orderTotal}>{order.total} ₽</div>
+          <div style={cs.orderTotal}>{order.total} сум</div>
           <span style={{ ...cs.statusChip, background: color + '22', color }}>
             {STATUS_LABELS[order.status] || order.status}
           </span>
@@ -235,7 +235,7 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
 
           <div style={cs.totalRow}>
             <span>К получению:</span>
-            <span style={cs.totalVal}>{order.total} ₽</span>
+            <span style={cs.totalVal}>{order.total} сум</span>
           </div>
 
           {/* Action buttons */}

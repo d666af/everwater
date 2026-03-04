@@ -22,7 +22,7 @@ export default function Cart() {
           <div key={product.id} style={styles.item}>
             <div style={styles.itemInfo}>
               <div style={styles.itemName}>{product.name}</div>
-              <div style={styles.itemPrice}>{product.price} ₽/шт</div>
+              <div style={styles.itemPrice}>{product.price} сум/шт</div>
             </div>
             <div style={styles.itemControls}>
               <div style={styles.counter}>
@@ -30,7 +30,7 @@ export default function Cart() {
                 <span style={styles.qty}>{quantity}</span>
                 <button style={styles.cb} onClick={() => updateQuantity(product.id, quantity + 1)}>+</button>
               </div>
-              <div style={styles.itemTotal}>{product.price * quantity} ₽</div>
+              <div style={styles.itemTotal}>{product.price * quantity} сум</div>
               <button style={styles.del} onClick={() => removeFromCart(product.id)}>🗑</button>
             </div>
           </div>
@@ -40,7 +40,7 @@ export default function Cart() {
       <div style={styles.summary}>
         <div style={styles.totalRow}>
           <span>Итого:</span>
-          <span style={styles.totalAmt}>{total()} ₽</span>
+          <span style={styles.totalAmt}>{total()} сум</span>
         </div>
         <button style={styles.btn} onClick={() => navigate('/checkout')}>
           Оформить заказ

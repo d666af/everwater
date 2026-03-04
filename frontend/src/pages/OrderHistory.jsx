@@ -147,7 +147,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           {order.delivery_time && <div style={styles.orderTime}>🕐 {order.delivery_time}</div>}
         </div>
         <div style={styles.cardRight}>
-          <div style={styles.total}>{order.total} ₽</div>
+          <div style={styles.total}>{order.total} сум</div>
           <div style={styles.chevron}>{isExpanded ? '▲' : '▼'}</div>
         </div>
       </div>
@@ -192,7 +192,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               <div key={i.id} style={styles.itemRow}>
                 <span>{i.product_name}</span>
                 <span style={{ color: '#888' }}>× {i.quantity}</span>
-                <span style={{ marginLeft: 'auto' }}>{(i.price * i.quantity)} ₽</span>
+                <span style={{ marginLeft: 'auto' }}>{(i.price * i.quantity)} сум</span>
               </div>
             ))}
           </div>
@@ -202,18 +202,18 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
             {order.bottle_discount > 0 && (
               <div style={styles.priceRow}>
                 <span>Скидка за бутылки</span>
-                <span style={{ color: '#4caf50' }}>−{order.bottle_discount} ₽</span>
+                <span style={{ color: '#4caf50' }}>−{order.bottle_discount} сум</span>
               </div>
             )}
             {order.bonus_used > 0 && (
               <div style={styles.priceRow}>
                 <span>Бонусы</span>
-                <span style={{ color: '#f57c00' }}>−{order.bonus_used} ₽</span>
+                <span style={{ color: '#f57c00' }}>−{order.bonus_used} сум</span>
               </div>
             )}
             <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 16 }}>
               <span>Итого</span>
-              <span>{order.total} ₽</span>
+              <span>{order.total} сум</span>
             </div>
           </div>
 

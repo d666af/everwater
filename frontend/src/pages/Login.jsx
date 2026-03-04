@@ -28,15 +28,18 @@ export default function Login() {
     const digits = val.replace(/\D/g, '')
     if (!digits) return ''
     let d = digits
-    if (d.startsWith('8')) d = '7' + d.slice(1)
-    if (d.startsWith('7')) {
-      const p = d.slice(1)
-      let fmt = '+7'
-      if (p.length > 0) fmt += ' ' + p.slice(0, 3)
-      if (p.length > 3) fmt += ' ' + p.slice(3, 6)
-      if (p.length > 6) fmt += '-' + p.slice(6, 8)
-      if (p.length > 8) fmt += '-' + p.slice(8, 10)
+    // Normalize: 8 → 998, 9XX → 998 9XX
+    if (d.startsWith('998')) {
+      const p = d.slice(3)
+      let fmt = '+998'
+      if (p.length > 0) fmt += ' ' + p.slice(0, 2)
+      if (p.length > 2) fmt += ' ' + p.slice(2, 5)
+      if (p.length > 5) fmt += '-' + p.slice(5, 7)
+      if (p.length > 7) fmt += '-' + p.slice(7, 9)
       return fmt
+    }
+    if (d.startsWith('9') && d.length <= 9) {
+      return formatPhone('998' + d)
     }
     return '+' + d
   }
@@ -48,7 +51,7 @@ export default function Login() {
 
   const submit = async () => {
     const raw = phone.replace(/\D/g, '')
-    if (raw.length < 11) { setError('Введите корректный номер телефона'); return }
+    if (raw.length < 12) { setError('Введите корректный узбекский номер (+998 XX XXX-XX-XX)'); return }
     setLoading(true); setError('')
     try {
       const userData = await loginByPhone(phone)
@@ -97,7 +100,7 @@ export default function Login() {
           <input
             style={s.input}
             type="tel"
-            placeholder="+7 999 000-00-00"
+            placeholder="+998 90 123-45-67"
             value={phone}
             onChange={handlePhone}
             onKeyDown={handleKey}
@@ -140,10 +143,10 @@ export default function Login() {
           <div style={s.demo}>
             <div style={s.demoTitle}>Demo номера (dev mode):</div>
             <div style={s.demoCodes}>
-              <span style={s.demoCode} onClick={() => setPhone('+7 000 000-00-01')}>+7 000 000-00-01 → Клиент</span>
-              <span style={s.demoCode} onClick={() => setPhone('+7 000 000-00-02')}>+7 000 000-00-02 → Админ</span>
-              <span style={s.demoCode} onClick={() => setPhone('+7 000 000-00-03')}>+7 000 000-00-03 → Менеджер</span>
-              <span style={s.demoCode} onClick={() => setPhone('+7 000 000-00-04')}>+7 000 000-00-04 → Курьер</span>
+              <span style={s.demoCode} onClick={() => setPhone('+998 90 000-00-01')}>+998 90 000-00-01 → Клиент</span>
+              <span style={s.demoCode} onClick={() => setPhone('+998 90 000-00-02')}>+998 90 000-00-02 → Админ</span>
+              <span style={s.demoCode} onClick={() => setPhone('+998 90 000-00-03')}>+998 90 000-00-03 → Менеджер</span>
+              <span style={s.demoCode} onClick={() => setPhone('+998 90 000-00-04')}>+998 90 000-00-04 → Курьер</span>
             </div>
           </div>
         )}

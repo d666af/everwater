@@ -70,7 +70,7 @@ export default function AdminProducts() {
               <input style={styles.input} type="number" placeholder="18.9" step="0.1" {...f('volume')} />
             </div>
             <div style={styles.fieldGroup}>
-              <label style={styles.label}>Цена (₽) *</label>
+              <label style={styles.label}>Цена (сум) *</label>
               <input style={styles.input} type="number" placeholder="350" {...f('price')} />
             </div>
             <div style={styles.fieldGroup}>
@@ -120,7 +120,7 @@ export default function AdminProducts() {
                 <div style={styles.productVol}>{p.volume} л</div>
                 {p.description && <div style={styles.productDesc}>{p.description}</div>}
                 <div style={styles.cardFooter}>
-                  <span style={styles.price}>{p.price} ₽</span>
+                  <span style={styles.price}>{p.price} сум</span>
                   {!p.is_active && <span style={styles.inactiveBadge}>Скрыт</span>}
                 </div>
                 <div style={styles.cardActions}>

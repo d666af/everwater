@@ -76,8 +76,8 @@ export default function AdminDashboard() {
             {/* Stats grid */}
             <div style={styles.statsGrid}>
               <StatCard label="Заказов" value={stats?.order_count ?? '—'} icon="📦" color="#1565c0" />
-              <StatCard label="Выручка" value={stats?.revenue ? `${stats.revenue.toLocaleString()} ₽` : '—'} icon="💰" color="#2e7d32" />
-              <StatCard label="Средний чек" value={stats?.avg_check ? `${Math.round(stats.avg_check).toLocaleString()} ₽` : '—'} icon="📊" color="#f57f17" />
+              <StatCard label="Выручка" value={stats?.revenue ? `${stats.revenue.toLocaleString()} сум` : '—'} icon="💰" color="#2e7d32" />
+              <StatCard label="Средний чек" value={stats?.avg_check ? `${Math.round(stats.avg_check).toLocaleString()} сум` : '—'} icon="📊" color="#f57f17" />
               <StatCard label="Повторных" value={stats?.repeat_customers ?? '—'} icon="🔄" color="#6a1b9a" />
               <StatCard label="Бутылок возврат" value={stats?.bottles_returned ?? '—'} icon="♻️" color="#00695c" />
               <StatCard label="Отменённых" value={stats?.cancelled ?? '—'} icon="❌" color="#c62828" />
@@ -110,7 +110,7 @@ export default function AdminDashboard() {
                         <div style={styles.recentAddr}>{o.address}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, color: '#1565c0' }}>{o.total} ₽</div>
+                        <div style={{ fontWeight: 700, color: '#1565c0' }}>{o.total} сум</div>
                         <div style={{ ...styles.statusChipSmall, background: STATUS_COLORS[o.status] + '22', color: STATUS_COLORS[o.status] }}>
                           {STATUS_LABELS[o.status] || o.status}
                         </div>

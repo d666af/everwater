@@ -55,8 +55,8 @@ export default function ManagerStats() {
           <>
             <div style={s.grid}>
               <Stat label="Заказов" value={stats.order_count ?? '—'} icon="📦" />
-              <Stat label="Выручка" value={stats.revenue ? `${stats.revenue.toLocaleString()} ₽` : '—'} icon="💰" />
-              <Stat label="Средний чек" value={stats.avg_check ? `${Math.round(stats.avg_check)} ₽` : '—'} icon="📊" />
+              <Stat label="Выручка" value={stats.revenue ? `${stats.revenue.toLocaleString()} сум` : '—'} icon="💰" />
+              <Stat label="Средний чек" value={stats.avg_check ? `${Math.round(stats.avg_check)} сум` : '—'} icon="📊" />
               <Stat label="Повторных" value={stats.repeat_customers ?? '—'} icon="🔄" />
               <Stat label="Бутылок возврат" value={stats.bottles_returned ?? '—'} icon="♻️" />
               <Stat label="Отменено" value={stats.cancelled ?? '—'} icon="❌" />

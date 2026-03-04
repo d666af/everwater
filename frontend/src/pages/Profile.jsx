@@ -1,23 +1,39 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getUserByTelegram } from '../api'
+import { useAuthStore } from '../store/auth'
 
 const tg = window.Telegram?.WebApp
 
 export default function Profile() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showLogout, setShowLogout] = useState(false)
+  const { logout, user: authUser } = useAuthStore()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const tgUser = tg?.initDataUnsafe?.user
-    if (!tgUser?.id) { setLoading(false); return }
-    getUserByTelegram(tgUser.id)
-      .then(setUser)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+    if (tgUser?.id) {
+      getUserByTelegram(tgUser.id)
+        .then(setUser)
+        .catch(console.error)
+        .finally(() => setLoading(false))
+    } else if (authUser) {
+      setUser(authUser)
+      setLoading(false)
+    } else {
+      setLoading(false)
+    }
+  }, [authUser])
 
   const openSupport = () => {
     tg?.openTelegramLink('https://t.me/your_support_bot')
+  }
+
+  const doLogout = () => {
+    logout()
+    navigate('/login')
   }
 
   if (loading) return <div style={styles.center}>Загрузка...</div>
@@ -25,6 +41,7 @@ export default function Profile() {
     <div style={styles.center}>
       <div style={{ fontSize: 48 }}>👤</div>
       <div>Откройте приложение через Telegram</div>
+      <button style={styles.logoutBtn} onClick={doLogout}>← Выйти</button>
     </div>
   )
 
@@ -43,11 +60,11 @@ export default function Profile() {
       <div style={styles.balanceRow}>
         <div style={styles.balanceCard}>
           <div style={styles.balanceLabel}>Баланс</div>
-          <div style={styles.balanceValue}>{user.balance || 0} ₽</div>
+          <div style={styles.balanceValue}>{user.balance || 0} сум</div>
         </div>
         <div style={styles.balanceCard}>
           <div style={styles.balanceLabel}>Бонусы</div>
-          <div style={{ ...styles.balanceValue, color: '#f57c00' }}>{user.bonus_points || 0} ₽</div>
+          <div style={{ ...styles.balanceValue, color: '#f57c00' }}>{user.bonus_points || 0} сум</div>
         </div>
       </div>
 
@@ -91,6 +108,25 @@ export default function Profile() {
       <button style={styles.supportBtn} onClick={openSupport}>
         💬 Связаться с поддержкой
       </button>
+
+      {/* Logout */}
+      {!tg?.initDataUnsafe?.user && (
+        showLogout ? (
+          <div style={styles.logoutConfirm}>
+            <div style={styles.logoutQuestion}>Выйти из аккаунта?</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button style={styles.logoutCancelBtn} onClick={() => setShowLogout(false)}>Отмена</button>
+              <button style={styles.logoutConfirmBtn} onClick={doLogout}>Выйти</button>
+            </div>
+          </div>
+        ) : (
+          <button style={styles.logoutBtn} onClick={() => setShowLogout(true)}>
+            🚪 Выйти из аккаунта
+          </button>
+        )
+      )}
+
+      <div style={{ height: 20 }} />
     </div>
   )
 }
@@ -149,9 +185,33 @@ const styles = {
   supportBtn: {
     margin: '0 16px',
     background: 'none',
-    border: '2px solid var(--tg-theme-button-color, #2481cc)',
+    border: '2px solid var(--tg-theme-button-color, #2d6a4f)',
     borderRadius: 14, padding: '14px 0',
-    color: 'var(--tg-theme-button-color, #2481cc)',
+    color: 'var(--tg-theme-button-color, #2d6a4f)',
     fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  },
+  logoutBtn: {
+    margin: '0 16px',
+    background: 'none',
+    border: '2px solid #e53935',
+    borderRadius: 14, padding: '14px 0',
+    color: '#e53935', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  },
+  logoutConfirm: {
+    margin: '0 16px', background: '#fff5f5',
+    border: '1px solid #ffcdd2', borderRadius: 14,
+    padding: '16px', display: 'flex', flexDirection: 'column',
+    alignItems: 'center', gap: 12,
+  },
+  logoutQuestion: { fontWeight: 600, fontSize: 16, color: '#c62828' },
+  logoutCancelBtn: {
+    flex: 1, padding: '10px 0', borderRadius: 10,
+    border: '1px solid #ddd', background: '#fff',
+    color: '#333', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+  },
+  logoutConfirmBtn: {
+    flex: 1, padding: '10px 0', borderRadius: 10,
+    border: 'none', background: '#e53935',
+    color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
 }
