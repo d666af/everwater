@@ -25,7 +25,13 @@ async function safeCall(apiFn, mockFn) {
   try {
     return await apiFn()
   } catch (err) {
-    if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK' || !err.response) {
+    // Network errors OR 503 from our vite proxy error handler → use mock
+    const noBackend =
+      err.code === 'ECONNABORTED' ||
+      err.code === 'ERR_NETWORK' ||
+      !err.response ||
+      err.response?.status === 503
+    if (noBackend) {
       console.warn('[API] Backend unreachable, using mock data')
       await delay()
       return mockFn()
