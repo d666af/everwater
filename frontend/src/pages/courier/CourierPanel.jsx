@@ -266,10 +266,6 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
 }
 
 // need these imported for the action handlers
-function courierAccept(id) { return import('../../api').then(m => m.courierAccept(id)) }
-function courierInDelivery(id) { return import('../../api').then(m => m.courierInDelivery(id)) }
-function courierDelivered(id) { return import('../../api').then(m => m.courierDelivered(id)) }
-
 const C = '#00897b'
 const cs = {
   page: { minHeight: '100vh', background: '#f5f5f5', display: 'flex', flexDirection: 'column' },
