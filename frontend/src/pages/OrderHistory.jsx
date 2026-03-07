@@ -147,7 +147,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           {order.delivery_time && <div style={styles.orderTime}>🕐 {order.delivery_time}</div>}
         </div>
         <div style={styles.cardRight}>
-          <div style={styles.total}>{order.total} ₽</div>
+          <div style={styles.total}>{order.total} сум</div>
           <div style={styles.chevron}>{isExpanded ? '▲' : '▼'}</div>
         </div>
       </div>
@@ -192,7 +192,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               <div key={i.id} style={styles.itemRow}>
                 <span>{i.product_name}</span>
                 <span style={{ color: '#888' }}>× {i.quantity}</span>
-                <span style={{ marginLeft: 'auto' }}>{(i.price * i.quantity)} ₽</span>
+                <span style={{ marginLeft: 'auto' }}>{(i.price * i.quantity)} сум</span>
               </div>
             ))}
           </div>
@@ -202,18 +202,18 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
             {order.bottle_discount > 0 && (
               <div style={styles.priceRow}>
                 <span>Скидка за бутылки</span>
-                <span style={{ color: '#4caf50' }}>−{order.bottle_discount} ₽</span>
+                <span style={{ color: '#4caf50' }}>−{order.bottle_discount} сум</span>
               </div>
             )}
             {order.bonus_used > 0 && (
               <div style={styles.priceRow}>
                 <span>Бонусы</span>
-                <span style={{ color: '#f57c00' }}>−{order.bonus_used} ₽</span>
+                <span style={{ color: '#f57c00' }}>−{order.bonus_used} сум</span>
               </div>
             )}
             <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 16 }}>
               <span>Итого</span>
-              <span>{order.total} ₽</span>
+              <span>{order.total} сум</span>
             </div>
           </div>
 
@@ -237,97 +237,109 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   )
 }
 
-const C = 'var(--tg-theme-button-color, #2481cc)'
-const BG = 'var(--tg-theme-secondary-bg-color, #f5f5f5)'
-const HINT = 'var(--tg-theme-hint-color, #ddd)'
+const P = '#8DC63F'
+const PD = '#6CA32F'
 
 const styles = {
-  list: { padding: '0 0 100px', display: 'flex', flexDirection: 'column', gap: 0 },
+  list: { padding: '12px 0 100px', display: 'flex', flexDirection: 'column', background: '#F8F8F8', minHeight: '100vh' },
   center: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', gap: 16, height: '60vh',
-    color: '#888', fontSize: 16, textAlign: 'center', padding: '0 24px',
+    color: '#888', fontSize: 15, textAlign: 'center', padding: '0 24px',
   },
   sectionTitle: {
-    padding: '16px 16px 8px', fontSize: 13, fontWeight: 700,
-    color: '#888', textTransform: 'uppercase', letterSpacing: 0.5,
+    padding: '12px 16px 6px', fontSize: 11, fontWeight: 700,
+    color: '#888', textTransform: 'uppercase', letterSpacing: 0.8,
   },
-  card: { background: BG, margin: '0 16px 10px', borderRadius: 14, overflow: 'hidden' },
+  card: {
+    background: '#fff', margin: '0 16px 10px', borderRadius: 16, overflow: 'hidden',
+    boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #F0F0F0',
+  },
   cardHeader: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
     padding: '14px 16px', cursor: 'pointer',
   },
-  orderId: { fontWeight: 700, fontSize: 16 },
-  status: { fontSize: 13, marginTop: 3, fontWeight: 500 },
-  orderTime: { fontSize: 12, color: '#888', marginTop: 2 },
-  cardRight: { display: 'flex', alignItems: 'center', gap: 10 },
-  total: { fontWeight: 800, fontSize: 16, color: C },
-  chevron: { color: '#888', fontSize: 12 },
+  orderId: { fontWeight: 800, fontSize: 15, color: '#1A1A1A' },
+  status: { fontSize: 12, marginTop: 4, fontWeight: 600 },
+  orderTime: { fontSize: 11, color: '#888', marginTop: 2 },
+  cardRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 },
+  total: { fontWeight: 900, fontSize: 16, color: P },
+  chevron: { color: '#CCC', fontSize: 10 },
   details: {
-    borderTop: `1px solid ${HINT}`,
+    borderTop: '1px solid #F5F5F5',
     padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 12,
   },
   progress: {
-    display: 'flex', alignItems: 'center', padding: '0 16px',
+    display: 'flex', alignItems: 'center', padding: '4px 16px 16px',
     overflowX: 'auto', gap: 0,
   },
   progressItem: { display: 'flex', alignItems: 'center', flex: 1, position: 'relative' },
   progressDot: {
-    width: 24, height: 24, borderRadius: '50%',
-    background: HINT, display: 'flex', alignItems: 'center',
-    justifyContent: 'center', fontSize: 10, fontWeight: 700,
-    color: '#999', flexShrink: 0, zIndex: 1,
+    width: 26, height: 26, borderRadius: '50%',
+    background: '#EBEBEB', border: '2px solid #E0E0E0',
+    display: 'flex', alignItems: 'center',
+    justifyContent: 'center', fontSize: 9, fontWeight: 800,
+    color: '#BBB', flexShrink: 0, zIndex: 1,
   },
-  dotActive: { background: C, color: '#fff' },
-  dotDone: { background: '#4caf50', color: '#fff' },
-  progressLine: { flex: 1, height: 2, background: HINT },
-  lineDone: { background: '#4caf50' },
+  dotActive: { background: P, border: `2px solid ${PD}`, color: '#fff' },
+  dotDone: { background: PD, border: `2px solid #4E7A20`, color: '#fff' },
+  progressLine: { flex: 1, height: 2, background: '#EBEBEB' },
+  lineDone: { background: PD },
   progressLabel: {
-    position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%)',
-    fontSize: 9, color: C, fontWeight: 600, whiteSpace: 'nowrap',
+    position: 'absolute', top: 30, left: '50%', transform: 'translateX(-50%)',
+    fontSize: 8, color: P, fontWeight: 700, whiteSpace: 'nowrap',
   },
   rejected: {
-    margin: '0 16px', padding: '10px 14px', background: '#ffebee',
-    borderRadius: 10, color: '#c62828', fontSize: 14, fontWeight: 600,
+    margin: '0 16px', padding: '10px 14px', background: '#FFEBEE',
+    borderRadius: 10, color: '#C62828', fontSize: 13, fontWeight: 600,
+    border: '1px solid #FFCDD2',
   },
   rejectBox: {
-    margin: '0 16px', padding: '10px 14px', background: '#ffebee',
-    borderRadius: 10, fontSize: 13, color: '#c62828',
+    margin: '0 16px', padding: '10px 14px', background: '#FFEBEE',
+    borderRadius: 10, fontSize: 13, color: '#C62828',
+    border: '1px solid #FFCDD2',
   },
   courierBox: {
-    margin: '0 16px', padding: '12px 14px', background: '#e3f2fd',
-    borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 4,
+    margin: '0 16px', padding: '12px 14px', background: '#EDF7FF',
+    borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 4,
+    border: '1px solid #BBDEFB',
   },
-  courierTitle: { fontSize: 12, color: '#1565c0', fontWeight: 600 },
-  courierName: { fontSize: 15, fontWeight: 700, color: '#0d47a1' },
+  courierTitle: { fontSize: 11, color: '#1565C0', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
+  courierName: { fontSize: 15, fontWeight: 800, color: '#0D47A1' },
   callCourier: {
-    fontSize: 14, color: C, fontWeight: 600, textDecoration: 'none',
-    display: 'inline-block', marginTop: 4,
+    fontSize: 13, color: '#1565C0', fontWeight: 700, textDecoration: 'none',
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    marginTop: 4, background: '#BBDEFB', borderRadius: 8, padding: '6px 12px',
   },
-  infoBlock: { padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 4 },
+  infoBlock: { padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 6 },
   detailRow: { fontSize: 13, color: '#555', lineHeight: 1.5 },
   itemsBlock: { padding: '0 16px' },
-  itemsTitle: { fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 600 },
+  itemsTitle: { fontSize: 11, color: '#888', marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
   itemRow: {
-    display: 'flex', gap: 8, fontSize: 13, padding: '4px 0',
-    borderBottom: `1px solid ${HINT}`,
+    display: 'flex', gap: 8, fontSize: 13, padding: '6px 0',
+    borderBottom: '1px solid #F5F5F5', color: '#333',
   },
   pricingBlock: {
-    padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 4,
+    margin: '0 16px',
+    background: '#F8F8F8', borderRadius: 12, padding: '12px 14px',
+    display: 'flex', flexDirection: 'column', gap: 6,
   },
-  priceRow: { display: 'flex', justifyContent: 'space-between', fontSize: 14 },
+  priceRow: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#555' },
   actions: { padding: '4px 16px', display: 'flex', gap: 8, flexWrap: 'wrap' },
   repeatBtn: {
-    flex: 1, padding: '10px 0', borderRadius: 10, border: `1px solid ${C}`,
-    background: 'none', color: C, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    flex: 1, padding: '11px 0', borderRadius: 12, border: `1.5px solid ${P}`,
+    background: 'none', color: P, fontSize: 13, fontWeight: 700, cursor: 'pointer',
   },
   reviewBtn: {
-    flex: 1, padding: '10px 0', borderRadius: 10, border: 'none',
-    background: C, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    flex: 1, padding: '11px 0', borderRadius: 12, border: 'none',
+    background: `linear-gradient(135deg, ${P}, ${PD})`, color: '#fff',
+    fontSize: 13, fontWeight: 700, cursor: 'pointer',
   },
-  reviewDone: { fontSize: 13, color: '#4caf50', fontWeight: 600, padding: '10px 0' },
+  reviewDone: { fontSize: 13, color: PD, fontWeight: 700, padding: '10px 0' },
   primaryBtn: {
-    marginTop: 8, padding: '12px 24px', background: C, color: '#fff',
+    marginTop: 8, padding: '12px 24px',
+    background: `linear-gradient(135deg, ${P}, ${PD})`, color: '#fff',
     border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(141,198,63,0.3)',
   },
 }

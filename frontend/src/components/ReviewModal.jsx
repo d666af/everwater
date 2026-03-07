@@ -57,47 +57,47 @@ export default function ReviewModal({ orderId, onClose, onDone }) {
   )
 }
 
+const P = '#8DC63F'
+const PD = '#6CA32F'
+
 const styles = {
   overlay: {
     position: 'fixed', inset: 0, zIndex: 999,
     background: 'rgba(0,0,0,0.5)',
     display: 'flex', alignItems: 'flex-end',
+    backdropFilter: 'blur(4px)',
   },
   sheet: {
-    width: '100%',
-    background: 'var(--tg-theme-bg-color, #fff)',
-    borderRadius: '20px 20px 0 0',
-    padding: '12px 20px 32px',
-    display: 'flex', flexDirection: 'column', gap: 12,
+    width: '100%', background: '#fff',
+    borderRadius: '24px 24px 0 0',
+    padding: '8px 20px 36px',
+    display: 'flex', flexDirection: 'column', gap: 14,
+    boxShadow: '0 -8px 40px rgba(0,0,0,0.12)',
   },
   handle: {
-    width: 40, height: 4, borderRadius: 2,
-    background: 'var(--tg-theme-hint-color, #ddd)',
-    margin: '0 auto 8px',
+    width: 36, height: 4, borderRadius: 2,
+    background: '#E0E0E0', margin: '4px auto 6px',
   },
-  title: { fontSize: 20, fontWeight: 700, textAlign: 'center' },
-  sub: { color: '#888', fontSize: 14, textAlign: 'center', marginTop: -4 },
-  stars: { display: 'flex', justifyContent: 'center', gap: 8 },
-  star: { background: 'none', border: 'none', cursor: 'pointer', padding: 0 },
+  title: { fontSize: 22, fontWeight: 800, textAlign: 'center', color: '#1A1A1A' },
+  sub: { color: '#888', fontSize: 14, textAlign: 'center', marginTop: -8 },
+  stars: { display: 'flex', justifyContent: 'center', gap: 6 },
+  star: { background: 'none', border: 'none', cursor: 'pointer', padding: 4 },
   textarea: {
-    border: '1px solid var(--tg-theme-hint-color, #ddd)',
-    borderRadius: 10, padding: '10px 12px',
-    fontSize: 14, resize: 'none',
-    background: 'var(--tg-theme-secondary-bg-color, #f5f5f5)',
-    color: 'var(--tg-theme-text-color, #000)',
-    outline: 'none', width: '100%',
+    border: '2px solid #E8E8E8', borderRadius: 14, padding: '12px 14px',
+    fontSize: 14, resize: 'none', background: '#FAFAFA',
+    color: '#1A1A1A', outline: 'none', width: '100%', lineHeight: 1.5,
+    fontFamily: 'inherit',
   },
-  error: { color: '#e53935', fontSize: 13, textAlign: 'center' },
+  error: { color: '#E53935', fontSize: 13, textAlign: 'center', fontWeight: 600 },
   actions: { display: 'flex', gap: 10 },
   cancelBtn: {
-    flex: 1, padding: '12px 0', borderRadius: 12, border: 'none',
-    background: 'var(--tg-theme-secondary-bg-color, #f0f0f0)',
-    fontSize: 15, fontWeight: 600, cursor: 'pointer',
-    color: 'var(--tg-theme-text-color, #333)',
+    flex: 1, padding: '13px 0', borderRadius: 14, border: '1.5px solid #E8E8E8',
+    background: '#F5F5F5', fontSize: 15, fontWeight: 600, cursor: 'pointer', color: '#555',
   },
   submitBtn: {
-    flex: 2, padding: '12px 0', borderRadius: 12, border: 'none',
-    background: 'var(--tg-theme-button-color, #2481cc)',
+    flex: 2, padding: '13px 0', borderRadius: 14, border: 'none',
+    background: `linear-gradient(135deg, ${P}, ${PD})`,
     color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(141,198,63,0.35)',
   },
 }

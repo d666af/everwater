@@ -63,9 +63,14 @@ export default function CourierPanel() {
 
   if (!telegramId) return (
     <div style={cs.noAccess}>
-      <div style={{ fontSize: 64 }}>🚴</div>
-      <h2>Панель курьера</h2>
-      <p>Откройте через Telegram-бота</p>
+      <div style={{
+        width: 80, height: 80, borderRadius: 24,
+        background: 'linear-gradient(135deg, #8DC63F, #6CA32F)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 36, boxShadow: '0 8px 24px rgba(141,198,63,0.3)',
+      }}>🚴</div>
+      <h2 style={{ fontWeight: 800, fontSize: 22, color: '#1A1A1A' }}>Панель курьера</h2>
+      <p style={{ color: '#888', fontSize: 14 }}>Откройте через Telegram-бота</p>
     </div>
   )
 
@@ -76,13 +81,13 @@ export default function CourierPanel() {
         <div style={cs.headerLeft}>
           <div style={cs.logo}>🚴</div>
           <div>
-            <div style={cs.headerTitle}>Панель курьера</div>
+            <div style={cs.headerTitle}>Панель курьера · ever</div>
             {tg?.initDataUnsafe?.user?.first_name && (
-              <div style={cs.headerSub}>{tg.initDataUnsafe.user.first_name}</div>
+              <div style={cs.headerSub}>Привет, {tg.initDataUnsafe.user.first_name}!</div>
             )}
           </div>
         </div>
-        <button style={cs.refreshBtn} onClick={load}>🔄</button>
+        <button style={cs.refreshBtn} onClick={load} title="Обновить">↻</button>
       </div>
 
       {/* Tabs */}
@@ -149,7 +154,7 @@ export default function CourierPanel() {
               <div style={cs.statsGrid}>
                 <StatCard label="Всего доставок" value={stats.delivery_count || 0} icon="📦" />
                 <StatCard label="Сегодня" value={stats.today_count || 0} icon="🚀" />
-                <StatCard label="Заработано" value={stats.earnings ? `${stats.earnings} ₽` : '—'} icon="💰" />
+                <StatCard label="Заработано" value={stats.earnings ? `${stats.earnings} сум` : '—'} icon="💰" />
                 <StatCard label="Рейтинг" value={stats.rating ? `${stats.rating.toFixed(1)} ⭐` : '—'} icon="⭐" />
               </div>
               {stats.recent && stats.recent.length > 0 && (
@@ -161,7 +166,7 @@ export default function CourierPanel() {
                         <div style={cs.recentId}>Заказ #{o.id}</div>
                         <div style={cs.recentAddr}>{o.address}</div>
                       </div>
-                      <div style={cs.recentTotal}>{o.total} ₽</div>
+                      <div style={cs.recentTotal}>{o.total} сум</div>
                     </div>
                   ))}
                 </div>
@@ -187,7 +192,7 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
           {order.delivery_time && <div style={cs.orderTime}>🕐 {order.delivery_time}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={cs.orderTotal}>{order.total} ₽</div>
+          <div style={cs.orderTotal}>{order.total} сум</div>
           <span style={{ ...cs.statusChip, background: color + '22', color }}>
             {STATUS_LABELS[order.status] || order.status}
           </span>
@@ -235,7 +240,7 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
 
           <div style={cs.totalRow}>
             <span>К получению:</span>
-            <span style={cs.totalVal}>{order.total} ₽</span>
+            <span style={cs.totalVal}>{order.total} сум</span>
           </div>
 
           {/* Action buttons */}
@@ -265,39 +270,46 @@ function OrderCard({ order, expanded, setExpanded, onAction, actionLoading }) {
   )
 }
 
-// need these imported for the action handlers
-const C = '#00897b'
+const C = '#8DC63F'
 const cs = {
-  page: { minHeight: '100vh', background: '#f5f5f5', display: 'flex', flexDirection: 'column' },
+  page: { minHeight: '100vh', background: '#F5F5F5', display: 'flex', flexDirection: 'column' },
   header: {
-    background: C, padding: '16px 20px', display: 'flex',
+    background: 'linear-gradient(135deg, #111827, #1F2937)',
+    padding: '16px 20px', display: 'flex',
     justifyContent: 'space-between', alignItems: 'center',
   },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  logo: { fontSize: 32 },
-  headerTitle: { color: '#fff', fontWeight: 700, fontSize: 18 },
-  headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13 },
-  refreshBtn: {
-    background: 'rgba(255,255,255,0.2)', border: 'none',
-    borderRadius: 8, padding: '8px 12px', fontSize: 18, cursor: 'pointer',
+  logo: {
+    width: 42, height: 42, borderRadius: 12,
+    background: 'rgba(141,198,63,0.15)', border: '1px solid rgba(141,198,63,0.3)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
   },
-  tabs: { display: 'flex', background: '#fff', borderBottom: '1px solid #e0e0e0' },
+  headerTitle: { color: '#fff', fontWeight: 800, fontSize: 17 },
+  headerSub: { color: '#8DC63F', fontSize: 12, fontWeight: 600 },
+  refreshBtn: {
+    background: 'rgba(141,198,63,0.15)', border: '1px solid rgba(141,198,63,0.3)',
+    borderRadius: 10, padding: '8px 12px', fontSize: 16, cursor: 'pointer', color: '#8DC63F',
+  },
+  tabs: {
+    display: 'flex', background: '#fff',
+    borderBottom: '1px solid #EBEBEB',
+  },
   tab: {
-    flex: 1, padding: '12px 0', border: 'none', background: 'none',
-    fontSize: 15, fontWeight: 500, cursor: 'pointer', color: '#666',
+    flex: 1, padding: '13px 0', border: 'none', background: 'none',
+    fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#888',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
   tabActive: { color: C, borderBottom: `3px solid ${C}`, fontWeight: 700 },
   badge: {
-    background: '#e53935', color: '#fff', borderRadius: '50%',
+    background: '#E53935', color: '#fff', borderRadius: '50%',
     width: 20, height: 20, display: 'inline-flex', alignItems: 'center',
-    justifyContent: 'center', fontSize: 11, fontWeight: 700,
+    justifyContent: 'center', fontSize: 10, fontWeight: 800,
   },
   content: { padding: '16px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 },
   center: { textAlign: 'center', padding: 60, color: '#888' },
   empty: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: 12, padding: '60px 20px', color: '#888', fontSize: 16,
+    gap: 12, padding: '60px 20px', color: '#888', fontSize: 15,
   },
   noAccess: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -305,52 +317,59 @@ const cs = {
     textAlign: 'center', color: '#444',
   },
   sectionTitle: {
-    fontSize: 12, fontWeight: 700, color: '#888',
-    textTransform: 'uppercase', letterSpacing: 0.5, padding: '4px 0',
+    fontSize: 11, fontWeight: 700, color: '#888',
+    textTransform: 'uppercase', letterSpacing: 0.8, padding: '4px 0',
   },
-  card: { background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  card: {
+    background: '#fff', borderRadius: 16, overflow: 'hidden',
+    boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #F0F0F0',
+  },
   cardTop: { display: 'flex', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer' },
-  orderId: { fontWeight: 700, fontSize: 16, color: '#00695c' },
+  orderId: { fontWeight: 800, fontSize: 15, color: '#1A1A1A' },
   orderAddr: { fontSize: 13, color: '#555', marginTop: 3, maxWidth: 200 },
   orderTime: { fontSize: 12, color: '#888', marginTop: 2 },
-  orderTotal: { fontWeight: 800, fontSize: 18, color: C },
-  statusChip: { fontSize: 11, padding: '3px 10px', borderRadius: 10, fontWeight: 700, display: 'inline-block', marginTop: 4 },
-  chevron: { color: '#aaa', fontSize: 11, marginTop: 4 },
+  orderTotal: { fontWeight: 900, fontSize: 18, color: C },
+  statusChip: { fontSize: 10, padding: '3px 10px', borderRadius: 999, fontWeight: 700, display: 'inline-block', marginTop: 4 },
+  chevron: { color: '#CCC', fontSize: 10, marginTop: 6, textAlign: 'right' },
   details: {
-    borderTop: '1px solid #f0f0f0', padding: '14px 16px',
+    borderTop: '1px solid #F5F5F5', padding: '14px 16px',
     display: 'flex', flexDirection: 'column', gap: 12,
   },
-  infoGrid: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14 },
+  infoGrid: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, color: '#333' },
   phoneLink: { color: C, fontWeight: 600 },
   mapLink: {
-    display: 'inline-block', color: '#fff',
-    background: C, borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fff',
+    background: '#1F2937', borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 700,
     textDecoration: 'none',
   },
   bottleInfo: {
-    background: '#e0f2f1', borderRadius: 8, padding: '8px 12px',
-    fontSize: 13, color: '#00695c', fontWeight: 500,
+    background: '#F0FCE4', borderRadius: 10, padding: '10px 12px',
+    fontSize: 13, color: '#4E7A20', fontWeight: 600,
+    border: '1px solid #D0EBAA',
   },
-  itemsBlock: { fontSize: 14, display: 'flex', flexDirection: 'column', gap: 4 },
-  itemRow: { paddingLeft: 8, color: '#333', fontSize: 14 },
+  itemsBlock: { fontSize: 14, display: 'flex', flexDirection: 'column', gap: 6 },
+  itemRow: {
+    paddingLeft: 8, color: '#333', fontSize: 13,
+    display: 'flex', alignItems: 'center', gap: 6,
+  },
   totalRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: '#e0f2f1', borderRadius: 8, padding: '10px 14px',
-    fontWeight: 600, fontSize: 15,
+    background: '#F0FCE4', borderRadius: 10, padding: '10px 14px',
+    fontWeight: 600, fontSize: 14, border: '1px solid #D0EBAA',
   },
-  totalVal: { fontSize: 22, fontWeight: 800, color: C },
+  totalVal: { fontSize: 20, fontWeight: 900, color: C },
   actions: { display: 'flex', gap: 8 },
   acceptBtn: {
-    flex: 1, padding: '11px 0', border: 'none', borderRadius: 10,
-    background: '#1565c0', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    flex: 1, padding: '12px 0', border: 'none', borderRadius: 12,
+    background: '#1565C0', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   deliveryBtn: {
-    flex: 1, padding: '11px 0', border: 'none', borderRadius: 10,
-    background: C, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    flex: 1, padding: '12px 0', border: 'none', borderRadius: 12,
+    background: '#111827', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   doneBtn: {
-    flex: 1, padding: '11px 0', border: 'none', borderRadius: 10,
-    background: '#2e7d32', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    flex: 1, padding: '12px 0', border: 'none', borderRadius: 12,
+    background: `linear-gradient(135deg, ${C}, #6CA32F)`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   statsGrid: {
     display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12,

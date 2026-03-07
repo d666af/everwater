@@ -85,7 +85,7 @@ export default function ManagerOrders() {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={s.total}>{order.total} ₽</div>
+                  <div style={s.total}>{order.total} сум</div>
                   <span style={{ ...s.statusBadge, background: (STATUS_COLORS[order.status] || '#888') + '20', color: STATUS_COLORS[order.status] || '#888' }}>
                     {STATUS_LABELS[order.status] || order.status}
                   </span>
@@ -99,8 +99,8 @@ export default function ManagerOrders() {
                     <div>📍 <b>Адрес:</b> {order.address}</div>
                     {order.extra_info && <div>🏠 {order.extra_info}</div>}
                     {order.return_bottles_count > 0 && <div>♻️ Возврат: {order.return_bottles_count} бут.</div>}
-                    {order.bottle_discount > 0 && <div style={{ color: '#2d6a4f' }}>💚 Скидка: −{order.bottle_discount} ₽</div>}
-                    <div>💰 <b>Итого:</b> {order.total} ₽</div>
+                    {order.bottle_discount > 0 && <div style={{ color: '#2d6a4f' }}>💚 Скидка: −{order.bottle_discount} сум</div>}
+                    <div>💰 <b>Итого:</b> {order.total} сум</div>
                   </div>
 
                   {order.items?.length > 0 && (
@@ -109,7 +109,7 @@ export default function ManagerOrders() {
                         <div key={i.id} style={s.itemRow}>
                           <span>🔹 {i.product_name}</span>
                           <span style={{ color: '#888' }}>× {i.quantity}</span>
-                          <span style={{ marginLeft: 'auto', fontWeight: 600 }}>{i.price * i.quantity} ₽</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 600 }}>{i.price * i.quantity} сум</span>
                         </div>
                       ))}
                     </div>

@@ -65,7 +65,7 @@ export default function AdminSettings() {
             <label style={styles.radio}>
               <input type="radio" value="fixed" checked={form.bottle_discount_type === 'fixed'}
                 onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))} />
-              <span>Фиксированная (₽ за бутылку)</span>
+              <span>Фиксированная (сум за бутылку)</span>
             </label>
             <label style={styles.radio}>
               <input type="radio" value="percent" checked={form.bottle_discount_type === 'percent'}
@@ -75,7 +75,7 @@ export default function AdminSettings() {
           </div>
           <div style={styles.fieldGroup}>
             <label style={styles.label}>
-              {form.bottle_discount_type === 'fixed' ? 'Сумма скидки (₽/бутылка)' : 'Процент скидки (%)'}
+              {form.bottle_discount_type === 'fixed' ? 'Сумма скидки (сум/бутылка)' : 'Процент скидки (%)'}
             </label>
             <input style={{ ...styles.input, maxWidth: 200 }} type="number" min="0" {...f('bottle_discount_value')} />
           </div>
@@ -83,7 +83,7 @@ export default function AdminSettings() {
             Пример: при возврате 3 бутылок — скидка{' '}
             <b>
               {form.bottle_discount_type === 'fixed'
-                ? `${3 * Number(form.bottle_discount_value)} ₽`
+                ? `${3 * Number(form.bottle_discount_value)} сум`
                 : `${form.bottle_discount_value}% от суммы заказа`}
             </b>
           </div>
@@ -98,7 +98,7 @@ export default function AdminSettings() {
             <input style={{ ...styles.input, maxWidth: 200 }} type="number" min="0" max="100" {...f('cashback_percent')} />
           </div>
           <div style={styles.preview}>
-            Пример: заказ на 1000 ₽ — клиент получит <b>{form.cashback_percent} ₽</b> бонусами
+            Пример: заказ на 1000 сум — клиент получит <b>{form.cashback_percent} сум</b> бонусами
           </div>
         </div>
 

@@ -46,7 +46,7 @@ export default function ManagerClients() {
                       <span style={s.bonusChip}>🎁 {u.bonus_points} бонусов</span>
                     )}
                     {u.balance > 0 && (
-                      <span style={s.balanceChip}>💰 {u.balance} ₽</span>
+                      <span style={s.balanceChip}>💰 {u.balance} сум</span>
                     )}
                     {u.is_registered ? (
                       <span style={s.regChip}>✅ Зарегистрирован</span>

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
 import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../api'
+import MapPicker from '../components/MapPicker'
+import { useAuthStore } from '../store/auth'
 
 const tg = window.Telegram?.WebApp
 
@@ -21,10 +23,11 @@ const STEPS = ['Доставка', 'Возврат', 'Оплата']
 export default function Checkout() {
   const { items, total, clearCart } = useCartStore()
   const navigate = useNavigate()
+  const { user: authUser } = useAuthStore()
 
   const [step, setStep] = useState(1)
   const [user, setUser] = useState(null)
-  const [settings, setSettings] = useState({ payment_card: '', payment_holder: '', bottle_discount_type: 'fixed', bottle_discount_value: 50 })
+  const [settings, setSettings] = useState({ payment_card: '', payment_holder: '', bottle_discount_type: 'fixed', bottle_discount_value: 2000 })
   const [form, setForm] = useState({
     useOwnPhone: true,
     phone: '',
@@ -38,23 +41,25 @@ export default function Checkout() {
     returnVolume: '',
     bonusUsed: 0,
   })
+  const [showMap, setShowMap] = useState(false)
   const [createdOrder, setCreatedOrder] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [paymentDone, setPaymentDone] = useState(false)
 
   useEffect(() => {
+    // Try Telegram WebApp user first, then web auth user
     const tgUser = tg?.initDataUnsafe?.user
     if (tgUser?.id) {
       getUserByTelegram(tgUser.id)
-        .then(u => {
-          setUser(u)
-          setForm(f => ({ ...f, phone: u.phone || '' }))
-        })
+        .then(u => { setUser(u); setForm(f => ({ ...f, phone: u.phone || '' })) })
         .catch(console.error)
+    } else if (authUser) {
+      setUser(authUser)
+      setForm(f => ({ ...f, phone: authUser.phone || '' }))
     }
     getSettings().then(setSettings).catch(console.error)
-  }, [])
+  }, [authUser])
 
   const bottleDiscountAmount = (() => {
     const { bottle_discount_type, bottle_discount_value } = settings
@@ -157,6 +162,16 @@ export default function Checkout() {
 
   return (
     <div style={styles.page}>
+      {/* Map picker modal */}
+      {showMap && (
+        <MapPicker
+          lat={form.lat}
+          lng={form.lng}
+          onChange={(lat, lng) => setForm(f => ({ ...f, lat, lng }))}
+          onClose={() => setShowMap(false)}
+        />
+      )}
+
       {/* Stepper */}
       <div style={styles.stepper}>
         {STEPS.map((s, i) => {
@@ -193,7 +208,7 @@ export default function Checkout() {
               </label>
             </div>
             {!form.useOwnPhone && (
-              <input style={styles.input} placeholder="+7 999 999-99-99" type="tel" {...field('phone')} />
+              <input style={styles.input} placeholder="+998 90 123-45-67" type="tel" {...field('phone')} />
             )}
           </div>
 
@@ -231,30 +246,36 @@ export default function Checkout() {
 
           <div style={styles.fieldGroup}>
             <div style={styles.label}>
-              Геолокация <span style={styles.req}>*</span>
+              Местоположение <span style={styles.req}>*</span>
               <span style={{ color: '#888', fontWeight: 400, fontSize: 12, marginLeft: 4 }}>
                 (обязательно для курьера)
               </span>
             </div>
-            <button
-              style={{ ...styles.geoBtn, ...(form.lat ? styles.geoBtnDone : {}) }}
-              onClick={getUserLocation}
-              type="button"
-              disabled={form.geoLoading}
-            >
-              {form.geoLoading ? (
-                '⏳ Определяем...'
-              ) : form.lat ? (
-                `✅ Геолокация получена (${form.lat.toFixed(4)}, ${form.lng.toFixed(4)})`
-              ) : (
-                '📍 Указать моё местоположение'
-              )}
-            </button>
-            {form.lat && (
-              <button style={styles.resetGeo} onClick={() => setForm(f => ({ ...f, lat: null, lng: null }))} type="button">
-                Сбросить геолокацию
+
+            {form.lat ? (
+              <div style={styles.geoDone}>
+                <span>✅ Точка выбрана ({form.lat.toFixed(4)}, {form.lng.toFixed(4)})</span>
+                <button style={styles.resetGeo} onClick={() => setForm(f => ({ ...f, lat: null, lng: null }))} type="button">✕</button>
+              </div>
+            ) : null}
+
+            <div style={styles.geoButtons}>
+              <button
+                style={{ ...styles.geoBtn, flex: 1 }}
+                onClick={getUserLocation}
+                type="button"
+                disabled={form.geoLoading}
+              >
+                {form.geoLoading ? '⏳ Определяем...' : '📍 Авто'}
               </button>
-            )}
+              <button
+                style={{ ...styles.geoBtn, flex: 2, borderColor: '#2d6a4f' }}
+                onClick={() => setShowMap(true)}
+                type="button"
+              >
+                🗺️ Выбрать на карте
+              </button>
+            </div>
           </div>
 
           {error && <div style={styles.error}>{error}</div>}
@@ -289,7 +310,7 @@ export default function Checkout() {
             </div>
             {bottleDiscountAmount > 0 && (
               <div style={styles.discountHint}>
-                🎉 Скидка за возврат: −{bottleDiscountAmount} ₽
+                🎉 Скидка за возврат: −{bottleDiscountAmount} сум
               </div>
             )}
           </div>
@@ -300,7 +321,7 @@ export default function Checkout() {
               <input
                 style={styles.input}
                 type="number" min="0" max={bonusMax}
-                placeholder={`Списать до ${bonusMax} ₽`}
+                placeholder={`Списать до ${bonusMax} сум`}
                 value={form.bonusUsed}
                 onChange={e => set('bonusUsed', Math.min(bonusMax, Math.max(0, +e.target.value)))}
               />
@@ -312,27 +333,27 @@ export default function Checkout() {
             {items.map(({ product, quantity }) => (
               <div key={product.id} style={styles.summaryRow}>
                 <span>{product.name} × {quantity}</span>
-                <span>{product.price * quantity} ₽</span>
+                <span>{product.price * quantity} сум</span>
               </div>
             ))}
             <div style={styles.summaryDivider} />
             <div style={styles.summaryRow}>
-              <span>Товары</span><span>{subtotal} ₽</span>
+              <span>Товары</span><span>{subtotal} сум</span>
             </div>
             {bottleDiscountAmount > 0 && (
               <div style={{ ...styles.summaryRow, color: '#4caf50' }}>
                 <span>Скидка за бутылки ({form.returnCount} шт.)</span>
-                <span>−{bottleDiscountAmount} ₽</span>
+                <span>−{bottleDiscountAmount} сум</span>
               </div>
             )}
             {Number(form.bonusUsed) > 0 && (
               <div style={{ ...styles.summaryRow, color: '#f57c00' }}>
-                <span>Бонусы</span><span>−{form.bonusUsed} ₽</span>
+                <span>Бонусы</span><span>−{form.bonusUsed} сум</span>
               </div>
             )}
             <div style={styles.summaryDivider} />
             <div style={{ ...styles.summaryRow, fontWeight: 800, fontSize: 18 }}>
-              <span>Итого к оплате</span><span style={{ color: 'var(--tg-theme-button-color, #2481cc)' }}>{finalTotal} ₽</span>
+              <span>Итого к оплате</span><span style={{ color: 'var(--tg-theme-button-color, #2481cc)' }}>{finalTotal} сум</span>
             </div>
           </div>
 
@@ -360,7 +381,7 @@ export default function Checkout() {
             <div style={styles.payLabel}>Переведите на карту</div>
             <div style={styles.payCardNum}>{settings.payment_card || '0000 0000 0000 0000'}</div>
             <div style={styles.payHolder}>{settings.payment_holder || 'Иванов Иван'}</div>
-            <div style={styles.payAmount}>{createdOrder.total} ₽</div>
+            <div style={styles.payAmount}>{createdOrder.total} сум</div>
             <button
               style={styles.copyBtn}
               onClick={() => {
@@ -513,4 +534,10 @@ const styles = {
   },
   successTitle: { fontSize: 24, fontWeight: 700 },
   successText: { color: '#888', fontSize: 15, lineHeight: 1.5 },
+  geoDone: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    background: '#e8f5e9', borderRadius: 10, padding: '8px 12px',
+    fontSize: 13, color: '#2d6a4f', fontWeight: 500,
+  },
+  geoButtons: { display: 'flex', gap: 8 },
 }

@@ -60,7 +60,7 @@ function CourierCard({ courier: c }) {
         </div>
         <div style={s.chips}>
           <span style={s.delivChip}>📦 {c.delivery_count || 0} доставок</span>
-          {c.earnings > 0 && <span style={s.earnChip}>💰 {c.earnings} ₽</span>}
+          {c.earnings > 0 && <span style={s.earnChip}>💰 {c.earnings} сум</span>}
           <span style={{ ...s.activeBadge, background: c.is_active ? '#d8f3dc' : '#fce4ec', color: c.is_active ? '#2d6a4f' : '#c62828' }}>
             {c.is_active ? '● Активен' : '○ Неактивен'}
           </span>

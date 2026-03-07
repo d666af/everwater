@@ -3,39 +3,150 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Everwater — Доставка чистой воды</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>" />
+    <title>Ever — Доставка чистой воды</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 8 C35 8 10 35 10 55 C10 76 28 92 50 92 C72 92 90 76 90 55 C90 35 65 8 50 8Z' fill='%238DC63F'/><path d='M34 58 C34 58 38 48 50 44 C62 48 66 58 66 58' stroke='white' stroke-width='4' fill='none' stroke-linecap='round'/></svg>" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
       :root {
-        --ew-green: #2d6a4f;
-        --ew-green-light: #52b788;
-        --ew-green-pale: #d8f3dc;
-        --ew-green-bg: #f5faf7;
-        --ew-dark: #1b4332;
+        /* === EVERWATER BRAND COLORS === */
+        --ew-primary: #8DC63F;
+        --ew-primary-dark: #6CA32F;
+        --ew-primary-darker: #4E7A20;
+        --ew-primary-light: #A8D85F;
+        --ew-primary-pale: #EDF7D6;
+        --ew-primary-bg: #F7FCF0;
+
+        /* Text */
+        --ew-text: #1A1A1A;
+        --ew-text-secondary: #555555;
+        --ew-text-hint: #999999;
+        --ew-text-on-primary: #ffffff;
+
+        /* Surface */
+        --ew-surface: #ffffff;
+        --ew-surface-2: #F5F5F5;
+        --ew-border: #E8E8E8;
+        --ew-border-green: #D0EBAA;
+
+        /* Status colors */
+        --ew-success: #52B788;
+        --ew-warning: #F0A500;
+        --ew-danger: #E53935;
+        --ew-info: #2196F3;
+
+        /* Shadows */
+        --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
+        --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+        --shadow-green: 0 4px 20px rgba(141,198,63,0.25);
+        --shadow-green-lg: 0 8px 32px rgba(141,198,63,0.35);
+
+        /* Telegram theme overrides */
         --tg-theme-bg-color: #ffffff;
-        --tg-theme-text-color: #1b4332;
-        --tg-theme-button-color: #2d6a4f;
+        --tg-theme-text-color: #1A1A1A;
+        --tg-theme-button-color: #8DC63F;
         --tg-theme-button-text-color: #ffffff;
-        --tg-theme-hint-color: #b7e4c7;
-        --tg-theme-secondary-bg-color: #f5faf7;
+        --tg-theme-hint-color: #999999;
+        --tg-theme-secondary-bg-color: #F7FCF0;
+
+        /* Radius */
+        --r-sm: 8px;
+        --r-md: 12px;
+        --r-lg: 16px;
+        --r-xl: 20px;
+        --r-2xl: 24px;
+        --r-pill: 999px;
       }
 
       html { -webkit-text-size-adjust: 100%; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-        background: var(--tg-theme-bg-color, #fff);
-        color: var(--tg-theme-text-color, #1b4332);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        background: var(--ew-surface);
+        color: var(--ew-text);
         min-height: 100vh;
         -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
       button, input, textarea, select { font-family: inherit; }
+
+      /* Scrollbar */
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #b7e4c7; border-radius: 2px; }
+      ::-webkit-scrollbar-thumb { background: var(--ew-border-green); border-radius: 2px; }
+
+      /* Animations */
       @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+      @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+      .ew-fade-in { animation: fadeIn 0.3s ease forwards; }
+      .ew-slide-up { animation: slideUp 0.4s ease forwards; }
+
+      /* Global button reset */
+      button { cursor: pointer; }
+      button:disabled { cursor: not-allowed; opacity: 0.6; }
+
+      /* Global card */
+      .ew-card {
+        background: var(--ew-surface);
+        border-radius: var(--r-xl);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--ew-border);
+        overflow: hidden;
+      }
+
+      /* Primary button */
+      .ew-btn-primary {
+        background: var(--ew-primary);
+        color: #fff;
+        border: none;
+        border-radius: var(--r-lg);
+        padding: 14px 24px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: var(--shadow-green);
+        transition: all 0.2s ease;
+        width: 100%;
+      }
+      .ew-btn-primary:hover { background: var(--ew-primary-dark); }
+      .ew-btn-primary:active { transform: scale(0.98); }
+
+      /* Chip */
+      .ew-chip {
+        padding: 6px 14px;
+        border-radius: var(--r-pill);
+        font-size: 13px;
+        font-weight: 600;
+        border: 1.5px solid var(--ew-border);
+        background: var(--ew-surface);
+        color: var(--ew-text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .ew-chip.active {
+        background: var(--ew-primary);
+        border-color: var(--ew-primary);
+        color: #fff;
+      }
+
+      /* Status badge */
+      .ew-status { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--r-pill); font-size: 11px; font-weight: 600; }
+      .ew-status.new { background: #E3F2FD; color: #1565C0; }
+      .ew-status.pending { background: #FFF8E1; color: #F57F17; }
+      .ew-status.confirmed { background: #E8F5E9; color: #2E7D32; }
+      .ew-status.delivering { background: #EDE7F6; color: #512DA8; }
+      .ew-status.delivered { background: var(--ew-primary-pale); color: var(--ew-primary-darker); }
+      .ew-status.rejected { background: #FFEBEE; color: #C62828; }
+
       @media (max-width: 768px) { .desktop-only { display: none !important; } }
       @media (min-width: 769px) { .mobile-nav { display: none !important; } }
     </style>
