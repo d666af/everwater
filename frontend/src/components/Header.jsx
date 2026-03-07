@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore } from '../store'
+import { EverLogoMark } from './EverLogo'
 
 const TITLES = {
   '/cart': 'Корзина',
@@ -8,16 +9,8 @@ const TITLES = {
   '/profile': 'Профиль',
 }
 
-// Everwater logo inline
 function EverMark({ size = 26 }) {
-  return (
-    <svg width={size} height={size * 0.85} viewBox="0 0 120 102" fill="none">
-      <path d="M60 8 C48 8 14 28 10 52 C8 64 18 72 30 68 C42 64 54 44 60 36" fill="#8DC63F"/>
-      <path d="M60 36 C66 44 78 64 90 68 C102 72 112 64 110 52 C106 28 72 8 60 8" fill="#6CA32F"/>
-      <path d="M60 36 L60 88" stroke="#8DC63F" strokeWidth="5" strokeLinecap="round"/>
-      <path d="M46 88 Q60 82 74 88" stroke="#8DC63F" strokeWidth="4" strokeLinecap="round" fill="none"/>
-    </svg>
-  )
+  return <EverLogoMark width={Math.round(size * 1.4)} />
 }
 
 export default function Header() {
