@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, getCourierStats } from '../../api'
+import { useAuthStore } from '../../store/auth'
+import { EverLogoMark } from '../../components/EverLogo'
 
 const tg = window.Telegram?.WebApp
 
@@ -28,12 +31,14 @@ function StatCard({ label, value, icon }) {
 }
 
 export default function CourierPanel() {
-  const [tab, setTab] = useState('orders') // orders | stats
+  const [tab, setTab] = useState('orders')
   const [orders, setOrders] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const { user: authUser, logout } = useAuthStore()
+  const navigate = useNavigate()
 
   const telegramId = tg?.initDataUnsafe?.user?.id
 
@@ -79,15 +84,25 @@ export default function CourierPanel() {
       {/* Header */}
       <div style={cs.header}>
         <div style={cs.headerLeft}>
-          <div style={cs.logo}>🚴</div>
+          <EverLogoMark width={38} />
           <div>
-            <div style={cs.headerTitle}>Панель курьера · ever</div>
-            {tg?.initDataUnsafe?.user?.first_name && (
-              <div style={cs.headerSub}>Привет, {tg.initDataUnsafe.user.first_name}!</div>
-            )}
+            <div style={cs.headerTitle}>ever · Курьер</div>
+            <div style={cs.headerSub}>
+              {tg?.initDataUnsafe?.user?.first_name
+                ? `Привет, ${tg.initDataUnsafe.user.first_name}!`
+                : authUser?.name || 'Панель доставки'}
+            </div>
           </div>
         </div>
-        <button style={cs.refreshBtn} onClick={load} title="Обновить">↻</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={cs.refreshBtn} onClick={load} title="Обновить">↻</button>
+          {!tg?.initDataUnsafe?.user && (
+            <button style={{ ...cs.refreshBtn, fontSize: 13 }}
+              onClick={() => { logout(); navigate('/login') }}
+              title="Выйти"
+            >🚪</button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

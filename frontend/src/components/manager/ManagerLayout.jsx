@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
+import { EverLogoMark } from '../EverLogo'
 
 const NAV = [
   { path: '/manager', label: 'Заказы', exactMatch: true,
@@ -11,17 +12,6 @@ const NAV = [
   { path: '/manager/stats', label: 'Статистика',
     Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.8"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.3"/></svg> },
 ]
-
-function EverMark({ size = 28 }) {
-  return (
-    <svg width={size} height={size * 0.85} viewBox="0 0 120 102" fill="none">
-      <path d="M60 8 C48 8 14 28 10 52 C8 64 18 72 30 68 C42 64 54 44 60 36" fill="#8DC63F"/>
-      <path d="M60 36 C66 44 78 64 90 68 C102 72 112 64 110 52 C106 28 72 8 60 8" fill="#6CA32F"/>
-      <path d="M60 36 L60 88" stroke="#8DC63F" strokeWidth="5" strokeLinecap="round"/>
-      <path d="M46 88 Q60 82 74 88" stroke="#8DC63F" strokeWidth="4" strokeLinecap="round" fill="none"/>
-    </svg>
-  )
-}
 
 export default function ManagerLayout({ children, title }) {
   const navigate = useNavigate()
@@ -35,7 +25,7 @@ export default function ManagerLayout({ children, title }) {
       <aside style={s.sidebar}>
         <div style={s.sidebarTop}>
           <div style={s.logo} onClick={() => navigate('/manager')}>
-            <EverMark size={32} />
+            <EverLogoMark width={38} />
             <div>
               <div style={s.logoName}>ever</div>
               <div style={s.logoBadge}>Менеджер</div>

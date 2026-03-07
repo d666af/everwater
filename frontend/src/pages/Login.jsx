@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 import { loginByPhone } from '../api'
+import { EverLogoMark } from '../components/EverLogo'
 
 const ROLE_ROUTES = {
   client: '/',
@@ -100,7 +101,7 @@ export default function Login() {
         {/* Logo section */}
         <div style={s.logoSection}>
           <div style={s.logoMark}>
-            <EverLogo size={56} />
+            <EverLogoMark width={72} />
           </div>
           <div style={s.brandName}>
             <span style={s.brandEver}>ever</span>
