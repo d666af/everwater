@@ -1,104 +1,76 @@
 /**
- * Accurate SVG recreation of the "ever" logo
- * Two swooping wing/leaf shapes meeting at center-bottom point
- * Left wing: large, upper-left to center-bottom
- * Right wing: smaller, center-bottom to upper-right
+ * EverLogo — unified SVG logo (mark + "ever" text as one SVG)
+ * EverLogoMark — wings only, for compact spaces
  */
-export function EverLogoMark({ width = 120, className = '' }) {
-  const h = Math.round(width * 0.72)
+
+// Full logo: mark + "ever" text in a single SVG
+export default function EverLogo({ width = 160, ...props }) {
+  const h = Math.round(width * 1.15)
   return (
     <svg
       width={width}
       height={h}
-      viewBox="0 0 200 144"
+      viewBox="0 0 200 230"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={className}
+      {...props}
     >
-      {/* LEFT WING — large sweeping leaf from upper-left to center-bottom */}
+      {/* Left wing — large sweep from upper-left to center-bottom */}
       <path
-        d="M 12 20
-           C 44 4, 98 16, 112 80
-           C 107 92, 102 100, 100 104
-           C 86 82, 62 48, 30 26
-           C 20 20, 12 22, 12 20 Z"
+        d="M 14 28 C 45 8 100 20 114 82 C 109 94 104 102 101 106 C 87 84 62 50 30 30 C 20 24 14 28 14 28 Z"
         fill="#8DC63F"
       />
-      {/* RIGHT WING — smaller sweep from center-bottom to upper-right */}
+      {/* Right wing — smaller sweep from center-bottom to upper-right */}
       <path
-        d="M 100 104
-           C 116 82, 148 50, 178 24
-           C 184 18, 188 14, 186 16
-           C 174 28, 152 52, 130 76
-           C 118 90, 108 98, 100 104 Z"
+        d="M 101 106 C 117 84 148 52 178 28 C 184 22 188 18 186 20 C 172 32 148 58 126 80 C 116 90 108 100 101 106 Z"
         fill="#7DC040"
       />
-      {/* Subtle shadow/depth at the meeting point */}
-      <path
-        d="M 100 104
-           C 104 96, 110 88, 116 80
-           C 110 88, 104 96, 100 104 Z"
-        fill="#6CA32F"
-        opacity="0.5"
-      />
+      {/* "ever" text centered below the mark */}
+      <text
+        x="100"
+        y="195"
+        textAnchor="middle"
+        fontFamily="'Inter', Arial, sans-serif"
+        fontWeight="800"
+        fontSize="72"
+        fill="#1A1A1A"
+        letterSpacing="-2"
+      >ever</text>
     </svg>
   )
 }
 
-export function EverLogoFull({ width = 120, className = '' }) {
-  const markH = Math.round(width * 0.72)
-  const textSize = Math.round(width * 0.42)
-  const totalH = markH + textSize + 8
+// Mark only — wings without text, for sidebars and compact spaces
+export function EverLogoMark({ width = 48, ...props }) {
+  const h = Math.round(width * 0.7)
   return (
     <svg
       width={width}
-      height={totalH}
-      viewBox={`0 0 200 ${Math.round(200 * totalH / width)}`}
+      height={h}
+      viewBox="0 0 200 140"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={className}
+      {...props}
     >
-      {/* Mark */}
       <path
-        d="M 12 20
-           C 44 4, 98 16, 112 80
-           C 107 92, 102 100, 100 104
-           C 86 82, 62 48, 30 26
-           C 20 20, 12 22, 12 20 Z"
+        d="M 14 28 C 45 8 100 20 114 82 C 109 94 104 102 101 106 C 87 84 62 50 30 30 C 20 24 14 28 14 28 Z"
         fill="#8DC63F"
       />
       <path
-        d="M 100 104
-           C 116 82, 148 50, 178 24
-           C 184 18, 188 14, 186 16
-           C 174 28, 152 52, 130 76
-           C 118 90, 108 98, 100 104 Z"
+        d="M 101 106 C 117 84 148 52 178 28 C 184 22 188 18 186 20 C 172 32 148 58 126 80 C 116 90 108 100 101 106 Z"
         fill="#7DC040"
       />
-      {/* "ever" text */}
-      <text
-        x="100"
-        y={Math.round(200 * totalH / width) - 4}
-        textAnchor="middle"
-        fontFamily="Inter, Arial, sans-serif"
-        fontWeight="800"
-        fontSize="64"
-        fill="#222222"
-        letterSpacing="-1"
-      >
-        ever
-      </text>
     </svg>
   )
 }
 
-// Compact horizontal logo: mark + "ever" text side by side
+// Horizontal layout: mark + "ever" text side by side (for admin/manager sidebars)
 export function EverLogoHorizontal({ height = 32, className = '' }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} className={className}>
       <EverLogoMark width={Math.round(height * 1.4)} />
       <span style={{
-        fontFamily: 'Inter, Arial, sans-serif',
+        fontFamily: "'Inter', Arial, sans-serif",
         fontWeight: 900,
         fontSize: height,
         color: '#1A1A1A',
@@ -108,5 +80,3 @@ export function EverLogoHorizontal({ height = 32, className = '' }) {
     </div>
   )
 }
-
-export default EverLogoMark
