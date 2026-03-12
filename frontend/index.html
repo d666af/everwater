@@ -21,38 +21,39 @@
         --ew-primary-pale: #EDF7D6;
         --ew-primary-bg: #F7FCF0;
 
-        /* Text */
-        --ew-text: #1A1A1A;
-        --ew-text-secondary: #555555;
-        --ew-text-hint: #999999;
+        /* Apple system colors */
+        --ew-text: #1C1C1E;
+        --ew-text-secondary: #8E8E93;
+        --ew-text-hint: #C7C7CC;
         --ew-text-on-primary: #ffffff;
 
         /* Surface */
-        --ew-surface: #ffffff;
-        --ew-surface-2: #F5F5F5;
-        --ew-border: #E8E8E8;
+        --ew-surface: #FFFFFF;
+        --ew-surface-2: #F2F2F7;
+        --ew-border: rgba(60,60,67,0.12);
         --ew-border-green: #D0EBAA;
+        --ew-separator: rgba(60,60,67,0.08);
 
         /* Status colors */
-        --ew-success: #52B788;
-        --ew-warning: #F0A500;
-        --ew-danger: #E53935;
-        --ew-info: #2196F3;
+        --ew-success: #34C759;
+        --ew-warning: #FF9F0A;
+        --ew-danger: #FF3B30;
+        --ew-info: #007AFF;
 
         /* Shadows */
-        --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
         --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
-        --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
-        --shadow-green: 0 4px 20px rgba(141,198,63,0.25);
-        --shadow-green-lg: 0 8px 32px rgba(141,198,63,0.35);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+        --shadow-green: 0 4px 16px rgba(141,198,63,0.30);
+        --shadow-green-lg: 0 8px 24px rgba(141,198,63,0.35);
 
         /* Telegram theme overrides */
         --tg-theme-bg-color: #ffffff;
-        --tg-theme-text-color: #1A1A1A;
+        --tg-theme-text-color: #1C1C1E;
         --tg-theme-button-color: #8DC63F;
         --tg-theme-button-text-color: #ffffff;
-        --tg-theme-hint-color: #999999;
-        --tg-theme-secondary-bg-color: #F7FCF0;
+        --tg-theme-hint-color: #8E8E93;
+        --tg-theme-secondary-bg-color: #F2F2F7;
 
         /* Radius */
         --r-sm: 8px;
@@ -66,7 +67,7 @@
       html { -webkit-text-size-adjust: 100%; }
       body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-        background: var(--ew-surface);
+        background: var(--ew-surface-2);
         color: var(--ew-text);
         min-height: 100vh;
         -webkit-font-smoothing: antialiased;
@@ -85,6 +86,7 @@
       @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
       @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
       .ew-fade-in { animation: fadeIn 0.3s ease forwards; }
       .ew-slide-up { animation: slideUp 0.4s ease forwards; }
@@ -113,7 +115,7 @@
         font-weight: 700;
         cursor: pointer;
         box-shadow: var(--shadow-green);
-        transition: all 0.2s ease;
+        transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
         width: 100%;
       }
       .ew-btn-primary:hover { background: var(--ew-primary-dark); }
@@ -129,7 +131,7 @@
         background: var(--ew-surface);
         color: var(--ew-text-secondary);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
         white-space: nowrap;
       }
       .ew-chip.active {
@@ -147,11 +149,42 @@
       .ew-status.delivered { background: var(--ew-primary-pale); color: var(--ew-primary-darker); }
       .ew-status.rejected { background: #FFEBEE; color: #C62828; }
 
+      /* Splash screen */
+      #splash {
+        position: fixed; inset: 0; background: #fff; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+        transition: opacity 0.4s ease, transform 0.4s ease;
+      }
+      #splash.hide { opacity: 0; transform: scale(1.05); pointer-events: none; }
+      #splash-logo { animation: splashPulse 1.5s ease-in-out infinite; }
+      @keyframes splashPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(0.97); } }
+      #splash-bar { width: 120px; height: 3px; background: #E8E8E8; border-radius: 2px; overflow: hidden; }
+      #splash-fill { height: 100%; width: 0; background: #8DC63F; border-radius: 2px; animation: splashLoad 1.2s cubic-bezier(0.4,0,0.2,1) forwards; }
+      @keyframes splashLoad { 0% { width: 0; } 60% { width: 80%; } 100% { width: 100%; } }
+
       @media (max-width: 768px) { .desktop-only { display: none !important; } }
       @media (min-width: 769px) { .mobile-nav { display: none !important; } }
     </style>
   </head>
   <body>
+    <div id="splash">
+      <div id="splash-logo">
+        <svg width="120" height="138" viewBox="0 0 200 230" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 14 28 C 45 8 100 20 114 82 C 109 94 104 102 101 106 C 87 84 62 50 30 30 C 20 24 14 28 14 28 Z" fill="#8DC63F"/>
+          <path d="M 101 106 C 117 84 148 52 178 28 C 184 22 188 18 186 20 C 172 32 148 58 126 80 C 116 90 108 100 101 106 Z" fill="#7DC040"/>
+          <text x="100" y="195" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="72" fill="#1A1A1A" letter-spacing="-2">ever</text>
+        </svg>
+      </div>
+      <div id="splash-bar"><div id="splash-fill"></div></div>
+    </div>
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var s = document.getElementById('splash');
+          if (s) { s.classList.add('hide'); setTimeout(function() { s.remove(); }, 450); }
+        }, 800);
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
