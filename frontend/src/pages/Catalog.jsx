@@ -1,6 +1,14 @@
 import { useEffect, useState, useMemo } from 'react'
 import { getProducts } from '../api'
 import ProductCard from '../components/ProductCard'
+import { SkeletonCard } from '../components/Skeleton'
+
+const C = '#8DC63F'
+const TEXT = '#1C1C1E'
+const TEXT2 = '#8E8E93'
+const BG = '#F2F2F7'
+const BORDER = 'rgba(60,60,67,0.12)'
+const TRANSITION = 'all 0.2s cubic-bezier(0.4,0,0.2,1)'
 
 export default function Catalog() {
   const [products, setProducts] = useState([])
@@ -23,50 +31,27 @@ export default function Catalog() {
     return products.filter(p => String(p.volume) === String(volumeFilter))
   }, [products, volumeFilter])
 
-  if (loading) return (
-    <div style={s.loadingPage}>
-      <div style={s.loadingSpinner} />
-      <p style={s.loadingText}>Загружаем каталог...</p>
-    </div>
-  )
-
-  if (!products.length) return (
-    <div style={s.emptyPage}>
-      <svg width="64" height="80" viewBox="0 0 40 48" fill="none">
-        <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-          fill="#E8F7D0" stroke="#8DC63F" strokeWidth="1.5"/>
-      </svg>
-      <p style={s.emptyText}>Товары пока не добавлены</p>
-    </div>
-  )
-
   return (
     <div style={s.page}>
-      {/* Hero banner */}
-      <div style={s.hero}>
-        <div style={s.heroContent}>
-          <div style={s.heroTitle}>Чистая вода</div>
-          <div style={s.heroSub}>с доставкой до двери</div>
-          <div style={s.heroBadges}>
-            <span style={s.heroBadge}>💧 Природная</span>
-            <span style={s.heroBadge}>⚡ Быстро</span>
-            <span style={s.heroBadge}>✓ Надёжно</span>
-          </div>
+      {/* Page heading */}
+      <div style={s.heading}>
+        <div>
+          <h1 style={s.headingTitle}>Каталог</h1>
+          <p style={s.headingSubtitle}>Чистая вода с доставкой</p>
         </div>
-        <div style={s.heroIllustration}>
-          <svg width="90" height="110" viewBox="0 0 40 48" fill="none">
+        <div style={s.waterIcon}>
+          <svg width="36" height="44" viewBox="0 0 40 48" fill="none">
             <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-              fill="rgba(255,255,255,0.3)" stroke="rgba(255,255,255,0.6)" strokeWidth="1.2"/>
+              fill={C} opacity="0.9"/>
             <path d="M12 30C12 30 14 24 20 22C26 24 28 30 28 30"
-              stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" strokeLinecap="round"/>
           </svg>
         </div>
       </div>
 
       {/* Volume filters */}
-      {volumes.length > 1 && (
+      {(loading || volumes.length > 1) && (
         <div style={s.filterSection}>
-          <div style={s.filterLabel}>Объём</div>
           <div style={s.filterScroll}>
             <button
               style={{ ...s.chip, ...(volumeFilter === 'all' ? s.chipActive : {}) }}
@@ -87,82 +72,154 @@ export default function Catalog() {
         </div>
       )}
 
-      {/* Product count */}
-      <div style={s.countBar}>
-        <span style={s.countText}>{filtered.length} товар{filtered.length === 1 ? '' : filtered.length < 5 ? 'а' : 'ов'}</span>
-      </div>
-
-      {/* Grid */}
-      <div style={s.grid}>
-        {filtered.map(p => <ProductCard key={p.id} product={p} />)}
-      </div>
-
-      {filtered.length === 0 && (
-        <div style={s.noResults}>Нет товаров по выбранному объёму</div>
+      {/* Loading skeletons */}
+      {loading && (
+        <div style={s.grid}>
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       )}
 
-      <div style={{ height: 16 }} />
+      {/* Empty state */}
+      {!loading && !products.length && (
+        <div style={s.emptyPage}>
+          <div style={s.emptyIconWrap}>
+            <svg width="48" height="58" viewBox="0 0 40 48" fill="none">
+              <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
+                fill="#E8F7D0" stroke={C} strokeWidth="1.5"/>
+            </svg>
+          </div>
+          <p style={s.emptyText}>Товары пока не добавлены</p>
+        </div>
+      )}
+
+      {/* Product count + grid */}
+      {!loading && products.length > 0 && (
+        <>
+          <div style={s.countBar}>
+            <span style={s.countText}>
+              {filtered.length} {filtered.length === 1 ? 'товар' : filtered.length < 5 ? 'товара' : 'товаров'}
+            </span>
+          </div>
+
+          <div style={s.grid}>
+            {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+          </div>
+
+          {filtered.length === 0 && (
+            <div style={s.noResults}>Нет товаров по выбранному объёму</div>
+          )}
+        </>
+      )}
+
+      <div style={{ height: 24 }} />
     </div>
   )
 }
 
-const P = '#8DC63F'
-
 const s = {
-  page: { display: 'flex', flexDirection: 'column', background: '#F8F8F8', minHeight: '100vh' },
-  loadingPage: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', height: '60vh', gap: 16,
+  page: {
+    display: 'flex',
+    flexDirection: 'column',
+    background: BG,
+    minHeight: '100vh',
   },
-  loadingSpinner: {
-    width: 36, height: 36, borderRadius: '50%',
-    border: '3px solid #E8F7D0',
-    borderTop: `3px solid ${P}`,
-    animation: 'spin 0.8s linear infinite',
+  heading: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    padding: '20px 16px 12px',
+    background: '#FFFFFF',
+    borderBottom: `1px solid ${BORDER}`,
   },
-  loadingText: { color: '#888', fontSize: 14 },
-  emptyPage: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', height: '60vh', gap: 12,
+  headingTitle: {
+    fontSize: 28,
+    fontWeight: 700,
+    color: TEXT,
+    letterSpacing: -0.5,
+    margin: 0,
+    lineHeight: 1.1,
   },
-  emptyText: { color: '#888', fontSize: 15 },
-  hero: {
-    background: `linear-gradient(135deg, ${P} 0%, #6CA32F 100%)`,
-    margin: '0 16px 0', marginTop: 12,
-    borderRadius: 20,
-    padding: '20px 20px',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    position: 'relative', overflow: 'hidden',
+  headingSubtitle: {
+    fontSize: 14,
+    color: TEXT2,
+    margin: '4px 0 0',
+    fontWeight: 400,
   },
-  heroContent: { display: 'flex', flexDirection: 'column', gap: 4 },
-  heroTitle: { fontSize: 22, fontWeight: 900, color: '#fff', lineHeight: 1.1 },
-  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 500 },
-  heroBadges: { display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  heroBadge: {
-    background: 'rgba(255,255,255,0.2)',
-    color: '#fff', borderRadius: 20, padding: '3px 10px',
-    fontSize: 11, fontWeight: 600, backdropFilter: 'blur(4px)',
+  waterIcon: {
+    opacity: 0.85,
+    flexShrink: 0,
   },
-  heroIllustration: { opacity: 0.7, flexShrink: 0 },
-  filterSection: { padding: '16px 16px 4px', display: 'flex', flexDirection: 'column', gap: 8 },
-  filterLabel: { fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 0.8 },
+  filterSection: {
+    padding: '12px 16px 8px',
+    background: '#FFFFFF',
+  },
   filterScroll: {
-    display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2,
+    display: 'flex',
+    gap: 8,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    paddingBottom: 2,
   },
   chip: {
-    padding: '7px 16px', borderRadius: 999,
-    border: '1.5px solid #E8E8E8',
-    background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    whiteSpace: 'nowrap', flexShrink: 0, color: '#555',
-    transition: 'all 0.2s',
+    padding: '7px 16px',
+    borderRadius: 999,
+    border: `1.5px solid ${BORDER}`,
+    background: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+    color: TEXT2,
+    transition: TRANSITION,
+    lineHeight: 1,
   },
-  chipActive: { background: P, borderColor: P, color: '#fff' },
-  countBar: { padding: '8px 16px 4px' },
-  countText: { fontSize: 12, color: '#888', fontWeight: 500 },
+  chipActive: {
+    background: C,
+    borderColor: C,
+    color: '#fff',
+  },
+  countBar: {
+    padding: '12px 16px 4px',
+  },
+  countText: {
+    fontSize: 13,
+    color: TEXT2,
+    fontWeight: 500,
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))',
-    gap: 10, padding: '0 16px',
+    gap: 12,
+    padding: '8px 16px 0',
   },
-  noResults: { textAlign: 'center', color: '#888', fontSize: 14, padding: 32 },
+  emptyPage: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '50vh',
+    gap: 12,
+  },
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: '50%',
+    background: '#FFFFFF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: `1px solid ${BORDER}`,
+  },
+  emptyText: {
+    color: TEXT2,
+    fontSize: 15,
+    margin: 0,
+  },
+  noResults: {
+    textAlign: 'center',
+    color: TEXT2,
+    fontSize: 14,
+    padding: 32,
+  },
 }
