@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { MOCK_ORDERS } from '../store'
+import { MOCK_ORDERS } from '../api/mock'
 
 export const useOrdersStore = create((set, get) => ({
   orders: [...MOCK_ORDERS],

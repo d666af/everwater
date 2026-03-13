@@ -780,7 +780,7 @@ export default function Checkout() {
           <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {[
-                { n: 1, icon: <IcoCard />, text: 'Переведите ₸му на карту выше' },
+                { n: 1, icon: <IcoCard />, text: 'Переведите сумму на карту выше' },
                 { n: 2, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>, text: 'Нажмите «Я оплатил» ниже' },
                 { n: 3, icon: <IcoPhone />, text: 'Администратор подтвердит заказ' },
               ].map(st => (
