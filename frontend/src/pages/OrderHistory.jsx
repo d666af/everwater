@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram, getUserOrders, getOrder } from '../api'
 import { useCartStore } from '../store'
-import { useAuthStore } from '../store/auth'
-import ReviewModal from '../components/ReviewModal'
-import { SkeletonOrderCard } from '../components/Skeleton'
 
-const tg = window.Telegram?.WebApp
+import { useOrdersStore } from '../store/orders'
+import ReviewModal from '../components/ReviewModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -86,65 +83,26 @@ function StatusProgress({ status }) {
 }
 
 export default function OrderHistory() {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [reviewOrderId, setReviewOrderId] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
   const addToCart = useCartStore(s => s.addToCart)
-  const { user: authUser } = useAuthStore()
+  const orders = useOrdersStore(s => s.orders)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    const tgUser = tg?.initDataUnsafe?.user
-    const load = async () => {
-      try {
-        let userId
-        if (tgUser?.id) {
-          const u = await getUserByTelegram(tgUser.id)
-          userId = u.id
-        } else if (authUser?.id) {
-          userId = authUser.id
-        } else {
-          return
-        }
-        const list = await getUserOrders(userId)
-        setOrders(list.sort((a, b) => b.id - a.id))
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [authUser])
-
-  const repeatOrder = async (order) => {
-    try {
-      const full = await getOrder(order.id)
-      full.items.forEach(item => {
-        addToCart({ id: item.product_id, name: item.product_name, price: item.price, volume: item.volume || 0 })
-      })
-      navigate('/cart')
-    } catch {
-      tg?.showAlert('Не удалось повторить заказ')
-    }
+  const repeatOrder = (order) => {
+    if (!order.items?.length) return
+    order.items.forEach(item => {
+      addToCart({ id: item.id || item.product_id, name: item.product_name, price: item.price, volume: item.volume || 0 })
+    })
+    navigate('/cart')
   }
 
   const handleReviewDone = (orderId) => {
     setReviewedIds(s => new Set([...s, orderId]))
     setReviewOrderId(null)
-    tg?.showAlert('Спасибо за отзыв!')
+    window.Telegram?.WebApp?.showAlert('Спасибо за отзыв!')
   }
-
-  if (loading) return (
-    <div style={styles.list}>
-      <div style={styles.sectionTitle}>Загрузка...</div>
-      {Array.from({ length: 3 }).map((_, i) => (
-        <SkeletonOrderCard key={i} />
-      ))}
-    </div>
-  )
 
   if (!orders.length) return (
     <div style={styles.center}>
@@ -235,7 +193,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           )}
         </div>
         <div style={styles.cardRight}>
-          <div style={styles.total}>{order.total} сум</div>
+          <div style={styles.total}>{(order.total || 0).toLocaleString()} ₸</div>
           <div style={styles.chevron}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
               style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: TRANSITION }}>
@@ -305,35 +263,63 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           {order.items?.length > 0 && (
             <div style={styles.itemsBlock}>
               <div style={styles.itemsTitle}>Состав заказа</div>
-              {order.items.map(i => (
-                <div key={i.id} style={styles.itemRow}>
-                  <span style={{ flex: 1, color: TEXT }}>{i.product_name}</span>
-                  <span style={{ color: TEXT2 }}>× {i.quantity}</span>
-                  <span style={{ fontWeight: 700, color: TEXT, minWidth: 80, textAlign: 'right' }}>
-                    {(i.price * i.quantity).toLocaleString()} сум
+              {order.items.map((i, idx) => (
+                <div key={idx} style={styles.itemRow}>
+                  <div style={styles.itemDot} />
+                  <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{i.product_name}</span>
+                  <span style={{ ...styles.itemQty }}>{i.quantity} шт.</span>
+                  <span style={{ fontWeight: 700, color: TEXT, minWidth: 76, textAlign: 'right' }}>
+                    {(i.price * i.quantity).toLocaleString()} ₸
                   </span>
                 </div>
               ))}
             </div>
           )}
 
+          {/* Bottle return */}
+          {Number(order.return_bottles_count) > 0 && (
+            <div style={styles.bottleReturnBox}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M9 2h6M8 6h8l1 14H7L8 6zM10 6V4M14 6V4" stroke="#2B8A3E" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#2B8A3E' }}>Возврат тары</div>
+                <div style={{ fontSize: 13, color: '#1A1A1A' }}>
+                  {order.return_bottles_count} бут.
+                  {order.return_bottles_volume ? ` × ${order.return_bottles_volume} л` : ''}
+                </div>
+              </div>
+              {order.bottle_discount > 0 && (
+                <div style={{ marginLeft: 'auto', fontWeight: 700, color: '#2B8A3E', fontSize: 14 }}>
+                  −{order.bottle_discount.toLocaleString()} ₸
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Pricing */}
           <div style={styles.pricingBlock}>
-            {order.bottle_discount > 0 && (
+            {order.bottle_discount > 0 && !Number(order.return_bottles_count) && (
               <div style={styles.priceRow}>
                 <span>Скидка за бутылки</span>
-                <span style={{ color: '#2B8A3E', fontWeight: 600 }}>−{order.bottle_discount} сум</span>
+                <span style={{ color: '#2B8A3E', fontWeight: 600 }}>−{order.bottle_discount.toLocaleString()} ₸</span>
               </div>
             )}
             {order.bonus_used > 0 && (
               <div style={styles.priceRow}>
                 <span>Бонусы</span>
-                <span style={{ color: '#E67700', fontWeight: 600 }}>−{order.bonus_used} сум</span>
+                <span style={{ color: '#E67700', fontWeight: 600 }}>−{(order.bonus_used).toLocaleString()} ₸</span>
               </div>
             )}
-            <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 16, color: TEXT }}>
+            {order.balance_used > 0 && (
+              <div style={styles.priceRow}>
+                <span>Баланс</span>
+                <span style={{ color: '#1971C2', fontWeight: 600 }}>−{(order.balance_used).toLocaleString()} ₸</span>
+              </div>
+            )}
+            <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 15, color: TEXT }}>
               <span>Итого</span>
-              <span style={{ color: C }}>{order.total} сум</span>
+              <span style={{ color: C }}>{(order.total || 0).toLocaleString()} ₸</span>
             </div>
           </div>
 
@@ -600,6 +586,34 @@ const styles = {
     fontSize: 13,
     padding: '8px 0',
     borderBottom: `1px solid ${BORDER}`,
+    alignItems: 'center',
+  },
+  itemDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    background: C,
+    flexShrink: 0,
+  },
+  itemQty: {
+    fontSize: 12,
+    color: TEXT2,
+    background: '#F2F2F7',
+    borderRadius: 6,
+    padding: '2px 6px',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
+  bottleReturnBox: {
+    margin: '0 16px',
+    padding: '10px 14px',
+    background: '#F0FFF4',
+    borderRadius: 12,
+    border: '1px solid #C3E6CB',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
   },
   pricingBlock: {
     margin: '0 16px',
