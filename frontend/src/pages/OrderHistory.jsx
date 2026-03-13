@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUserByTelegram, getUserOrders, getOrder } from '../api'
 import { useCartStore } from '../store'
+import { useAuthStore } from '../store/auth'
 import ReviewModal from '../components/ReviewModal'
 import { SkeletonOrderCard } from '../components/Skeleton'
 
@@ -91,17 +92,32 @@ export default function OrderHistory() {
   const [reviewOrderId, setReviewOrderId] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
   const addToCart = useCartStore(s => s.addToCart)
+  const { user: authUser } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
     const tgUser = tg?.initDataUnsafe?.user
-    if (!tgUser?.id) { setLoading(false); return }
-    getUserByTelegram(tgUser.id)
-      .then(user => getUserOrders(user.id))
-      .then(list => setOrders(list.sort((a, b) => b.id - a.id)))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+    const load = async () => {
+      try {
+        let userId
+        if (tgUser?.id) {
+          const u = await getUserByTelegram(tgUser.id)
+          userId = u.id
+        } else if (authUser?.id) {
+          userId = authUser.id
+        } else {
+          return
+        }
+        const list = await getUserOrders(userId)
+        setOrders(list.sort((a, b) => b.id - a.id))
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [authUser])
 
   const repeatOrder = async (order) => {
     try {

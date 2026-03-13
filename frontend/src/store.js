@@ -1,5 +1,12 @@
 import { create } from 'zustand'
 
+// Global toast event bus
+const toastListeners = new Set()
+export const cartEvents = {
+  emit: (product) => toastListeners.forEach(fn => fn(product)),
+  on: (fn) => { toastListeners.add(fn); return () => toastListeners.delete(fn) },
+}
+
 export const useCartStore = create((set, get) => ({
   items: [],   // { product, quantity }
 
@@ -11,6 +18,7 @@ export const useCartStore = create((set, get) => ({
     } else {
       set({ items: [...items, { product, quantity: 1 }] })
     }
+    cartEvents.emit(product)
   },
 
   removeFromCart: (productId) =>
