@@ -37,15 +37,11 @@ export default function Catalog() {
       <div style={s.heading}>
         <div>
           <h1 style={s.headingTitle}>Каталог</h1>
-          <p style={s.headingSubtitle}>Чистая вода с доставкой</p>
+          <p style={s.headingSubtitle}>Свежая вода с доставкой до двери</p>
         </div>
-        <div style={s.waterIcon}>
-          <svg width="36" height="44" viewBox="0 0 40 48" fill="none">
-            <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-              fill={C} opacity="0.9"/>
-            <path d="M12 30C12 30 14 24 20 22C26 24 28 30 28 30"
-              stroke="rgba(255,255,255,0.6)" strokeWidth="2" fill="none" strokeLinecap="round"/>
-          </svg>
+        <div style={s.headingBadge}>
+          <span style={s.headingBadgeDot} />
+          Доставка сегодня
         </div>
       </div>
 
@@ -145,9 +141,28 @@ const s = {
     margin: '4px 0 0',
     fontWeight: 400,
   },
-  waterIcon: {
-    opacity: 0.85,
+  headingBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    background: 'rgba(141,198,63,0.1)',
+    border: '1px solid rgba(141,198,63,0.25)',
+    borderRadius: 999,
+    padding: '6px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#6CA32F',
     flexShrink: 0,
+    alignSelf: 'center',
+  },
+  headingBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: '50%',
+    background: '#6CA32F',
+    display: 'inline-block',
+    flexShrink: 0,
+    animation: 'pulse 2s infinite',
   },
   filterSection: {
     padding: '12px 16px 8px',

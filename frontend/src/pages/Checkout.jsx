@@ -4,6 +4,8 @@ import { useCartStore } from '../store'
 import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../api'
 import MapPicker from '../components/MapPicker'
 import { useAuthStore } from '../store/auth'
+import { useUserStore } from '../store/user'
+import { useOrdersStore } from '../store/orders'
 
 const tg = window.Telegram?.WebApp
 
@@ -232,6 +234,8 @@ export default function Checkout() {
   const { items, total, clearCart } = useCartStore()
   const navigate = useNavigate()
   const { user: authUser } = useAuthStore()
+  const userStore = useUserStore()
+  const { addOrder } = useOrdersStore()
 
   const [step, setStep] = useState(1)
   const [user, setUser] = useState(null)
@@ -270,9 +274,10 @@ export default function Checkout() {
     } else if (authUser) {
       setUser(authUser)
       setForm(f => ({ ...f, phone: authUser.phone || '' }))
+      if (!userStore.initialized) userStore.init(authUser)
     }
     getSettings().then(setSettings).catch(console.error)
-  }, [authUser])
+  }, [authUser]) // eslint-disable-line
 
   const set = (name, value) => setForm(f => ({ ...f, [name]: value }))
 
@@ -287,8 +292,10 @@ export default function Checkout() {
 
   const subtotal = total()
   const afterBottle = subtotal - bottleDiscountAmount
-  const bonusMax = Math.min(user?.bonus_points || 0, afterBottle)
-  const balanceMax = Math.min(user?.balance || 0, afterBottle - Number(form.bonusUsed))
+  const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
+  const availableBalance = userStore.initialized ? userStore.balance : (user?.balance || 0)
+  const bonusMax = Math.min(availableBonus, afterBottle)
+  const balanceMax = Math.min(availableBalance, afterBottle - Number(form.bonusUsed))
   const finalTotal = Math.max(0, afterBottle - Number(form.bonusUsed) - Number(form.balanceUsed))
 
   const getUserLocation = () => {
@@ -338,6 +345,31 @@ export default function Checkout() {
     setLoading(true); setError('')
     try {
       await paymentConfirmed(createdOrder.id)
+      // Add to orders list and update user store
+      const fullOrder = {
+        ...createdOrder,
+        items: items.map(i => ({
+          id: i.product.id,
+          product_name: i.product.name,
+          quantity: i.quantity,
+          price: i.product.price,
+          volume: i.product.volume,
+        })),
+        return_bottles_count: Number(form.returnCount),
+        return_bottles_volume: Number(form.returnVolume) || 0,
+        bottle_discount: bottleDiscountAmount,
+        bonus_used: Number(form.bonusUsed),
+        balance_used: Number(form.balanceUsed),
+        total: finalTotal,
+        address: form.address,
+        delivery_time: form.deliveryTime,
+        recipient_phone: form.useOwnPhone ? user?.phone : form.phone,
+        status: 'awaiting_confirmation',
+      }
+      addOrder(fullOrder)
+      if (Number(form.bonusUsed)) userStore.deductBonus(Number(form.bonusUsed))
+      if (Number(form.balanceUsed)) userStore.deductBalance(Number(form.balanceUsed))
+      userStore.incrementOrders()
       setPaymentDone(true); clearCart()
     } catch {
       setError('Ошибка подтверждения оплаты')
@@ -394,13 +426,13 @@ export default function Checkout() {
                     <div style={s.qtyBadge}>{quantity}</div>
                     <span style={s.cartName}>{product.name}</span>
                   </div>
-                  <span style={s.cartPrice}>{(product.price * quantity).toLocaleString()} сум</span>
+                  <span style={s.cartPrice}>{(product.price * quantity).toLocaleString()} ₸</span>
                 </div>
               ))}
             </div>
             <div style={s.cartTotalRow}>
               <span style={{ fontSize: 14, color: '#666', fontWeight: 600 }}>Итого</span>
-              <span style={s.cartTotalAmt}>{subtotal.toLocaleString()} сум</span>
+              <span style={s.cartTotalAmt}>{subtotal.toLocaleString()} ₸</span>
             </div>
           </Card>
 
@@ -554,7 +586,7 @@ export default function Checkout() {
                 <div>
                   <div style={{ fontSize: 12, color: '#2B8A3E', fontWeight: 600 }}>Скидка за возврат</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: '#2B8A3E', letterSpacing: -0.5 }}>
-                    −{bottleDiscountAmount.toLocaleString()} сум
+                    −{bottleDiscountAmount.toLocaleString()} ₸
                   </div>
                 </div>
               </div>
@@ -564,7 +596,7 @@ export default function Checkout() {
           {/* Bonus points */}
           {bonusMax > 0 && (
             <Card>
-              <SectionHead icon={<IcoStar />} title="Бонусные баллы" subtitle={`Доступно: ${(user?.bonus_points || 0).toLocaleString()} сум`} color="#E67700" />
+              <SectionHead icon={<IcoStar />} title="Бонусные баллы" subtitle={`Доступно: ${availableBonus.toLocaleString()} ₸`} color="#E67700" />
               <div style={s.bonusRow}>
                 <button style={s.bonusMaxBtn} onClick={() => set('bonusUsed', bonusMax)}>
                   Списать все
@@ -581,7 +613,7 @@ export default function Checkout() {
                 <div style={{ ...s.discountBanner, borderColor: '#FFD8A8', background: '#FFF4E6' }}>
                   <IcoStar />
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#E67700' }}>
-                    −{Number(form.bonusUsed).toLocaleString()} сум бонусами
+                    −{Number(form.bonusUsed).toLocaleString()} ₸ бонусами
                   </div>
                 </div>
               )}
@@ -589,9 +621,9 @@ export default function Checkout() {
           )}
 
           {/* Balance */}
-          {(user?.balance || 0) > 0 && (
+          {availableBalance > 0 && (
             <Card>
-              <SectionHead icon={<IcoWallet />} title="Баланс счёта" subtitle={`Доступно: ${(user?.balance || 0).toLocaleString()} сум`} color="#1971C2" />
+              <SectionHead icon={<IcoWallet />} title="Баланс счёта" subtitle={`Доступно: ${availableBalance.toLocaleString()} ₸`} color="#1971C2" />
               <div style={s.bonusRow}>
                 <button style={{ ...s.bonusMaxBtn, borderColor: '#1971C2', color: '#1971C2' }}
                   onClick={() => set('balanceUsed', balanceMax)}>
@@ -609,7 +641,7 @@ export default function Checkout() {
                 <div style={{ ...s.discountBanner, borderColor: '#A5D8FF', background: '#E7F5FF' }}>
                   <IcoWallet />
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1971C2' }}>
-                    −{Number(form.balanceUsed).toLocaleString()} сум с баланса
+                    −{Number(form.balanceUsed).toLocaleString()} ₸ с баланса
                   </div>
                 </div>
               )}
@@ -623,7 +655,7 @@ export default function Checkout() {
               {items.map(({ product, quantity }) => (
                 <div key={product.id} style={s.sumItemRow}>
                   <span style={{ fontSize: 13, color: '#999' }}>{product.name} × {quantity}</span>
-                  <span style={{ fontSize: 13, color: '#CCC', fontWeight: 600 }}>{(product.price * quantity).toLocaleString()} сум</span>
+                  <span style={{ fontSize: 13, color: '#CCC', fontWeight: 600 }}>{(product.price * quantity).toLocaleString()} ₸</span>
                 </div>
               ))}
             </div>
@@ -631,7 +663,7 @@ export default function Checkout() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <div style={s.sumRow}>
                 <span>Товары</span>
-                <span>{subtotal.toLocaleString()} сум</span>
+                <span>{subtotal.toLocaleString()} ₸</span>
               </div>
               {bottleDiscountAmount > 0 && (
                 <div style={{ ...s.sumRow, color: '#52B788' }}>
@@ -686,7 +718,7 @@ export default function Checkout() {
               Назад
             </button>
             <button style={{ ...s.primaryBtn, flex: 2 }} onClick={submitOrder} disabled={loading}>
-              {loading ? <IcoSpin /> : <>К оплате · {finalTotal.toLocaleString()} сум</>}
+              {loading ? <IcoSpin /> : <>К оплате · {finalTotal.toLocaleString()} ₸</>}
             </button>
           </div>
         </div>
@@ -748,7 +780,7 @@ export default function Checkout() {
           <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {[
-                { n: 1, icon: <IcoCard />, text: 'Переведите сумму на карту выше' },
+                { n: 1, icon: <IcoCard />, text: 'Переведите ₸му на карту выше' },
                 { n: 2, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>, text: 'Нажмите «Я оплатил» ниже' },
                 { n: 3, icon: <IcoPhone />, text: 'Администратор подтвердит заказ' },
               ].map(st => (

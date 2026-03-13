@@ -13,6 +13,7 @@ import Cart from './pages/Cart'
 import Checkout from './pages/Checkout'
 import OrderHistory from './pages/OrderHistory'
 import Profile from './pages/Profile'
+import Support from './pages/Support'
 
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard'
@@ -63,6 +64,11 @@ export default function App() {
         <Route path="/profile" element={
           <ProtectedRoute allowedRoles={['client']}>
             <Profile />
+          </ProtectedRoute>
+        } />
+        <Route path="/support" element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <Support />
           </ProtectedRoute>
         } />
 
