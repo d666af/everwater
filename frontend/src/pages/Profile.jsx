@@ -63,10 +63,16 @@ function MenuDivider() {
   return <div style={s.menuDivider} />
 }
 
+const TOPUP_AMOUNTS = [500, 1000, 2000, 5000]
+
 export default function Profile() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
+  const [showTopup, setShowTopup] = useState(false)
+  const [topupAmount, setTopupAmount] = useState(1000)
+  const [topupLoading, setTopupLoading] = useState(false)
+  const [topupDone, setTopupDone] = useState(false)
   const { logout, user: authUser } = useAuthStore()
   const navigate = useNavigate()
 
@@ -83,6 +89,15 @@ export default function Profile() {
   }, [authUser])
 
   const doLogout = () => { logout(); navigate('/login') }
+
+  const doTopup = async () => {
+    setTopupLoading(true)
+    await new Promise(r => setTimeout(r, 1200))
+    setUser(u => ({ ...u, balance: (u.balance || 0) + topupAmount }))
+    setTopupLoading(false)
+    setTopupDone(true)
+    setTimeout(() => { setTopupDone(false); setShowTopup(false) }, 1800)
+  }
 
   if (loading) return (
     <div style={s.center}>
@@ -151,6 +166,44 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      {/* Balance top-up */}
+      <div style={s.section}>
+        <div style={s.sectionTitle}>Баланс</div>
+        <div style={s.menuCard}>
+          <div style={s.balanceRow}>
+            <div>
+              <div style={s.balanceLabel}>Доступно</div>
+              <div style={s.balanceAmount}>{(user.balance || 0).toLocaleString()} ₸</div>
+            </div>
+            <button style={s.topupBtn} onClick={() => setShowTopup(v => !v)}>
+              + Пополнить
+            </button>
+          </div>
+          {showTopup && (
+            <div style={s.topupPanel}>
+              <div style={s.topupChips}>
+                {TOPUP_AMOUNTS.map(a => (
+                  <button
+                    key={a}
+                    style={{ ...s.chip, ...(topupAmount === a ? s.chipActive : {}) }}
+                    onClick={() => setTopupAmount(a)}
+                  >
+                    {a.toLocaleString()} ₸
+                  </button>
+                ))}
+              </div>
+              <button
+                style={{ ...s.payBtn, ...(topupLoading || topupDone ? s.payBtnDisabled : {}) }}
+                onClick={doTopup}
+                disabled={topupLoading || topupDone}
+              >
+                {topupDone ? '✓ Пополнено!' : topupLoading ? 'Обработка...' : `Пополнить ${topupAmount.toLocaleString()} ₸`}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Account section */}
       <MenuSection title="Аккаунт">
@@ -468,6 +521,78 @@ const s = {
     height: 1,
     background: BORDER,
     margin: '0 16px',
+  },
+  // Balance top-up
+  balanceRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '14px 16px',
+  },
+  balanceLabel: {
+    fontSize: 12,
+    color: TEXT2,
+    fontWeight: 500,
+    marginBottom: 3,
+  },
+  balanceAmount: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: TEXT,
+    letterSpacing: -0.5,
+  },
+  topupBtn: {
+    background: `linear-gradient(135deg, #8DC63F 0%, #6CA32F 100%)`,
+    color: '#fff',
+    border: 'none',
+    borderRadius: 12,
+    padding: '10px 18px',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  topupPanel: {
+    borderTop: `1px solid ${BORDER}`,
+    padding: '14px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  topupChips: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  chip: {
+    padding: '8px 14px',
+    borderRadius: 10,
+    border: `1.5px solid ${BORDER}`,
+    background: '#F2F2F7',
+    fontSize: 13,
+    fontWeight: 600,
+    color: TEXT,
+    cursor: 'pointer',
+  },
+  chipActive: {
+    background: 'rgba(141,198,63,0.12)',
+    border: '1.5px solid #8DC63F',
+    color: '#6CA32F',
+  },
+  payBtn: {
+    width: '100%',
+    padding: '14px 0',
+    borderRadius: 12,
+    border: 'none',
+    background: `linear-gradient(135deg, #8DC63F 0%, #6CA32F 100%)`,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'opacity 0.2s',
+  },
+  payBtnDisabled: {
+    opacity: 0.7,
+    cursor: 'not-allowed',
   },
   // Logout confirm
   logoutConfirm: {
