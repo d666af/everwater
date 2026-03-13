@@ -76,7 +76,7 @@ export const MOCK_SETTINGS = {
 
 // Demo users for login (phone → role)
 export const DEMO_USERS = {
-  '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 0 },
+  '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 50000, order_count: 7 },
   '+998 90 000-00-02': { id: 2, name: 'Администратор',   phone: '+998 90 000-00-02', role: 'admin',   bonus_points: 0,    balance: 0 },
   '+998 90 000-00-03': { id: 3, name: 'Менеджер',        phone: '+998 90 000-00-03', role: 'manager', bonus_points: 0,    balance: 0 },
   '+998 90 000-00-04': { id: 4, name: 'Жавлон Курьер',   phone: '+998 90 000-00-04', role: 'courier', bonus_points: 0,    balance: 0 },

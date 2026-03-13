@@ -17,6 +17,9 @@ const MOCK_MODE = import.meta.env.VITE_MOCK === 'true'
 
 const delay = (ms = 300) => new Promise(r => setTimeout(r, ms))
 
+// ─── In-memory mock orders store (persists within session) ───────────────────
+let mockOrdersStore = [...MOCK_ORDERS]
+
 async function safeCall(apiFn, mockFn) {
   if (MOCK_MODE) {
     await delay()
@@ -88,7 +91,38 @@ export const deleteProduct = (id) =>
 export const createOrder = (data) =>
   safeCall(
     () => http.post('/orders/', data).then(r => r.data),
-    () => ({ id: Date.now(), ...data, total: data.items?.reduce((s, i) => s + i.quantity * 350, 0) || 0 })
+    () => {
+      // Compute total from actual cart items (use product price from data if available)
+      const total = Math.max(
+        0,
+        (data.items?.reduce((s, i) => s + i.quantity * (i.price || 25000), 0) || 0)
+        - (Number(data.bonus_used) || 0)
+        - (Number(data.balance_used) || 0)
+      )
+      const newOrder = {
+        id: Date.now(),
+        status: 'awaiting_confirmation',
+        address: data.address,
+        extra_info: data.extra_info,
+        delivery_time: data.delivery_time,
+        recipient_phone: data.recipient_phone,
+        total,
+        bonus_used: data.bonus_used || 0,
+        balance_used: data.balance_used || 0,
+        bottle_discount: data.bottle_discount || 0,
+        return_bottles_count: data.return_bottles_count || 0,
+        items: (data.items || []).map((i, idx) => ({
+          id: idx + 1,
+          product_id: i.product_id,
+          product_name: `Товар #${i.product_id}`,
+          quantity: i.quantity,
+          price: i.price || 25000,
+        })),
+        ...data,
+      }
+      mockOrdersStore = [newOrder, ...mockOrdersStore]
+      return newOrder
+    }
   )
 
 export const getOrder = (orderId) =>
@@ -100,7 +134,7 @@ export const getOrder = (orderId) =>
 export const getUserOrders = (userId) =>
   safeCall(
     () => http.get(`/orders/user/${userId}`).then(r => r.data),
-    () => MOCK_ORDERS
+    () => mockOrdersStore
   )
 
 export const getOrders = (params = {}) =>
@@ -169,7 +203,7 @@ export const createReview = (data) =>
 export const getUserByTelegram = (tgId) =>
   safeCall(
     () => http.get(`/users/by_telegram/${tgId}`).then(r => r.data),
-    () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 150, balance: 0, is_registered: true })
+    () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 3500, balance: 50000, order_count: 7, is_registered: true })
   )
 
 export const createOrGetUser = (data) =>
