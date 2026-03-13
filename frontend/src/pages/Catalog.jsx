@@ -39,10 +39,6 @@ export default function Catalog() {
           <h1 style={s.headingTitle}>Каталог</h1>
           <p style={s.headingSubtitle}>Свежая вода с доставкой до двери</p>
         </div>
-        <div style={s.headingBadge}>
-          <span style={s.headingBadgeDot} />
-          Доставка сегодня
-        </div>
       </div>
 
       {/* Volume filters */}

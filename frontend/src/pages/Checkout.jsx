@@ -426,13 +426,13 @@ export default function Checkout() {
                     <div style={s.qtyBadge}>{quantity}</div>
                     <span style={s.cartName}>{product.name}</span>
                   </div>
-                  <span style={s.cartPrice}>{(product.price * quantity).toLocaleString()} ₸</span>
+                  <span style={s.cartPrice}>{(product.price * quantity).toLocaleString()} сум</span>
                 </div>
               ))}
             </div>
             <div style={s.cartTotalRow}>
               <span style={{ fontSize: 14, color: '#666', fontWeight: 600 }}>Итого</span>
-              <span style={s.cartTotalAmt}>{subtotal.toLocaleString()} ₸</span>
+              <span style={s.cartTotalAmt}>{subtotal.toLocaleString()} сум</span>
             </div>
           </Card>
 
@@ -586,7 +586,7 @@ export default function Checkout() {
                 <div>
                   <div style={{ fontSize: 12, color: '#2B8A3E', fontWeight: 600 }}>Скидка за возврат</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: '#2B8A3E', letterSpacing: -0.5 }}>
-                    −{bottleDiscountAmount.toLocaleString()} ₸
+                    −{bottleDiscountAmount.toLocaleString()} сум
                   </div>
                 </div>
               </div>
@@ -596,7 +596,7 @@ export default function Checkout() {
           {/* Bonus points */}
           {bonusMax > 0 && (
             <Card>
-              <SectionHead icon={<IcoStar />} title="Бонусные баллы" subtitle={`Доступно: ${availableBonus.toLocaleString()} ₸`} color="#E67700" />
+              <SectionHead icon={<IcoStar />} title="Бонусные баллы" subtitle={`Доступно: ${availableBonus.toLocaleString()} сум`} color="#E67700" />
               <div style={s.bonusRow}>
                 <button style={s.bonusMaxBtn} onClick={() => set('bonusUsed', bonusMax)}>
                   Списать все
@@ -613,7 +613,7 @@ export default function Checkout() {
                 <div style={{ ...s.discountBanner, borderColor: '#FFD8A8', background: '#FFF4E6' }}>
                   <IcoStar />
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#E67700' }}>
-                    −{Number(form.bonusUsed).toLocaleString()} ₸ бонусами
+                    −{Number(form.bonusUsed).toLocaleString()} сум бонусами
                   </div>
                 </div>
               )}
@@ -623,7 +623,7 @@ export default function Checkout() {
           {/* Balance */}
           {availableBalance > 0 && (
             <Card>
-              <SectionHead icon={<IcoWallet />} title="Баланс счёта" subtitle={`Доступно: ${availableBalance.toLocaleString()} ₸`} color="#1971C2" />
+              <SectionHead icon={<IcoWallet />} title="Баланс счёта" subtitle={`Доступно: ${availableBalance.toLocaleString()} сум`} color="#1971C2" />
               <div style={s.bonusRow}>
                 <button style={{ ...s.bonusMaxBtn, borderColor: '#1971C2', color: '#1971C2' }}
                   onClick={() => set('balanceUsed', balanceMax)}>
@@ -641,7 +641,7 @@ export default function Checkout() {
                 <div style={{ ...s.discountBanner, borderColor: '#A5D8FF', background: '#E7F5FF' }}>
                   <IcoWallet />
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#1971C2' }}>
-                    −{Number(form.balanceUsed).toLocaleString()} ₸ с баланса
+                    −{Number(form.balanceUsed).toLocaleString()} сум с баланса
                   </div>
                 </div>
               )}
@@ -655,7 +655,7 @@ export default function Checkout() {
               {items.map(({ product, quantity }) => (
                 <div key={product.id} style={s.sumItemRow}>
                   <span style={{ fontSize: 13, color: '#999' }}>{product.name} × {quantity}</span>
-                  <span style={{ fontSize: 13, color: '#CCC', fontWeight: 600 }}>{(product.price * quantity).toLocaleString()} ₸</span>
+                  <span style={{ fontSize: 13, color: '#CCC', fontWeight: 600 }}>{(product.price * quantity).toLocaleString()} сум</span>
                 </div>
               ))}
             </div>
@@ -663,7 +663,7 @@ export default function Checkout() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <div style={s.sumRow}>
                 <span>Товары</span>
-                <span>{subtotal.toLocaleString()} ₸</span>
+                <span>{subtotal.toLocaleString()} сум</span>
               </div>
               {bottleDiscountAmount > 0 && (
                 <div style={{ ...s.sumRow, color: '#52B788' }}>
@@ -718,7 +718,7 @@ export default function Checkout() {
               Назад
             </button>
             <button style={{ ...s.primaryBtn, flex: 2 }} onClick={submitOrder} disabled={loading}>
-              {loading ? <IcoSpin /> : <>К оплате · {finalTotal.toLocaleString()} ₸</>}
+              {loading ? <IcoSpin /> : <>К оплате · {finalTotal.toLocaleString()} сум</>}
             </button>
           </div>
         </div>

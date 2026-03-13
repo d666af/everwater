@@ -75,7 +75,7 @@ export default function ProductCard({ product }) {
 
         <div style={s.footer}>
           <div>
-            <span style={s.price}>{product.price.toLocaleString()} ₸</span>
+            <span style={s.price}>{product.price.toLocaleString()} сум</span>
           </div>
 
           {!cartItem ? (

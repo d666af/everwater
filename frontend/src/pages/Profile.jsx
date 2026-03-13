@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram } from '../api'
+import { getUserByTelegram, getSettings } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
 
@@ -74,21 +74,32 @@ function MenuDivider() {
 }
 
 // ─── Topup Modal ─────────────────────────────────────────────────────────────
-function TopupModal({ onClose }) {
+function TopupModal({ onClose, settings }) {
   const [amount, setAmount] = useState(1000)
   const [custom, setCustom] = useState('')
   const [useCustom, setUseCustom] = useState(false)
-  const [step, setStep] = useState('select') // 'select' | 'pending'
+  const [step, setStep] = useState('select') // 'select' | 'payment' | 'pending'
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const finalAmount = useCustom ? (Number(custom) || 0) : amount
 
-  const submit = async () => {
+  const goToPayment = () => {
     if (!finalAmount || finalAmount < 100) return
+    setStep('payment')
+  }
+
+  const confirmPaid = async () => {
     setLoading(true)
-    await new Promise(r => setTimeout(r, 800))
+    await new Promise(r => setTimeout(r, 1000))
     setLoading(false)
     setStep('pending')
+  }
+
+  const copyCard = () => {
+    navigator.clipboard?.writeText(settings?.payment_card || '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -106,7 +117,7 @@ function TopupModal({ onClose }) {
             </div>
             <div style={s.pendingTitle}>Запрос отправлен</div>
             <div style={s.pendingDesc}>
-              Заявка на пополнение <strong>{finalAmount.toLocaleString()} ₸</strong> отправлена.
+              Заявка на пополнение <strong>{finalAmount.toLocaleString()} сум</strong> отправлена.
               Менеджер проверит оплату и зачислит средства в течение нескольких минут.
             </div>
             <div style={s.pendingNote}>
@@ -118,6 +129,83 @@ function TopupModal({ onClose }) {
             </div>
             <button style={s.closeModalBtn} onClick={onClose}>Закрыть</button>
           </div>
+
+        ) : step === 'payment' ? (
+          <>
+            <div style={s.modalTitle}>Оплата пополнения</div>
+
+            {/* Payment card (dark) */}
+            <div style={s.payCard}>
+              <div style={s.payCardLabel}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="5" width="20" height="14" rx="2" stroke="rgba(255,255,255,0.5)" strokeWidth="1.7"/>
+                  <path d="M2 10h20" stroke="rgba(255,255,255,0.5)" strokeWidth="1.7"/>
+                </svg>
+                Перевод на карту
+              </div>
+              <div style={s.payCardNum}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+              <div style={s.payCardHolder}>{settings?.payment_holder || '—'}</div>
+              <div style={s.payDivider} />
+              <div style={s.payAmtLabel}>Сумма к переводу</div>
+              <div style={s.payAmt}>
+                {finalAmount.toLocaleString()}
+                <span style={{ fontSize: 18, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 6 }}>сум</span>
+              </div>
+              <button
+                style={{ ...s.copyBtn, ...(copied ? s.copyBtnDone : {}) }}
+                onClick={copyCard}
+              >
+                {copied ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                    Скопировано
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" strokeWidth="1.8"/>
+                    </svg>
+                    Скопировать номер карты
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Instructions */}
+            <div style={s.instructionList}>
+              {[
+                { n: 1, text: 'Переведите сумму на карту выше' },
+                { n: 2, text: 'Нажмите «Я оплатил» ниже' },
+                { n: 3, text: 'Менеджер проверит и зачислит баланс' },
+              ].map(st => (
+                <div key={st.n} style={s.instructionRow}>
+                  <div style={s.instructionNum}>{st.n}</div>
+                  <span style={s.instructionText}>{st.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <button style={s.payModalBtn} onClick={confirmPaid} disabled={loading}>
+              {loading ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.8s linear infinite' }}>
+                  <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5"/>
+                  <path d="M12 3a9 9 0 0 1 9 9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                  Я оплатил
+                </>
+              )}
+            </button>
+            <button style={s.cancelModalBtn} onClick={() => setStep('select')}>Назад к выбору суммы</button>
+          </>
+
         ) : (
           <>
             <div style={s.modalTitle}>Пополнение баланса</div>
@@ -133,7 +221,7 @@ function TopupModal({ onClose }) {
                   }}
                   onClick={() => { setAmount(a); setUseCustom(false) }}
                 >
-                  {a.toLocaleString()} ₸
+                  {a.toLocaleString()} сум
                 </button>
               ))}
             </div>
@@ -153,41 +241,19 @@ function TopupModal({ onClose }) {
                   onChange={e => { setCustom(e.target.value); setUseCustom(true) }}
                   style={s.customInput}
                 />
-                <span style={s.customCurrency}>₸</span>
+                <span style={s.customCurrency}>сум</span>
               </div>
             </div>
-
-            {/* Preview card */}
-            {finalAmount > 0 && (
-              <div style={s.previewCard}>
-                <div style={s.previewRow}>
-                  <span style={s.previewKey}>Сумма пополнения</span>
-                  <span style={s.previewVal}>{finalAmount.toLocaleString()} ₸</span>
-                </div>
-                <div style={s.previewDivider} />
-                <div style={s.previewRow}>
-                  <span style={s.previewKey}>Подтверждение</span>
-                  <span style={{ ...s.previewVal, color: '#E67700', fontSize: 12 }}>
-                    Вручную менеджером
-                  </span>
-                </div>
-              </div>
-            )}
 
             <button
               style={{
                 ...s.payModalBtn,
                 ...(!finalAmount || finalAmount < 100 ? s.payModalBtnDisabled : {}),
               }}
-              onClick={submit}
-              disabled={loading || !finalAmount || finalAmount < 100}
+              onClick={goToPayment}
+              disabled={!finalAmount || finalAmount < 100}
             >
-              {loading ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.8s linear infinite' }}>
-                  <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5"/>
-                  <path d="M12 3a9 9 0 0 1 9 9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-              ) : `Запросить пополнение · ${finalAmount.toLocaleString()} ₸`}
+              Далее — к оплате · {finalAmount > 0 ? `${finalAmount.toLocaleString()} сум` : '—'}
             </button>
             <button style={s.cancelModalBtn} onClick={onClose}>Отмена</button>
           </>
@@ -203,6 +269,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
+  const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
   const userStore = useUserStore()
   const navigate = useNavigate()
@@ -224,6 +291,7 @@ export default function Profile() {
     } else {
       setLoading(false)
     }
+    getSettings().then(setSettings).catch(console.error)
   }, [authUser]) // eslint-disable-line
 
   const doLogout = () => { logout(); navigate('/login') }
@@ -257,7 +325,7 @@ export default function Profile() {
 
   return (
     <div style={s.page}>
-      {showTopup && <TopupModal onClose={() => setShowTopup(false)} />}
+      {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
 
       {/* Avatar + name card */}
       <div style={s.profileCard}>
@@ -284,7 +352,7 @@ export default function Profile() {
         <div style={s.statDivider} />
         <div style={s.statCard}>
           <div style={s.statNum}>{balance.toLocaleString()}</div>
-          <div style={s.statLabel}>Баланс ₸</div>
+          <div style={s.statLabel}>Баланс сум</div>
         </div>
       </div>
 
@@ -309,7 +377,7 @@ export default function Profile() {
           <div style={s.balanceRow}>
             <div>
               <div style={s.balanceLabel}>Доступно</div>
-              <div style={s.balanceAmount}>{balance.toLocaleString()} ₸</div>
+              <div style={s.balanceAmount}>{balance.toLocaleString()} сум</div>
             </div>
             <button style={s.topupBtn} onClick={() => setShowTopup(true)}>
               + Пополнить
@@ -801,6 +869,112 @@ const s = {
   previewDivider: {
     height: 1,
     background: BORDER,
+  },
+  // Payment card (dark)
+  payCard: {
+    background: 'linear-gradient(145deg, #0f1923, #1a2840)',
+    borderRadius: 20,
+    padding: '22px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+  },
+  payCardLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  payCardNum: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: '#fff',
+    letterSpacing: 4,
+    fontFamily: 'monospace',
+    padding: '4px 0',
+  },
+  payCardHolder: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  payDivider: {
+    height: 1,
+    background: 'rgba(255,255,255,0.08)',
+  },
+  payAmtLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  payAmt: {
+    fontSize: 36,
+    fontWeight: 900,
+    color: C,
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'baseline',
+    letterSpacing: -1,
+  },
+  copyBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 10,
+    padding: '10px 16px',
+    alignSelf: 'flex-start',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  copyBtnDone: {
+    background: 'rgba(141,198,63,0.2)',
+    borderColor: 'rgba(141,198,63,0.35)',
+    color: C,
+  },
+  instructionList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    background: '#FFFFFF',
+    borderRadius: 16,
+    padding: '16px',
+    border: `1px solid ${BORDER}`,
+  },
+  instructionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  instructionNum: {
+    width: 28,
+    height: 28,
+    borderRadius: '50%',
+    background: C,
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  instructionText: {
+    fontSize: 14,
+    color: '#555',
+    fontWeight: 500,
+    lineHeight: 1.4,
   },
   payModalBtn: {
     width: '100%',

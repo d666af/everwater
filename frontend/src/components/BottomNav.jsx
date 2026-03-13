@@ -89,7 +89,7 @@ export default function BottomNav() {
   const items = useCartStore(s => s.items)
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
 
-  const hidden = ['/cart', '/checkout'].some(p => location.pathname.startsWith(p))
+  const hidden = ['/cart', '/checkout', '/support'].some(p => location.pathname.startsWith(p))
     || location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
     || location.pathname.startsWith('/manager')
