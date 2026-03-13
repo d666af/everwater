@@ -193,7 +193,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           )}
         </div>
         <div style={styles.cardRight}>
-          <div style={styles.total}>{(order.total || 0).toLocaleString()} ₸</div>
+          <div style={styles.total}>{(order.total || 0).toLocaleString()} сум</div>
           <div style={styles.chevron}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
               style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: TRANSITION }}>
@@ -269,7 +269,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                   <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{i.product_name}</span>
                   <span style={{ ...styles.itemQty }}>{i.quantity} шт.</span>
                   <span style={{ fontWeight: 700, color: TEXT, minWidth: 76, textAlign: 'right' }}>
-                    {(i.price * i.quantity).toLocaleString()} ₸
+                    {(i.price * i.quantity).toLocaleString()} сум
                   </span>
                 </div>
               ))}
@@ -291,7 +291,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               </div>
               {order.bottle_discount > 0 && (
                 <div style={{ marginLeft: 'auto', fontWeight: 700, color: '#2B8A3E', fontSize: 14 }}>
-                  −{order.bottle_discount.toLocaleString()} ₸
+                  −{order.bottle_discount.toLocaleString()} сум
                 </div>
               )}
             </div>
@@ -302,24 +302,24 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
             {order.bottle_discount > 0 && !Number(order.return_bottles_count) && (
               <div style={styles.priceRow}>
                 <span>Скидка за бутылки</span>
-                <span style={{ color: '#2B8A3E', fontWeight: 600 }}>−{order.bottle_discount.toLocaleString()} ₸</span>
+                <span style={{ color: '#2B8A3E', fontWeight: 600 }}>−{order.bottle_discount.toLocaleString()} сум</span>
               </div>
             )}
             {order.bonus_used > 0 && (
               <div style={styles.priceRow}>
                 <span>Бонусы</span>
-                <span style={{ color: '#E67700', fontWeight: 600 }}>−{(order.bonus_used).toLocaleString()} ₸</span>
+                <span style={{ color: '#E67700', fontWeight: 600 }}>−{(order.bonus_used).toLocaleString()} сум</span>
               </div>
             )}
             {order.balance_used > 0 && (
               <div style={styles.priceRow}>
                 <span>Баланс</span>
-                <span style={{ color: '#1971C2', fontWeight: 600 }}>−{(order.balance_used).toLocaleString()} ₸</span>
+                <span style={{ color: '#1971C2', fontWeight: 600 }}>−{(order.balance_used).toLocaleString()} сум</span>
               </div>
             )}
             <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 15, color: TEXT }}>
               <span>Итого</span>
-              <span style={{ color: C }}>{(order.total || 0).toLocaleString()} ₸</span>
+              <span style={{ color: C }}>{(order.total || 0).toLocaleString()} сум</span>
             </div>
           </div>
 

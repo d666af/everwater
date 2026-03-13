@@ -23,7 +23,8 @@ export default function Header() {
   // Hide on admin/courier/manager pages
   if (location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
-    || location.pathname.startsWith('/manager')) {
+    || location.pathname.startsWith('/manager')
+    || location.pathname.startsWith('/support')) {
     return null
   }
 
