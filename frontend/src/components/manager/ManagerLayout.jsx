@@ -93,7 +93,7 @@ export default function ManagerLayout({ children, title }) {
     nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F5F5' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F2F2F7' }}>
 
       {/* ── Desktop sidebar (hidden on mobile) ── */}
       {!isMobile && (
@@ -190,7 +190,7 @@ export default function ManagerLayout({ children, title }) {
             const active = isActive(nav)
             return (
               <button key={nav.path}
-                style={{ ...s.mobileItem, color: active ? '#8DC63F' : 'rgba(255,255,255,0.45)' }}
+                style={{ ...s.mobileItem, color: active ? '#8DC63F' : '#8E8E93' }}
                 onClick={() => navigate(nav.path)}>
                 <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <nav.Icon size={20} />
@@ -198,18 +198,18 @@ export default function ManagerLayout({ children, title }) {
                     <span style={s.mobileNavBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
                   )}
                 </span>
-                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1, whiteSpace: 'nowrap', color: active ? '#8DC63F' : '#8E8E93' }}>
                   {nav.label}
                 </span>
               </button>
             )
           })}
-          <button style={{ ...s.mobileItem, color: 'rgba(255,255,255,0.3)' }} onClick={doLogout}>
+          <button style={{ ...s.mobileItem, color: '#AEAEB2' }} onClick={doLogout}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
                 stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
-            <span style={{ fontSize: 9, fontWeight: 500 }}>Выйти</span>
+            <span style={{ fontSize: 9, fontWeight: 500, color: '#AEAEB2' }}>Выйти</span>
           </button>
         </nav>
       )}
@@ -314,9 +314,10 @@ const s = {
   mobileNav: {
     display: 'flex',
     position: 'fixed', bottom: 0, left: 0, right: 0,
-    background: '#111827', zIndex: 200,
-    borderTop: '1px solid rgba(255,255,255,0.06)',
+    background: '#fff', zIndex: 200,
+    borderTop: '1px solid rgba(60,60,67,0.12)',
     paddingBottom: 'env(safe-area-inset-bottom, 0)',
+    boxShadow: '0 -2px 16px rgba(0,0,0,0.06)',
   },
   mobileItem: {
     flex: 1, background: 'none', border: 'none',
@@ -331,6 +332,6 @@ const s = {
     borderRadius: 999, fontSize: 8, fontWeight: 800,
     minWidth: 13, height: 13,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '0 2px', border: '1.5px solid #111827',
+    padding: '0 2px', border: '1.5px solid #fff',
   },
 }
