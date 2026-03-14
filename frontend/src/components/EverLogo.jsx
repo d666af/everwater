@@ -1,4 +1,4 @@
-const LOGO_URL = 'https://i.ibb.co/qwn4Bwz/Ever-Jpg.jpg'
+const LOGO_URL = '/logo.jpg'
 
 export default function EverLogo({ width = 160, style, ...props }) {
   return (
