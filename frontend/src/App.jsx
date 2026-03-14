@@ -32,7 +32,9 @@ import ManagerNotifications from './pages/manager/ManagerNotifications'
 import ManagerSupport from './pages/manager/ManagerSupport'
 
 // Courier
-import CourierPanel from './pages/courier/CourierPanel'
+import CourierOrders from './pages/courier/CourierOrders'
+import CourierStats from './pages/courier/CourierStats'
+import CourierProfile from './pages/courier/CourierProfile'
 
 export default function App() {
   return (
@@ -142,7 +144,17 @@ export default function App() {
         {/* Courier */}
         <Route path="/courier" element={
           <ProtectedRoute allowedRoles={['courier']}>
-            <CourierPanel />
+            <CourierOrders />
+          </ProtectedRoute>
+        } />
+        <Route path="/courier/stats" element={
+          <ProtectedRoute allowedRoles={['courier']}>
+            <CourierStats />
+          </ProtectedRoute>
+        } />
+        <Route path="/courier/profile" element={
+          <ProtectedRoute allowedRoles={['courier']}>
+            <CourierProfile />
           </ProtectedRoute>
         } />
 
