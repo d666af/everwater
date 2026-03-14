@@ -30,7 +30,7 @@ export default function CourierProfile() {
   const [stats, setStats] = useState(null)
 
   const tgUser = tg?.initDataUnsafe?.user
-  const telegramId = tgUser?.id || user?.telegram_id
+  const courierId = tgUser?.id || user?.telegram_id || user?.id
 
   const displayName = tgUser
     ? `${tgUser.first_name}${tgUser.last_name ? ' ' + tgUser.last_name : ''}`
@@ -39,9 +39,9 @@ export default function CourierProfile() {
   const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
   useEffect(() => {
-    if (!telegramId) return
-    getCourierStats(telegramId).then(setStats).catch(console.error)
-  }, [telegramId])
+    if (!courierId) return
+    getCourierStats(courierId).then(setStats).catch(console.error)
+  }, [courierId])
 
   const doLogout = () => { logout(); navigate('/login') }
 
@@ -93,7 +93,7 @@ export default function CourierProfile() {
             value={`@${tgUser.username}`}
           />
         )}
-        {telegramId && (
+        {courierId && (
           <InfoRow
             icon={
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -101,8 +101,8 @@ export default function CourierProfile() {
                 <path d="M12 17h.01" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/>
               </svg>
             }
-            label="Telegram ID"
-            value={String(telegramId)}
+            label="ID"
+            value={String(courierId)}
           />
         )}
         {(user?.phone || tgUser?.phone_number) && (

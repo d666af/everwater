@@ -314,16 +314,16 @@ export default function CourierOrders() {
   const [now, setNow] = useState(new Date())
   const { user } = useAuthStore()
 
-  const telegramId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
+  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
 
   const load = useCallback(() => {
-    if (!telegramId) { setLoading(false); return }
+    if (!courierId) { setLoading(false); return }
     setLoading(true)
-    getCourierOrders(telegramId)
+    getCourierOrders(courierId)
       .then(setOrders)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [telegramId])
+  }, [courierId])
 
   useEffect(load, [load])
 
@@ -344,22 +344,6 @@ export default function CourierOrders() {
   const done = orders.filter(o => o.status === 'delivered')
   const overdueOrders = active.filter(o => isOverdue(o))
   const shown = filter === 'active' ? active : done
-
-  if (!telegramId) return (
-    <CourierLayout title="Заказы">
-      <div style={s.noAccess}>
-        <div style={s.noAccessIcon}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-            <circle cx="5" cy="18" r="2" stroke="rgba(255,255,255,0.9)" strokeWidth="1.6"/>
-            <circle cx="19" cy="18" r="2" stroke="rgba(255,255,255,0.9)" strokeWidth="1.6"/>
-            <path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="rgba(255,255,255,0.9)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-        <div style={{ fontWeight: 800, fontSize: 20, color: TEXT }}>Панель курьера</div>
-        <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>Откройте приложение через Telegram-бота</div>
-      </div>
-    </CourierLayout>
-  )
 
   return (
     <CourierLayout title="Заказы" activeCount={active.length} onRefresh={load}>
@@ -441,17 +425,6 @@ export default function CourierOrders() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const s = {
-  noAccess: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', gap: 16, padding: '80px 24px', textAlign: 'center',
-  },
-  noAccessIcon: {
-    width: 80, height: 80, borderRadius: 24,
-    background: `linear-gradient(135deg, ${C}, ${CD})`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 8px 24px rgba(141,198,63,0.3)',
-  },
-
   overdueAlert: {
     background: 'linear-gradient(135deg, #E03131, #C92A2A)',
     borderRadius: 14, padding: '14px 16px',
