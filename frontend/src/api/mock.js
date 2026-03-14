@@ -31,13 +31,15 @@ export const MOCK_ORDERS = [
   {
     id: 1001, status: 'delivered', address: 'Юнусабад, 19-квартал, д. 12',
     delivery_time: 'Сегодня 12:00–15:00', total: 50000, recipient_phone: '+998 90 123-45-67',
+    client_telegram_id: '987654321',
     courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
     items: [{ id: 1, product_name: 'Вода 18.9л', quantity: 2, price: 25000 }],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 0,
   },
   {
     id: 1002, status: 'in_delivery', address: 'Мирзо-Улугбек, ул. Навои, 42',
-    delivery_time: 'Сегодня 15:00–18:00', total: 39000, recipient_phone: '+998 93 456-78-90',
+    delivery_time: 'Сегодня 11:00–13:00', total: 39000, recipient_phone: '+998 93 456-78-90',
+    client_telegram_id: '123456789',
     courier_name: 'Санжар М.', courier_phone: '+998 94 555-66-77',
     latitude: 41.299496, longitude: 69.240073,
     items: [
@@ -45,12 +47,26 @@ export const MOCK_ORDERS = [
       { id: 3, product_name: 'Вода 5л', quantity: 1, price: 8000 },
     ],
     bottle_discount: 4000, bonus_used: 0, return_bottles_count: 2,
+    extra_info: 'Кв. 47, 3 этаж, домофон 47#',
   },
   {
     id: 1003, status: 'awaiting_confirmation', address: 'Чиланзар, 7-квартал, д. 5',
     delivery_time: 'Завтра 9:00–12:00', total: 75000, recipient_phone: '+998 97 111-22-33',
+    client_telegram_id: '555111222',
     items: [{ id: 4, product_name: 'Вода 18.9л', quantity: 3, price: 25000 }],
-    bottle_discount: 0, bonus_used: 0, return_bottles_count: 0,
+    bottle_discount: 0, bonus_used: 0, return_bottles_count: 3,
+    extra_info: 'Офис на 2-м этаже, спросить Бобура',
+  },
+  {
+    id: 1004, status: 'assigned_to_courier', address: 'Яшнабад, 4-квартал, д. 18',
+    delivery_time: 'Сегодня 14:00–16:00', total: 33000, recipient_phone: '+998 91 777-88-99',
+    client_telegram_id: '444888333',
+    latitude: 41.312345, longitude: 69.278901,
+    items: [
+      { id: 1, product_name: 'Вода 18.9л', quantity: 1, price: 25000 },
+      { id: 2, product_name: 'Вода газированная 5л', quantity: 1, price: 8000 },
+    ],
+    bottle_discount: 0, bonus_used: 0, return_bottles_count: 1,
   },
 ]
 

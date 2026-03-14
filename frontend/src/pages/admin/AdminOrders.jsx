@@ -75,6 +75,25 @@ export default function AdminOrders() {
 
   return (
     <AdminLayout title="Заказы">
+      {/* New order alert banner */}
+      {urgent > 0 && filter === 'all' && (
+        <div style={s.newOrderBanner} onClick={() => setFilter('awaiting_confirmation')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={s.newOrderPulse} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>
+                {urgent === 1 ? 'Новый заказ!' : `${urgent} новых заказа!`}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>
+                Ожидают подтверждения — нажмите чтобы просмотреть
+              </div>
+            </div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
       {/* Summary */}
       <div style={s.summary}>
         <div style={s.sumCard}>
@@ -228,6 +247,15 @@ export default function AdminOrders() {
                           Позвонить
                         </a>
                       )}
+                      {order.client_telegram_id && (
+                        <a href={`tg://user?id=${order.client_telegram_id}`} style={{ ...s.btnOutline, background: '#E8F4FD', border: '1.5px solid rgba(25,113,194,0.2)', color: '#1971C2' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M21.6 12.3C21.6 17.4 17.4 21.6 12 21.6C9.8 21.6 7.7 20.9 6 19.7L2.4 20.4 3.1 17C1.9 15.2 1.2 13.1 1.2 10.9 1.2 5.8 5.4 1.6 10.8 1.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                            <path d="M17.5 5.5l-7 4 3 1 1 3 3-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Написать
+                        </a>
+                      )}
                     </div>
 
                     {rejectingId === order.id && (
@@ -277,6 +305,20 @@ export default function AdminOrders() {
 }
 
 const s = {
+  newOrderBanner: {
+    background: 'linear-gradient(135deg, #E67700, #D06200)',
+    borderRadius: 14, padding: '14px 18px', marginBottom: 16,
+    color: '#fff', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    boxShadow: '0 4px 16px rgba(230,119,0,0.35)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  newOrderPulse: {
+    width: 14, height: 14, borderRadius: '50%', background: '#fff',
+    flexShrink: 0, boxShadow: '0 0 0 4px rgba(255,255,255,0.3)',
+    animation: 'pulse 1.5s infinite',
+  },
+
   summary: { display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' },
   sumCard: {
     flex: 1, background: '#fff', borderRadius: 14, padding: '14px 10px',
