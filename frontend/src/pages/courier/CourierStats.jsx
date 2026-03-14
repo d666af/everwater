@@ -27,14 +27,14 @@ export default function CourierStats() {
   const [loading, setLoading] = useState(true)
   const { user } = useAuthStore()
 
-  const telegramId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
+  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
 
   useEffect(() => {
-    if (!telegramId) { setLoading(false); return }
+    if (!courierId) { setLoading(false); return }
     setLoading(true)
     Promise.all([
-      getCourierStats(telegramId),
-      getCourierOrders(telegramId),
+      getCourierStats(courierId),
+      getCourierOrders(courierId),
     ])
       .then(([st, orders]) => {
         setStats(st)
@@ -42,7 +42,7 @@ export default function CourierStats() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [telegramId])
+  }, [courierId])
 
   const todayDeliveries = recent.filter(o => {
     if (!o.created_at) return false
