@@ -347,6 +347,20 @@ export const markChatRead = (chatId) =>
     }
   )
 
+// ─── Manager management ───────────────────────────────────────────────────────
+const MOCK_MANAGERS = []
+export const getAdminManagers = () =>
+  safeCall(() => http.get('/admin/managers').then(r => r.data), () => MOCK_MANAGERS)
+
+export const createManager = (data) =>
+  safeCall(() => http.post('/admin/managers', data).then(r => r.data), () => ({ id: Date.now(), ...data, is_active: true }))
+
+export const deleteManager = (id) =>
+  safeCall(() => http.delete(`/admin/managers/${id}`).then(r => r.data), () => ({ ok: true }))
+
+export const broadcastMessage = (message, target = 'all') =>
+  safeCall(() => http.post('/admin/broadcast', { message, target }).then(r => r.data), () => ({ ok: true }))
+
 // ─── Balance top-up confirmation ──────────────────────────────────────────────
 export const confirmTopup = (userId, amount) =>
   safeCall(

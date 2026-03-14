@@ -2,22 +2,77 @@ import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../api'
 
+const C = '#8DC63F'
+const CD = '#6CA32F'
+const TEXT = '#1C1C1E'
+const TEXT2 = '#8E8E93'
+const BORDER = 'rgba(60,60,67,0.12)'
+
 const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0 }
+
+function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
+  const f = (name) => ({ value: form[name], onChange: e => setForm(p => ({ ...p, [name]: e.target.value })) })
+  return (
+    <div style={s.formCard}>
+      <div style={s.formTitle}>{title}</div>
+      <div style={s.formGrid}>
+        <div style={s.field}>
+          <div style={s.label}>Название *</div>
+          <input style={s.input} placeholder="Вода питьевая 18.9л" {...f('name')} />
+        </div>
+        <div style={s.field}>
+          <div style={s.label}>Объём (л) *</div>
+          <input style={s.input} type="number" placeholder="18.9" step="0.1" {...f('volume')} />
+        </div>
+        <div style={s.field}>
+          <div style={s.label}>Цена (сум) *</div>
+          <input style={s.input} type="number" placeholder="35000" {...f('price')} />
+        </div>
+        <div style={s.field}>
+          <div style={s.label}>Порядок</div>
+          <input style={s.input} type="number" placeholder="0" {...f('sort_order')} />
+        </div>
+      </div>
+      <div style={s.field}>
+        <div style={s.label}>Описание</div>
+        <textarea style={s.textarea} placeholder="Природная горная вода..." rows={2} {...f('description')} />
+      </div>
+      <div style={s.field}>
+        <div style={s.label}>URL фото</div>
+        <input style={s.input} placeholder="https://..." {...f('photo_url')} />
+      </div>
+      {form.photo_url && (
+        <img src={form.photo_url} alt="" style={s.imgPreview}
+          onError={e => e.target.style.display = 'none'} />
+      )}
+      <label style={s.checkRow}>
+        <input type="checkbox" checked={form.is_active}
+          onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
+        <span style={{ fontSize: 14, color: TEXT }}>Активен (отображается в каталоге)</span>
+      </label>
+      {error && <div style={s.error}>{error}</div>}
+      <div style={s.formActions}>
+        <button style={s.cancelBtn} onClick={onCancel}>Отмена</button>
+        <button style={{ ...s.saveBtn, ...(saving ? { opacity: 0.6 } : {}) }}
+          onClick={onSave} disabled={saving}>
+          {saving ? 'Сохраняю...' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminProducts() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState(null) // null | 'new' | product object
+  const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const load = () => {
     setLoading(true)
-    getProducts(true)
-      .then(setProducts)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    getProducts(true).then(setProducts).catch(console.error).finally(() => setLoading(false))
   }
 
   useEffect(load, [])
@@ -25,107 +80,100 @@ export default function AdminProducts() {
   const openNew = () => { setForm(EMPTY); setEditing('new'); setError('') }
   const openEdit = (p) => {
     setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order })
-    setEditing(p)
-    setError('')
+    setEditing(p); setError('')
   }
 
   const save = async () => {
-    if (!form.name.trim() || !form.price || !form.volume) { setError('Заполните обязательные поля (название, объём, цена)'); return }
+    if (!form.name.trim() || !form.price || !form.volume) {
+      setError('Заполните обязательные поля'); return
+    }
     setSaving(true); setError('')
     try {
       const data = { ...form, volume: Number(form.volume), price: Number(form.price), sort_order: Number(form.sort_order) }
       if (editing === 'new') await createProduct(data)
       else await updateProduct(editing.id, data)
-      setEditing(null)
-      load()
+      setEditing(null); load()
     } catch { setError('Ошибка при сохранении') } finally { setSaving(false) }
   }
 
   const remove = async (id) => {
     if (!window.confirm('Удалить товар?')) return
-    try { await deleteProduct(id); load() }
-    catch { alert('Ошибка') }
+    try { await deleteProduct(id); load() } catch { alert('Ошибка') }
   }
 
-  const f = (name) => ({ value: form[name], onChange: e => setForm(p => ({ ...p, [name]: e.target.value })) })
+  const active = products.filter(p => p.is_active).length
 
   return (
     <AdminLayout title="Товары">
-      <div style={styles.topBar}>
-        <div style={styles.count}>{products.length} товаров</div>
-        <button style={styles.addBtn} onClick={openNew}>+ Добавить товар</button>
+      {/* Top bar */}
+      <div style={s.topBar}>
+        <div style={s.counts}>
+          <span style={s.countChip}>{products.length} всего</span>
+          <span style={{ ...s.countChip, background: '#EBFBEE', color: '#2B8A3E' }}>{active} активных</span>
+        </div>
+        <button style={s.addBtn} onClick={openNew}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+          Добавить товар
+        </button>
       </div>
 
-      {/* Form */}
       {editing && (
-        <div style={styles.formCard}>
-          <h3 style={styles.formTitle}>{editing === 'new' ? 'Новый товар' : 'Редактировать товар'}</h3>
-          <div style={styles.formGrid}>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Название *</label>
-              <input style={styles.input} placeholder="Вода питьевая 18.9л" {...f('name')} />
-            </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Объём (л) *</label>
-              <input style={styles.input} type="number" placeholder="18.9" step="0.1" {...f('volume')} />
-            </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Цена (сум) *</label>
-              <input style={styles.input} type="number" placeholder="350" {...f('price')} />
-            </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Порядок</label>
-              <input style={styles.input} type="number" placeholder="0" {...f('sort_order')} />
-            </div>
-          </div>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Описание</label>
-            <textarea style={styles.textarea} placeholder="Природная горная вода..." rows={3} {...f('description')} />
-          </div>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>URL фото</label>
-            <input style={styles.input} placeholder="https://example.com/photo.jpg" {...f('photo_url')} />
-          </div>
-          {form.photo_url && (
-            <img src={form.photo_url} alt="" style={styles.preview} onError={e => e.target.style.display = 'none'} />
-          )}
-          <label style={styles.checkbox}>
-            <input type="checkbox" checked={form.is_active}
-              onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
-            <span>Активен (отображается в каталоге)</span>
-          </label>
-          {error && <div style={styles.error}>{error}</div>}
-          <div style={styles.formActions}>
-            <button style={styles.cancelBtn} onClick={() => setEditing(null)}>Отмена</button>
-            <button style={styles.saveBtn} onClick={save} disabled={saving}>
-              {saving ? 'Сохраняем...' : 'Сохранить'}
-            </button>
-          </div>
-        </div>
+        <ProductForm
+          title={editing === 'new' ? 'Новый товар' : 'Редактировать товар'}
+          form={form} setForm={setForm}
+          onSave={save} onCancel={() => setEditing(null)}
+          saving={saving} error={error}
+        />
       )}
 
       {loading ? (
-        <div style={styles.center}>Загрузка...</div>
+        <div style={s.center}><div style={s.spinner} /></div>
+      ) : products.length === 0 ? (
+        <div style={s.empty}>
+          <svg width="48" height="58" viewBox="0 0 40 48" fill="none">
+            <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
+              fill="#E8F7D0" stroke={C} strokeWidth="1.5"/>
+          </svg>
+          <div style={s.emptyText}>Товаров нет</div>
+          <button style={s.addBtn} onClick={openNew}>Добавить первый товар</button>
+        </div>
       ) : (
-        <div style={styles.grid}>
+        <div style={s.grid}>
           {products.map(p => (
-            <div key={p.id} style={{ ...styles.card, opacity: p.is_active ? 1 : 0.55 }}>
+            <div key={p.id} style={{ ...s.card, opacity: p.is_active ? 1 : 0.55 }}>
               {p.photo_url ? (
-                <img src={p.photo_url} alt={p.name} style={styles.img} />
-              ) : (
-                <div style={styles.imgPlaceholder}>💧</div>
-              )}
-              <div style={styles.cardBody}>
-                <div style={styles.productName}>{p.name}</div>
-                <div style={styles.productVol}>{p.volume} л</div>
-                {p.description && <div style={styles.productDesc}>{p.description}</div>}
-                <div style={styles.cardFooter}>
-                  <span style={styles.price}>{p.price} сум</span>
-                  {!p.is_active && <span style={styles.inactiveBadge}>Скрыт</span>}
+                <img src={p.photo_url} alt={p.name} style={s.img}
+                  onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+              ) : null}
+              <div style={{ ...s.imgPlaceholder, display: p.photo_url ? 'none' : 'flex' }}>
+                <svg width="32" height="40" viewBox="0 0 40 48" fill="none">
+                  <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
+                    fill="#E8F7D0" stroke={C} strokeWidth="1.5"/>
+                </svg>
+              </div>
+              <div style={s.cardBody}>
+                <div style={s.productName}>{p.name}</div>
+                <div style={s.productVol}>{p.volume} л</div>
+                {p.description && <div style={s.productDesc}>{p.description}</div>}
+                <div style={s.cardFooter}>
+                  <span style={s.price}>{Number(p.price).toLocaleString()} сум</span>
+                  {!p.is_active && <span style={s.hiddenBadge}>Скрыт</span>}
                 </div>
-                <div style={styles.cardActions}>
-                  <button style={styles.editBtn} onClick={() => openEdit(p)}>✏️ Изменить</button>
-                  <button style={styles.deleteBtn} onClick={() => remove(p.id)}>🗑️</button>
+                <div style={s.cardActions}>
+                  <button style={s.editBtn} onClick={() => openEdit(p)}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    Изменить
+                  </button>
+                  <button style={s.deleteBtn} onClick={() => remove(p.id)}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -136,67 +184,87 @@ export default function AdminProducts() {
   )
 }
 
-const styles = {
+const s = {
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  count: { fontSize: 14, color: '#888' },
+  counts: { display: 'flex', gap: 8 },
+  countChip: { fontSize: 13, background: '#F2F2F7', color: TEXT2, padding: '5px 12px', borderRadius: 999, fontWeight: 600 },
   addBtn: {
-    padding: '10px 20px', background: '#1a237e', color: '#fff',
-    border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: 7, padding: '11px 18px',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
+    border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.35)', WebkitTapHighlightColor: 'transparent',
   },
+
   formCard: {
-    background: '#fff', borderRadius: 14, padding: 24, marginBottom: 24,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: 14,
+    background: '#fff', borderRadius: 16, padding: 20, marginBottom: 20,
+    border: `1px solid ${BORDER}`, boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+    display: 'flex', flexDirection: 'column', gap: 14,
   },
-  formTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: '#1a237e' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 },
-  fieldGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
-  label: { fontSize: 13, fontWeight: 600, color: '#555' },
+  formTitle: { fontWeight: 800, fontSize: 18, color: TEXT },
+  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 },
+  field: { display: 'flex', flexDirection: 'column', gap: 6 },
+  label: { fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 },
   input: {
-    border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px',
-    fontSize: 14, outline: 'none', background: '#fafafa',
+    border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px',
+    fontSize: 15, outline: 'none', background: '#FAFAFA', color: TEXT,
   },
   textarea: {
-    border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px',
-    fontSize: 14, outline: 'none', resize: 'vertical', background: '#fafafa',
+    border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px',
+    fontSize: 15, outline: 'none', resize: 'vertical', background: '#FAFAFA',
+    color: TEXT, fontFamily: 'inherit',
   },
-  preview: { width: 100, height: 100, objectFit: 'cover', borderRadius: 8 },
-  checkbox: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' },
-  error: { color: '#c62828', fontSize: 13 },
+  imgPreview: { width: 90, height: 90, objectFit: 'cover', borderRadius: 12 },
+  checkRow: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
+  error: { color: '#E03131', fontSize: 13, fontWeight: 500 },
   formActions: { display: 'flex', gap: 10, justifyContent: 'flex-end' },
   cancelBtn: {
-    padding: '9px 20px', border: '1px solid #ddd', borderRadius: 8,
-    background: '#fff', color: '#333', fontSize: 14, cursor: 'pointer',
+    padding: '12px 20px', border: `1.5px solid ${BORDER}`, borderRadius: 12,
+    background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer', fontWeight: 600,
   },
   saveBtn: {
-    padding: '9px 24px', background: '#1a237e', color: '#fff',
-    border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    padding: '12px 24px', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
+    border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.35)',
   },
-  center: { textAlign: 'center', padding: 60, color: '#888' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 },
+
+  center: { display: 'flex', justifyContent: 'center', padding: 60 },
+  spinner: {
+    width: 32, height: 32, borderRadius: '50%',
+    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
+    animation: 'spin 0.8s linear infinite',
+  },
+  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '60px 20px' },
+  emptyText: { fontSize: 16, fontWeight: 700, color: TEXT2 },
+
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 14 },
   card: {
-    background: '#fff', borderRadius: 14, overflow: 'hidden',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    background: '#fff', borderRadius: 16, overflow: 'hidden',
+    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     display: 'flex', flexDirection: 'column',
   },
-  img: { width: '100%', height: 140, objectFit: 'cover' },
+  img: { width: '100%', height: 130, objectFit: 'cover' },
   imgPlaceholder: {
-    width: '100%', height: 140, background: '#e8eaf6',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48,
+    width: '100%', height: 130, background: '#F0FFF4',
+    alignItems: 'center', justifyContent: 'center',
   },
   cardBody: { padding: 14, display: 'flex', flexDirection: 'column', gap: 4, flex: 1 },
-  productName: { fontWeight: 700, fontSize: 15 },
-  productVol: { color: '#888', fontSize: 13 },
-  productDesc: { fontSize: 12, color: '#666', flex: 1 },
+  productName: { fontWeight: 700, fontSize: 14, color: TEXT, lineHeight: 1.3 },
+  productVol: { color: TEXT2, fontSize: 13 },
+  productDesc: { fontSize: 12, color: TEXT2, flex: 1, lineHeight: 1.4 },
   cardFooter: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 },
-  price: { fontWeight: 800, fontSize: 18, color: '#1565c0' },
-  inactiveBadge: { fontSize: 11, background: '#fbe9e7', color: '#c62828', padding: '2px 8px', borderRadius: 10, fontWeight: 600 },
+  price: { fontWeight: 800, fontSize: 17, color: TEXT },
+  hiddenBadge: { fontSize: 11, background: '#FFF5F5', color: '#E03131', padding: '2px 8px', borderRadius: 999, fontWeight: 600 },
   cardActions: { display: 'flex', gap: 6, marginTop: 8 },
   editBtn: {
-    flex: 1, padding: '7px 0', border: '1px solid #1a237e', borderRadius: 7,
-    background: '#fff', color: '#1a237e', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '8px 0', border: `1.5px solid ${BORDER}`, borderRadius: 10,
+    background: '#fff', color: TEXT, fontSize: 12, cursor: 'pointer', fontWeight: 600,
+    WebkitTapHighlightColor: 'transparent',
   },
   deleteBtn: {
-    padding: '7px 12px', border: '1px solid #e57373', borderRadius: 7,
-    background: '#fff', color: '#e53935', fontSize: 14, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '8px 12px', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10,
+    background: '#FFF5F5', color: '#E03131', cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
   },
 }

@@ -21,6 +21,7 @@ import AdminOrders from './pages/admin/AdminOrders'
 import AdminProducts from './pages/admin/AdminProducts'
 import AdminCouriers from './pages/admin/AdminCouriers'
 import AdminSettings from './pages/admin/AdminSettings'
+import AdminManagers from './pages/admin/AdminManagers'
 
 // Manager
 import ManagerOrders from './pages/manager/ManagerOrders'
@@ -98,6 +99,11 @@ export default function App() {
         <Route path="/admin/settings" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminSettings />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/managers" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminManagers />
           </ProtectedRoute>
         } />
 

@@ -137,10 +137,13 @@ export default function ManagerSupport() {
   const showListPane = isMobile ? !showChat : true
 
   const chatPane = (
-    <div style={{ ...s.chatPane, flex: 1, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ ...s.chatPane, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
       {activeChatId === null ? (
         <div style={s.noChatSelected}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25, marginBottom: 12 }}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+              stroke="#1C1C1E" strokeWidth="1.5" strokeLinejoin="round"/>
+          </svg>
           <div style={s.noChatTitle}>Выберите диалог</div>
           <div style={s.noChatDesc}>Нажмите на клиента слева, чтобы открыть чат</div>
         </div>
@@ -250,12 +253,12 @@ export default function ManagerSupport() {
   )
 
   return (
-    <ManagerLayout title="Чат поддержки">
-      <div style={{ display: 'flex', gap: 0, height: isMobile ? 'calc(100vh - 120px)' : 'calc(100vh - 120px)', background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.08)', border: '1px solid #e8f5e9' }}>
+    <ManagerLayout title="Чат поддержки" noPadding>
+      <div style={{ display: 'flex', gap: 0, height: 'calc(100vh - 120px)', background: '#fff', borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(60,60,67,0.12)' }}>
 
         {/* Chat list */}
         {showListPane && (
-          <div style={{ ...s.chatList, width: isMobile ? '100%' : 280, borderRight: isMobile ? 'none' : '1px solid #e8f5e9' }}>
+          <div style={{ ...s.chatList, width: isMobile ? '100%' : 300, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.1)' }}>
             <div style={s.listHeader}>
               <div style={s.listTitle}>Диалоги</div>
               <div style={s.listBadge}>{chats.filter(c => c.unread > 0).length} новых</div>
@@ -362,8 +365,8 @@ const s = {
   },
   msgRow: { display: 'flex', alignItems: 'flex-end', gap: 8 },
   bubble: {
-    maxWidth: '75%', borderRadius: 16, padding: '10px 14px',
-    display: 'flex', flexDirection: 'column',
+    maxWidth: 'min(75%, 280px)', borderRadius: 16, padding: '10px 14px',
+    display: 'flex', flexDirection: 'column', wordBreak: 'break-word',
   },
   bubbleUser: {
     background: '#fff', borderBottomLeftRadius: 4,
