@@ -2,6 +2,27 @@ import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getSettings, updateSettings } from '../../api'
 
+const C = '#8DC63F'
+const CD = '#6CA32F'
+const TEXT = '#1C1C1E'
+const TEXT2 = '#8E8E93'
+const BORDER = 'rgba(60,60,67,0.12)'
+
+function Section({ icon, title, hint, children }) {
+  return (
+    <div style={s.section}>
+      <div style={s.sectionHead}>
+        <div style={s.sectionIcon}>{icon}</div>
+        <div>
+          <div style={s.sectionTitle}>{title}</div>
+          {hint && <div style={s.sectionHint}>{hint}</div>}
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export default function AdminSettings() {
   const [form, setForm] = useState({
     payment_card: '',
@@ -36,50 +57,78 @@ export default function AdminSettings() {
     onChange: e => setForm(p => ({ ...p, [name]: e.target.value })),
   })
 
-  if (loading) return <AdminLayout title="Настройки"><div style={styles.center}>Загрузка...</div></AdminLayout>
+  if (loading) return (
+    <AdminLayout title="Настройки">
+      <div style={s.center}><div style={s.spinner} /></div>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout title="Настройки">
-      <div style={styles.page}>
+      <div style={s.page}>
+
         {/* Payment */}
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>💳 Платёжные реквизиты</h3>
-          <p style={styles.hint}>Эти данные показываются клиенту при оформлении заказа</p>
-          <div style={styles.formGrid}>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Номер карты</label>
-              <input style={styles.input} placeholder="0000 0000 0000 0000" {...f('payment_card')} />
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="5" width="20" height="14" rx="2" stroke={C} strokeWidth="1.8"/>
+              <path d="M2 10h20" stroke={C} strokeWidth="1.5"/>
+              <path d="M6 15h4" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          }
+          title="Платёжные реквизиты"
+          hint="Отображаются клиенту при оформлении заказа"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Номер карты</div>
+              <input style={s.input} placeholder="0000 0000 0000 0000" {...f('payment_card')} />
             </div>
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Получатель</label>
-              <input style={styles.input} placeholder="Иванов Иван Иванович" {...f('payment_holder')} />
+            <div style={s.field}>
+              <div style={s.label}>Получатель</div>
+              <input style={s.input} placeholder="Иванов Иван Иванович" {...f('payment_holder')} />
             </div>
           </div>
-        </div>
+        </Section>
 
         {/* Bottle return discount */}
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>♻️ Скидка за возврат бутылок</h3>
-          <p style={styles.hint}>Скидка применяется к заказу когда клиент возвращает пустые бутылки</p>
-          <div style={styles.radioGroup}>
-            <label style={styles.radio}>
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M3 3v5h5" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          }
+          title="Скидка за возврат бутылок"
+          hint="Применяется к заказу при сдаче пустых бутылок"
+        >
+          <div style={s.radioGroup}>
+            <label style={{ ...s.radioOption, ...(form.bottle_discount_type === 'fixed' ? s.radioOptionActive : {}) }}>
               <input type="radio" value="fixed" checked={form.bottle_discount_type === 'fixed'}
-                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))} />
-              <span>Фиксированная (сум за бутылку)</span>
+                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))}
+                style={{ display: 'none' }} />
+              <div style={s.radioDot(form.bottle_discount_type === 'fixed')} />
+              Фиксированная (сум/бутылка)
             </label>
-            <label style={styles.radio}>
+            <label style={{ ...s.radioOption, ...(form.bottle_discount_type === 'percent' ? s.radioOptionActive : {}) }}>
               <input type="radio" value="percent" checked={form.bottle_discount_type === 'percent'}
-                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))} />
-              <span>Процентная (% от суммы заказа)</span>
+                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))}
+                style={{ display: 'none' }} />
+              <div style={s.radioDot(form.bottle_discount_type === 'percent')} />
+              Процентная (% от суммы)
             </label>
           </div>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>
-              {form.bottle_discount_type === 'fixed' ? 'Сумма скидки (сум/бутылка)' : 'Процент скидки (%)'}
-            </label>
-            <input style={{ ...styles.input, maxWidth: 200 }} type="number" min="0" {...f('bottle_discount_value')} />
+          <div style={s.field}>
+            <div style={s.label}>
+              {form.bottle_discount_type === 'fixed' ? 'Скидка (сум/бутылка)' : 'Скидка (%)'}
+            </div>
+            <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" {...f('bottle_discount_value')} />
           </div>
-          <div style={styles.preview}>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
             Пример: при возврате 3 бутылок — скидка{' '}
             <b>
               {form.bottle_discount_type === 'fixed'
@@ -87,59 +136,115 @@ export default function AdminSettings() {
                 : `${form.bottle_discount_value}% от суммы заказа`}
             </b>
           </div>
-        </div>
+        </Section>
 
-        {/* Cashback / Bonuses */}
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>🎁 Бонусная программа</h3>
-          <p style={styles.hint}>Клиент получает бонусы после успешной доставки</p>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Кэшбэк с заказа (%)</label>
-            <input style={{ ...styles.input, maxWidth: 200 }} type="number" min="0" max="100" {...f('cashback_percent')} />
+        {/* Cashback */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                stroke="#E67700" strokeWidth="1.8" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Бонусная программа"
+          hint="Клиент получает бонусные баллы после успешной доставки"
+        >
+          <div style={s.field}>
+            <div style={s.label}>Кэшбэк с заказа (%)</div>
+            <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" max="100" {...f('cashback_percent')} />
           </div>
-          <div style={styles.preview}>
-            Пример: заказ на 1000 сум — клиент получит <b>{form.cashback_percent} сум</b> бонусами
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Пример: заказ на 100 000 сум — клиент получит <b>{form.cashback_percent * 1000} сум</b> бонусами
           </div>
-        </div>
+        </Section>
 
-        {error && <div style={styles.error}>{error}</div>}
-        {saved && <div style={styles.success}>✅ Настройки сохранены</div>}
+        {error && <div style={s.errorMsg}>{error}</div>}
+        {saved && (
+          <div style={s.successMsg}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M20 6L9 17L4 12" stroke="#2B8A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Настройки сохранены
+          </div>
+        )}
 
-        <button style={styles.saveBtn} onClick={save} disabled={saving}>
-          {saving ? 'Сохраняем...' : 'Сохранить настройки'}
+        <button style={{ ...s.saveBtn, ...(saving ? { opacity: 0.6 } : {}) }} onClick={save} disabled={saving}>
+          {saving ? 'Сохраняю...' : 'Сохранить настройки'}
         </button>
       </div>
     </AdminLayout>
   )
 }
 
-const styles = {
-  page: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 700 },
-  center: { textAlign: 'center', padding: 60, color: '#888' },
+const s = {
+  page: { display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 },
+  center: { display: 'flex', justifyContent: 'center', padding: 60 },
+  spinner: {
+    width: 32, height: 32, borderRadius: '50%',
+    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
+    animation: 'spin 0.8s linear infinite',
+  },
+
   section: {
-    background: '#fff', borderRadius: 14, padding: 24,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 14,
+    background: '#fff', borderRadius: 16, padding: '18px 20px',
+    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    display: 'flex', flexDirection: 'column', gap: 14,
   },
-  sectionTitle: { margin: 0, fontSize: 17, fontWeight: 700, color: '#1a237e' },
-  hint: { margin: 0, fontSize: 13, color: '#888' },
-  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 },
-  fieldGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
-  label: { fontSize: 13, fontWeight: 600, color: '#555' },
+  sectionHead: { display: 'flex', alignItems: 'flex-start', gap: 12 },
+  sectionIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    background: '#F2F2F7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  sectionTitle: { fontWeight: 800, fontSize: 16, color: TEXT, lineHeight: 1.3 },
+  sectionHint: { fontSize: 12, color: TEXT2, marginTop: 2 },
+
+  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 },
+  field: { display: 'flex', flexDirection: 'column', gap: 6 },
+  label: { fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 },
   input: {
-    border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px',
-    fontSize: 14, outline: 'none', background: '#fafafa', width: '100%',
+    border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px',
+    fontSize: 15, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%',
+    boxSizing: 'border-box',
   },
-  radioGroup: { display: 'flex', gap: 20, flexWrap: 'wrap' },
-  radio: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' },
+
+  radioGroup: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  radioOption: {
+    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+    border: `1.5px solid ${BORDER}`, borderRadius: 10, cursor: 'pointer',
+    fontSize: 13, color: TEXT2, fontWeight: 500, flex: 1, minWidth: 180,
+    transition: 'all 0.15s',
+  },
+  radioOptionActive: { borderColor: C, background: '#F0FFF0', color: TEXT, fontWeight: 600 },
+  radioDot: (active) => ({
+    width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+    border: `2px solid ${active ? C : BORDER}`,
+    background: active ? C : 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'all 0.15s',
+  }),
+
   preview: {
-    fontSize: 14, color: '#555', background: '#e8eaf6',
-    borderRadius: 8, padding: '10px 14px',
+    display: 'flex', alignItems: 'center', gap: 6,
+    fontSize: 13, color: TEXT2, background: '#F0FFF0',
+    borderRadius: 10, padding: '10px 14px',
   },
-  error: { color: '#c62828', fontSize: 14, fontWeight: 500 },
-  success: { color: '#2e7d32', fontSize: 14, fontWeight: 500 },
+
+  errorMsg: { color: '#E03131', fontSize: 13, fontWeight: 500 },
+  successMsg: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    color: '#2B8A3E', fontSize: 13, fontWeight: 600,
+    background: '#EBFBEE', padding: '10px 14px', borderRadius: 10,
+  },
+
   saveBtn: {
-    padding: '13px 32px', background: '#1a237e', color: '#fff',
-    border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 700, cursor: 'pointer',
-    alignSelf: 'flex-start',
+    padding: '14px 32px', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
+    border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.35)', alignSelf: 'flex-start',
+    WebkitTapHighlightColor: 'transparent',
   },
 }

@@ -15,15 +15,6 @@ const NAV = [
     ),
   },
   {
-    path: '/manager/notifications', label: 'Уведомления',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  {
     path: '/manager/support', label: 'Поддержка',
     Icon: ({ size = 20 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -63,7 +54,7 @@ const NAV = [
   },
 ]
 
-export default function ManagerLayout({ children, title }) {
+export default function ManagerLayout({ children, title, noPadding = false }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
@@ -159,15 +150,21 @@ export default function ManagerLayout({ children, title }) {
                 <EverLogoMark width={28} />
                 <span style={s.mobileTitle}>{title}</span>
               </div>
-              {unreadCount > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button style={s.bellBtn} onClick={() => navigate('/manager/notifications')}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
                     <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
                   </svg>
-                  <span style={s.bellBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                  {unreadCount > 0 && <span style={s.bellBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>}
                 </button>
-              )}
+                <button style={s.bellBtn} onClick={doLogout} title="Выйти">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+                      stroke="#8E8E93" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -178,7 +175,7 @@ export default function ManagerLayout({ children, title }) {
         </header>
 
         {/* Page content */}
-        <div style={{ ...s.content, paddingBottom: isMobile ? 80 : 24 }}>
+        <div style={{ ...s.content, paddingBottom: isMobile ? 80 : 24, ...(noPadding ? { padding: isMobile ? '0 0 80px' : 0 } : {}) }}>
           {children}
         </div>
       </div>
@@ -204,13 +201,6 @@ export default function ManagerLayout({ children, title }) {
               </button>
             )
           })}
-          <button style={{ ...s.mobileItem, color: '#AEAEB2' }} onClick={doLogout}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize: 9, fontWeight: 500, color: '#AEAEB2' }}>Выйти</span>
-          </button>
         </nav>
       )}
     </div>

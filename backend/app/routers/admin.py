@@ -140,6 +140,44 @@ async def topup_user_balance(user_id: int, data: TopupData, db: AsyncSession = D
     return {"ok": True, "new_balance": user.balance}
 
 
+# ─── Managers (in-memory; real impl needs Manager model) ─────────────────────
+
+_managers: list[dict] = []
+_mgr_id_counter = 1
+
+
+class ManagerCreate(BaseModel):
+    name: str
+    phone: str = ""
+    telegram_id: int
+
+
+@router.get("/managers")
+async def get_managers():
+    return _managers
+
+
+@router.post("/managers")
+async def create_manager(data: ManagerCreate):
+    global _mgr_id_counter, _managers
+    mgr = {"id": _mgr_id_counter, "name": data.name, "phone": data.phone,
+           "telegram_id": data.telegram_id, "is_active": True,
+           "created_at": datetime.utcnow().isoformat()}
+    _managers.append(mgr)
+    _mgr_id_counter += 1
+    return mgr
+
+
+@router.delete("/managers/{manager_id}")
+async def deactivate_manager(manager_id: int):
+    global _managers
+    _managers = [
+        {**m, "is_active": False} if m["id"] == manager_id else m
+        for m in _managers
+    ]
+    return {"ok": True}
+
+
 # ─── Settings (simple key-value, in-memory for now) ──────────────────────────
 
 _settings_store = {
@@ -162,9 +200,36 @@ async def update_settings(data: dict):
     return {"ok": True, **_settings_store}
 
 
+# ─── Broadcast / Notify ──────────────────────────────────────────────────────
+
+class BroadcastData(BaseModel):
+    message: str
+    target: str = "all"  # "all" | "managers" | "couriers"
+
+
+@router.post("/broadcast")
+async def broadcast_message(data: BroadcastData):
+    # In production: send via Telegram bot API to target users
+    # For now, just add to notifications
+    global _notifications, _id_counter
+    notif = {
+        "id": _id_counter,
+        "type": "broadcast",
+        "title": f"Рассылка: {data.target}",
+        "body": data.message,
+        "target": data.target,
+        "read": False,
+        "time": datetime.utcnow().isoformat(),
+    }
+    _notifications.append(notif)
+    _id_counter += 1
+    return {"ok": True, "sent_to": data.target}
+
+
 # ─── Notifications (in-memory, real impl needs Notification model) ────────────
 
 _notifications: list[dict] = []
+_id_counter = 1
 
 
 @router.get("/notifications")
@@ -174,7 +239,7 @@ async def get_notifications():
 
 @router.patch("/notifications/{notif_id}/read")
 async def mark_notification_read(notif_id: int):
-    global _notifications
+    global _notifications, _id_counter
     _notifications = [
         {**n, "read": True} if n.get("id") == notif_id else n
         for n in _notifications

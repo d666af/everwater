@@ -1,26 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers } from '../../api'
 
+const C = '#8DC63F'
+const TEXT = '#1C1C1E'
+const TEXT2 = '#8E8E93'
+const BORDER = 'rgba(60,60,67,0.12)'
+
 const STATUS_LABELS = {
-  new: 'Новый',
-  awaiting_confirmation: 'Ожид. подтв.',
-  confirmed: 'Подтверждён',
-  assigned_to_courier: 'У курьера',
-  in_delivery: 'В доставке',
-  delivered: 'Доставлен',
-  rejected: 'Отклонён',
+  new: 'Новый', awaiting_confirmation: 'Ожидает', confirmed: 'Подтверждён',
+  assigned_to_courier: 'У курьера', in_delivery: 'В доставке',
+  delivered: 'Доставлен', rejected: 'Отклонён',
 }
-const STATUS_COLORS = {
-  new: '#1565c0',
-  awaiting_confirmation: '#f57f17',
-  confirmed: '#2e7d32',
-  assigned_to_courier: '#4527a0',
-  in_delivery: '#00695c',
-  delivered: '#558b2f',
-  rejected: '#c62828',
+const STATUS_STYLE = {
+  new:                   { bg: '#EDF3FF', color: '#3B5BDB' },
+  awaiting_confirmation: { bg: '#FFF8E6', color: '#E67700' },
+  confirmed:             { bg: '#EBFBEE', color: '#2B8A3E' },
+  assigned_to_courier:   { bg: '#F3F0FF', color: '#6741D9' },
+  in_delivery:           { bg: '#E8F4FD', color: '#1971C2' },
+  delivered:             { bg: '#EBFBEE', color: '#2B8A3E' },
+  rejected:              { bg: '#FFF5F5', color: '#E03131' },
 }
-const FILTERS = ['all', 'new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery', 'delivered', 'rejected']
+
+const FILTERS = [
+  { key: 'all', label: 'Все' },
+  { key: 'awaiting_confirmation', label: 'Ожидают' },
+  { key: 'confirmed', label: 'Подтверждены' },
+  { key: 'assigned_to_courier', label: 'У курьера' },
+  { key: 'in_delivery', label: 'В доставке' },
+  { key: 'delivered', label: 'Доставлены' },
+  { key: 'rejected', label: 'Отклонены' },
+]
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState([])
@@ -33,233 +43,361 @@ export default function AdminOrders() {
   const [assigningId, setAssigningId] = useState(null)
   const [selectedCourier, setSelectedCourier] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [search, setSearch] = useState('')
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     const params = filter !== 'all' ? { status: filter } : {}
     Promise.all([getOrders(params), getAdminCouriers()])
       .then(([o, c]) => { setOrders(o); setCouriers(c) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }
+  }, [filter])
 
-  useEffect(load, [filter])
+  useEffect(() => { load() }, [load])
 
-  const doConfirm = async (orderId) => {
+  const act = async (fn) => {
     setActionLoading(true)
-    try {
-      await confirmOrder(orderId)
-      load()
-    } catch { alert('Ошибка') } finally { setActionLoading(false) }
+    try { await fn(); load() }
+    catch { alert('Ошибка операции') }
+    finally { setActionLoading(false) }
   }
 
-  const doReject = async (orderId) => {
-    if (!rejectReason.trim()) { alert('Введите причину'); return }
-    setActionLoading(true)
-    try {
-      await rejectOrder(orderId, rejectReason)
-      setRejectingId(null); setRejectReason(''); load()
-    } catch { alert('Ошибка') } finally { setActionLoading(false) }
-  }
+  const displayed = search
+    ? orders.filter(o =>
+        String(o.id).includes(search) ||
+        o.address?.toLowerCase().includes(search.toLowerCase()) ||
+        o.recipient_phone?.includes(search)
+      )
+    : orders
 
-  const doAssign = async (orderId) => {
-    if (!selectedCourier) { alert('Выберите курьера'); return }
-    setActionLoading(true)
-    try {
-      await assignCourier(orderId, selectedCourier)
-      setAssigningId(null); setSelectedCourier(''); load()
-    } catch { alert('Ошибка') } finally { setActionLoading(false) }
-  }
+  const urgent = orders.filter(o => ['new', 'awaiting_confirmation'].includes(o.status)).length
 
   return (
     <AdminLayout title="Заказы">
+      {/* Summary */}
+      <div style={s.summary}>
+        <div style={s.sumCard}>
+          <div style={{ ...s.sumVal, color: '#E67700' }}>{urgent}</div>
+          <div style={s.sumLbl}>Ждут</div>
+        </div>
+        <div style={s.sumCard}>
+          <div style={{ ...s.sumVal, color: '#6741D9' }}>
+            {orders.filter(o => ['confirmed','assigned_to_courier','in_delivery'].includes(o.status)).length}
+          </div>
+          <div style={s.sumLbl}>В работе</div>
+        </div>
+        <div style={s.sumCard}>
+          <div style={{ ...s.sumVal, color: C }}>{orders.length}</div>
+          <div style={s.sumLbl}>Всего</div>
+        </div>
+        <button style={s.refreshBtn} onClick={load} disabled={loading}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/>
+            <path d="M3 3v5h5" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Search */}
+      <div style={s.searchWrap}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={TEXT2} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/></svg>
+        <input style={s.searchInput} placeholder="Поиск по номеру, адресу, телефону..."
+          value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button style={s.clearBtn} onClick={() => setSearch('')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/></svg>
+        </button>}
+      </div>
+
       {/* Filters */}
-      <div style={styles.filters}>
+      <div style={s.filterScroll}>
         {FILTERS.map(f => (
-          <button
-            key={f}
-            style={{ ...styles.filterBtn, ...(filter === f ? styles.filterActive : {}) }}
-            onClick={() => setFilter(f)}
-          >
-            {f === 'all' ? 'Все' : STATUS_LABELS[f]}
+          <button key={f.key}
+            style={{ ...s.pill, ...(filter === f.key ? s.pillActive : {}) }}
+            onClick={() => { setFilter(f.key); setSearch('') }}>
+            {f.label}
+            {f.key === 'awaiting_confirmation' && urgent > 0 && (
+              <span style={s.pillBadge}>{urgent}</span>
+            )}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div style={styles.center}>Загрузка...</div>
-      ) : orders.length === 0 ? (
-        <div style={styles.center}>Заказов нет</div>
+        <div style={s.center}><div style={s.spinner} /></div>
+      ) : displayed.length === 0 ? (
+        <div style={s.empty}>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.2 }}>
+            <rect x="3" y="4" width="18" height="16" rx="3" stroke={TEXT} strokeWidth="1.5"/>
+            <path d="M7 9h10M7 13h6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <div style={s.emptyText}>Заказов нет</div>
+        </div>
       ) : (
-        <div style={styles.list}>
-          {orders.map(order => (
-            <div key={order.id} style={styles.card}>
-              {/* Header */}
-              <div style={styles.cardTop} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
-                <div>
-                  <div style={styles.orderId}>Заказ #{order.id}</div>
-                  <div style={styles.orderAddr}>{order.address}</div>
-                  {order.delivery_time && <div style={styles.orderTime}>🕐 {order.delivery_time}</div>}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={styles.orderTotal}>{order.total} сум</div>
-                  <span style={{ ...styles.statusChip, background: (STATUS_COLORS[order.status] || '#888') + '22', color: STATUS_COLORS[order.status] || '#888' }}>
-                    {STATUS_LABELS[order.status] || order.status}
-                  </span>
-                  <div style={styles.chevron}>{expanded === order.id ? '▲' : '▼'}</div>
-                </div>
-              </div>
-
-              {/* Details */}
-              {expanded === order.id && (
-                <div style={styles.details}>
-                  <div style={styles.infoGrid}>
-                    <div><b>📱 Телефон:</b> {order.recipient_phone || '—'}</div>
-                    <div><b>📍 Адрес:</b> {order.address}</div>
-                    {order.extra_info && <div><b>🏠 Инфо:</b> {order.extra_info}</div>}
-                    {order.return_bottles_count > 0 && (
-                      <div><b>♻️ Возврат:</b> {order.return_bottles_count} бут. ({order.return_bottles_volume} л)</div>
-                    )}
-                    <div><b>💰 Итого:</b> {order.total} сум {order.bottle_discount > 0 ? `(скидка: −${order.bottle_discount} сум)` : ''}</div>
-                    {order.rejection_reason && <div style={{ color: '#c62828' }}><b>Причина отказа:</b> {order.rejection_reason}</div>}
-                  </div>
-
-                  {/* Items */}
-                  {order.items?.length > 0 && (
-                    <div style={styles.itemsBlock}>
-                      <b>Состав:</b>
-                      {order.items.map(i => (
-                        <div key={i.id} style={styles.itemRow}>
-                          {i.product_name} × {i.quantity} — {i.price * i.quantity} сум
-                        </div>
-                      ))}
+        <div style={s.list}>
+          {displayed.map(order => {
+            const ss = STATUS_STYLE[order.status] || { bg: '#F2F2F7', color: TEXT2 }
+            const isExp = expanded === order.id
+            const isUrgent = ['new', 'awaiting_confirmation'].includes(order.status)
+            return (
+              <div key={order.id} style={{ ...s.card, ...(isUrgent ? s.cardUrgent : {}) }}>
+                <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
+                  <div style={s.cardLeft}>
+                    {isUrgent && <div style={s.urgentDot} />}
+                    <div>
+                      <div style={s.cardTopRow}>
+                        <span style={s.orderId}>#{order.id}</span>
+                        <span style={{ ...s.badge, background: ss.bg, color: ss.color }}>
+                          {STATUS_LABELS[order.status]}
+                        </span>
+                      </div>
+                      <div style={s.cardAddr}>{order.address}</div>
+                      {order.delivery_time && <div style={s.cardTime}>{order.delivery_time}</div>}
                     </div>
-                  )}
-
-                  {/* Actions */}
-                  <div style={styles.actions}>
-                    {order.status === 'awaiting_confirmation' && (
-                      <>
-                        <button style={styles.confirmBtn} disabled={actionLoading}
-                          onClick={() => doConfirm(order.id)}>✅ Подтвердить</button>
-                        <button style={styles.rejectBtn} disabled={actionLoading}
-                          onClick={() => setRejectingId(order.id)}>❌ Отклонить</button>
-                      </>
-                    )}
-                    {order.status === 'confirmed' && (
-                      <button style={styles.assignBtn}
-                        onClick={() => setAssigningId(order.id)}>🚴 Назначить курьера</button>
-                    )}
-                    {order.recipient_phone && (
-                      <a href={`tel:${order.recipient_phone}`} style={styles.callBtn}>📞 Позвонить</a>
-                    )}
                   </div>
+                  <div style={s.cardRight}>
+                    <div style={s.cardTotal}>{(order.total || 0).toLocaleString()} сум</div>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      style={{ transition: 'transform 0.2s', transform: isExp ? 'rotate(180deg)' : 'none', marginTop: 6 }}>
+                      <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
 
-                  {/* Reject modal */}
-                  {rejectingId === order.id && (
-                    <div style={styles.inlineModal}>
-                      <b style={{ fontSize: 14 }}>Причина отказа:</b>
-                      <input style={styles.input} value={rejectReason}
-                        onChange={e => setRejectReason(e.target.value)}
-                        placeholder="Нет в наличии, неверный адрес..." />
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => setRejectingId(null)}>Отмена</button>
-                        <button style={styles.rejectBtn} onClick={() => doReject(order.id)} disabled={actionLoading}>
-                          Отклонить
-                        </button>
+                {isExp && (
+                  <div style={s.details}>
+                    <div style={s.infoBlock}>
+                      {order.recipient_phone && (
+                        <div style={s.infoRow}><span style={s.infoKey}>Телефон</span><span style={s.infoVal}>{order.recipient_phone}</span></div>
+                      )}
+                      <div style={s.infoRow}><span style={s.infoKey}>Адрес</span><span style={s.infoVal}>{order.address}</span></div>
+                      {order.extra_info && (
+                        <div style={s.infoRow}><span style={s.infoKey}>Доп. инфо</span><span style={s.infoVal}>{order.extra_info}</span></div>
+                      )}
+                      {order.return_bottles_count > 0 && (
+                        <div style={s.infoRow}><span style={s.infoKey}>Возврат</span><span style={s.infoVal}>{order.return_bottles_count} бут.</span></div>
+                      )}
+                      {order.rejection_reason && (
+                        <div style={s.infoRow}><span style={s.infoKey}>Отказ</span><span style={{ ...s.infoVal, color: '#E03131' }}>{order.rejection_reason}</span></div>
+                      )}
+                      <div style={{ ...s.infoRow, borderTop: `1px solid ${BORDER}`, marginTop: 4, paddingTop: 8 }}>
+                        <span style={{ ...s.infoKey, fontWeight: 700, color: TEXT }}>Итого</span>
+                        <span style={{ ...s.infoVal, fontWeight: 800, fontSize: 17 }}>{(order.total || 0).toLocaleString()} сум</span>
                       </div>
                     </div>
-                  )}
 
-                  {/* Assign courier modal */}
-                  {assigningId === order.id && (
-                    <div style={styles.inlineModal}>
-                      <b style={{ fontSize: 14 }}>Выберите курьера:</b>
-                      <select style={styles.select} value={selectedCourier}
-                        onChange={e => setSelectedCourier(e.target.value)}>
-                        <option value="">— Выберите —</option>
-                        {couriers.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.delivery_count} доставок)</option>
+                    {order.items?.length > 0 && (
+                      <div style={s.itemsBlock}>
+                        <div style={s.sectionLbl}>Состав</div>
+                        {order.items.map(i => (
+                          <div key={i.id} style={s.itemRow}>
+                            <div style={s.itemDot} />
+                            <span style={{ flex: 1, color: TEXT, fontSize: 14 }}>{i.product_name}</span>
+                            <span style={{ color: TEXT2, fontSize: 13 }}>× {i.quantity}</span>
+                            <span style={{ fontWeight: 700, color: TEXT, fontSize: 14, marginLeft: 8 }}>{((i.price || 0) * i.quantity).toLocaleString()}</span>
+                          </div>
                         ))}
-                      </select>
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => setAssigningId(null)}>Отмена</button>
-                        <button style={styles.assignBtn} onClick={() => doAssign(order.id)} disabled={actionLoading}>
-                          Назначить
-                        </button>
                       </div>
+                    )}
+
+                    <div style={s.actionsRow}>
+                      {order.status === 'awaiting_confirmation' && (
+                        <>
+                          <button style={s.btnGreen} disabled={actionLoading}
+                            onClick={() => act(() => confirmOrder(order.id))}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            Подтвердить
+                          </button>
+                          <button style={s.btnRed} disabled={actionLoading}
+                            onClick={() => { setRejectingId(order.id); setRejectReason('') }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></svg>
+                            Отклонить
+                          </button>
+                        </>
+                      )}
+                      {order.status === 'confirmed' && (
+                        <button style={s.btnPurple}
+                          onClick={() => { setAssigningId(order.id); setSelectedCourier('') }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                          Курьер
+                        </button>
+                      )}
+                      {order.recipient_phone && (
+                        <a href={`tel:${order.recipient_phone}`} style={s.btnOutline}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill={TEXT}/></svg>
+                          Позвонить
+                        </a>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+
+                    {rejectingId === order.id && (
+                      <div style={s.inlineForm}>
+                        <div style={s.formLabel}>Причина отказа</div>
+                        <input style={s.formInput} value={rejectReason}
+                          onChange={e => setRejectReason(e.target.value)}
+                          placeholder="Нет в наличии, неверный адрес..." autoFocus />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button style={s.btnGhost} onClick={() => setRejectingId(null)}>Отмена</button>
+                          <button style={s.btnRed} disabled={actionLoading || !rejectReason.trim()}
+                            onClick={() => act(() => rejectOrder(order.id, rejectReason).then(() => setRejectingId(null)))}>
+                            Отклонить
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {assigningId === order.id && (
+                      <div style={s.inlineForm}>
+                        <div style={s.formLabel}>Выберите курьера</div>
+                        <select style={s.formInput} value={selectedCourier}
+                          onChange={e => setSelectedCourier(e.target.value)}>
+                          <option value="">— Выберите —</option>
+                          {couriers.filter(c => c.is_active !== false).map(c => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.total_deliveries || 0} доставок)</option>
+                          ))}
+                        </select>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button style={s.btnGhost} onClick={() => setAssigningId(null)}>Отмена</button>
+                          <button style={s.btnPurple} disabled={actionLoading || !selectedCourier}
+                            onClick={() => act(() => assignCourier(order.id, selectedCourier).then(() => setAssigningId(null)))}>
+                            Назначить
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </AdminLayout>
   )
 }
 
-const styles = {
-  filters: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 },
-  filterBtn: {
-    padding: '6px 14px', borderRadius: 20, border: '1px solid #c5cae9',
-    background: '#fff', color: '#3949ab', fontSize: 13, cursor: 'pointer',
+const s = {
+  summary: { display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' },
+  sumCard: {
+    flex: 1, background: '#fff', borderRadius: 14, padding: '14px 10px',
+    textAlign: 'center', border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  filterActive: { background: '#1a237e', color: '#fff', border: '1px solid #1a237e' },
-  center: { textAlign: 'center', padding: 60, color: '#888', fontSize: 16 },
-  list: { display: 'flex', flexDirection: 'column', gap: 12 },
-  card: { background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-  cardTop: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '16px 20px', cursor: 'pointer',
+  sumVal: { fontSize: 26, fontWeight: 800, lineHeight: 1 },
+  sumLbl: { fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 },
+  refreshBtn: {
+    width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+    background: '#fff', border: `1px solid ${BORDER}`, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', color: TEXT2,
   },
-  orderId: { fontWeight: 700, fontSize: 16, color: '#1a237e' },
-  orderAddr: { fontSize: 13, color: '#555', marginTop: 3 },
-  orderTime: { fontSize: 12, color: '#888', marginTop: 2 },
-  orderTotal: { fontWeight: 800, fontSize: 18, color: '#1565c0' },
-  statusChip: { fontSize: 11, padding: '3px 10px', borderRadius: 10, fontWeight: 700, display: 'inline-block', marginTop: 4 },
-  chevron: { color: '#888', fontSize: 12, marginTop: 4 },
+
+  searchWrap: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14,
+    padding: '11px 14px', marginBottom: 14,
+  },
+  searchInput: { border: 'none', outline: 'none', flex: 1, fontSize: 15, background: 'transparent', color: TEXT },
+  clearBtn: { border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2 },
+
+  filterScroll: {
+    display: 'flex', gap: 8, overflowX: 'auto',
+    scrollbarWidth: 'none', paddingBottom: 2, marginBottom: 16,
+  },
+  pill: {
+    padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${BORDER}`,
+    background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    whiteSpace: 'nowrap', flexShrink: 0, color: TEXT2,
+    display: 'flex', alignItems: 'center', gap: 5, transition: 'all 0.15s',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  pillActive: { background: C, borderColor: C, color: '#fff' },
+  pillBadge: {
+    background: '#FF3B30', color: '#fff', borderRadius: 999,
+    fontSize: 10, fontWeight: 800, minWidth: 16, height: 16,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+  },
+
+  center: { display: 'flex', justifyContent: 'center', padding: 60 },
+  spinner: {
+    width: 32, height: 32, borderRadius: '50%',
+    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
+    animation: 'spin 0.8s linear infinite',
+  },
+  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 20px' },
+  emptyText: { fontSize: 16, fontWeight: 700, color: TEXT2 },
+
+  list: { display: 'flex', flexDirection: 'column', gap: 10 },
+  card: {
+    background: '#fff', borderRadius: 16, overflow: 'hidden',
+    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  },
+  cardUrgent: { border: '1.5px solid rgba(230,119,0,0.3)', boxShadow: '0 2px 12px rgba(230,119,0,0.08)' },
+  cardHead: {
+    display: 'flex', justifyContent: 'space-between', gap: 12,
+    padding: '14px 16px', cursor: 'pointer', alignItems: 'flex-start',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  cardLeft: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 },
+  cardRight: { textAlign: 'right', flexShrink: 0 },
+  cardTopRow: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  orderId: { fontWeight: 800, fontSize: 16, color: TEXT },
+  badge: { fontSize: 11, padding: '3px 9px', borderRadius: 999, fontWeight: 700 },
+  cardAddr: { fontSize: 13, color: TEXT2, marginTop: 4, lineHeight: 1.3 },
+  cardTime: { fontSize: 12, color: TEXT2, marginTop: 2 },
+  cardTotal: { fontWeight: 800, fontSize: 17, color: TEXT },
+  urgentDot: {
+    width: 8, height: 8, borderRadius: '50%', background: '#E67700',
+    flexShrink: 0, marginTop: 6, boxShadow: '0 0 0 2px rgba(230,119,0,0.25)',
+  },
+
   details: {
-    borderTop: '1px solid #f0f0f0', padding: '14px 20px',
-    display: 'flex', flexDirection: 'column', gap: 12,
+    borderTop: `1px solid ${BORDER}`, padding: '14px 16px',
+    display: 'flex', flexDirection: 'column', gap: 14,
   },
-  infoGrid: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, color: '#333' },
-  itemsBlock: { fontSize: 14, display: 'flex', flexDirection: 'column', gap: 4 },
-  itemRow: { paddingLeft: 12, color: '#555' },
-  actions: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  confirmBtn: {
-    padding: '9px 18px', borderRadius: 8, border: 'none',
-    background: '#2e7d32', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  infoBlock: { background: '#F8F9FA', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 },
+  infoRow: { display: 'flex', gap: 10, alignItems: 'flex-start' },
+  infoKey: { fontSize: 13, color: TEXT2, minWidth: 80, flexShrink: 0, paddingTop: 1 },
+  infoVal: { fontSize: 14, color: TEXT, flex: 1, lineHeight: 1.4 },
+
+  itemsBlock: { display: 'flex', flexDirection: 'column', gap: 6 },
+  sectionLbl: { fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  itemRow: { display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6, borderBottom: `1px solid ${BORDER}` },
+  itemDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
+
+  actionsRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  btnGreen: {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+    borderRadius: 12, border: 'none', background: C, color: '#fff',
+    fontSize: 14, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  rejectBtn: {
-    padding: '9px 18px', borderRadius: 8, border: 'none',
-    background: '#c62828', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  btnRed: {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+    borderRadius: 12, border: 'none', background: '#E03131', color: '#fff',
+    fontSize: 14, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  assignBtn: {
-    padding: '9px 18px', borderRadius: 8, border: 'none',
-    background: '#4527a0', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  btnPurple: {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+    borderRadius: 12, border: 'none', background: '#6741D9', color: '#fff',
+    fontSize: 14, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  callBtn: {
-    padding: '9px 18px', borderRadius: 8, border: '1px solid #1565c0',
-    background: '#fff', color: '#1565c0', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-    textDecoration: 'none', display: 'inline-block',
+  btnOutline: {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px',
+    borderRadius: 12, border: `1.5px solid ${BORDER}`,
+    background: '#fff', color: TEXT, fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent',
   },
-  inlineModal: {
-    background: '#f5f5f5', borderRadius: 10, padding: 14,
-    display: 'flex', flexDirection: 'column', gap: 10,
+  btnGhost: {
+    padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`,
+    background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer',
   },
-  input: {
-    border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px',
-    fontSize: 14, outline: 'none', background: '#fff',
+
+  inlineForm: {
+    background: '#F8F9FA', borderRadius: 12, padding: 14,
+    display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}`,
   },
-  select: {
-    border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px',
-    fontSize: 14, outline: 'none', background: '#fff',
-  },
-  modalActions: { display: 'flex', gap: 8 },
-  cancelBtn: {
-    padding: '8px 16px', borderRadius: 8, border: '1px solid #ddd',
-    background: '#fff', color: '#333', fontSize: 14, cursor: 'pointer',
+  formLabel: { fontSize: 13, fontWeight: 700, color: TEXT },
+  formInput: {
+    border: `1.5px solid ${BORDER}`, borderRadius: 10,
+    padding: '11px 13px', fontSize: 15, outline: 'none',
+    background: '#fff', color: TEXT,
   },
 }
