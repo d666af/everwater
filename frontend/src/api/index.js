@@ -353,9 +353,3 @@ export const confirmTopup = (userId, amount) =>
     () => http.post(`/admin/users/${userId}/topup`, { amount }).then(r => r.data),
     () => ({ ok: true, new_balance: 100000 })
   )
-
-export const getUserOrders = (userId) =>
-  safeCall(
-    () => http.get(`/orders/user/${userId}`).then(r => r.data),
-    () => MOCK_ORDERS.filter((_, i) => i < 3)
-  )
