@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -121,11 +122,15 @@ async def confirm_order(order_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "status": order.status}
 
 
+class RejectBody(BaseModel):
+    reason: str = ""
+
+
 @router.patch("/{order_id}/reject")
-async def reject_order(order_id: int, reason: str = "", db: AsyncSession = Depends(get_db)):
+async def reject_order(order_id: int, body: RejectBody = RejectBody(), db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.REJECTED
-    order.rejection_reason = reason
+    order.rejection_reason = body.reason
     await db.commit()
     return {"ok": True}
 
@@ -139,8 +144,13 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+class AssignBody(BaseModel):
+    courier_id: int
+
+
 @router.patch("/{order_id}/assign_courier")
-async def assign_courier(order_id: int, courier_id: int, db: AsyncSession = Depends(get_db)):
+async def assign_courier(order_id: int, body: AssignBody, db: AsyncSession = Depends(get_db)):
+    courier_id = body.courier_id
     order = await _get_order(order_id, db)
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
     courier = result.scalar_one_or_none()
