@@ -74,6 +74,43 @@ export const MOCK_SETTINGS = {
   cashback_percent: 5,
 }
 
+export const MOCK_NOTIFICATIONS = [
+  { id: 1, type: 'payment', title: 'Оплата заказа #1003', body: 'Клиент Алишер подтвердил оплату заказа на 75 000 сум', time: new Date(Date.now() - 3 * 60000), read: false, order_id: 1003, user_name: 'Алишер Каримов' },
+  { id: 2, type: 'topup', title: 'Запрос пополнения баланса', body: 'Мария Петрова запросила пополнение на 50 000 сум', time: new Date(Date.now() - 12 * 60000), read: false, amount: 50000, user_name: 'Мария Петрова', user_id: 2 },
+  { id: 3, type: 'payment', title: 'Оплата заказа #1005', body: 'Клиент Бобур подтвердил оплату заказа на 39 000 сум', time: new Date(Date.now() - 25 * 60000), read: false, order_id: 1005, user_name: 'Бобур Рашидов' },
+  { id: 4, type: 'courier', title: 'Заказ #1002 доставлен', body: 'Курьер Жавлон завершил доставку заказа #1002', time: new Date(Date.now() - 40 * 60000), read: true, order_id: 1002 },
+  { id: 5, type: 'new_order', title: 'Новый заказ #1006', body: 'Поступил новый заказ на 25 000 сум', time: new Date(Date.now() - 65 * 60000), read: true, order_id: 1006, user_name: 'Санжар Тоиров' },
+  { id: 6, type: 'topup', title: 'Запрос пополнения баланса', body: 'Алишер Каримов запросил пополнение на 100 000 сум', time: new Date(Date.now() - 2 * 3600000), read: true, amount: 100000, user_name: 'Алишер Каримов', user_id: 1 },
+]
+
+export const MOCK_SUPPORT_CHATS = [
+  {
+    id: 1, user_id: 1, user_name: 'Алишер Каримов', user_phone: '+998 90 000-00-01',
+    last_message: 'Где мой заказ #1003?', last_time: new Date(Date.now() - 5 * 60000), unread: 2,
+    messages: [
+      { id: 1, from: 'user', text: 'Привет! Где мой заказ #1003?', time: new Date(Date.now() - 8 * 60000) },
+      { id: 2, from: 'user', text: 'Уже прошло 2 часа', time: new Date(Date.now() - 5 * 60000) },
+    ],
+  },
+  {
+    id: 2, user_id: 2, user_name: 'Мария Петрова', user_phone: '+998 90 000-00-05',
+    last_message: 'Хочу отменить заказ', last_time: new Date(Date.now() - 18 * 60000), unread: 1,
+    messages: [
+      { id: 1, from: 'user', text: 'Добрый день! Хочу отменить заказ #1005', time: new Date(Date.now() - 20 * 60000) },
+      { id: 2, from: 'support', text: 'Добрый день, Мария! Уточните пожалуйста причину отмены?', time: new Date(Date.now() - 18 * 60000) },
+    ],
+  },
+  {
+    id: 3, user_id: 3, user_name: 'Бобур Рашидов', user_phone: '+998 90 000-00-06',
+    last_message: 'Спасибо, всё отлично!', last_time: new Date(Date.now() - 2 * 3600000), unread: 0,
+    messages: [
+      { id: 1, from: 'user', text: 'Курьер привёз не ту воду', time: new Date(Date.now() - 3 * 3600000) },
+      { id: 2, from: 'support', text: 'Приносим извинения! Мы направим курьера с заменой в течение часа', time: new Date(Date.now() - 2.5 * 3600000) },
+      { id: 3, from: 'user', text: 'Спасибо, всё отлично!', time: new Date(Date.now() - 2 * 3600000) },
+    ],
+  },
+]
+
 // Demo users for login (phone → role)
 export const DEMO_USERS = {
   '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 50000, order_count: 7 },

@@ -1,170 +1,316 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { EverLogoMark } from '../EverLogo'
+import { useState, useEffect } from 'react'
+import { getNotifications } from '../../api'
 
 const NAV = [
-  { path: '/manager', label: 'Заказы', exactMatch: true,
-    Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.5"/><path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-  { path: '/manager/clients', label: 'Клиенты',
-    Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M3 19C3 16.8 5.7 15 9 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="16" cy="11" r="3" fill="currentColor" opacity="0.3" stroke="currentColor" strokeWidth="1.5"/><path d="M13 21C13 18.8 14.3 17 16 17C17.7 17 19 18.8 19 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-  { path: '/manager/couriers', label: 'Курьеры',
-    Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.3" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20C4 17 7.6 15 12 15C16.4 15 20 17 20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-  { path: '/manager/stats', label: 'Статистика',
-    Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.8"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.3"/></svg> },
+  {
+    path: '/manager', label: 'Заказы', exactMatch: true,
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" opacity="0.15" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/manager/notifications', label: 'Уведомления',
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/manager/support', label: 'Поддержка',
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+          fill="currentColor" opacity="0.15" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+        <path d="M8 10h8M8 14h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/manager/clients', label: 'Клиенты',
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="M3 19C3 16.8 5.7 15 9 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+        <circle cx="16" cy="11" r="3" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="M13 21C13 18.8 14.3 17 16 17C17.7 17 19 18.8 19 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/manager/couriers', label: 'Курьеры',
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="M4 20C4 17 7.6 15 12 15C16.4 15 20 17 20 20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/manager/stats', label: 'Статистика',
+    Icon: ({ size = 20 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
 ]
 
 export default function ManagerLayout({ children, title }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const fetchUnread = () => {
+      getNotifications()
+        .then(ns => setUnreadCount(ns.filter(n => !n.read).length))
+        .catch(() => {})
+    }
+    fetchUnread()
+    const iv = setInterval(fetchUnread, 30000)
+    return () => clearInterval(iv)
+  }, [])
 
   const doLogout = () => { logout(); navigate('/login') }
 
-  return (
-    <div style={s.layout}>
-      <aside style={s.sidebar}>
-        <div style={s.sidebarTop}>
-          <div style={s.logo} onClick={() => navigate('/manager')}>
-            <EverLogoMark width={38} />
-            <div>
-              <div style={s.logoName}>ever</div>
-              <div style={s.logoBadge}>Менеджер</div>
-            </div>
-          </div>
+  const isActive = (nav) =>
+    nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
 
-          {user && (
-            <div style={s.userCard}>
-              <div style={s.userAvatar}>{(user.name || 'M')[0].toUpperCase()}</div>
-              <div style={s.userInfo}>
-                <div style={s.userName}>{user.name}</div>
-                <div style={s.userRole}>Менеджер</div>
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F5F5' }}>
+
+      {/* ── Desktop sidebar (hidden on mobile) ── */}
+      {!isMobile && (
+        <aside style={s.sidebar}>
+          <div style={s.sidebarTop}>
+            <div style={s.logo} onClick={() => navigate('/manager')}>
+              <EverLogoMark width={34} />
+              <div>
+                <div style={s.logoName}>ever</div>
+                <div style={s.logoBadge}>Менеджер</div>
               </div>
             </div>
-          )}
 
-          <nav style={s.nav}>
-            {NAV.map(({ path, label, exactMatch, Icon }) => {
-              const active = exactMatch
-                ? location.pathname === path
-                : location.pathname.startsWith(path)
-              return (
-                <button key={path}
-                  style={{ ...s.navItem, ...(active ? s.navItemActive : {}) }}
-                  onClick={() => navigate(path)}>
-                  <span style={{ color: active ? '#8DC63F' : 'rgba(255,255,255,0.5)' }}>
-                    <Icon />
-                  </span>
-                  <span>{label}</span>
-                  {active && <span style={s.navDot} />}
+            {user && (
+              <div style={s.userCard}>
+                <div style={s.userAvatar}>{(user.name || 'M')[0].toUpperCase()}</div>
+                <div>
+                  <div style={s.userName}>{user.name}</div>
+                  <div style={s.userRole}>Менеджер</div>
+                </div>
+              </div>
+            )}
+
+            <nav style={s.nav}>
+              {NAV.map((nav) => {
+                const active = isActive(nav)
+                return (
+                  <button key={nav.path}
+                    style={{ ...s.navItem, ...(active ? s.navItemActive : {}) }}
+                    onClick={() => navigate(nav.path)}>
+                    <span style={{ color: active ? '#8DC63F' : 'rgba(255,255,255,0.5)', position: 'relative', flexShrink: 0 }}>
+                      <nav.Icon size={18} />
+                      {nav.path === '/manager/notifications' && unreadCount > 0 && (
+                        <span style={s.navBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                      )}
+                    </span>
+                    <span style={{ flex: 1 }}>{nav.label}</span>
+                    {active && <span style={s.navActiveDot} />}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+
+          <button style={s.logoutBtn} onClick={doLogout}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Выйти
+          </button>
+        </aside>
+      )}
+
+      {/* ── Main content ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+        {/* Header */}
+        <header style={isMobile ? s.mobileHeader : s.desktopHeader}>
+          {isMobile ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <EverLogoMark width={28} />
+                <span style={s.mobileTitle}>{title}</span>
+              </div>
+              {unreadCount > 0 && (
+                <button style={s.bellBtn} onClick={() => navigate('/manager/notifications')}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
+                  </svg>
+                  <span style={s.bellBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
                 </button>
-              )
-            })}
-          </nav>
-        </div>
-
-        <button style={s.logoutBtn} onClick={doLogout}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Выйти
-        </button>
-      </aside>
-
-      <div style={s.main}>
-        <header style={s.header}>
-          <h1 style={s.title}>{title}</h1>
-          <div style={s.headerBadge}>Панель менеджера</div>
+              )}
+            </>
+          ) : (
+            <>
+              <h1 style={s.desktopTitle}>{title}</h1>
+              <div style={s.headerBadge}>Панель менеджера</div>
+            </>
+          )}
         </header>
-        <div style={s.content}>{children}</div>
+
+        {/* Page content */}
+        <div style={{ ...s.content, paddingBottom: isMobile ? 80 : 24 }}>
+          {children}
+        </div>
       </div>
 
-      <nav style={s.mobileNav}>
-        {NAV.map(({ path, label, exactMatch, Icon }) => {
-          const active = exactMatch
-            ? location.pathname === path
-            : location.pathname.startsWith(path)
-          return (
-            <button key={path}
-              style={{ ...s.mobileItem, color: active ? '#8DC63F' : 'rgba(255,255,255,0.5)' }}
-              onClick={() => navigate(path)}>
-              <Icon />
-              <span style={{ fontSize: 9 }}>{label}</span>
-            </button>
-          )
-        })}
-        <button style={{ ...s.mobileItem, color: 'rgba(255,255,255,0.4)' }} onClick={doLogout}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize: 9 }}>Выйти</span>
-        </button>
-      </nav>
+      {/* ── Mobile bottom navigation ── */}
+      {isMobile && (
+        <nav style={s.mobileNav}>
+          {NAV.map((nav) => {
+            const active = isActive(nav)
+            return (
+              <button key={nav.path}
+                style={{ ...s.mobileItem, color: active ? '#8DC63F' : 'rgba(255,255,255,0.45)' }}
+                onClick={() => navigate(nav.path)}>
+                <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <nav.Icon size={20} />
+                  {nav.path === '/manager/notifications' && unreadCount > 0 && (
+                    <span style={s.mobileNavBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                  )}
+                </span>
+                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1, whiteSpace: 'nowrap' }}>
+                  {nav.label}
+                </span>
+              </button>
+            )
+          })}
+          <button style={{ ...s.mobileItem, color: 'rgba(255,255,255,0.3)' }} onClick={doLogout}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+            <span style={{ fontSize: 9, fontWeight: 500 }}>Выйти</span>
+          </button>
+        </nav>
+      )}
     </div>
   )
 }
 
+const G = '#8DC63F'
 const s = {
-  layout: { display: 'flex', minHeight: '100vh', background: '#F5F5F5' },
   sidebar: {
-    width: 240, background: '#111827', flexShrink: 0,
+    width: 220, background: '#111827', flexShrink: 0,
     display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-    position: 'sticky', top: 0, height: '100vh',
+    position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
   },
   sidebarTop: { display: 'flex', flexDirection: 'column' },
   logo: {
-    padding: '20px 18px', display: 'flex', alignItems: 'center', gap: 10,
+    padding: '16px 14px', display: 'flex', alignItems: 'center', gap: 10,
     borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer',
   },
-  logoName: { color: '#fff', fontWeight: 900, fontSize: 20, letterSpacing: -0.5 },
-  logoBadge: { fontSize: 10, color: '#8DC63F', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 },
+  logoName: { color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: -0.5 },
+  logoBadge: { fontSize: 9, color: G, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 },
   userCard: {
-    margin: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: 12,
-    padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-    border: '1px solid rgba(255,255,255,0.08)',
+    margin: '10px 10px 0',
+    background: 'rgba(255,255,255,0.05)', borderRadius: 10,
+    padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
+    border: '1px solid rgba(255,255,255,0.07)',
   },
   userAvatar: {
-    width: 36, height: 36, borderRadius: '50%',
-    background: 'linear-gradient(135deg, #8DC63F, #6CA32F)',
+    width: 30, height: 30, borderRadius: '50%',
+    background: `linear-gradient(135deg, ${G}, #6CA32F)`,
     color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontWeight: 800, fontSize: 15, flexShrink: 0,
+    fontWeight: 800, fontSize: 12, flexShrink: 0,
   },
-  userInfo: {},
-  userName: { color: '#fff', fontWeight: 600, fontSize: 13 },
-  userRole: { color: '#8DC63F', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 },
-  nav: { padding: '8px 0', display: 'flex', flexDirection: 'column' },
+  userName: { color: '#fff', fontWeight: 600, fontSize: 12, lineHeight: 1.2 },
+  userRole: { color: G, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
+  nav: { padding: '6px 0', display: 'flex', flexDirection: 'column' },
   navItem: {
     display: 'flex', alignItems: 'center', gap: 10,
-    padding: '11px 18px', background: 'none', border: 'none',
-    color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: 500,
+    padding: '10px 14px', background: 'none', border: 'none',
+    color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: 500,
     cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
     position: 'relative',
   },
-  navItemActive: { background: 'rgba(141,198,63,0.12)', color: '#fff', borderLeft: '3px solid #8DC63F' },
-  navDot: {
-    position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
-    width: 6, height: 6, borderRadius: '50%', background: '#8DC63F',
+  navItemActive: { background: 'rgba(141,198,63,0.1)', color: '#fff', borderLeft: `3px solid ${G}` },
+  navActiveDot: { width: 6, height: 6, borderRadius: '50%', background: G, flexShrink: 0 },
+  navBadge: {
+    position: 'absolute', top: -5, right: -8,
+    background: '#FF3B30', color: '#fff',
+    borderRadius: 999, fontSize: 9, fontWeight: 800,
+    minWidth: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 2px', border: '1.5px solid #111827',
   },
   logoutBtn: {
     display: 'flex', alignItems: 'center', gap: 8,
     background: 'none', border: 'none',
-    color: 'rgba(255,255,255,0.3)', padding: '16px 18px',
-    cursor: 'pointer', fontSize: 13, fontWeight: 500,
+    color: 'rgba(255,255,255,0.3)', padding: '14px 16px',
+    cursor: 'pointer', fontSize: 12, fontWeight: 500,
     borderTop: '1px solid rgba(255,255,255,0.06)',
   },
-  main: { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 },
-  header: {
-    background: '#fff', padding: '16px 24px',
+
+  // Mobile header
+  mobileHeader: {
+    background: '#fff', padding: '10px 16px',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    borderBottom: '1px solid rgba(60,60,67,0.1)',
+    position: 'sticky', top: 0, zIndex: 10,
+    boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
+    minHeight: 54,
+  },
+  mobileTitle: { fontWeight: 700, fontSize: 15, color: '#1C1C1E', letterSpacing: -0.2 },
+  bellBtn: {
+    position: 'relative', background: 'rgba(118,118,128,0.1)',
+    border: 'none', borderRadius: 10, width: 36, height: 36,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  },
+  bellBadge: {
+    position: 'absolute', top: 5, right: 5,
+    background: '#FF3B30', color: '#fff',
+    borderRadius: 999, fontSize: 8, fontWeight: 800,
+    minWidth: 14, height: 14,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 2px', border: '1.5px solid #fff',
+  },
+
+  // Desktop header
+  desktopHeader: {
+    background: '#fff', padding: '14px 22px',
     borderBottom: '1px solid #EBEBEB',
     position: 'sticky', top: 0, zIndex: 10,
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   },
-  title: { margin: 0, fontSize: 22, fontWeight: 800, color: '#1A1A1A' },
+  desktopTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: '#1A1A1A' },
   headerBadge: {
     background: '#8DC63F20', color: '#6CA32F',
     border: '1px solid #8DC63F40', borderRadius: 8,
-    padding: '4px 10px', fontSize: 12, fontWeight: 700,
+    padding: '4px 10px', fontSize: 11, fontWeight: 700,
   },
-  content: { padding: 24, flex: 1, paddingBottom: 80 },
+
+  content: { padding: 16, flex: 1, overflowY: 'auto' },
+
+  // Mobile bottom nav
   mobileNav: {
     display: 'flex',
     position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -175,7 +321,16 @@ const s = {
   mobileItem: {
     flex: 1, background: 'none', border: 'none',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    padding: '10px 4px 6px', gap: 3, cursor: 'pointer',
-    fontSize: 10, fontWeight: 500, transition: 'color 0.15s',
+    padding: '9px 2px 5px', gap: 3, cursor: 'pointer',
+    transition: 'color 0.15s', minWidth: 0,
+    WebkitTapHighlightColor: 'transparent',
+  },
+  mobileNavBadge: {
+    position: 'absolute', top: -4, right: -5,
+    background: '#FF3B30', color: '#fff',
+    borderRadius: 999, fontSize: 8, fontWeight: 800,
+    minWidth: 13, height: 13,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 2px', border: '1.5px solid #111827',
   },
 }
