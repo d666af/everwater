@@ -1,7 +1,7 @@
 import axios from 'axios'
 import {
   MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
-  MOCK_SETTINGS, DEMO_USERS,
+  MOCK_SETTINGS, DEMO_USERS, MOCK_NOTIFICATIONS, MOCK_SUPPORT_CHATS,
 } from './mock'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
@@ -277,4 +277,85 @@ export const getCourierStats = (telegramId) =>
   safeCall(
     () => http.get(`/couriers/${telegramId}/stats`).then(r => r.data),
     () => ({ delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, recent: MOCK_ORDERS.slice(0, 3) })
+  )
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+let mockNotifications = [...MOCK_NOTIFICATIONS]
+
+export const getNotifications = () =>
+  safeCall(
+    () => http.get('/admin/notifications').then(r => r.data),
+    () => [...mockNotifications]
+  )
+
+export const markNotificationRead = (id) =>
+  safeCall(
+    () => http.patch(`/admin/notifications/${id}/read`).then(r => r.data),
+    () => {
+      mockNotifications = mockNotifications.map(n => n.id === id ? { ...n, read: true } : n)
+      return { ok: true }
+    }
+  )
+
+export const markAllNotificationsRead = () =>
+  safeCall(
+    () => http.patch('/admin/notifications/read_all').then(r => r.data),
+    () => {
+      mockNotifications = mockNotifications.map(n => ({ ...n, read: true }))
+      return { ok: true }
+    }
+  )
+
+// ─── Support / Chat ───────────────────────────────────────────────────────────
+let mockChats = MOCK_SUPPORT_CHATS.map(c => ({ ...c, messages: [...c.messages] }))
+
+export const getSupportChats = () =>
+  safeCall(
+    () => http.get('/admin/support/chats').then(r => r.data),
+    () => mockChats.map(c => ({ ...c, messages: [...c.messages] }))
+  )
+
+export const getSupportMessages = (chatId) =>
+  safeCall(
+    () => http.get(`/admin/support/chats/${chatId}/messages`).then(r => r.data),
+    () => {
+      const chat = mockChats.find(c => c.id === chatId)
+      return chat ? [...chat.messages] : []
+    }
+  )
+
+export const sendSupportMessage = (chatId, text) =>
+  safeCall(
+    () => http.post(`/admin/support/chats/${chatId}/messages`, { text }).then(r => r.data),
+    () => {
+      const msg = { id: Date.now(), from: 'support', text, time: new Date() }
+      mockChats = mockChats.map(c =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, msg], last_message: text, last_time: new Date(), unread: 0 }
+          : c
+      )
+      return msg
+    }
+  )
+
+export const markChatRead = (chatId) =>
+  safeCall(
+    () => http.patch(`/admin/support/chats/${chatId}/read`).then(r => r.data),
+    () => {
+      mockChats = mockChats.map(c => c.id === chatId ? { ...c, unread: 0 } : c)
+      return { ok: true }
+    }
+  )
+
+// ─── Balance top-up confirmation ──────────────────────────────────────────────
+export const confirmTopup = (userId, amount) =>
+  safeCall(
+    () => http.post(`/admin/users/${userId}/topup`, { amount }).then(r => r.data),
+    () => ({ ok: true, new_balance: 100000 })
+  )
+
+export const getUserOrders = (userId) =>
+  safeCall(
+    () => http.get(`/orders/user/${userId}`).then(r => r.data),
+    () => MOCK_ORDERS.filter((_, i) => i < 3)
   )
