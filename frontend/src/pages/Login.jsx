@@ -167,7 +167,7 @@ export default function Login() {
         </div>
 
         {/* Dev demo codes */}
-        {import.meta.env.DEV && (
+        {(import.meta.env.DEV || import.meta.env.VITE_MOCK === 'true') && (
           <div style={s.demoBlock}>
             <div style={s.demoHeader}>
               <span style={s.devBadge}>DEV</span>
