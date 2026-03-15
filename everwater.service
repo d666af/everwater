@@ -1,0 +1,25 @@
+[Unit]
+Description=Everwater — Water Delivery Telegram Bot
+Documentation=https://github.com/d666af/everwater
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/root/everwater
+
+# Start: build images и запустить все контейнеры
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up -d --build
+
+# Stop: остановить и удалить контейнеры (данные БД сохраняются в volume)
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml down
+
+# Reload: пересобрать и перезапустить без даунтайма БД
+ExecReload=/usr/bin/docker compose -f docker-compose.prod.yml up -d --build --no-deps bot backend frontend
+
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
