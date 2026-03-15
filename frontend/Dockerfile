@@ -1,15 +1,14 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Build args (baked into Vite bundle at build time)
 ARG VITE_API_URL=/api
+ARG VITE_MOCK=false
 ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_MOCK=false
+ENV VITE_MOCK=$VITE_MOCK
 
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
-# Remove local dev overrides so they don't bleed into production build
 RUN rm -f .env.local
 RUN npm run build
 
