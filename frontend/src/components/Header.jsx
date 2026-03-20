@@ -31,12 +31,12 @@ export default function Header() {
       {!isRoot ? (
         <button style={st.backBtn} onClick={() => navigate(-1)} aria-label="Назад">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="#212121" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15 18l-6-6 6-6" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       ) : (
         <div style={st.logoWrap} onClick={() => navigate('/')}>
-          <EverLogoMark width={36} style={{ borderRadius: 10 }} />
+          <EverLogoMark width={34} style={{ borderRadius: 10 }} />
         </div>
       )}
 
@@ -46,8 +46,8 @@ export default function Header() {
       {!isCart && (
         <button style={st.cartBtn} onClick={() => navigate('/cart')} aria-label="Корзина">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M9 22a1 1 0 100-2 1 1 0 000 2zM20 22a1 1 0 100-2 1 1 0 000 2z" fill="#212121"/>
-            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="#212121" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M9 22a1 1 0 100-2 1 1 0 000 2zM20 22a1 1 0 100-2 1 1 0 000 2z" fill="#111"/>
+            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           {totalQty > 0 && <span style={st.badge}>{totalQty > 9 ? '9+' : totalQty}</span>}
         </button>
@@ -61,27 +61,27 @@ const st = {
     position: 'sticky',
     top: 0,
     zIndex: 100,
-    background: 'rgba(250,250,250,0.85)',
+    background: 'rgba(250,250,250,0.88)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
     display: 'flex',
     alignItems: 'center',
-    padding: '8px 20px',
-    gap: 12,
-    minHeight: 56,
+    padding: '6px 16px',
+    gap: 10,
+    minHeight: 52,
+    borderBottom: '1px solid rgba(0,0,0,0.04)',
   },
   backBtn: {
     background: 'none',
     border: 'none',
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    borderRadius: 12,
-    transition: 'background 0.15s',
+    borderRadius: 10,
   },
   logoWrap: {
     display: 'flex',
@@ -92,9 +92,9 @@ const st = {
   title: {
     flex: 1,
     fontWeight: 700,
-    fontSize: 18,
-    color: '#212121',
-    letterSpacing: -0.5,
+    fontSize: 17,
+    color: '#111',
+    letterSpacing: -0.3,
     textAlign: 'center',
   },
   cartBtn: {
@@ -102,7 +102,7 @@ const st = {
     border: 'none',
     cursor: 'pointer',
     position: 'relative',
-    padding: 8,
+    padding: 6,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -110,15 +110,15 @@ const st = {
   },
   badge: {
     position: 'absolute',
-    top: 2,
-    right: 0,
-    background: '#7CB342',
+    top: 0,
+    right: -2,
+    background: '#4CAF50',
     color: '#fff',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    borderRadius: 8,
+    minWidth: 17,
+    height: 17,
     fontSize: 10,
-    fontWeight: 800,
+    fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

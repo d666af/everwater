@@ -1,38 +1,28 @@
 import { useState } from 'react'
 import { useCartStore } from '../store'
 
-const C = '#7CB342'
-
-const BG_COLORS = [
-  'linear-gradient(145deg, #E8F5E9 0%, #C8E6C9 100%)',
-  'linear-gradient(145deg, #F1F8E9 0%, #DCEDC8 100%)',
-  'linear-gradient(145deg, #E0F2F1 0%, #B2DFDB 100%)',
-  'linear-gradient(145deg, #F3E5F5 0%, #E1BEE7 100%)',
-]
-
 export default function ProductCard({ product }) {
   const { addToCart, items, updateQuantity } = useCartStore()
   const cartItem = items.find(i => i.product.id === product.id)
   const [imgError, setImgError] = useState(false)
 
-  const bg = BG_COLORS[product.id % BG_COLORS.length]
   const hasPhoto = product.photo_url && !imgError
 
   return (
     <div style={s.card}>
-      <div style={{ ...s.imgArea, background: hasPhoto ? '#F5F5F5' : bg }}>
+      <div style={s.imgArea}>
         {hasPhoto ? (
           <img src={product.photo_url} alt={product.name} style={s.img} onError={() => setImgError(true)} />
         ) : (
           <div style={s.placeholder}>
-            <svg width="40" height="48" viewBox="0 0 40 48" fill="none">
+            <svg width="32" height="38" viewBox="0 0 40 48" fill="none">
               <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-                fill="rgba(255,255,255,0.7)" />
+                fill="#e0e0e0" />
             </svg>
           </div>
         )}
-        <div style={s.volBadge}>{product.volume}л</div>
-        {cartItem && <div style={s.qtyBadge}>{cartItem.quantity}</div>}
+        <span style={s.volBadge}>{product.volume} л</span>
+        {cartItem && <span style={s.qtyBadge}>{cartItem.quantity}</span>}
       </div>
 
       <div style={s.body}>
@@ -40,7 +30,10 @@ export default function ProductCard({ product }) {
         {product.description && <div style={s.desc}>{product.description}</div>}
 
         <div style={s.footer}>
-          <div style={s.price}>{product.price.toLocaleString()} <span style={s.currency}>сум</span></div>
+          <div style={s.price}>
+            {product.price.toLocaleString()}
+            <span style={s.currency}> сум</span>
+          </div>
 
           {!cartItem ? (
             <button style={s.addBtn} onClick={() => addToCart(product)} aria-label="Добавить">
@@ -50,17 +43,9 @@ export default function ProductCard({ product }) {
             </button>
           ) : (
             <div style={s.counter}>
-              <button style={s.cBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-              </button>
+              <button style={s.cBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>−</button>
               <span style={s.qty}>{cartItem.quantity}</span>
-              <button style={s.cBtn} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-              </button>
+              <button style={s.cBtn} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>+</button>
             </div>
           )}
         </div>
@@ -71,22 +56,22 @@ export default function ProductCard({ product }) {
 
 const s = {
   card: {
-    background: '#FFFFFF',
-    borderRadius: 20,
+    background: '#fff',
+    borderRadius: 16,
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-    transition: 'transform 0.2s, box-shadow 0.2s',
+    border: '1px solid #f0f0f0',
   },
   imgArea: {
     position: 'relative',
     width: '100%',
-    aspectRatio: '1/0.85',
+    aspectRatio: '1 / 0.8',
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    background: '#f7f7f8',
   },
   img: {
     width: '100%',
@@ -103,34 +88,33 @@ const s = {
   },
   volBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    background: 'rgba(255,255,255,0.9)',
+    top: 8,
+    left: 8,
+    background: 'rgba(0,0,0,0.55)',
     backdropFilter: 'blur(8px)',
     borderRadius: 8,
     padding: '3px 8px',
     fontSize: 11,
-    fontWeight: 700,
-    color: '#212121',
+    fontWeight: 600,
+    color: '#fff',
   },
   qtyBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    background: C,
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    background: '#4CAF50',
     color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 12,
-    fontWeight: 800,
-    boxShadow: '0 2px 8px rgba(124,179,66,0.4)',
+    fontWeight: 700,
   },
   body: {
-    padding: '12px 14px 14px',
+    padding: '10px 12px 12px',
     display: 'flex',
     flexDirection: 'column',
     gap: 4,
@@ -139,12 +123,12 @@ const s = {
   name: {
     fontWeight: 700,
     fontSize: 14,
-    color: '#212121',
+    color: '#111',
     lineHeight: 1.3,
   },
   desc: {
     fontSize: 12,
-    color: '#757575',
+    color: '#888',
     lineHeight: 1.4,
     display: '-webkit-box',
     WebkitLineClamp: 2,
@@ -160,54 +144,53 @@ const s = {
   },
   price: {
     fontWeight: 800,
-    fontSize: 16,
-    color: '#212121',
+    fontSize: 15,
+    color: '#111',
     letterSpacing: -0.3,
   },
   currency: {
-    fontWeight: 500,
+    fontWeight: 400,
     fontSize: 12,
-    color: '#757575',
+    color: '#888',
   },
   addBtn: {
-    background: C,
+    background: '#4CAF50',
     border: 'none',
-    borderRadius: 12,
-    width: 38,
-    height: 38,
+    borderRadius: 10,
+    width: 36,
+    height: 36,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 3px 12px rgba(124,179,66,0.35)',
     cursor: 'pointer',
-    transition: 'transform 0.15s',
     flexShrink: 0,
   },
   counter: {
     display: 'flex',
     alignItems: 'center',
-    gap: 2,
-    background: '#F5F5F5',
-    borderRadius: 12,
-    padding: 2,
+    gap: 0,
+    background: '#f2f2f3',
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   cBtn: {
-    background: C,
+    background: '#4CAF50',
     border: 'none',
-    borderRadius: 10,
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    flexShrink: 0,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 700,
   },
   qty: {
-    fontWeight: 800,
-    fontSize: 15,
-    minWidth: 24,
+    fontWeight: 700,
+    fontSize: 14,
+    minWidth: 26,
     textAlign: 'center',
-    color: '#212121',
+    color: '#111',
   },
 }

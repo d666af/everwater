@@ -4,8 +4,6 @@ import { useCartStore } from '../store'
 import { useOrdersStore } from '../store/orders'
 import ReviewModal from '../components/ReviewModal'
 
-const C = '#7CB342'
-
 const STATUSES = [
   { key: 'new', label: 'Новый' },
   { key: 'awaiting_confirmation', label: 'Ожидает' },
@@ -16,17 +14,17 @@ const STATUSES = [
   { key: 'rejected', label: 'Отклонён' },
 ]
 
-const STATUS_STYLE = {
-  new: { bg: '#E3F2FD', color: '#1565C0' },
-  awaiting_confirmation: { bg: '#FFF8E1', color: '#F57F17' },
-  confirmed: { bg: '#E8F5E9', color: '#2E7D32' },
-  assigned_to_courier: { bg: '#F3E5F5', color: '#7B1FA2' },
-  in_delivery: { bg: '#E8EAF6', color: '#283593' },
-  delivered: { bg: '#E8F5E9', color: '#2E7D32' },
-  rejected: { bg: '#FFEBEE', color: '#C62828' },
+const STATUS_COLORS = {
+  new: { bg: '#e3f2fd', color: '#1565C0' },
+  awaiting_confirmation: { bg: '#fff8e1', color: '#f57f17' },
+  confirmed: { bg: '#e8f5e9', color: '#2e7d32' },
+  assigned_to_courier: { bg: '#f3e5f5', color: '#7b1fa2' },
+  in_delivery: { bg: '#e8eaf6', color: '#283593' },
+  delivered: { bg: '#e8f5e9', color: '#2e7d32' },
+  rejected: { bg: '#ffebee', color: '#c62828' },
 }
 
-const ACTIVE_STATUSES = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
+const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
 
 export default function OrderHistory() {
   const [expanded, setExpanded] = useState(null)
@@ -51,24 +49,24 @@ export default function OrderHistory() {
 
   if (!orders.length) return (
     <div style={s.empty}>
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="3" fill="#F5F5F5" stroke="#E0E0E0" strokeWidth="1.5"/>
-        <path d="M8 8h8M8 12h5M8 16h3" stroke="#E0E0E0" strokeWidth="1.5" strokeLinecap="round"/>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" fill="#f0f0f0" stroke="#ddd" strokeWidth="1.5"/>
+        <path d="M8 8h8M8 12h5M8 16h3" stroke="#ddd" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
-      <div style={{ fontSize: 18, fontWeight: 700, color: '#212121' }}>Нет заказов</div>
-      <div style={{ fontSize: 14, color: '#9E9E9E' }}>Ваши заказы появятся здесь</div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: '#111' }}>Нет заказов</div>
+      <div style={{ fontSize: 14, color: '#999' }}>Ваши заказы появятся здесь</div>
       <button style={s.primaryBtn} onClick={() => navigate('/')}>В каталог</button>
     </div>
   )
 
-  const active = orders.filter(o => ACTIVE_STATUSES.has(o.status))
-  const archived = orders.filter(o => !ACTIVE_STATUSES.has(o.status))
+  const active = orders.filter(o => ACTIVE.has(o.status))
+  const archived = orders.filter(o => !ACTIVE.has(o.status))
 
   return (
     <div style={s.page}>
       {active.length > 0 && (
         <>
-          <div style={s.sectionTitle}>Активные</div>
+          <div style={s.sectionLabel}>Активные</div>
           {active.map(order => (
             <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
               onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
@@ -77,7 +75,7 @@ export default function OrderHistory() {
       )}
       {archived.length > 0 && (
         <>
-          <div style={s.sectionTitle}>Завершённые</div>
+          <div style={s.sectionLabel}>Завершённые</div>
           {archived.map(order => (
             <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
               onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
@@ -98,23 +96,23 @@ export default function OrderHistory() {
 function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedIds }) {
   const isOpen = expanded === order.id
   const statusInfo = STATUSES.find(s => s.key === order.status) || { label: order.status }
-  const statusSt = STATUS_STYLE[order.status] || { bg: '#F5F5F5', color: '#757575' }
+  const colors = STATUS_COLORS[order.status] || { bg: '#f5f5f5', color: '#888' }
   const canReview = order.status === 'delivered' && !reviewedIds.has(order.id) && !order.review_id
 
   return (
     <div style={s.card}>
       <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={s.orderId}>#{order.id}</div>
-          <div style={{ ...s.statusPill, background: statusSt.bg, color: statusSt.color }}>
+          <span style={{ ...s.pill, background: colors.bg, color: colors.color }}>
             {statusInfo.label}
-          </div>
+          </span>
         </div>
         <div style={s.cardRight}>
           <div style={s.total}>{(order.total || 0).toLocaleString()} сум</div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-            <path d="M6 9l6 6 6-6" stroke="#BDBDBD" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M6 9l6 6 6-6" stroke="#bbb" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </div>
       </div>
@@ -123,17 +121,17 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
         <div style={s.details}>
           {order.address && (
             <div style={s.detailRow}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z" fill="#9E9E9E"/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z" fill="#999"/>
               </svg>
               <span style={s.detailText}>{order.address}</span>
             </div>
           )}
           {order.delivery_time && (
             <div style={s.detailRow}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="#9E9E9E" strokeWidth="1.8"/>
-                <path d="M12 7v5l3 3" stroke="#9E9E9E" strokeWidth="1.8" strokeLinecap="round"/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+                <circle cx="12" cy="12" r="9" stroke="#999" strokeWidth="1.8"/>
+                <path d="M12 7v5l3 3" stroke="#999" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
               <span style={s.detailText}>{order.delivery_time}</span>
             </div>
@@ -141,10 +139,10 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 
           {(order.status === 'assigned_to_courier' || order.status === 'in_delivery') && order.courier_name && (
             <div style={s.courierBox}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#1565C0' }}>Курьер</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#212121' }}>{order.courier_name}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#1565C0', textTransform: 'uppercase', letterSpacing: 0.5 }}>Курьер</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{order.courier_name}</div>
               {order.courier_phone && (
-                <a href={`tel:${order.courier_phone}`} style={s.callBtn}>Позвонить</a>
+                <a href={`tel:${order.courier_phone}`} style={s.callLink}>Позвонить</a>
               )}
             </div>
           )}
@@ -153,8 +151,8 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
             <div style={s.itemsList}>
               {order.items.map((i, idx) => (
                 <div key={idx} style={s.itemRow}>
-                  <span style={{ flex: 1, fontSize: 13, color: '#424242' }}>{i.product_name}</span>
-                  <span style={{ fontSize: 13, color: '#9E9E9E' }}>{i.quantity} x {i.price.toLocaleString()}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: '#444' }}>{i.product_name}</span>
+                  <span style={{ fontSize: 13, color: '#999' }}>{i.quantity} × {i.price.toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -170,7 +168,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               <button style={s.reviewBtn} onClick={() => onReview(order.id)}>Оценить</button>
             )}
             {reviewedIds.has(order.id) && (
-              <span style={{ fontSize: 13, color: C, fontWeight: 600 }}>Отзыв отправлен</span>
+              <span style={{ fontSize: 13, color: '#4CAF50', fontWeight: 600 }}>Отзыв отправлен</span>
             )}
           </div>
         </div>
@@ -181,119 +179,118 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 
 const s = {
   page: {
-    padding: '8px 0',
+    padding: '4px 0',
     display: 'flex',
     flexDirection: 'column',
-    background: '#FAFAFA',
-    minHeight: '100vh',
+    background: '#fafafa',
+    minHeight: '100dvh',
   },
   empty: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
     height: '65vh',
     padding: '0 24px',
   },
   primaryBtn: {
     marginTop: 8,
-    padding: '14px 32px',
-    background: C,
+    padding: '12px 28px',
+    background: '#4CAF50',
     color: '#fff',
     border: 'none',
-    borderRadius: 14,
+    borderRadius: 12,
     fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(124,179,66,0.3)',
   },
-  sectionTitle: {
-    padding: '16px 24px 8px',
-    fontSize: 13,
+  sectionLabel: {
+    padding: '14px 20px 6px',
+    fontSize: 12,
     fontWeight: 700,
-    color: '#9E9E9E',
+    color: '#aaa',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   card: {
-    background: '#FFFFFF',
-    margin: '0 20px 10px',
-    borderRadius: 18,
+    background: '#fff',
+    margin: '0 16px 8px',
+    borderRadius: 14,
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    border: '1px solid #f0f0f0',
   },
   cardHead: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 18px',
+    padding: '14px 16px',
     cursor: 'pointer',
     gap: 12,
   },
   orderId: {
-    fontWeight: 800,
-    fontSize: 16,
-    color: '#212121',
-    marginBottom: 6,
+    fontWeight: 700,
+    fontSize: 15,
+    color: '#111',
+    marginBottom: 5,
   },
-  statusPill: {
+  pill: {
     display: 'inline-flex',
-    padding: '4px 10px',
-    borderRadius: 8,
-    fontSize: 12,
+    padding: '3px 9px',
+    borderRadius: 6,
+    fontSize: 11,
     fontWeight: 700,
   },
   cardRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flexShrink: 0,
   },
   total: {
-    fontWeight: 800,
-    fontSize: 16,
-    color: '#212121',
+    fontWeight: 700,
+    fontSize: 15,
+    color: '#111',
   },
   details: {
-    borderTop: '1px solid #F5F5F5',
-    padding: '14px 18px',
+    borderTop: '1px solid #f0f0f0',
+    padding: '12px 16px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 10,
   },
   detailRow: {
     display: 'flex',
-    gap: 10,
+    gap: 8,
     alignItems: 'flex-start',
   },
   detailText: {
     fontSize: 13,
-    color: '#616161',
-    lineHeight: 1.5,
+    color: '#666',
+    lineHeight: 1.4,
   },
   courierBox: {
-    background: '#E3F2FD',
-    borderRadius: 14,
-    padding: '12px 14px',
+    background: '#f0f7ff',
+    borderRadius: 12,
+    padding: '10px 12px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
+    gap: 3,
   },
-  callBtn: {
+  callLink: {
     fontSize: 13,
     color: '#1565C0',
     fontWeight: 700,
     textDecoration: 'none',
-    marginTop: 4,
+    marginTop: 2,
   },
   itemsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
-    background: '#FAFAFA',
-    borderRadius: 12,
-    padding: '12px 14px',
+    gap: 4,
+    background: '#f7f7f8',
+    borderRadius: 10,
+    padding: '10px 12px',
   },
   itemRow: {
     display: 'flex',
@@ -301,38 +298,38 @@ const s = {
     gap: 8,
   },
   rejectBox: {
-    background: '#FFEBEE',
-    borderRadius: 12,
-    padding: '10px 14px',
+    background: '#fff5f5',
+    borderRadius: 10,
+    padding: '10px 12px',
     fontSize: 13,
-    color: '#C62828',
+    color: '#c62828',
   },
   actions: {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+    paddingTop: 2,
   },
   repeatBtn: {
     flex: 1,
-    padding: '12px 0',
-    borderRadius: 12,
-    border: 'none',
-    background: '#F5F5F5',
-    color: '#424242',
+    padding: '11px 0',
+    borderRadius: 10,
+    border: '1px solid #eee',
+    background: '#fff',
+    color: '#444',
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 600,
     cursor: 'pointer',
   },
   reviewBtn: {
     flex: 1,
-    padding: '12px 0',
-    borderRadius: 12,
+    padding: '11px 0',
+    borderRadius: 10,
     border: 'none',
-    background: C,
+    background: '#4CAF50',
     color: '#fff',
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 600,
     cursor: 'pointer',
-    boxShadow: '0 3px 12px rgba(124,179,66,0.3)',
   },
 }

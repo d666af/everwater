@@ -11,8 +11,6 @@ const ROLE_ROUTES = {
   courier: '/courier',
 }
 
-const C = '#7CB342'
-
 export default function Login() {
   const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
@@ -63,17 +61,19 @@ export default function Login() {
   return (
     <div style={s.page}>
       <div style={s.container}>
-        <div style={s.logoWrap}>
-          <EverLogo width={80} style={{ borderRadius: 20 }} />
-        </div>
-
-        <div style={s.textBlock}>
+        <div style={s.brand}>
+          <EverLogo width={72} style={{ borderRadius: 18 }} />
           <h1 style={s.title}>Everwater</h1>
-          <p style={s.subtitle}>Доставка чистой воды</p>
+          <p style={s.subtitle}>Доставка воды</p>
         </div>
 
         <div style={s.form}>
-          <div style={{ ...s.inputWrap, ...(focused ? s.inputFocused : {}), ...(error ? s.inputError : {}) }}>
+          <label style={s.label}>Номер телефона</label>
+          <div style={{
+            ...s.inputWrap,
+            ...(focused ? s.inputFocused : {}),
+            ...(error ? s.inputError : {}),
+          }}>
             <input
               style={s.input}
               type="tel"
@@ -88,14 +88,18 @@ export default function Login() {
           </div>
           {error && <div style={s.errorMsg}>{error}</div>}
 
-          <button style={{ ...s.btn, ...(loading ? { opacity: 0.7 } : {}) }} onClick={submit} disabled={loading}>
+          <button
+            style={{ ...s.btn, opacity: loading ? 0.7 : 1 }}
+            onClick={submit}
+            disabled={loading}
+          >
             {loading ? <span style={s.spinner} /> : 'Войти'}
           </button>
         </div>
 
         {(import.meta.env.DEV || import.meta.env.VITE_MOCK === 'true') && (
           <div style={s.demoBlock}>
-            <div style={s.demoLabel}>Тестовые аккаунты</div>
+            <div style={s.demoLabel}>Демо</div>
             <div style={s.demoGrid}>
               {[
                 { phone: '+998 90 000-00-01', role: 'Клиент' },
@@ -118,106 +122,104 @@ export default function Login() {
 
 const s = {
   page: {
-    minHeight: '100vh',
-    background: '#FFFFFF',
+    minHeight: '100dvh',
+    background: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '40px 24px',
+    padding: '40px 20px',
   },
   container: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 380,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 40,
+    animation: 'fadeIn 0.4s ease',
+  },
+  brand: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 32,
-    animation: 'fadeIn 0.5s ease forwards',
-  },
-  logoWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textBlock: {
-    textAlign: 'center',
+    gap: 12,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 900,
-    color: '#212121',
-    letterSpacing: -1,
+    fontSize: 28,
+    fontWeight: 800,
+    color: '#111',
     margin: 0,
-    lineHeight: 1.1,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#757575',
+    fontSize: 15,
+    color: '#888',
+    margin: 0,
     fontWeight: 400,
-    margin: '8px 0 0',
   },
   form: {
-    width: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 10,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#555',
+    paddingLeft: 2,
   },
   inputWrap: {
     display: 'flex',
     alignItems: 'center',
-    background: '#F5F5F5',
-    border: '2px solid transparent',
-    borderRadius: 16,
-    padding: '0 18px',
-    minHeight: 56,
+    background: '#f7f7f8',
+    border: '1.5px solid #eee',
+    borderRadius: 14,
+    padding: '0 16px',
+    height: 52,
     transition: 'all 0.2s',
   },
   inputFocused: {
-    border: `2px solid ${C}`,
-    background: '#FFFFFF',
-    boxShadow: `0 0 0 4px rgba(124,179,66,0.12)`,
+    borderColor: '#4CAF50',
+    background: '#fff',
+    boxShadow: '0 0 0 3px rgba(76,175,80,0.1)',
   },
   inputError: {
-    border: '2px solid #EF5350',
-    boxShadow: '0 0 0 4px rgba(239,83,80,0.08)',
+    borderColor: '#ef4444',
+    boxShadow: '0 0 0 3px rgba(239,68,68,0.08)',
   },
   input: {
     flex: 1,
     border: 'none',
     outline: 'none',
     background: 'transparent',
-    fontSize: 18,
-    padding: 0,
-    color: '#212121',
+    fontSize: 17,
+    color: '#111',
     fontWeight: 600,
-    minHeight: 44,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   errorMsg: {
     fontSize: 13,
-    color: '#EF5350',
+    color: '#ef4444',
     fontWeight: 500,
-    paddingLeft: 4,
+    paddingLeft: 2,
   },
   btn: {
-    background: C,
+    background: '#4CAF50',
     color: '#fff',
     border: 'none',
-    borderRadius: 16,
-    minHeight: 56,
-    fontSize: 17,
+    borderRadius: 14,
+    height: 52,
+    fontSize: 16,
     fontWeight: 700,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 4px 20px rgba(124,179,66,0.3)',
-    transition: 'all 0.2s',
-    letterSpacing: -0.2,
+    marginTop: 4,
+    transition: 'opacity 0.2s',
   },
   spinner: {
-    width: 22,
-    height: 22,
+    width: 20,
+    height: 20,
     borderRadius: '50%',
     border: '2.5px solid rgba(255,255,255,0.3)',
     borderTop: '2.5px solid #fff',
@@ -225,17 +227,16 @@ const s = {
     display: 'inline-block',
   },
   demoBlock: {
-    width: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 8,
   },
   demoLabel: {
-    fontSize: 12,
-    color: '#9E9E9E',
+    fontSize: 11,
+    color: '#aaa',
     fontWeight: 600,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     textAlign: 'center',
   },
   demoGrid: {
@@ -246,23 +247,23 @@ const s = {
   demoBtn: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
-    background: '#FAFAFA',
-    border: '1px solid #EEEEEE',
-    borderRadius: 14,
-    padding: '12px',
+    gap: 3,
+    background: '#f7f7f8',
+    border: '1px solid #eee',
+    borderRadius: 12,
+    padding: '10px 12px',
     cursor: 'pointer',
     textAlign: 'left',
-    transition: 'all 0.15s',
+    transition: 'background 0.15s',
   },
   demoRole: {
     fontSize: 12,
     fontWeight: 700,
-    color: C,
+    color: '#4CAF50',
   },
   demoPhone: {
-    fontSize: 12,
-    color: '#757575',
+    fontSize: 11,
+    color: '#888',
     fontFamily: 'monospace',
   },
 }
