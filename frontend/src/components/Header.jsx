@@ -1,18 +1,13 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore } from '../store'
-import EverLogo from './EverLogo'
+import { EverLogoMark } from './EverLogo'
 
 const TITLES = {
   '/cart': 'Корзина',
   '/checkout': 'Оформление',
-  '/orders': 'Мои заказы',
+  '/orders': 'Заказы',
   '/profile': 'Профиль',
 }
-
-const C = '#8DC63F'
-const TEXT = '#1C1C1E'
-const BORDER = 'rgba(60,60,67,0.12)'
-const TRANSITION = 'all 0.2s cubic-bezier(0.4,0,0.2,1)'
 
 export default function Header() {
   const navigate = useNavigate()
@@ -20,7 +15,6 @@ export default function Header() {
   const items = useCartStore(s => s.items)
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
 
-  // Hide on admin/courier/manager pages
   if (location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
     || location.pathname.startsWith('/manager')
@@ -33,80 +27,73 @@ export default function Header() {
   const title = TITLES[location.pathname]
 
   return (
-    <header style={styles.header}>
-      {/* Left: back or logo */}
+    <header style={st.header}>
       {!isRoot ? (
-        <button style={styles.backBtn} onClick={() => navigate(-1)} aria-label="Назад">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke={TEXT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <button style={st.backBtn} onClick={() => navigate(-1)} aria-label="Назад">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       ) : (
-        <div style={styles.logoWrap} onClick={() => navigate('/')}>
-          <EverLogo width={72} />
+        <div style={st.logoWrap} onClick={() => navigate('/')}>
+          <EverLogoMark width={34} style={{ borderRadius: 10 }} />
         </div>
       )}
 
-      {/* Center title */}
-      {title && <span style={styles.title}>{title}</span>}
+      {title && <span style={st.title}>{title}</span>}
       {isRoot && <div style={{ flex: 1 }} />}
 
-      {/* Right: cart icon (on non-cart pages) */}
       {!isCart && (
-        <button style={styles.cartBtn} onClick={() => navigate('/cart')} aria-label="Корзина">
+        <button style={st.cartBtn} onClick={() => navigate('/cart')} aria-label="Корзина">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
-              stroke={TEXT} strokeWidth="1.8" strokeLinejoin="round" fill="none"/>
-            <path d="M3 6h18M16 10a4 4 0 01-8 0"
-              stroke={TEXT} strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M9 22a1 1 0 100-2 1 1 0 000 2zM20 22a1 1 0 100-2 1 1 0 000 2z" fill="#111"/>
+            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          {totalQty > 0 && <span style={styles.badge}>{totalQty > 9 ? '9+' : totalQty}</span>}
+          {totalQty > 0 && <span style={st.badge}>{totalQty > 9 ? '9+' : totalQty}</span>}
         </button>
       )}
     </header>
   )
 }
 
-const styles = {
+const st = {
   header: {
     position: 'sticky',
     top: 0,
     zIndex: 100,
-    background: 'rgba(255,255,255,0.92)',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
-    borderBottom: `1px solid ${BORDER}`,
+    background: 'rgba(250,250,250,0.88)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
     display: 'flex',
     alignItems: 'center',
     padding: '6px 16px',
-    gap: 12,
-    minHeight: 56,
+    gap: 10,
+    minHeight: 52,
+    borderBottom: '1px solid rgba(0,0,0,0.04)',
   },
   backBtn: {
-    background: 'rgba(118,118,128,0.12)',
+    background: 'none',
     border: 'none',
-    borderRadius: 50,
-    width: 34,
-    height: 34,
+    width: 38,
+    height: 38,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    transition: TRANSITION,
+    borderRadius: 10,
   },
   logoWrap: {
     display: 'flex',
     alignItems: 'center',
     cursor: 'pointer',
     flexShrink: 0,
-    lineHeight: 1,
   },
   title: {
     flex: 1,
-    fontWeight: 600,
+    fontWeight: 700,
     fontSize: 17,
-    color: TEXT,
+    color: '#111',
     letterSpacing: -0.3,
     textAlign: 'center',
   },
@@ -115,28 +102,26 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
     position: 'relative',
-    padding: 8,
+    padding: 6,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 'auto',
-    transition: TRANSITION,
   },
   badge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    background: C,
+    top: 0,
+    right: -2,
+    background: '#4CAF50',
     color: '#fff',
-    borderRadius: '50%',
-    minWidth: 18,
-    height: 18,
+    borderRadius: 8,
+    minWidth: 17,
+    height: 17,
     fontSize: 10,
-    fontWeight: 800,
+    fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1.5px solid #fff',
-    padding: '0 2px',
+    padding: '0 4px',
   },
 }
