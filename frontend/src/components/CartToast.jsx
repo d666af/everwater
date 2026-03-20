@@ -13,8 +13,8 @@ export default function CartToast() {
   useEffect(() => {
     return cartEvents.on((product) => {
       const id = Date.now() + Math.random()
-      setToasts(prev => [...prev.slice(-2), { id, product }])
-      setTimeout(() => dismiss(id), 3000)
+      setToasts(prev => [...prev.slice(-1), { id, product }])
+      setTimeout(() => dismiss(id), 2500)
     })
   }, [dismiss])
 
@@ -24,18 +24,15 @@ export default function CartToast() {
     <div style={s.wrap}>
       {toasts.map(t => (
         <div key={t.id} style={s.toast} onClick={() => { dismiss(t.id); navigate('/cart') }}>
-          <div style={s.icon}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2" strokeLinejoin="round"/>
-              <line x1="3" y1="6" x2="21" y2="6" stroke="#fff" strokeWidth="2"/>
-              <path d="M16 10a4 4 0 01-8 0" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+          <div style={s.check}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12l5 5 9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <div style={s.text}>
-            <div style={s.title}>Добавлено в корзину</div>
-            <div style={s.name}>{t.product.name}</div>
+            <span style={s.name}>{t.product.name}</span>
+            <span style={s.sub}>добавлено в корзину</span>
           </div>
-          <div style={s.action}>Корзина →</div>
         </div>
       ))}
     </div>
@@ -45,7 +42,7 @@ export default function CartToast() {
 const s = {
   wrap: {
     position: 'fixed',
-    top: 60,
+    bottom: 100,
     left: 0,
     right: 0,
     zIndex: 9999,
@@ -54,29 +51,28 @@ const s = {
     alignItems: 'center',
     gap: 8,
     pointerEvents: 'none',
+    padding: '0 20px',
   },
   toast: {
-    background: 'rgba(28,28,30,0.92)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
+    background: '#212121',
     color: '#fff',
-    borderRadius: 16,
-    padding: '10px 14px',
+    borderRadius: 14,
+    padding: '12px 16px',
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    maxWidth: 340,
-    width: 'calc(100% - 32px)',
+    width: '100%',
+    maxWidth: 360,
     cursor: 'pointer',
     pointerEvents: 'auto',
-    animation: 'slideDown 0.25s cubic-bezier(0.4,0,0.2,1)',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+    animation: 'slideDown 0.3s cubic-bezier(0.4,0,0.2,1)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
   },
-  icon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    background: '#8DC63F',
+  check: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    background: '#7CB342',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -84,14 +80,10 @@ const s = {
   },
   text: {
     flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
     minWidth: 0,
-  },
-  title: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: 500,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   name: {
     fontSize: 14,
@@ -99,12 +91,9 @@ const s = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    marginTop: 1,
   },
-  action: {
+  sub: {
     fontSize: 12,
-    color: '#8DC63F',
-    fontWeight: 700,
-    flexShrink: 0,
+    color: 'rgba(255,255,255,0.5)',
   },
 }

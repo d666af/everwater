@@ -1,86 +1,32 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
-
 import { useOrdersStore } from '../store/orders'
 import ReviewModal from '../components/ReviewModal'
 
-const C = '#8DC63F'
-const CD = '#6CA32F'
-const TEXT = '#1C1C1E'
-const TEXT2 = '#8E8E93'
-const BG = '#F2F2F7'
-const BORDER = 'rgba(60,60,67,0.12)'
-const TRANSITION = 'all 0.2s cubic-bezier(0.4,0,0.2,1)'
+const C = '#7CB342'
 
 const STATUSES = [
   { key: 'new', label: 'Новый' },
-  { key: 'awaiting_confirmation', label: 'Ожидает подтверждения' },
+  { key: 'awaiting_confirmation', label: 'Ожидает' },
   { key: 'confirmed', label: 'Подтверждён' },
-  { key: 'assigned_to_courier', label: 'Передан курьеру' },
-  { key: 'in_delivery', label: 'В доставке' },
+  { key: 'assigned_to_courier', label: 'Курьер назначен' },
+  { key: 'in_delivery', label: 'В пути' },
   { key: 'delivered', label: 'Доставлен' },
   { key: 'rejected', label: 'Отклонён' },
 ]
 
-const STATUS_STEP = {
-  new: 1,
-  awaiting_confirmation: 2,
-  confirmed: 3,
-  assigned_to_courier: 4,
-  in_delivery: 5,
-  delivered: 6,
-  rejected: -1,
-}
-
 const STATUS_STYLE = {
-  new: { bg: '#EDF3FF', color: '#3B5BDB' },
-  awaiting_confirmation: { bg: '#FFF8E6', color: '#E67700' },
-  confirmed: { bg: '#EBFBEE', color: '#2B8A3E' },
-  assigned_to_courier: { bg: '#F3F0FF', color: '#6741D9' },
-  in_delivery: { bg: '#F3F0FF', color: '#6741D9' },
-  delivered: { bg: '#EBFBEE', color: '#2B8A3E' },
-  rejected: { bg: '#FFF5F5', color: '#E03131' },
+  new: { bg: '#E3F2FD', color: '#1565C0' },
+  awaiting_confirmation: { bg: '#FFF8E1', color: '#F57F17' },
+  confirmed: { bg: '#E8F5E9', color: '#2E7D32' },
+  assigned_to_courier: { bg: '#F3E5F5', color: '#7B1FA2' },
+  in_delivery: { bg: '#E8EAF6', color: '#283593' },
+  delivered: { bg: '#E8F5E9', color: '#2E7D32' },
+  rejected: { bg: '#FFEBEE', color: '#C62828' },
 }
 
 const ACTIVE_STATUSES = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
-
-function StatusProgress({ status }) {
-  if (status === 'rejected') return (
-    <div style={styles.rejected}>Заказ отклонён</div>
-  )
-  const current = STATUS_STEP[status] || 0
-  const steps = STATUSES.filter(s => s.key !== 'rejected')
-  return (
-    <div style={styles.progress}>
-      {steps.map((st, i) => {
-        const step = i + 1
-        const done = step < current
-        const active = step === current
-        return (
-          <div key={st.key} style={styles.progressItem}>
-            <div style={{
-              ...styles.progressDot,
-              ...(done ? styles.dotDone : active ? styles.dotActive : {}),
-            }}>
-              {done ? (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 12l5 5 9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              ) : (
-                <span style={{ fontSize: 8, fontWeight: 800 }}>{step}</span>
-              )}
-            </div>
-            {i < steps.length - 1 && (
-              <div style={{ ...styles.progressLine, ...(done ? styles.lineDone : {}) }} />
-            )}
-            {active && <div style={styles.progressLabel}>{st.label}</div>}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 export default function OrderHistory() {
   const [expanded, setExpanded] = useState(null)
@@ -101,22 +47,17 @@ export default function OrderHistory() {
   const handleReviewDone = (orderId) => {
     setReviewedIds(s => new Set([...s, orderId]))
     setReviewOrderId(null)
-    window.Telegram?.WebApp?.showAlert('Спасибо за отзыв!')
   }
 
   if (!orders.length) return (
-    <div style={styles.center}>
-      <div style={styles.emptyIconWrap}>
-        <svg width="38" height="38" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="4" width="18" height="16" rx="3" fill="#F2F2F7" stroke="#C7C7CC" strokeWidth="1.5"/>
-          <path d="M7 9h10M7 13h6" stroke="#C7C7CC" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      </div>
-      <div style={{ fontSize: 17, fontWeight: 600, color: TEXT }}>Нет заказов</div>
-      <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>У вас пока нет заказов</div>
-      <button style={styles.primaryBtn} onClick={() => navigate('/')}>
-        Перейти в каталог
-      </button>
+    <div style={s.empty}>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" fill="#F5F5F5" stroke="#E0E0E0" strokeWidth="1.5"/>
+        <path d="M8 8h8M8 12h5M8 16h3" stroke="#E0E0E0" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+      <div style={{ fontSize: 18, fontWeight: 700, color: '#212121' }}>Нет заказов</div>
+      <div style={{ fontSize: 14, color: '#9E9E9E' }}>Ваши заказы появятся здесь</div>
+      <button style={s.primaryBtn} onClick={() => navigate('/')}>В каталог</button>
     </div>
   )
 
@@ -124,217 +65,112 @@ export default function OrderHistory() {
   const archived = orders.filter(o => !ACTIVE_STATUSES.has(o.status))
 
   return (
-    <div style={styles.list}>
+    <div style={s.page}>
       {active.length > 0 && (
         <>
-          <div style={styles.sectionTitle}>Активные</div>
+          <div style={s.sectionTitle}>Активные</div>
           {active.map(order => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              expanded={expanded}
-              setExpanded={setExpanded}
-              onRepeat={repeatOrder}
-              onReview={setReviewOrderId}
-              reviewedIds={reviewedIds}
-            />
+            <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
+              onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
           ))}
         </>
       )}
       {archived.length > 0 && (
         <>
-          <div style={styles.sectionTitle}>История</div>
+          <div style={s.sectionTitle}>Завершённые</div>
           {archived.map(order => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              expanded={expanded}
-              setExpanded={setExpanded}
-              onRepeat={repeatOrder}
-              onReview={setReviewOrderId}
-              reviewedIds={reviewedIds}
-            />
+            <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
+              onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
           ))}
         </>
       )}
 
       {reviewOrderId && (
-        <ReviewModal
-          orderId={reviewOrderId}
+        <ReviewModal orderId={reviewOrderId}
           onClose={() => setReviewOrderId(null)}
-          onDone={() => handleReviewDone(reviewOrderId)}
-        />
+          onDone={() => handleReviewDone(reviewOrderId)} />
       )}
+      <div style={{ height: 100 }} />
     </div>
   )
 }
 
 function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedIds }) {
-  const isExpanded = expanded === order.id
+  const isOpen = expanded === order.id
   const statusInfo = STATUSES.find(s => s.key === order.status) || { label: order.status }
-  const statusStyle = STATUS_STYLE[order.status] || { bg: '#F2F2F7', color: TEXT2 }
+  const statusSt = STATUS_STYLE[order.status] || { bg: '#F5F5F5', color: '#757575' }
   const canReview = order.status === 'delivered' && !reviewedIds.has(order.id) && !order.review_id
 
   return (
-    <div style={styles.card}>
-      <div
-        style={styles.cardHeader}
-        onClick={() => setExpanded(e => e === order.id ? null : order.id)}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={styles.orderId}>Заказ #{order.id}</div>
-          <div style={{ marginTop: 5 }}>
-            <span style={{ ...styles.statusPill, background: statusStyle.bg, color: statusStyle.color }}>
-              {statusInfo.label}
-            </span>
+    <div style={s.card}>
+      <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
+        <div style={{ flex: 1 }}>
+          <div style={s.orderId}>#{order.id}</div>
+          <div style={{ ...s.statusPill, background: statusSt.bg, color: statusSt.color }}>
+            {statusInfo.label}
           </div>
-          {order.delivery_time && (
-            <div style={styles.orderTime}>{order.delivery_time}</div>
-          )}
         </div>
-        <div style={styles.cardRight}>
-          <div style={styles.total}>{(order.total || 0).toLocaleString()} сум</div>
-          <div style={styles.chevron}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: TRANSITION }}>
-              <path d="M6 9l6 6 6-6" stroke="#C7C7CC" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
+        <div style={s.cardRight}>
+          <div style={s.total}>{(order.total || 0).toLocaleString()} сум</div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+            <path d="M6 9l6 6 6-6" stroke="#BDBDBD" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
         </div>
       </div>
 
-      {isExpanded && (
-        <div style={styles.details}>
-          {/* Status progress */}
-          <StatusProgress status={order.status} />
-
-          {/* Rejection reason */}
-          {order.rejection_reason && (
-            <div style={styles.rejectBox}>
-              <strong>Причина отказа:</strong> {order.rejection_reason}
+      {isOpen && (
+        <div style={s.details}>
+          {order.address && (
+            <div style={s.detailRow}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z" fill="#9E9E9E"/>
+              </svg>
+              <span style={s.detailText}>{order.address}</span>
+            </div>
+          )}
+          {order.delivery_time && (
+            <div style={s.detailRow}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="#9E9E9E" strokeWidth="1.8"/>
+                <path d="M12 7v5l3 3" stroke="#9E9E9E" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              <span style={s.detailText}>{order.delivery_time}</span>
             </div>
           )}
 
-          {/* Courier info */}
           {(order.status === 'assigned_to_courier' || order.status === 'in_delivery') && order.courier_name && (
-            <div style={styles.courierBox}>
-              <div style={styles.courierTitle}>Ваш курьер</div>
-              <div style={styles.courierName}>{order.courier_name}</div>
+            <div style={s.courierBox}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1565C0' }}>Курьер</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#212121' }}>{order.courier_name}</div>
               {order.courier_phone && (
-                <a href={`tel:${order.courier_phone}`} style={styles.callCourier}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="#007AFF"/>
-                  </svg>
-                  Позвонить курьеру
-                </a>
+                <a href={`tel:${order.courier_phone}`} style={s.callBtn}>Позвонить</a>
               )}
             </div>
           )}
 
-          {/* Address & info */}
-          <div style={styles.infoBlock}>
-            {order.address && (
-              <div style={styles.detailRow}>
-                <span style={styles.detailKey}>Адрес</span>
-                <span style={styles.detailVal}>{order.address}</span>
-              </div>
-            )}
-            {order.extra_info && (
-              <div style={styles.detailRow}>
-                <span style={styles.detailKey}>Доп. инфо</span>
-                <span style={styles.detailVal}>{order.extra_info}</span>
-              </div>
-            )}
-            {order.delivery_time && (
-              <div style={styles.detailRow}>
-                <span style={styles.detailKey}>Время</span>
-                <span style={styles.detailVal}>{order.delivery_time}</span>
-              </div>
-            )}
-            {order.recipient_phone && (
-              <div style={styles.detailRow}>
-                <span style={styles.detailKey}>Телефон</span>
-                <span style={styles.detailVal}>{order.recipient_phone}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Items */}
           {order.items?.length > 0 && (
-            <div style={styles.itemsBlock}>
-              <div style={styles.itemsTitle}>Состав заказа</div>
+            <div style={s.itemsList}>
               {order.items.map((i, idx) => (
-                <div key={idx} style={styles.itemRow}>
-                  <div style={styles.itemDot} />
-                  <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{i.product_name}</span>
-                  <span style={{ ...styles.itemQty }}>{i.quantity} шт.</span>
-                  <span style={{ fontWeight: 700, color: TEXT, minWidth: 76, textAlign: 'right' }}>
-                    {(i.price * i.quantity).toLocaleString()} сум
-                  </span>
+                <div key={idx} style={s.itemRow}>
+                  <span style={{ flex: 1, fontSize: 13, color: '#424242' }}>{i.product_name}</span>
+                  <span style={{ fontSize: 13, color: '#9E9E9E' }}>{i.quantity} x {i.price.toLocaleString()}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Bottle return */}
-          {Number(order.return_bottles_count) > 0 && (
-            <div style={styles.bottleReturnBox}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M9 2h6M8 6h8l1 14H7L8 6zM10 6V4M14 6V4" stroke="#2B8A3E" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#2B8A3E' }}>Возврат тары</div>
-                <div style={{ fontSize: 13, color: '#1A1A1A' }}>
-                  {order.return_bottles_count} бут.
-                  {order.return_bottles_volume ? ` × ${order.return_bottles_volume} л` : ''}
-                </div>
-              </div>
-              {order.bottle_discount > 0 && (
-                <div style={{ marginLeft: 'auto', fontWeight: 700, color: '#2B8A3E', fontSize: 14 }}>
-                  −{order.bottle_discount.toLocaleString()} сум
-                </div>
-              )}
-            </div>
+          {order.rejection_reason && (
+            <div style={s.rejectBox}>{order.rejection_reason}</div>
           )}
 
-          {/* Pricing */}
-          <div style={styles.pricingBlock}>
-            {order.bottle_discount > 0 && !Number(order.return_bottles_count) && (
-              <div style={styles.priceRow}>
-                <span>Скидка за бутылки</span>
-                <span style={{ color: '#2B8A3E', fontWeight: 600 }}>−{order.bottle_discount.toLocaleString()} сум</span>
-              </div>
-            )}
-            {order.bonus_used > 0 && (
-              <div style={styles.priceRow}>
-                <span>Бонусы</span>
-                <span style={{ color: '#E67700', fontWeight: 600 }}>−{(order.bonus_used).toLocaleString()} сум</span>
-              </div>
-            )}
-            {order.balance_used > 0 && (
-              <div style={styles.priceRow}>
-                <span>Баланс</span>
-                <span style={{ color: '#1971C2', fontWeight: 600 }}>−{(order.balance_used).toLocaleString()} сум</span>
-              </div>
-            )}
-            <div style={{ ...styles.priceRow, fontWeight: 700, fontSize: 15, color: TEXT }}>
-              <span>Итого</span>
-              <span style={{ color: C }}>{(order.total || 0).toLocaleString()} сум</span>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={styles.actions}>
-            <button style={styles.repeatBtn} onClick={() => onRepeat(order)}>
-              Повторить заказ
-            </button>
+          <div style={s.actions}>
+            <button style={s.repeatBtn} onClick={() => onRepeat(order)}>Повторить</button>
             {canReview && (
-              <button style={styles.reviewBtn} onClick={() => onReview(order.id)}>
-                Оставить отзыв
-              </button>
+              <button style={s.reviewBtn} onClick={() => onReview(order.id)}>Оценить</button>
             )}
-            {order.status === 'delivered' && reviewedIds.has(order.id) && (
-              <div style={styles.reviewDone}>Отзыв отправлен</div>
+            {reviewedIds.has(order.id) && (
+              <span style={{ fontSize: 13, color: C, fontWeight: 600 }}>Отзыв отправлен</span>
             )}
           </div>
         </div>
@@ -343,15 +179,15 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   )
 }
 
-const styles = {
-  list: {
-    padding: '12px 0 100px',
+const s = {
+  page: {
+    padding: '8px 0',
     display: 'flex',
     flexDirection: 'column',
-    background: BG,
+    background: '#FAFAFA',
     minHeight: '100vh',
   },
-  center: {
+  empty: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -360,293 +196,132 @@ const styles = {
     height: '65vh',
     padding: '0 24px',
   },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: '50%',
-    background: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: `1px solid ${BORDER}`,
-    marginBottom: 4,
+  primaryBtn: {
+    marginTop: 8,
+    padding: '14px 32px',
+    background: C,
+    color: '#fff',
+    border: 'none',
+    borderRadius: 14,
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(124,179,66,0.3)',
   },
   sectionTitle: {
-    padding: '10px 16px 6px',
+    padding: '16px 24px 8px',
     fontSize: 13,
     fontWeight: 700,
-    color: TEXT2,
+    color: '#9E9E9E',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   card: {
     background: '#FFFFFF',
-    margin: '0 16px 10px',
-    borderRadius: 16,
+    margin: '0 20px 10px',
+    borderRadius: 18,
     overflow: 'hidden',
-    border: `1px solid ${BORDER}`,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
   },
-  cardHeader: {
+  cardHead: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: '14px 16px',
+    alignItems: 'center',
+    padding: '16px 18px',
     cursor: 'pointer',
     gap: 12,
   },
   orderId: {
-    fontWeight: 700,
-    fontSize: 15,
-    color: TEXT,
-    letterSpacing: -0.2,
+    fontWeight: 800,
+    fontSize: 16,
+    color: '#212121',
+    marginBottom: 6,
   },
   statusPill: {
     display: 'inline-flex',
-    alignItems: 'center',
-    padding: '3px 10px',
-    borderRadius: 999,
+    padding: '4px 10px',
+    borderRadius: 8,
     fontSize: 12,
-    fontWeight: 600,
-  },
-  orderTime: {
-    fontSize: 12,
-    color: TEXT2,
-    marginTop: 4,
-    fontWeight: 400,
+    fontWeight: 700,
   },
   cardRight: {
     display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 6,
+    alignItems: 'center',
+    gap: 10,
     flexShrink: 0,
   },
   total: {
     fontWeight: 800,
     fontSize: 16,
-    color: C,
-  },
-  chevron: {
-    display: 'flex',
-    alignItems: 'center',
+    color: '#212121',
   },
   details: {
-    borderTop: `1px solid ${BORDER}`,
-    padding: '12px 0',
+    borderTop: '1px solid #F5F5F5',
+    padding: '14px 18px',
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
   },
-  progress: {
+  detailRow: {
     display: 'flex',
-    alignItems: 'center',
-    padding: '4px 16px 20px',
-    overflowX: 'auto',
-    gap: 0,
+    gap: 10,
+    alignItems: 'flex-start',
   },
-  progressItem: {
-    display: 'flex',
-    alignItems: 'center',
-    flex: 1,
-    position: 'relative',
-  },
-  progressDot: {
-    width: 26,
-    height: 26,
-    borderRadius: '50%',
-    background: '#F2F2F7',
-    border: `2px solid ${BORDER}`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: TEXT2,
-    flexShrink: 0,
-    zIndex: 1,
-  },
-  dotActive: {
-    background: C,
-    border: `2px solid ${CD}`,
-    color: '#fff',
-  },
-  dotDone: {
-    background: CD,
-    border: `2px solid #4E7A20`,
-    color: '#fff',
-  },
-  progressLine: {
-    flex: 1,
-    height: 2,
-    background: '#E5E5EA',
-  },
-  lineDone: {
-    background: CD,
-  },
-  progressLabel: {
-    position: 'absolute',
-    top: 30,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    fontSize: 9,
-    color: C,
-    fontWeight: 700,
-    whiteSpace: 'nowrap',
-  },
-  rejected: {
-    margin: '0 16px',
-    padding: '10px 14px',
-    background: '#FFF5F5',
-    borderRadius: 12,
-    color: '#E03131',
+  detailText: {
     fontSize: 13,
-    fontWeight: 600,
-    border: '1px solid #FFCDD2',
-  },
-  rejectBox: {
-    margin: '0 16px',
-    padding: '10px 14px',
-    background: '#FFF5F5',
-    borderRadius: 12,
-    fontSize: 13,
-    color: '#E03131',
-    border: '1px solid #FFCDD2',
+    color: '#616161',
+    lineHeight: 1.5,
   },
   courierBox: {
-    margin: '0 16px',
+    background: '#E3F2FD',
+    borderRadius: 14,
     padding: '12px 14px',
-    background: '#EFF6FF',
-    borderRadius: 12,
     display: 'flex',
     flexDirection: 'column',
     gap: 4,
-    border: '1px solid #BFDBFE',
   },
-  courierTitle: {
-    fontSize: 11,
-    color: '#1D4ED8',
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  courierName: {
-    fontSize: 15,
-    fontWeight: 700,
-    color: '#1E3A8A',
-  },
-  callCourier: {
+  callBtn: {
     fontSize: 13,
-    color: '#007AFF',
-    fontWeight: 600,
+    color: '#1565C0',
+    fontWeight: 700,
     textDecoration: 'none',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
     marginTop: 4,
-    background: '#DBEAFE',
-    borderRadius: 8,
-    padding: '6px 12px',
-    alignSelf: 'flex-start',
   },
-  infoBlock: {
-    padding: '0 16px',
+  itemsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
-  },
-  detailRow: {
-    display: 'flex',
-    gap: 8,
-    fontSize: 13,
-    lineHeight: 1.4,
-  },
-  detailKey: {
-    color: TEXT2,
-    fontWeight: 500,
-    flexShrink: 0,
-    width: 70,
-  },
-  detailVal: {
-    color: TEXT,
-    fontWeight: 500,
-  },
-  itemsBlock: {
-    padding: '0 16px',
-  },
-  itemsTitle: {
-    fontSize: 11,
-    color: TEXT2,
-    marginBottom: 8,
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    gap: 6,
+    background: '#FAFAFA',
+    borderRadius: 12,
+    padding: '12px 14px',
   },
   itemRow: {
     display: 'flex',
-    gap: 8,
-    fontSize: 13,
-    padding: '8px 0',
-    borderBottom: `1px solid ${BORDER}`,
-    alignItems: 'center',
-  },
-  itemDot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-    background: C,
-    flexShrink: 0,
-  },
-  itemQty: {
-    fontSize: 12,
-    color: TEXT2,
-    background: '#F2F2F7',
-    borderRadius: 6,
-    padding: '2px 6px',
-    fontWeight: 600,
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
-  bottleReturnBox: {
-    margin: '0 16px',
-    padding: '10px 14px',
-    background: '#F0FFF4',
-    borderRadius: 12,
-    border: '1px solid #C3E6CB',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-  },
-  pricingBlock: {
-    margin: '0 16px',
-    background: BG,
-    borderRadius: 12,
-    padding: '12px 14px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  priceRow: {
-    display: 'flex',
     justifyContent: 'space-between',
-    fontSize: 14,
-    color: TEXT2,
+    gap: 8,
+  },
+  rejectBox: {
+    background: '#FFEBEE',
+    borderRadius: 12,
+    padding: '10px 14px',
+    fontSize: 13,
+    color: '#C62828',
   },
   actions: {
-    padding: '4px 16px',
     display: 'flex',
     gap: 8,
-    flexWrap: 'wrap',
+    alignItems: 'center',
   },
   repeatBtn: {
     flex: 1,
     padding: '12px 0',
     borderRadius: 12,
-    border: `1.5px solid ${C}`,
-    background: 'none',
-    color: C,
+    border: 'none',
+    background: '#F5F5F5',
+    color: '#424242',
     fontSize: 14,
     fontWeight: 700,
     cursor: 'pointer',
-    transition: TRANSITION,
   },
   reviewBtn: {
     flex: 1,
@@ -658,28 +333,6 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(141,198,63,0.3)',
-    transition: TRANSITION,
-  },
-  reviewDone: {
-    fontSize: 13,
-    color: CD,
-    fontWeight: 700,
-    padding: '10px 0',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  primaryBtn: {
-    marginTop: 8,
-    padding: '13px 28px',
-    background: C,
-    color: '#fff',
-    border: 'none',
-    borderRadius: 12,
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(141,198,63,0.3)',
+    boxShadow: '0 3px 12px rgba(124,179,66,0.3)',
   },
 }

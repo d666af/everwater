@@ -1,13 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
 
-const C = '#8DC63F'
-const CD = '#6CA32F'
-const TEXT = '#1C1C1E'
-const TEXT2 = '#8E8E93'
-const BG = '#F2F2F7'
-const BORDER = 'rgba(60,60,67,0.12)'
-const TRANSITION = 'all 0.2s cubic-bezier(0.4,0,0.2,1)'
+const C = '#7CB342'
 
 export default function Cart() {
   const { items, updateQuantity, removeFromCart, total } = useCartStore()
@@ -16,18 +10,14 @@ export default function Cart() {
   if (!items.length) {
     return (
       <div style={s.empty}>
-        <div style={s.emptyIconWrap}>
-          <svg width="42" height="42" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
-              fill="#F2F2F7" stroke="#C7C7CC" strokeWidth="1.5" strokeLinejoin="round"/>
-            <path d="M3 6h18M16 10a4 4 0 01-8 0"
-              stroke="#C7C7CC" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+          <path d="M9 22a1 1 0 100-2 1 1 0 000 2zM20 22a1 1 0 100-2 1 1 0 000 2z" fill="#E0E0E0"/>
+          <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="#E0E0E0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
         <div style={s.emptyTitle}>Корзина пуста</div>
         <div style={s.emptyDesc}>Добавьте товары из каталога</div>
         <button style={s.goBtn} onClick={() => navigate('/')}>
-          Перейти в каталог
+          В каталог
         </button>
       </div>
     )
@@ -38,89 +28,67 @@ export default function Cart() {
 
   return (
     <div style={s.page}>
-      {/* Items list */}
       <div style={s.list}>
         {items.map(({ product, quantity }) => (
           <div key={product.id} style={s.item}>
-            {/* Product image */}
             <div style={s.itemImg}>
               {product.photo_url ? (
-                <img
-                  src={product.photo_url}
-                  alt={product.name}
-                  style={s.img}
-                  onError={e => { e.target.style.display = 'none' }}
-                />
+                <img src={product.photo_url} alt={product.name} style={s.img}
+                  onError={e => { e.target.style.display = 'none' }} />
               ) : (
                 <div style={s.imgPlaceholder}>
-                  <svg width="24" height="29" viewBox="0 0 40 48" fill="none">
+                  <svg width="20" height="24" viewBox="0 0 40 48" fill="none">
                     <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-                      fill={C} opacity="0.7"/>
+                      fill="rgba(124,179,66,0.3)"/>
                   </svg>
                 </div>
               )}
-              <div style={s.volTag}>{product.volume}л</div>
             </div>
 
-            {/* Info */}
             <div style={s.itemBody}>
-              <div style={s.itemName}>{product.name}</div>
-              <div style={s.itemUnitPrice}>{product.price.toLocaleString()} сум/шт</div>
+              <div style={s.itemTop}>
+                <div>
+                  <div style={s.itemName}>{product.name}</div>
+                  <div style={s.itemVol}>{product.volume}л</div>
+                </div>
+                <button style={s.delBtn} onClick={() => removeFromCart(product.id)} aria-label="Удалить">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="#BDBDBD" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
 
-              <div style={s.itemFooter}>
+              <div style={s.itemBottom}>
                 <div style={s.counter}>
-                  <button style={s.cBtn} onClick={() => updateQuantity(product.id, quantity - 1)} aria-label="Уменьшить">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                      <path d="M4 12h16" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                  <button style={s.cBtn} onClick={() => updateQuantity(product.id, quantity - 1)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
                     </svg>
                   </button>
                   <span style={s.qty}>{quantity}</span>
-                  <button style={s.cBtn} onClick={() => updateQuantity(product.id, quantity + 1)} aria-label="Увеличить">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 4v16M4 12h16" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                  <button style={s.cBtn} onClick={() => updateQuantity(product.id, quantity + 1)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
                     </svg>
                   </button>
                 </div>
-                <div style={s.itemTotal}>{(product.price * quantity).toLocaleString()} сум</div>
-                <button style={s.delBtn} onClick={() => removeFromCart(product.id)} aria-label="Удалить">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"
-                      stroke="#C7C7CC" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
+                <div style={s.itemPrice}>{(product.price * quantity).toLocaleString()} сум</div>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Summary + checkout */}
-      <div style={s.summary}>
-        <div style={s.summaryCard}>
-          <div style={s.summaryRow}>
-            <span style={s.summaryLabel}>Позиций</span>
-            <span style={s.summaryVal}>{items.length}</span>
-          </div>
-          <div style={s.summaryRow}>
-            <span style={s.summaryLabel}>Товаров</span>
-            <span style={s.summaryVal}>{totalQty} шт</span>
-          </div>
-          <div style={s.divider} />
-          <div style={s.totalRow}>
-            <span style={s.totalLabel}>Итого</span>
-            <span style={s.totalAmt}>{totalAmt.toLocaleString()} сум</span>
-          </div>
+      <div style={s.bottom}>
+        <div style={s.summaryRow}>
+          <span style={s.summaryLabel}>{totalQty} {totalQty === 1 ? 'товар' : totalQty < 5 ? 'товара' : 'товаров'}</span>
+          <span style={s.summaryTotal}>{totalAmt.toLocaleString()} сум</span>
         </div>
 
         <button style={s.checkoutBtn} onClick={() => navigate('/checkout')}>
-          Оформить заказ · {totalAmt.toLocaleString()} сум
-        </button>
-
-        <button style={s.continueBtn} onClick={() => navigate('/')}>
-          Продолжить покупки
+          Оформить заказ
         </button>
       </div>
     </div>
@@ -132,32 +100,29 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     minHeight: '100vh',
-    background: BG,
+    background: '#FAFAFA',
   },
   list: {
-    padding: '12px 16px',
+    padding: '8px 20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 12,
   },
   item: {
     background: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 18,
     display: 'flex',
-    gap: 12,
-    padding: 12,
-    border: `1px solid ${BORDER}`,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-    transition: TRANSITION,
+    gap: 14,
+    padding: 14,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
   },
   itemImg: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 14,
     overflow: 'hidden',
     flexShrink: 0,
-    position: 'relative',
-    background: '#F2F2F7',
+    background: '#F5F5F5',
   },
   img: {
     width: '100%',
@@ -167,81 +132,33 @@ const s = {
   imgPlaceholder: {
     width: '100%',
     height: '100%',
-    background: 'linear-gradient(135deg, #EDF7D6, #C8E6A0)',
+    background: 'linear-gradient(135deg, #E8F5E9, #C8E6C9)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  volTag: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    background: 'rgba(0,0,0,0.4)',
-    color: '#fff',
-    borderRadius: 6,
-    padding: '1px 5px',
-    fontSize: 9,
-    fontWeight: 700,
   },
   itemBody: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: 3,
+    justifyContent: 'space-between',
     minWidth: 0,
+  },
+  itemTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   itemName: {
     fontWeight: 700,
-    fontSize: 14,
-    color: TEXT,
-    lineHeight: 1.3,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  itemUnitPrice: {
-    fontSize: 12,
-    color: TEXT2,
-  },
-  itemFooter: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 'auto',
-    paddingTop: 6,
-  },
-  counter: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cBtn: {
-    background: C,
-    color: '#fff',
-    border: 'none',
-    borderRadius: 50,
-    width: 28,
-    height: 28,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    cursor: 'pointer',
-    transition: TRANSITION,
-  },
-  qty: {
-    fontWeight: 800,
     fontSize: 15,
-    minWidth: 20,
-    textAlign: 'center',
-    color: TEXT,
+    color: '#212121',
+    lineHeight: 1.3,
   },
-  itemTotal: {
-    fontWeight: 800,
-    fontSize: 14,
-    color: TEXT,
-    marginLeft: 'auto',
-    whiteSpace: 'nowrap',
+  itemVol: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    marginTop: 2,
   },
   delBtn: {
     background: 'none',
@@ -249,85 +166,81 @@ const s = {
     cursor: 'pointer',
     padding: 4,
     display: 'flex',
+  },
+  itemBottom: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  counter: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    background: '#F5F5F5',
+    borderRadius: 12,
+    padding: 2,
+  },
+  cBtn: {
+    background: C,
+    border: 'none',
+    borderRadius: 10,
+    width: 32,
+    height: 32,
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: TRANSITION,
+    cursor: 'pointer',
+    flexShrink: 0,
   },
-  summary: {
-    padding: '12px 16px 20px',
+  qty: {
+    fontWeight: 800,
+    fontSize: 15,
+    minWidth: 28,
+    textAlign: 'center',
+    color: '#212121',
+  },
+  itemPrice: {
+    fontWeight: 800,
+    fontSize: 16,
+    color: '#212121',
+    letterSpacing: -0.3,
+  },
+  bottom: {
+    padding: '16px 20px 32px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
-  },
-  summaryCard: {
-    background: '#FFFFFF',
-    borderRadius: 16,
-    padding: '14px 16px',
-    border: `1px solid ${BORDER}`,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
+    gap: 14,
   },
   summaryRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: 14,
-    color: TEXT2,
+    alignItems: 'center',
+    padding: '0 4px',
   },
   summaryLabel: {
-    color: TEXT2,
+    fontSize: 15,
+    color: '#757575',
+    fontWeight: 500,
   },
-  summaryVal: {
-    fontWeight: 600,
-    color: TEXT,
-  },
-  divider: {
-    height: 1,
-    background: BORDER,
-  },
-  totalRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  totalLabel: {
-    fontSize: 17,
-    fontWeight: 700,
-    color: TEXT,
-  },
-  totalAmt: {
-    fontSize: 22,
-    fontWeight: 800,
-    color: C,
+  summaryTotal: {
+    fontSize: 24,
+    fontWeight: 900,
+    color: '#212121',
+    letterSpacing: -0.5,
   },
   checkoutBtn: {
     background: C,
     color: '#fff',
     border: 'none',
-    borderRadius: 14,
-    minHeight: 52,
-    padding: '0 20px',
-    fontSize: 16,
+    borderRadius: 16,
+    minHeight: 56,
+    fontSize: 17,
     fontWeight: 700,
     cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    boxShadow: '0 4px 16px rgba(141,198,63,0.35)',
-    transition: TRANSITION,
-    letterSpacing: 0.1,
-  },
-  continueBtn: {
-    background: 'none',
-    border: 'none',
-    color: TEXT2,
-    fontSize: 14,
-    cursor: 'pointer',
-    textAlign: 'center',
-    padding: '6px 0',
-    fontWeight: 500,
-    transition: TRANSITION,
+    boxShadow: '0 4px 20px rgba(124,179,66,0.3)',
+    transition: 'all 0.2s',
+    letterSpacing: -0.2,
   },
   empty: {
     display: 'flex',
@@ -335,42 +248,29 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    minHeight: '70vh',
+    minHeight: '75vh',
     padding: 24,
-    background: '#FFFFFF',
-  },
-  emptyIconWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: '50%',
-    background: BG,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: `1px solid ${BORDER}`,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: 700,
-    color: TEXT,
-    letterSpacing: -0.3,
-    marginTop: 4,
+    fontWeight: 800,
+    color: '#212121',
+    marginTop: 8,
   },
   emptyDesc: {
     fontSize: 14,
-    color: TEXT2,
+    color: '#9E9E9E',
   },
   goBtn: {
     background: C,
     color: '#fff',
     border: 'none',
-    borderRadius: 12,
-    padding: '13px 32px',
+    borderRadius: 14,
+    padding: '14px 36px',
     fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(141,198,63,0.35)',
-    transition: TRANSITION,
+    boxShadow: '0 4px 16px rgba(124,179,66,0.3)',
     marginTop: 8,
   },
 }
