@@ -33,7 +33,7 @@ export default function Header() {
         </button>
       ) : (
         <div style={st.logoWrap} onClick={() => navigate('/')}>
-          <EverLogoMark width={42} style={{ borderRadius: 12 }} />
+          <EverLogoMark width={80} style={{ borderRadius: 16 }} />
         </div>
       )}
 
@@ -60,7 +60,7 @@ const st = {
     background: 'rgba(250,250,250,0.9)', backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
     display: 'flex', alignItems: 'center', padding: '6px 16px',
-    gap: 10, minHeight: 52, borderBottom: '1px solid rgba(0,0,0,0.04)',
+    gap: 10, minHeight: 56, borderBottom: '1px solid rgba(0,0,0,0.04)',
   },
   backBtn: {
     background: 'none', border: 'none', width: 38, height: 38,
@@ -73,16 +73,16 @@ const st = {
     letterSpacing: -0.3, textAlign: 'center',
   },
   cartBtn: {
-    background: C, border: 'none', cursor: 'pointer',
+    background: '#1a1a1a', border: 'none', cursor: 'pointer',
     position: 'relative', padding: 8,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     marginLeft: 'auto', borderRadius: 14,
-    width: 40, height: 40,
-    boxShadow: `0 3px 10px rgba(141,198,63,0.3)`,
+    width: 42, height: 42,
+    boxShadow: '0 3px 10px rgba(0,0,0,0.15)',
   },
   badge: {
     position: 'absolute', top: -4, right: -4,
-    background: '#ff3b30', color: '#fff', borderRadius: 9,
+    background: C, color: '#fff', borderRadius: 9,
     minWidth: 18, height: 18, fontSize: 10, fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
     border: '2px solid #fff',

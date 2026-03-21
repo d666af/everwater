@@ -6,20 +6,20 @@ const C = '#8DC63F'
 const NAV = [
   { path: '/', label: 'Каталог', icon: (a) => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" fill={a ? 'rgba(255,255,255,0.2)' : 'none'} strokeLinejoin="round"/>
-      <path d="M9 22V12h6v10" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke={a ? C : '#bbb'} strokeWidth="1.8" fill={a ? C+'18' : 'none'} strokeLinejoin="round"/>
+      <path d="M9 22V12h6v10" stroke={a ? C : '#bbb'} strokeWidth="1.8" strokeLinejoin="round"/>
     </svg>
   )},
   { path: '/orders', label: 'Заказы', icon: (a) => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="3" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" fill={a ? 'rgba(255,255,255,0.2)' : 'none'}/>
-      <path d="M8 8h8M8 12h5M8 16h3" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" strokeLinecap="round"/>
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke={a ? C : '#bbb'} strokeWidth="1.8" fill={a ? C+'18' : 'none'}/>
+      <path d="M8 8h8M8 12h5M8 16h3" stroke={a ? C : '#bbb'} strokeWidth="1.8" strokeLinecap="round"/>
     </svg>
   )},
   { path: '/profile', label: 'Профиль', icon: (a) => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="8" r="4" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" fill={a ? 'rgba(255,255,255,0.2)' : 'none'}/>
-      <path d="M4 21c0-3.5 3.6-6 8-6s8 2.5 8 6" stroke={a ? '#fff' : '#bbb'} strokeWidth="1.8" strokeLinecap="round"/>
+      <circle cx="12" cy="8" r="4" stroke={a ? C : '#bbb'} strokeWidth="1.8" fill={a ? C+'18' : 'none'}/>
+      <path d="M4 21c0-3.5 3.6-6 8-6s8 2.5 8 6" stroke={a ? C : '#bbb'} strokeWidth="1.8" strokeLinecap="round"/>
     </svg>
   )},
 ]
@@ -83,11 +83,10 @@ const st = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   activeIconWrap: {
-    width: 42, height: 34, borderRadius: 14,
+    width: 52, height: 34, borderRadius: 14,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: C,
-    border: `2px solid ${C}`,
-    boxShadow: `0 2px 8px rgba(141,198,63,0.35)`,
+    background: C + '18',
+    border: `1.5px solid ${C}40`,
   },
   label: { fontSize: 10, letterSpacing: 0.2 },
 }
