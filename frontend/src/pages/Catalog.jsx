@@ -1,7 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getProducts } from '../api'
 import ProductCard from '../components/ProductCard'
 import { SkeletonCard } from '../components/Skeleton'
+import { useUserStore } from '../store/user'
+import { useOrdersStore } from '../store/orders'
 
 const C = '#8DC63F'
 
@@ -9,6 +12,14 @@ export default function Catalog() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [volumeFilter, setVolumeFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all') // 'all' | 'still' | 'carbonated'
+  const navigate = useNavigate()
+  const { bonus_points, balance } = useUserStore()
+  const orders = useOrdersStore(s => s.orders)
+
+  const activeOrders = useMemo(() => {
+    return orders.filter(o => ['awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'].includes(o.status))
+  }, [orders])
 
   useEffect(() => {
     getProducts()
@@ -22,35 +33,89 @@ export default function Catalog() {
   }, [products])
 
   const filtered = useMemo(() => {
-    if (volumeFilter === 'all') return products
-    return products.filter(p => String(p.volume) === String(volumeFilter))
-  }, [products, volumeFilter])
-
-  const hours = new Date().getHours()
-  const greet = hours < 12 ? 'Доброе утро' : hours < 18 ? 'Добрый день' : 'Добрый вечер'
+    let result = products
+    if (volumeFilter !== 'all') {
+      result = result.filter(p => String(p.volume) === String(volumeFilter))
+    }
+    if (typeFilter !== 'all') {
+      result = result.filter(p => {
+        const isCarbonated = p.type === 'carbonated' || p.name?.toLowerCase().includes('газированн')
+        return typeFilter === 'carbonated' ? isCarbonated : !isCarbonated
+      })
+    }
+    return result
+  }, [products, volumeFilter, typeFilter])
 
   return (
     <div style={s.page}>
-      {/* Greeting */}
-      <div style={s.greetWrap}>
-        <h1 style={s.greet}>{greet} 👋</h1>
-        <p style={s.greetSub}>Что закажем сегодня?</p>
+      {/* Top info section: bonuses + active orders */}
+      <div style={s.infoSection}>
+        {/* Bonus & Balance cards */}
+        <div style={s.infoCards}>
+          <div style={s.infoCard} onClick={() => navigate('/profile')}>
+            <div style={s.infoCardIcon}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z" fill={C} opacity="0.9"/>
+              </svg>
+            </div>
+            <div>
+              <div style={s.infoCardValue}>{bonus_points.toLocaleString()}</div>
+              <div style={s.infoCardLabel}>бонусов</div>
+            </div>
+          </div>
+          <div style={s.infoCard} onClick={() => navigate('/profile')}>
+            <div style={s.infoCardIcon}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="6" width="20" height="12" rx="2" stroke={C} strokeWidth="1.8" fill={C + '20'}/>
+                <path d="M6 10h3M6 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div>
+              <div style={s.infoCardValue}>{balance.toLocaleString()}</div>
+              <div style={s.infoCardLabel}>баланс</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Active order indicator */}
+        {activeOrders.length > 0 && (
+          <div style={s.activeOrder} onClick={() => navigate('/orders')}>
+            <div style={s.activeOrderDot} />
+            <div style={s.activeOrderText}>
+              <span style={s.activeOrderTitle}>
+                {activeOrders.length === 1 ? 'Активный заказ' : `Активных заказов: ${activeOrders.length}`}
+              </span>
+              <span style={s.activeOrderSub}>Нажмите для отслеживания</span>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M9 18l6-6-6-6" stroke="#8e8e93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        )}
       </div>
 
-      {/* Delivery info banner */}
-      <div style={s.banner}>
-        <div style={s.bannerLeft}>
-          <div style={s.bannerIcon}>🚀</div>
-          <div>
-            <div style={s.bannerTitle}>Бесплатная доставка</div>
-            <div style={s.bannerSub}>от 1 часа · до двери</div>
-          </div>
+      {/* Water type filter */}
+      <div style={s.filterSection}>
+        <div style={s.filterLabel}>Тип воды</div>
+        <div style={s.filters}>
+          {[
+            { key: 'all', label: 'Все' },
+            { key: 'still', label: 'Обычная' },
+            { key: 'carbonated', label: 'Газированная' },
+          ].map(({ key, label }) => (
+            <button key={key}
+              style={typeFilter === key ? { ...s.chip, ...s.chipActive } : s.chip}
+              onClick={() => setTypeFilter(key)}
+            >
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Category filters */}
+      {/* Volume filters */}
       {(loading || volumes.length > 1) && (
-        <div style={s.filterSection}>
+        <div style={{ ...s.filterSection, paddingTop: 10 }}>
           <div style={s.filterLabel}>Объём</div>
           <div style={s.filters}>
             <button
@@ -97,7 +162,7 @@ export default function Catalog() {
           <div style={s.empty}>
             <div style={s.emptyIcon}>🔍</div>
             <p style={s.emptyTitle}>Ничего не найдено</p>
-            <p style={s.emptySub}>Попробуйте другой объём</p>
+            <p style={s.emptySub}>Попробуйте другой фильтр</p>
           </div>
         )}
       </div>
@@ -110,37 +175,45 @@ export default function Catalog() {
 const s = {
   page: {
     display: 'flex', flexDirection: 'column',
-    background: '#f4f4f8', minHeight: '100dvh',
+    background: '#eeeef2', minHeight: '100dvh',
   },
 
-  /* Greeting */
-  greetWrap: { padding: '4px 20px 0' },
-  greet: {
-    fontSize: 22, fontWeight: 800, color: '#1a1a1a', margin: 0,
-    letterSpacing: -0.5,
+  /* Info section */
+  infoSection: { padding: '8px 16px 0' },
+  infoCards: { display: 'flex', gap: 10 },
+  infoCard: {
+    flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+    background: '#fff', borderRadius: 16, padding: '12px 14px',
+    cursor: 'pointer',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  greetSub: {
-    fontSize: 14, color: '#8e8e93', margin: '2px 0 0', fontWeight: 500,
+  infoCardIcon: {
+    width: 36, height: 36, borderRadius: 12,
+    background: C + '15', display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
   },
+  infoCardValue: { fontWeight: 800, fontSize: 16, color: '#1a1a1a', letterSpacing: -0.3 },
+  infoCardLabel: { fontSize: 11, color: '#8e8e93', fontWeight: 500, marginTop: -1 },
 
-  /* Banner */
-  banner: {
-    margin: '14px 16px 0', padding: '14px 16px',
-    background: 'linear-gradient(135deg, #e8f7d5 0%, #d4edba 100%)',
-    borderRadius: 16, display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between',
+  /* Active order */
+  activeOrder: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    background: '#fff', borderRadius: 16, padding: '12px 14px',
+    marginTop: 10, cursor: 'pointer',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  bannerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  bannerIcon: {
-    width: 40, height: 40, borderRadius: 12,
-    background: 'rgba(255,255,255,0.7)', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontSize: 20,
+  activeOrderDot: {
+    width: 10, height: 10, borderRadius: 5,
+    background: C, flexShrink: 0,
+    boxShadow: `0 0 0 3px ${C}30`,
+    animation: 'pulse 2s infinite',
   },
-  bannerTitle: { fontSize: 14, fontWeight: 700, color: '#2d5a0f' },
-  bannerSub: { fontSize: 12, color: '#5a8a3a', marginTop: 1 },
+  activeOrderText: { flex: 1, display: 'flex', flexDirection: 'column' },
+  activeOrderTitle: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
+  activeOrderSub: { fontSize: 12, color: '#8e8e93' },
 
   /* Filters */
-  filterSection: { padding: '16px 16px 0' },
+  filterSection: { padding: '14px 16px 0' },
   filterLabel: {
     fontSize: 13, fontWeight: 600, color: '#8e8e93',
     marginBottom: 8, paddingLeft: 4,
@@ -158,8 +231,8 @@ const s = {
     boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,0.06)',
   },
   chipActive: {
-    background: '#1a1a1a', color: '#fff',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+    background: C, color: '#fff',
+    boxShadow: `0 2px 12px rgba(141,198,63,0.3)`,
   },
 
   /* Products */

@@ -8,6 +8,7 @@ export default function ProductCard({ product }) {
   const cartItem = items.find(i => i.product.id === product.id)
   const [imgError, setImgError] = useState(false)
   const hasPhoto = product.photo_url && !imgError
+  const isCarbonated = product.type === 'carbonated' || product.name?.toLowerCase().includes('газированн')
 
   return (
     <div style={s.card}>
@@ -26,14 +27,17 @@ export default function ProductCard({ product }) {
             </svg>
           </div>
         )}
-        {/* Volume tag */}
-        <div style={s.volTag}>{product.volume} л</div>
+        {/* Badge only for carbonated water */}
+        {isCarbonated && (
+          <div style={s.carbTag}>
+            <span style={s.carbIcon}>✦</span> газированная
+          </div>
+        )}
       </div>
 
       {/* Content */}
       <div style={s.content}>
         <div style={s.name}>{product.name}</div>
-        {product.description && <div style={s.desc}>{product.description}</div>}
 
         {/* Price + cart */}
         <div style={s.row}>
@@ -70,9 +74,10 @@ const s = {
     background: '#fff', borderRadius: 20, overflow: 'hidden',
     display: 'flex', flexDirection: 'column',
     boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+    transition: 'transform 0.15s ease',
   },
   imgWrap: {
-    position: 'relative', width: '100%', aspectRatio: '1',
+    position: 'relative', width: '100%', aspectRatio: '4/3',
     overflow: 'hidden', background: '#f0f2e8',
   },
   img: {
@@ -83,16 +88,18 @@ const s = {
     width: '100%', height: '100%',
     background: 'linear-gradient(145deg, #f5f7ef 0%, #edf0e4 100%)',
   },
-  volTag: {
+  carbTag: {
     position: 'absolute', top: 10, left: 10,
-    background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)',
+    background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
     borderRadius: 10, padding: '4px 10px',
-    fontSize: 12, fontWeight: 700, color: '#333',
+    fontSize: 11, fontWeight: 700, color: '#2d8a4e',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    display: 'flex', alignItems: 'center', gap: 4,
   },
+  carbIcon: { fontSize: 10 },
   content: {
-    padding: '12px 12px 14px', display: 'flex', flexDirection: 'column',
+    padding: '10px 12px 12px', display: 'flex', flexDirection: 'column',
     gap: 4, flex: 1,
   },
   name: {
@@ -101,14 +108,9 @@ const s = {
     display: '-webkit-box', WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
-  desc: {
-    fontSize: 12, color: '#8e8e93', lineHeight: 1.3,
-    display: '-webkit-box', WebkitLineClamp: 1,
-    WebkitBoxOrient: 'vertical', overflow: 'hidden',
-  },
   row: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 'auto', paddingTop: 8,
+    marginTop: 'auto', paddingTop: 6,
   },
   price: { fontWeight: 800, fontSize: 17, color: '#1a1a1a', letterSpacing: -0.3 },
   currency: { fontWeight: 500, fontSize: 12, color: '#8e8e93' },
