@@ -62,9 +62,7 @@ export default function Login() {
     <div style={s.page}>
       <div style={s.container}>
         <div style={s.brand}>
-          <EverLogo width={72} style={{ borderRadius: 18 }} />
-          <h1 style={s.title}>Everwater</h1>
-          <p style={s.subtitle}>Доставка воды</p>
+          <EverLogo width={120} style={{ borderRadius: 22 }} />
         </div>
 
         <div style={s.form}>
@@ -141,20 +139,6 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 12,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 800,
-    color: '#111',
-    margin: 0,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#888',
-    margin: 0,
-    fontWeight: 400,
   },
   form: {
     display: 'flex',
