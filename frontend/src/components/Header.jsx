@@ -33,7 +33,7 @@ export default function Header() {
         </button>
       ) : (
         <div style={st.logoWrap} onClick={() => navigate('/')}>
-          <EverLogoMark width={34} style={{ borderRadius: 10 }} />
+          <EverLogoMark width={42} style={{ borderRadius: 12 }} />
         </div>
       )}
 
@@ -42,10 +42,10 @@ export default function Header() {
 
       {!isCart && (
         <button style={st.cartBtn} onClick={() => navigate('/cart')} aria-label="Корзина">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" stroke="#1a1a1a" strokeWidth="1.7" strokeLinejoin="round"/>
-            <path d="M3 6h18" stroke="#1a1a1a" strokeWidth="1.7"/>
-            <path d="M16 10a4 4 0 01-8 0" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" stroke="#fff" strokeWidth="1.7" strokeLinejoin="round"/>
+            <path d="M3 6h18" stroke="#fff" strokeWidth="1.7"/>
+            <path d="M16 10a4 4 0 01-8 0" stroke="#fff" strokeWidth="1.7" strokeLinecap="round"/>
           </svg>
           {totalQty > 0 && <span style={st.badge}>{totalQty > 9 ? '9+' : totalQty}</span>}
         </button>
@@ -73,15 +73,18 @@ const st = {
     letterSpacing: -0.3, textAlign: 'center',
   },
   cartBtn: {
-    background: 'none', border: 'none', cursor: 'pointer',
-    position: 'relative', padding: 6,
+    background: C, border: 'none', cursor: 'pointer',
+    position: 'relative', padding: 8,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginLeft: 'auto',
+    marginLeft: 'auto', borderRadius: 14,
+    width: 40, height: 40,
+    boxShadow: `0 3px 10px rgba(141,198,63,0.3)`,
   },
   badge: {
-    position: 'absolute', top: 0, right: -2,
-    background: C, color: '#fff', borderRadius: 9,
+    position: 'absolute', top: -4, right: -4,
+    background: '#ff3b30', color: '#fff', borderRadius: 9,
     minWidth: 18, height: 18, fontSize: 10, fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
+    border: '2px solid #fff',
   },
 }
