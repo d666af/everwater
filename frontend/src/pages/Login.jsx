@@ -162,9 +162,9 @@ const s = {
     transition: 'all 0.2s',
   },
   inputFocused: {
-    borderColor: '#4CAF50',
+    borderColor: '#8DC63F',
     background: '#fff',
-    boxShadow: '0 0 0 3px rgba(76,175,80,0.1)',
+    boxShadow: '0 0 0 3px rgba(141,198,63,0.1)',
   },
   inputError: {
     borderColor: '#ef4444',
@@ -187,7 +187,7 @@ const s = {
     paddingLeft: 2,
   },
   btn: {
-    background: '#4CAF50',
+    background: '#8DC63F',
     color: '#fff',
     border: 'none',
     borderRadius: 14,
@@ -243,7 +243,7 @@ const s = {
   demoRole: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#4CAF50',
+    color: '#8DC63F',
   },
   demoPhone: {
     fontSize: 11,

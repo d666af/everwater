@@ -43,7 +43,7 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
         }).addTo(map)
 
         const icon = L.divIcon({
-          html: `<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#4CAF50;border:3px solid #fff;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.25);"></div>`,
+          html: `<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#8DC63F;border:3px solid #fff;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.25);"></div>`,
           iconSize: [28, 28], iconAnchor: [14, 28], className: '',
         })
         const marker = L.marker([initLat, initLng], { draggable: true, icon }).addTo(map)
@@ -140,13 +140,13 @@ const s = {
   },
   actions: { display: 'flex', gap: 8, padding: '12px 16px 16px', flexShrink: 0 },
   myLocBtn: {
-    flex: 1, padding: '12px 0', border: '1.5px solid #4CAF50',
+    flex: 1, padding: '12px 0', border: '1.5px solid #8DC63F',
     borderRadius: 12, background: '#fff', color: '#2e7d32',
     fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
   confirmBtn: {
     flex: 2, padding: '12px 0', border: 'none',
-    borderRadius: 12, background: '#4CAF50', color: '#fff',
+    borderRadius: 12, background: '#8DC63F', color: '#fff',
     fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
 }

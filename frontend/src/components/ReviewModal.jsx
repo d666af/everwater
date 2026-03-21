@@ -89,7 +89,7 @@ const s = {
   error: { color: '#ef4444', fontSize: 13, textAlign: 'center', fontWeight: 600 },
   submitBtn: {
     width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
-    background: '#4CAF50', color: '#fff', fontSize: 16, fontWeight: 700,
+    background: '#8DC63F', color: '#fff', fontSize: 16, fontWeight: 700,
     cursor: 'pointer',
   },
   cancelBtn: {
