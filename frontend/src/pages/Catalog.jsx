@@ -53,7 +53,7 @@ export default function Catalog() {
         {/* Bonus & Balance cards */}
         <div style={s.infoCards}>
           <div style={s.infoCard} onClick={() => navigate('/profile')}>
-            <div style={s.infoCardIcon}>
+            <div style={s.bonusIcon}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z" fill="#fff"/>
               </svg>
@@ -64,7 +64,7 @@ export default function Catalog() {
             </div>
           </div>
           <div style={s.infoCard} onClick={() => navigate('/profile')}>
-            <div style={s.infoCardIcon}>
+            <div style={s.balanceIcon}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <rect x="2" y="6" width="20" height="12" rx="2" stroke="#fff" strokeWidth="1.8" fill="rgba(255,255,255,0.25)"/>
                 <path d="M6 10h3M6 14h5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
@@ -177,9 +177,14 @@ const s = {
     cursor: 'pointer',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  infoCardIcon: {
+  bonusIcon: {
     width: 36, height: 36, borderRadius: 12,
-    background: C, display: 'flex',
+    background: '#F5A623', display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  balanceIcon: {
+    width: 36, height: 36, borderRadius: 12,
+    background: '#3A7BF2', display: 'flex',
     alignItems: 'center', justifyContent: 'center',
   },
   infoCardValue: { fontWeight: 800, fontSize: 16, color: '#1a1a1a', letterSpacing: -0.3 },
