@@ -18,45 +18,48 @@ export default function ProductCard({ product }) {
             onError={() => setImgError(true)} />
         ) : (
           <div style={s.placeholder}>
-            <svg width="30" height="36" viewBox="0 0 40 48" fill="none">
-              <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-                fill={C + '25'} stroke={C + '40'} strokeWidth="1.5"/>
+            <svg width="36" height="42" viewBox="0 0 40 48" fill="none">
+              <path d="M20 4C20 4 6 18 6 28C6 38.5 12 44 20 44C28 44 34 38.5 34 28C34 18 20 4 20 4Z"
+                fill={C} opacity="0.15"/>
+              <path d="M20 4C20 4 6 18 6 28C6 38.5 12 44 20 44C28 44 34 38.5 34 28C34 18 20 4 20 4Z"
+                stroke={C} strokeWidth="1.5" opacity="0.3"/>
             </svg>
           </div>
         )}
-        <span style={s.badge}>{product.volume} л</span>
+        {/* Volume tag */}
+        <div style={s.volTag}>{product.volume} л</div>
       </div>
 
-      {/* Info */}
-      <div style={s.info}>
+      {/* Content */}
+      <div style={s.content}>
         <div style={s.name}>{product.name}</div>
         {product.description && <div style={s.desc}>{product.description}</div>}
-      </div>
 
-      {/* Bottom: price + action */}
-      <div style={s.bottom}>
-        <div style={s.priceBlock}>
-          <span style={s.price}>{product.price.toLocaleString()}</span>
-          <span style={s.currency}> сум</span>
-        </div>
-
-        {!cartItem ? (
-          <button style={s.addBtn} onClick={() => addToCart(product)} aria-label="Добавить">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        ) : (
-          <div style={s.stepper}>
-            <button style={s.stepBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>
-              <svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12h14" stroke={C} strokeWidth="2.5" strokeLinecap="round"/></svg>
-            </button>
-            <span style={s.qty}>{cartItem.quantity}</span>
-            <button style={{ ...s.stepBtn, ...s.stepBtnPlus }} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>
-              <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg>
-            </button>
+        {/* Price + cart */}
+        <div style={s.row}>
+          <div>
+            <span style={s.price}>{product.price.toLocaleString()}</span>
+            <span style={s.currency}> сум</span>
           </div>
-        )}
+
+          {!cartItem ? (
+            <button style={s.addBtn} onClick={() => addToCart(product)} aria-label="Добавить">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
+              </svg>
+            </button>
+          ) : (
+            <div style={s.stepper}>
+              <button style={s.stepBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>
+                −
+              </button>
+              <span style={s.qty}>{cartItem.quantity}</span>
+              <button style={{ ...s.stepBtn, ...s.stepPlus }} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>
+                +
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -64,14 +67,13 @@ export default function ProductCard({ product }) {
 
 const s = {
   card: {
-    background: '#fff', borderRadius: 18, overflow: 'hidden',
+    background: '#fff', borderRadius: 20, overflow: 'hidden',
     display: 'flex', flexDirection: 'column',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-    transition: 'transform 0.15s',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
   },
   imgWrap: {
-    position: 'relative', width: '100%', aspectRatio: '1 / 0.85',
-    overflow: 'hidden', background: '#f3f6ef',
+    position: 'relative', width: '100%', aspectRatio: '1',
+    overflow: 'hidden', background: '#f0f2e8',
   },
   img: {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
@@ -79,56 +81,62 @@ const s = {
   placeholder: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     width: '100%', height: '100%',
+    background: 'linear-gradient(145deg, #f5f7ef 0%, #edf0e4 100%)',
   },
-  badge: {
-    position: 'absolute', top: 8, left: 8,
-    background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
-    borderRadius: 8, padding: '3px 8px',
-    fontSize: 11, fontWeight: 700, color: '#444',
+  volTag: {
+    position: 'absolute', top: 10, left: 10,
+    background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    borderRadius: 10, padding: '4px 10px',
+    fontSize: 12, fontWeight: 700, color: '#333',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
   },
-  info: {
-    padding: '10px 12px 0', flex: 1,
+  content: {
+    padding: '12px 12px 14px', display: 'flex', flexDirection: 'column',
+    gap: 4, flex: 1,
   },
   name: {
     fontWeight: 700, fontSize: 14, color: '#1a1a1a',
-    lineHeight: 1.25, letterSpacing: -0.2,
+    lineHeight: 1.3, letterSpacing: -0.15,
     display: '-webkit-box', WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
   desc: {
-    fontSize: 11, color: '#999', lineHeight: 1.35, marginTop: 3,
+    fontSize: 12, color: '#8e8e93', lineHeight: 1.3,
     display: '-webkit-box', WebkitLineClamp: 1,
     WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
-  bottom: {
+  row: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '8px 10px 10px',
+    marginTop: 'auto', paddingTop: 8,
   },
-  priceBlock: { display: 'flex', alignItems: 'baseline' },
-  price: { fontWeight: 800, fontSize: 16, color: '#1a1a1a', letterSpacing: -0.3 },
-  currency: { fontWeight: 500, fontSize: 11, color: '#999' },
+  price: { fontWeight: 800, fontSize: 17, color: '#1a1a1a', letterSpacing: -0.3 },
+  currency: { fontWeight: 500, fontSize: 12, color: '#8e8e93' },
+
+  /* Add button */
   addBtn: {
-    width: 36, height: 36, borderRadius: 12,
+    width: 38, height: 38, borderRadius: 14,
     background: C, border: 'none', cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
-    boxShadow: `0 2px 8px ${C}40`,
+    boxShadow: `0 4px 12px rgba(141,198,63,0.35)`,
+    transition: 'transform 0.15s, box-shadow 0.15s',
   },
+
+  /* Stepper */
   stepper: {
-    display: 'flex', alignItems: 'center', gap: 0,
-    borderRadius: 12, overflow: 'hidden',
-    background: C + '12',
+    display: 'flex', alignItems: 'center',
+    background: '#f2f2f7', borderRadius: 14,
+    overflow: 'hidden', height: 38,
   },
   stepBtn: {
-    width: 32, height: 32, border: 'none', background: 'transparent',
+    width: 34, height: 38, border: 'none', background: 'transparent',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer',
+    cursor: 'pointer', fontSize: 18, fontWeight: 600, color: '#8e8e93',
   },
-  stepBtnPlus: {
-    background: C, borderRadius: 10,
-  },
+  stepPlus: { color: C, fontWeight: 700 },
   qty: {
-    fontWeight: 700, fontSize: 14, minWidth: 20, textAlign: 'center',
+    fontWeight: 700, fontSize: 15, minWidth: 20, textAlign: 'center',
     color: '#1a1a1a',
   },
 }
