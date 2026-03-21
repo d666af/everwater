@@ -11,43 +11,52 @@ export default function ProductCard({ product }) {
 
   return (
     <div style={s.card}>
-      <div style={s.imgArea}>
+      {/* Image */}
+      <div style={s.imgWrap}>
         {hasPhoto ? (
-          <img src={product.photo_url} alt={product.name} style={s.img} onError={() => setImgError(true)} />
+          <img src={product.photo_url} alt={product.name} style={s.img}
+            onError={() => setImgError(true)} />
         ) : (
           <div style={s.placeholder}>
-            <svg width="28" height="34" viewBox="0 0 40 48" fill="none">
+            <svg width="30" height="36" viewBox="0 0 40 48" fill="none">
               <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-                fill="rgba(141,198,63,0.15)" stroke="rgba(141,198,63,0.3)" strokeWidth="1.5"/>
+                fill={C + '25'} stroke={C + '40'} strokeWidth="1.5"/>
             </svg>
           </div>
         )}
+        <span style={s.badge}>{product.volume} л</span>
       </div>
 
-      <div style={s.body}>
-        <div style={s.top}>
-          <div style={s.name}>{product.name}</div>
-          <span style={s.volBadge}>{product.volume} л</span>
-        </div>
+      {/* Info */}
+      <div style={s.info}>
+        <div style={s.name}>{product.name}</div>
         {product.description && <div style={s.desc}>{product.description}</div>}
+      </div>
 
-        <div style={s.footer}>
-          <div style={s.price}>
-            {product.price.toLocaleString()}
-            <span style={s.currency}> сум</span>
-          </div>
-          {!cartItem ? (
-            <button style={s.addBtn} onClick={() => addToCart(product)}>
-              В корзину
-            </button>
-          ) : (
-            <div style={s.counter}>
-              <button style={s.cBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>−</button>
-              <span style={s.qty}>{cartItem.quantity}</span>
-              <button style={{ ...s.cBtn, ...s.cBtnPlus }} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>+</button>
-            </div>
-          )}
+      {/* Bottom: price + action */}
+      <div style={s.bottom}>
+        <div style={s.priceBlock}>
+          <span style={s.price}>{product.price.toLocaleString()}</span>
+          <span style={s.currency}> сум</span>
         </div>
+
+        {!cartItem ? (
+          <button style={s.addBtn} onClick={() => addToCart(product)} aria-label="Добавить">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        ) : (
+          <div style={s.stepper}>
+            <button style={s.stepBtn} onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}>
+              <svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12h14" stroke={C} strokeWidth="2.5" strokeLinecap="round"/></svg>
+            </button>
+            <span style={s.qty}>{cartItem.quantity}</span>
+            <button style={{ ...s.stepBtn, ...s.stepBtnPlus }} onClick={() => updateQuantity(product.id, cartItem.quantity + 1)}>
+              <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -55,61 +64,71 @@ export default function ProductCard({ product }) {
 
 const s = {
   card: {
-    background: '#fff', borderRadius: 16, overflow: 'hidden',
-    display: 'flex', flexDirection: 'row', alignItems: 'stretch',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    background: '#fff', borderRadius: 18, overflow: 'hidden',
+    display: 'flex', flexDirection: 'column',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+    transition: 'transform 0.15s',
   },
-  imgArea: {
-    width: 110, minHeight: 110, flexShrink: 0,
-    overflow: 'hidden', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', background: '#f5f5f7',
+  imgWrap: {
+    position: 'relative', width: '100%', aspectRatio: '1 / 0.85',
+    overflow: 'hidden', background: '#f3f6ef',
   },
-  img: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+  img: {
+    width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+  },
   placeholder: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     width: '100%', height: '100%',
   },
-  body: {
-    padding: '12px 14px', display: 'flex', flexDirection: 'column',
-    flex: 1, minWidth: 0,
+  badge: {
+    position: 'absolute', top: 8, left: 8,
+    background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
+    borderRadius: 8, padding: '3px 8px',
+    fontSize: 11, fontWeight: 700, color: '#444',
   },
-  top: {
-    display: 'flex', alignItems: 'center', gap: 8,
+  info: {
+    padding: '10px 12px 0', flex: 1,
   },
   name: {
-    fontWeight: 700, fontSize: 15, color: '#111', lineHeight: 1.3,
-    flex: 1, minWidth: 0,
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-  },
-  volBadge: {
-    background: '#f0f0f2', borderRadius: 8,
-    padding: '3px 8px', fontSize: 11, fontWeight: 600, color: '#666',
-    flexShrink: 0,
+    fontWeight: 700, fontSize: 14, color: '#1a1a1a',
+    lineHeight: 1.25, letterSpacing: -0.2,
+    display: '-webkit-box', WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
   desc: {
-    fontSize: 12, color: '#999', lineHeight: 1.4, marginTop: 2,
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    fontSize: 11, color: '#999', lineHeight: 1.35, marginTop: 3,
+    display: '-webkit-box', WebkitLineClamp: 1,
+    WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
-  footer: {
+  bottom: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 'auto', paddingTop: 8,
+    padding: '8px 10px 10px',
   },
-  price: { fontWeight: 800, fontSize: 16, color: '#111', letterSpacing: -0.3 },
-  currency: { fontWeight: 400, fontSize: 12, color: '#888' },
+  priceBlock: { display: 'flex', alignItems: 'baseline' },
+  price: { fontWeight: 800, fontSize: 16, color: '#1a1a1a', letterSpacing: -0.3 },
+  currency: { fontWeight: 500, fontSize: 11, color: '#999' },
   addBtn: {
-    background: C, border: 'none', borderRadius: 10,
-    padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff',
-    cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-  },
-  counter: {
-    display: 'flex', alignItems: 'center', background: '#f2f2f3',
-    borderRadius: 10, overflow: 'hidden',
-  },
-  cBtn: {
-    background: 'none', border: 'none', width: 32, height: 32,
+    width: 36, height: 36, borderRadius: 12,
+    background: C, border: 'none', cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', color: '#888', fontSize: 17, fontWeight: 700,
+    flexShrink: 0,
+    boxShadow: `0 2px 8px ${C}40`,
   },
-  cBtnPlus: { color: C },
-  qty: { fontWeight: 700, fontSize: 14, minWidth: 22, textAlign: 'center', color: '#111' },
+  stepper: {
+    display: 'flex', alignItems: 'center', gap: 0,
+    borderRadius: 12, overflow: 'hidden',
+    background: C + '12',
+  },
+  stepBtn: {
+    width: 32, height: 32, border: 'none', background: 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  stepBtnPlus: {
+    background: C, borderRadius: 10,
+  },
+  qty: {
+    fontWeight: 700, fontSize: 14, minWidth: 20, textAlign: 'center',
+    color: '#1a1a1a',
+  },
 }
