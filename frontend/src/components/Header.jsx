@@ -2,6 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore } from '../store'
 import { EverLogoMark } from './EverLogo'
 
+const C = '#8DC63F'
+
 const TITLES = {
   '/cart': 'Корзина',
   '/checkout': 'Оформление',
@@ -15,12 +17,7 @@ export default function Header() {
   const items = useCartStore(s => s.items)
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
 
-  if (location.pathname.startsWith('/admin')
-    || location.pathname.startsWith('/courier')
-    || location.pathname.startsWith('/manager')
-    || location.pathname.startsWith('/support')) {
-    return null
-  }
+  if (['/admin', '/courier', '/manager', '/support'].some(p => location.pathname.startsWith(p))) return null
 
   const isRoot = location.pathname === '/'
   const isCart = location.pathname === '/cart'
@@ -31,7 +28,7 @@ export default function Header() {
       {!isRoot ? (
         <button style={st.backBtn} onClick={() => navigate(-1)} aria-label="Назад">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15 18l-6-6 6-6" stroke="#1a1a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       ) : (
@@ -46,8 +43,9 @@ export default function Header() {
       {!isCart && (
         <button style={st.cartBtn} onClick={() => navigate('/cart')} aria-label="Корзина">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M9 22a1 1 0 100-2 1 1 0 000 2zM20 22a1 1 0 100-2 1 1 0 000 2z" fill="#111"/>
-            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z" stroke="#1a1a1a" strokeWidth="1.7" strokeLinejoin="round"/>
+            <path d="M3 6h18" stroke="#1a1a1a" strokeWidth="1.7"/>
+            <path d="M16 10a4 4 0 01-8 0" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round"/>
           </svg>
           {totalQty > 0 && <span style={st.badge}>{totalQty > 9 ? '9+' : totalQty}</span>}
         </button>
@@ -58,70 +56,32 @@ export default function Header() {
 
 const st = {
   header: {
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-    background: 'rgba(250,250,250,0.88)',
-    backdropFilter: 'blur(20px)',
+    position: 'sticky', top: 0, zIndex: 100,
+    background: 'rgba(250,250,250,0.9)', backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '6px 16px',
-    gap: 10,
-    minHeight: 52,
-    borderBottom: '1px solid rgba(0,0,0,0.04)',
+    display: 'flex', alignItems: 'center', padding: '6px 16px',
+    gap: 10, minHeight: 52, borderBottom: '1px solid rgba(0,0,0,0.04)',
   },
   backBtn: {
-    background: 'none',
-    border: 'none',
-    width: 38,
-    height: 38,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    borderRadius: 10,
+    background: 'none', border: 'none', width: 38, height: 38,
+    cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', flexShrink: 0, borderRadius: 10,
   },
-  logoWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-    flexShrink: 0,
-  },
+  logoWrap: { display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 },
   title: {
-    flex: 1,
-    fontWeight: 700,
-    fontSize: 17,
-    color: '#111',
-    letterSpacing: -0.3,
-    textAlign: 'center',
+    flex: 1, fontWeight: 700, fontSize: 17, color: '#1a1a1a',
+    letterSpacing: -0.3, textAlign: 'center',
   },
   cartBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    position: 'relative',
-    padding: 6,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    background: 'none', border: 'none', cursor: 'pointer',
+    position: 'relative', padding: 6,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     marginLeft: 'auto',
   },
   badge: {
-    position: 'absolute',
-    top: 0,
-    right: -2,
-    background: '#4CAF50',
-    color: '#fff',
-    borderRadius: 8,
-    minWidth: 17,
-    height: 17,
-    fontSize: 10,
-    fontWeight: 700,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 4px',
+    position: 'absolute', top: 0, right: -2,
+    background: C, color: '#fff', borderRadius: 9,
+    minWidth: 18, height: 18, fontSize: 10, fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
   },
 }

@@ -75,7 +75,7 @@ export default function Support() {
         </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Поддержка</div>
-          <div style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600 }}>Онлайн</div>
+          <div style={{ fontSize: 12, color: '#8DC63F', fontWeight: 600 }}>Онлайн</div>
         </div>
       </div>
 
@@ -146,7 +146,7 @@ const s = {
     borderRadius: 10,
   },
   headerAvatar: {
-    width: 36, height: 36, borderRadius: '50%', background: '#4CAF50',
+    width: 36, height: 36, borderRadius: '50%', background: '#8DC63F',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   messageList: {
@@ -156,7 +156,7 @@ const s = {
   msgRow: { display: 'flex', alignItems: 'flex-end', gap: 6 },
   bubble: { maxWidth: '78%', borderRadius: 16, padding: '10px 14px' },
   bubbleSupport: { background: '#fff', borderBottomLeftRadius: 4, border: '1px solid #f0f0f0', color: '#111' },
-  bubbleUser: { background: '#4CAF50', borderBottomRightRadius: 4, color: '#fff' },
+  bubbleUser: { background: '#8DC63F', borderBottomRightRadius: 4, color: '#fff' },
   dots: { display: 'flex', gap: 4 },
   dot: {
     width: 7, height: 7, borderRadius: '50%', background: '#ccc',
@@ -168,7 +168,7 @@ const s = {
   },
   quickBtn: {
     background: '#fff', border: '1px solid #eee', borderRadius: 20,
-    padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#4CAF50',
+    padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#8DC63F',
     cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
   },
   inputBar: {
@@ -186,5 +186,5 @@ const s = {
     background: '#eee', color: '#bbb', cursor: 'not-allowed',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  sendBtnActive: { background: '#4CAF50', color: '#fff', cursor: 'pointer' },
+  sendBtnActive: { background: '#8DC63F', color: '#fff', cursor: 'pointer' },
 }

@@ -72,7 +72,7 @@ const s = {
     width: 26,
     height: 26,
     borderRadius: 7,
-    background: '#4CAF50',
+    background: '#8DC63F',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
