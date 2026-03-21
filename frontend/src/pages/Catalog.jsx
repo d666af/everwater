@@ -28,94 +28,136 @@ export default function Catalog() {
 
   return (
     <div style={s.page}>
-      {/* Greeting section */}
-      <div style={s.greeting}>
-        <div>
-          <h1 style={s.greetTitle}>Доставка воды</h1>
-          <p style={s.greetSub}>Выберите воду — привезём за 1–3 часа</p>
+      {/* Compact promo strip */}
+      <div style={s.promoStrip}>
+        <div style={s.promoItem}>
+          <div style={s.promoIcon}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff"/>
+            </svg>
+          </div>
+          <span style={s.promoText}>Доставка 1–3 ч</span>
+        </div>
+        <div style={s.promoDot} />
+        <div style={s.promoItem}>
+          <div style={s.promoIcon}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11z" fill="#fff"/>
+            </svg>
+          </div>
+          <span style={s.promoText}>Гарантия качества</span>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Volume filters */}
       {(loading || volumes.length > 1) && (
-        <div style={s.filters}>
-          <button
-            style={volumeFilter === 'all' ? { ...s.chip, ...s.chipActive } : s.chip}
-            onClick={() => setVolumeFilter('all')}
-          >Все</button>
-          {volumes.map(v => (
-            <button key={v}
-              style={String(volumeFilter) === String(v) ? { ...s.chip, ...s.chipActive } : s.chip}
-              onClick={() => setVolumeFilter(String(v))}
-            >{v} л</button>
-          ))}
+        <div style={s.filterWrap}>
+          <div style={s.filters}>
+            <button
+              style={volumeFilter === 'all' ? { ...s.chip, ...s.chipActive } : s.chip}
+              onClick={() => setVolumeFilter('all')}
+            >Все</button>
+            {volumes.map(v => (
+              <button key={v}
+                style={String(volumeFilter) === String(v) ? { ...s.chip, ...s.chipActive } : s.chip}
+                onClick={() => setVolumeFilter(String(v))}
+              >{v} л</button>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* Loading */}
       {loading && (
-        <div style={s.list}>
-          {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+        <div style={s.grid}>
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
+      {/* Empty state */}
       {!loading && !products.length && (
         <div style={s.empty}>
-          <div style={s.emptyIcon}>
-            <svg width="40" height="48" viewBox="0 0 40 48" fill="none">
+          <div style={s.emptyDrop}>
+            <svg width="44" height="52" viewBox="0 0 40 48" fill="none">
               <path d="M20 2C20 2 4 20 4 30C4 39.9 11.2 47 20 47C28.8 47 36 39.9 36 30C36 20 20 2 20 2Z"
-                fill="#E8F5E9" stroke={C} strokeWidth="1.5"/>
+                fill={C + '20'} stroke={C} strokeWidth="1.5"/>
             </svg>
           </div>
-          <p style={s.emptyText}>Товары пока не добавлены</p>
+          <p style={s.emptyTitle}>Пока пусто</p>
+          <p style={s.emptySub}>Товары скоро появятся</p>
         </div>
       )}
 
+      {/* Product grid */}
       {!loading && products.length > 0 && (
-        <div style={s.list}>{filtered.map(p => <ProductCard key={p.id} product={p} />)}</div>
+        <div style={s.grid}>
+          {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+        </div>
       )}
 
       {!loading && filtered.length === 0 && products.length > 0 && (
         <div style={s.noResults}>Нет товаров по выбранному объёму</div>
       )}
-      <div style={{ height: 24 }} />
+
+      <div style={{ height: 20 }} />
     </div>
   )
 }
 
 const s = {
   page: {
-    display: 'flex', flexDirection: 'column', background: '#f7f7f8',
-    minHeight: '100dvh',
+    display: 'flex', flexDirection: 'column',
+    background: '#fafafa', minHeight: '100dvh',
   },
-  greeting: {
-    padding: '8px 20px 4px',
+  promoStrip: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 10, padding: '10px 16px',
+    background: `linear-gradient(135deg, ${C}, #6daa2e)`,
+    margin: '0 12px', borderRadius: 14,
   },
-  greetTitle: {
-    fontSize: 26, fontWeight: 800, color: '#111', margin: 0,
-    letterSpacing: -0.5, lineHeight: 1.15,
+  promoItem: {
+    display: 'flex', alignItems: 'center', gap: 6,
   },
-  greetSub: {
-    fontSize: 14, color: '#888', margin: '4px 0 0', fontWeight: 400,
+  promoIcon: {
+    width: 24, height: 24, borderRadius: 8,
+    background: 'rgba(255,255,255,0.2)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  promoText: {
+    fontSize: 12, fontWeight: 600, color: '#fff',
+    whiteSpace: 'nowrap',
+  },
+  promoDot: {
+    width: 3, height: 3, borderRadius: '50%',
+    background: 'rgba(255,255,255,0.5)', flexShrink: 0,
+  },
+  filterWrap: {
+    padding: '12px 12px 4px',
   },
   filters: {
-    display: 'flex', gap: 8, padding: '14px 20px 6px',
-    overflowX: 'auto', scrollbarWidth: 'none',
+    display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none',
   },
   chip: {
-    padding: '7px 18px', borderRadius: 12, border: 'none',
-    background: '#ebebed', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    whiteSpace: 'nowrap', flexShrink: 0, color: '#555', transition: 'all 0.15s',
+    padding: '8px 18px', borderRadius: 12, border: 'none',
+    background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    whiteSpace: 'nowrap', flexShrink: 0, color: '#666',
+    transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
   },
-  chipActive: { background: '#111', color: '#fff' },
-  list: {
-    display: 'flex', flexDirection: 'column', gap: 10,
-    padding: '10px 16px',
+  chipActive: {
+    background: C, color: '#fff',
+    boxShadow: `0 2px 8px ${C}50`,
+  },
+  grid: {
+    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 10, padding: '8px 12px',
   },
   empty: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', height: '50vh', gap: 16,
+    justifyContent: 'center', height: '50vh', gap: 8,
   },
-  emptyIcon: { opacity: 0.6 },
-  emptyText: { color: '#999', fontSize: 15, margin: 0 },
+  emptyDrop: { marginBottom: 4 },
+  emptyTitle: { fontSize: 17, fontWeight: 700, color: '#333', margin: 0 },
+  emptySub: { fontSize: 13, color: '#999', margin: 0 },
   noResults: { textAlign: 'center', color: '#999', fontSize: 14, padding: 40 },
 }
