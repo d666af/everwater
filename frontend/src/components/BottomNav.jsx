@@ -83,12 +83,12 @@ export default function BottomNav() {
                 onClick={() => navigate(path)}
                 aria-label={label}
               >
-                <div style={{ ...st.iconWrap, color: active ? C : 'rgba(0,0,0,0.45)' }}>
+                <div style={{ ...st.iconWrap, color: active ? '#1a1a1a' : 'rgba(0,0,0,0.4)' }}>
                   {icon}
                 </div>
                 <span style={{
                   ...st.label,
-                  color: active ? '#fff' : 'rgba(0,0,0,0.45)',
+                  color: active ? '#1a1a1a' : 'rgba(0,0,0,0.4)',
                   fontWeight: active ? 700 : 500,
                 }}>
                   {label}
