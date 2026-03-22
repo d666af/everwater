@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore, cartEvents } from '../store'
 
-const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
+const GRAD_DARK = 'linear-gradient(135deg, #5BA01A 0%, #4A8C14 50%, #3D7A10 100%)'
 
 export default function CartWidget() {
   const navigate = useNavigate()
@@ -15,7 +16,6 @@ export default function CartWidget() {
   const [notification, setNotification] = useState(null)
   const [bounce, setBounce] = useState(false)
 
-  // Listen for add-to-cart events
   useEffect(() => {
     return cartEvents.on((product) => {
       setNotification(product.name)
@@ -25,7 +25,6 @@ export default function CartWidget() {
     })
   }, [])
 
-  // Hide on checkout/admin/login
   const hide = location.pathname === '/checkout'
     || location.pathname === '/login'
     || ['/admin', '/courier', '/manager'].some(p => location.pathname.startsWith(p))
@@ -114,7 +113,7 @@ export default function CartWidget() {
 
 const s = {
   container: {
-    position: 'fixed', bottom: 82, left: 0, right: 0, zIndex: 199,
+    position: 'fixed', bottom: 90, left: 0, right: 0, zIndex: 199,
     padding: '0 12px',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     pointerEvents: 'none',
@@ -123,14 +122,15 @@ const s = {
   /* Notification */
   notif: {
     display: 'flex', alignItems: 'center', gap: 8,
-    background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
-    borderRadius: 12, padding: '8px 14px', marginBottom: 8,
+    background: GRAD, backdropFilter: 'blur(12px)',
+    borderRadius: 14, padding: '10px 16px', marginBottom: 8,
     pointerEvents: 'auto',
     animation: 'slideDown 0.25s ease',
+    boxShadow: '0 4px 16px rgba(80,140,20,0.3)',
   },
   notifCheck: {
     width: 22, height: 22, borderRadius: 6,
-    background: C, display: 'flex',
+    background: 'rgba(255,255,255,0.25)', display: 'flex',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   notifText: {
@@ -138,33 +138,33 @@ const s = {
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
 
-  /* Collapsed bar */
+  /* Collapsed bar — green gradient */
   bar: {
     maxWidth: 420, width: '100%',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    background: '#1a1a1a', borderRadius: 18, padding: '12px 16px',
+    background: GRAD_DARK, borderRadius: 20, padding: '12px 16px',
     cursor: 'pointer', pointerEvents: 'auto',
-    boxShadow: '0 6px 24px rgba(0,0,0,0.3)',
+    boxShadow: '0 6px 24px rgba(60,120,10,0.35)',
     animation: 'slideUp 0.3s ease',
   },
   barLeft: { display: 'flex', alignItems: 'center', gap: 10 },
   barBadge: {
-    background: C, color: '#fff', borderRadius: 10,
+    background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 10,
     width: 28, height: 28, fontSize: 13, fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   barInfo: { display: 'flex', flexDirection: 'column' },
   barTitle: { color: '#fff', fontSize: 14, fontWeight: 700 },
-  barSubtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 11 },
+  barSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
   barRight: { display: 'flex', alignItems: 'center', gap: 6 },
   barTotal: { color: '#fff', fontSize: 16, fontWeight: 800, letterSpacing: -0.3 },
 
-  /* Expanded panel */
+  /* Expanded panel — green gradient */
   panel: {
     maxWidth: 420, width: '100%',
-    background: '#1a1a1a', borderRadius: 22,
+    background: GRAD_DARK, borderRadius: 22,
     pointerEvents: 'auto', overflow: 'hidden',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+    boxShadow: '0 8px 32px rgba(60,120,10,0.35)',
     animation: 'scaleIn 0.25s ease',
   },
   panelHeader: {
@@ -173,7 +173,7 @@ const s = {
   },
   panelTitle: { color: '#fff', fontSize: 18, fontWeight: 800 },
   closeBtn: {
-    background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
+    background: 'rgba(255,255,255,0.15)', border: 'none', cursor: 'pointer',
     width: 32, height: 32, borderRadius: 10,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
@@ -184,18 +184,18 @@ const s = {
   },
   panelItem: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    background: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: '10px 12px',
+    background: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: '10px 12px',
   },
   panelItemInfo: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 },
   panelItemName: {
     color: '#fff', fontSize: 13, fontWeight: 600,
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
-  panelItemPrice: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 1 },
+  panelItemPrice: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 1 },
 
   panelStepper: {
     display: 'flex', alignItems: 'center', gap: 2,
-    background: 'rgba(255,255,255,0.1)', borderRadius: 10,
+    background: 'rgba(255,255,255,0.15)', borderRadius: 10,
     marginLeft: 10, flexShrink: 0,
   },
   panelStepBtn: {
@@ -213,14 +213,14 @@ const s = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 12,
   },
-  panelTotalLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: 500 },
+  panelTotalLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 500 },
   panelTotalValue: { color: '#fff', fontSize: 20, fontWeight: 800, letterSpacing: -0.3 },
 
   orderBtn: {
     width: '100%', padding: '14px 0',
-    background: C, border: 'none', borderRadius: 16,
-    color: '#fff', fontSize: 16, fontWeight: 700,
+    background: '#fff', border: 'none', borderRadius: 16,
+    color: '#2d7a0f', fontSize: 16, fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: `0 4px 16px rgba(141,198,63,0.4)`,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
   },
 }

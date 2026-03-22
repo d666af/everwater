@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
-const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
 
 const NAV = [
   { path: '/', label: 'Главная', icon: (
@@ -14,12 +14,6 @@ const NAV = [
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
       <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  )},
-  { path: '/support', label: 'Поддержка', icon: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-      <path d="M8 9h8M8 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   )},
   { path: '/profile', label: 'Профиль', icon: (
@@ -36,6 +30,7 @@ export default function BottomNav() {
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
+  const [ready, setReady] = useState(false)
 
   const hidden = ['/checkout'].some(p => location.pathname.startsWith(p))
     || location.pathname.startsWith('/admin')
@@ -43,8 +38,8 @@ export default function BottomNav() {
     || location.pathname.startsWith('/manager')
     || location.pathname === '/login'
 
-  // Calculate pill position
-  useEffect(() => {
+  // Calculate pill position — covers the entire button (icon + text)
+  useLayoutEffect(() => {
     if (hidden) return
     const activeEl = itemRefs.current[location.pathname]
     const navEl = navRef.current
@@ -52,9 +47,10 @@ export default function BottomNav() {
       const navRect = navEl.getBoundingClientRect()
       const itemRect = activeEl.getBoundingClientRect()
       setPillStyle({
-        left: itemRect.left - navRect.left + (itemRect.width - 52) / 2,
-        width: 52,
+        left: itemRect.left - navRect.left + 4,
+        width: itemRect.width - 8,
       })
+      if (!ready) setTimeout(() => setReady(true), 50)
     }
   }, [location.pathname, hidden])
 
@@ -62,15 +58,18 @@ export default function BottomNav() {
 
   return (
     <>
-      <div style={{ height: 76 }} />
+      <div style={{ height: 84 }} />
       <nav style={st.nav}>
         <div style={st.inner} ref={navRef}>
-          {/* Animated pill */}
+          {/* Animated white pill — covers icon + text */}
           <div style={{
             ...st.pill,
             left: pillStyle.left ?? 0,
-            width: pillStyle.width ?? 52,
+            width: pillStyle.width ?? 60,
             opacity: pillStyle.width ? 1 : 0,
+            transition: ready
+              ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+              : 'none',
           }} />
 
           {NAV.map(({ path, label, icon }) => {
@@ -83,12 +82,12 @@ export default function BottomNav() {
                 onClick={() => navigate(path)}
                 aria-label={label}
               >
-                <div style={{ ...st.iconWrap, color: active ? '#1a1a1a' : 'rgba(0,0,0,0.4)' }}>
+                <div style={{ ...st.iconWrap, color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)' }}>
                   {icon}
                 </div>
                 <span style={{
                   ...st.label,
-                  color: active ? '#1a1a1a' : 'rgba(0,0,0,0.4)',
+                  color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
                   fontWeight: active ? 700 : 500,
                 }}>
                   {label}
@@ -105,36 +104,36 @@ export default function BottomNav() {
 const st = {
   nav: {
     position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-    padding: '0 6px', paddingBottom: 'env(safe-area-inset-bottom, 4px)',
+    padding: '0 6px 8px',
+    paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))',
   },
   inner: {
     display: 'flex', maxWidth: 420, margin: '0 auto',
-    background: C, borderRadius: 22,
-    padding: '4px 0 6px',
-    boxShadow: `0 4px 24px rgba(141,198,63,0.3)`,
+    background: GRAD, borderRadius: 22,
+    padding: '6px 0 8px',
+    boxShadow: '0 4px 24px rgba(80,140,20,0.35)',
     position: 'relative',
   },
   pill: {
-    position: 'absolute', top: 4, height: 32,
-    borderRadius: 14,
-    background: 'rgba(255,255,255,0.3)',
-    border: '2px solid rgba(255,255,255,0.7)',
-    transition: 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+    position: 'absolute', top: 4, bottom: 4,
+    borderRadius: 18,
+    background: '#fff',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     pointerEvents: 'none',
   },
   item: {
     flex: 1, background: 'none', border: 'none',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    padding: '4px 0 0', gap: 1, cursor: 'pointer',
+    padding: '4px 0 0', gap: 0, cursor: 'pointer',
     position: 'relative', zIndex: 1,
   },
   iconWrap: {
-    width: 40, height: 32, borderRadius: 12,
+    width: 28, height: 26,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'color 0.25s ease',
+    transition: 'color 0.3s ease',
   },
   label: {
-    fontSize: 9, letterSpacing: 0.2,
-    transition: 'color 0.25s ease',
+    fontSize: 10, letterSpacing: 0.1, marginTop: 1,
+    transition: 'color 0.3s ease',
   },
 }

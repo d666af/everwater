@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useCartStore } from '../store'
 
 const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
 
 export default function ProductCard({ product }) {
   const { addToCart, items, updateQuantity } = useCartStore()
@@ -117,10 +118,10 @@ const s = {
   /* Add button */
   addBtn: {
     width: 38, height: 38, borderRadius: 14,
-    background: C, border: 'none', cursor: 'pointer',
+    background: GRAD, border: 'none', cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
-    boxShadow: `0 4px 12px rgba(141,198,63,0.35)`,
+    boxShadow: '0 4px 12px rgba(80,140,20,0.35)',
     transition: 'transform 0.15s, box-shadow 0.15s',
   },
 
