@@ -1,4 +1,4 @@
-const LOGO_URL = '/logo.jpg'
+const LOGO_URL = '/logo-no-background.png'
 
 export default function EverLogo({ width = 160, style, ...props }) {
   return (
@@ -22,7 +22,7 @@ export function EverLogoMark({ width = 48, style, ...props }) {
       width={width}
       fetchpriority="high"
       decoding="async"
-      style={{ objectFit: 'contain', display: 'block', borderRadius: 8, ...style }}
+      style={{ objectFit: 'contain', display: 'block', ...style }}
       {...props}
     />
   )
@@ -37,7 +37,7 @@ export function EverLogoHorizontal({ height = 32, className = '' }) {
         height={height}
         fetchpriority="high"
         decoding="async"
-        style={{ objectFit: 'contain', display: 'block', borderRadius: 6 }}
+        style={{ objectFit: 'contain', display: 'block' }}
       />
     </div>
   )
