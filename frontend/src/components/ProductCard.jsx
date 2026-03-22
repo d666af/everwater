@@ -38,6 +38,7 @@ export default function ProductCard({ product }) {
       {/* Content */}
       <div style={s.content}>
         <div style={s.name}>{product.name}</div>
+        {product.description && <div style={s.desc}>{product.description}</div>}
 
         {/* Price + cart */}
         <div style={s.row}>
@@ -74,7 +75,6 @@ const s = {
     background: '#fff', borderRadius: 20, overflow: 'hidden',
     display: 'flex', flexDirection: 'column',
     boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
-    transition: 'transform 0.15s ease',
   },
   imgWrap: {
     position: 'relative', width: '100%', aspectRatio: '4/3',
@@ -100,12 +100,17 @@ const s = {
   carbIcon: { fontSize: 10 },
   content: {
     padding: '10px 12px 12px', display: 'flex', flexDirection: 'column',
-    gap: 4, flex: 1,
+    gap: 3, flex: 1,
   },
   name: {
     fontWeight: 700, fontSize: 14, color: '#1a1a1a',
     lineHeight: 1.3, letterSpacing: -0.15,
     display: '-webkit-box', WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical', overflow: 'hidden',
+  },
+  desc: {
+    fontSize: 12, color: '#8e8e93', lineHeight: 1.3,
+    display: '-webkit-box', WebkitLineClamp: 1,
     WebkitBoxOrient: 'vertical', overflow: 'hidden',
   },
   row: {
