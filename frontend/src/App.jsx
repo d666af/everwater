@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
-import CartToast from './components/CartToast'
+import CartWidget from './components/CartWidget'
 
 // Auth
 import Login from './pages/Login'
@@ -40,7 +40,6 @@ export default function App() {
   return (
     <>
       <Header />
-      <CartToast />
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Login />} />
@@ -161,6 +160,7 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      <CartWidget />
       <BottomNav />
     </>
   )
