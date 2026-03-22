@@ -6,6 +6,7 @@ import { SkeletonCard } from '../components/Skeleton'
 import { useUserStore } from '../store/user'
 import { useOrdersStore } from '../store/orders'
 import { useAuthStore } from '../store/auth'
+import { EverLogoMark } from '../components/EverLogo'
 
 const C = '#8DC63F'
 
@@ -56,47 +57,51 @@ export default function Catalog() {
 
   return (
     <div style={s.page}>
-      {/* Greeting + info row */}
-      <div style={s.topSection}>
-        <div style={s.greetRow}>
-          <div>
-            <h1 style={s.greet}>{greet}{firstName ? `, ${firstName}` : ''} 👋</h1>
-            <p style={s.greetSub}>Что закажем сегодня?</p>
-          </div>
+      {/* Logo + greeting header */}
+      <div style={s.logoSection}>
+        <EverLogoMark width={48} style={{ borderRadius: 14 }} />
+        <div style={s.greetBlock}>
+          <h1 style={s.greet}>{greet}{firstName ? `, ${firstName}` : ''} 👋</h1>
+          <p style={s.greetSub}>Что закажем сегодня?</p>
         </div>
-
-        {/* Bonus & Balance compact row */}
-        <div style={s.statsRow}>
-          <div style={s.statChip} onClick={() => navigate('/profile')}>
-            <div style={s.bonusIcon}>⭐</div>
-            <span style={s.statValue}>{bonus_points.toLocaleString()}</span>
-          </div>
-          <div style={s.statChip} onClick={() => navigate('/profile')}>
-            <div style={s.balanceIconEl}>💳</div>
-            <span style={s.statValue}>{balance.toLocaleString()} сум</span>
-          </div>
-        </div>
-
-        {/* Active order */}
-        {activeOrders.length > 0 && (
-          <div style={s.activeOrder} onClick={() => navigate('/orders')}>
-            <div style={s.activeOrderLeft}>
-              <div style={s.activeOrderDot} />
-              <div>
-                <div style={s.activeOrderTitle}>
-                  {activeOrders.length === 1 ? 'Активный заказ' : `${activeOrders.length} активных заказа`}
-                </div>
-                <div style={s.activeOrderSub}>Нажмите для отслеживания</div>
-              </div>
-            </div>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M9 18l6-6-6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-        )}
       </div>
 
-      {/* Quick categories — horizontal scroll */}
+      {/* Bonus & Balance + Active order */}
+      <div style={s.infoRow}>
+        <div style={s.statChip} onClick={() => navigate('/profile')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z" fill={C}/>
+          </svg>
+          <span style={s.statValue}>{bonus_points.toLocaleString()}</span>
+        </div>
+        <div style={s.statChip} onClick={() => navigate('/profile')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="6" width="20" height="12" rx="2" stroke={C} strokeWidth="2" fill={C + '20'}/>
+            <path d="M6 10h3M6 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <span style={s.statValue}>{balance.toLocaleString()} сум</span>
+        </div>
+      </div>
+
+      {/* Active order */}
+      {activeOrders.length > 0 && (
+        <div style={s.activeOrder} onClick={() => navigate('/orders')}>
+          <div style={s.activeOrderLeft}>
+            <div style={s.activeOrderDot} />
+            <div>
+              <div style={s.activeOrderTitle}>
+                {activeOrders.length === 1 ? 'Активный заказ' : `${activeOrders.length} активных заказа`}
+              </div>
+              <div style={s.activeOrderSub}>Нажмите для отслеживания</div>
+            </div>
+          </div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+
+      {/* Quick categories */}
       <div style={s.catSection}>
         <div style={s.catScroll}>
           {QUICK_CATS.map(({ key, label, emoji }) => (
@@ -153,37 +158,36 @@ const s = {
     background: '#eeeef2', minHeight: '100dvh',
   },
 
-  /* Top section */
-  topSection: { padding: '6px 16px 0' },
-  greetRow: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  /* Logo + greeting */
+  logoSection: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '12px 16px 0',
   },
+  greetBlock: { flex: 1 },
   greet: {
-    fontSize: 22, fontWeight: 800, color: '#1a1a1a', margin: 0,
+    fontSize: 20, fontWeight: 800, color: '#1a1a1a', margin: 0,
     letterSpacing: -0.5,
   },
   greetSub: {
-    fontSize: 14, color: '#8e8e93', margin: '2px 0 0', fontWeight: 500,
+    fontSize: 13, color: '#8e8e93', margin: '1px 0 0', fontWeight: 500,
   },
 
   /* Stats row */
-  statsRow: {
-    display: 'flex', gap: 8, marginTop: 12,
+  infoRow: {
+    display: 'flex', gap: 8, padding: '12px 16px 0',
   },
   statChip: {
     display: 'flex', alignItems: 'center', gap: 6,
     background: '#fff', borderRadius: 14, padding: '8px 14px',
     cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  bonusIcon: { fontSize: 16 },
-  balanceIconEl: { fontSize: 16 },
   statValue: { fontSize: 13, fontWeight: 700, color: '#1a1a1a' },
 
   /* Active order */
   activeOrder: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     background: '#fff', borderRadius: 16, padding: '14px 16px',
-    marginTop: 10, cursor: 'pointer',
+    margin: '10px 16px 0', cursor: 'pointer',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     border: `1px solid ${C}30`,
   },
@@ -191,7 +195,7 @@ const s = {
   activeOrderDot: {
     width: 10, height: 10, borderRadius: 5,
     background: C, flexShrink: 0,
-    boxShadow: `0 0 0 3px ${C}30`,
+    animation: 'pulse 2s infinite',
   },
   activeOrderTitle: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
   activeOrderSub: { fontSize: 12, color: '#8e8e93', marginTop: 1 },

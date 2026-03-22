@@ -27,7 +27,6 @@ export default function ProductCard({ product }) {
             </svg>
           </div>
         )}
-        {/* Badge only for carbonated water */}
         {isCarbonated && (
           <div style={s.carbTag}>
             <span style={s.carbIcon}>✦</span> газированная
@@ -130,10 +129,12 @@ const s = {
     transition: 'transform 0.15s, box-shadow 0.15s',
   },
 
-  /* Stepper */
+  /* Stepper — light green to match active nav */
   stepper: {
     display: 'flex', alignItems: 'center',
-    background: '#f2f2f7', borderRadius: 14,
+    background: `${C}18`,
+    border: `1.5px solid ${C}35`,
+    borderRadius: 14,
     overflow: 'hidden', height: 38,
   },
   stepBtn: {
