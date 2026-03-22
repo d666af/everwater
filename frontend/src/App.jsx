@@ -3,7 +3,6 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import CartToast from './components/CartToast'
-import FloatingCart from './components/FloatingCart'
 
 // Auth
 import Login from './pages/Login'
@@ -162,7 +161,6 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-      <FloatingCart />
       <BottomNav />
     </>
   )
