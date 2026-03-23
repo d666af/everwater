@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 
+const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
+
 const QUICK_REPLIES = [
   'Где мой заказ?',
   'Хочу отменить заказ',
@@ -64,7 +67,7 @@ export default function Support() {
       <div style={s.header}>
         <button style={s.backBtn} onClick={() => navigate(-1)}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15 18l-6-6 6-6" stroke="#1a1a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
         <div style={s.headerAvatar}>
@@ -73,9 +76,9 @@ export default function Support() {
             <path d="M4 20c0-3 3.6-5 8-5s8 2 8 5" stroke="rgba(255,255,255,0.9)" strokeWidth="1.7" strokeLinecap="round"/>
           </svg>
         </div>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Поддержка</div>
-          <div style={{ fontSize: 12, color: '#8DC63F', fontWeight: 600 }}>Онлайн</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Поддержка</div>
+          <div style={{ fontSize: 12, color: C, fontWeight: 600 }}>Онлайн</div>
         </div>
       </div>
 
@@ -85,7 +88,7 @@ export default function Support() {
           <div key={msg.id} style={{ ...s.msgRow, justifyContent: msg.from === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={msg.from === 'user' ? { ...s.bubble, ...s.bubbleUser } : { ...s.bubble, ...s.bubbleSupport }}>
               <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{msg.text}</div>
-              <div style={{ fontSize: 11, color: msg.from === 'user' ? 'rgba(255,255,255,0.55)' : '#bbb', textAlign: 'right', marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: msg.from === 'user' ? 'rgba(255,255,255,0.55)' : '#c7c7cc', textAlign: 'right', marginTop: 4 }}>
                 {formatTime(msg.time)}
               </div>
             </div>
@@ -134,32 +137,43 @@ export default function Support() {
 }
 
 const s = {
-  page: { display: 'flex', flexDirection: 'column', height: '100dvh', background: '#fafafa', overflow: 'hidden' },
+  page: {
+    display: 'flex', flexDirection: 'column', height: '100dvh',
+    background: '#e4e4e8', overflow: 'hidden',
+  },
   header: {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '8px 12px', background: '#fff',
-    borderBottom: '1px solid #f0f0f0', minHeight: 56, flexShrink: 0,
+    borderRadius: '0 0 18px 18px', minHeight: 56, flexShrink: 0,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   backBtn: {
     background: 'none', border: 'none', width: 36, height: 36,
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 12,
   },
   headerAvatar: {
-    width: 36, height: 36, borderRadius: '50%', background: '#8DC63F',
+    width: 36, height: 36, borderRadius: '50%', background: GRAD,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(100,160,30,0.25)',
   },
   messageList: {
     flex: 1, overflowY: 'auto', padding: '12px 16px',
     display: 'flex', flexDirection: 'column', gap: 8,
   },
   msgRow: { display: 'flex', alignItems: 'flex-end', gap: 6 },
-  bubble: { maxWidth: '78%', borderRadius: 16, padding: '10px 14px' },
-  bubbleSupport: { background: '#fff', borderBottomLeftRadius: 4, border: '1px solid #f0f0f0', color: '#111' },
-  bubbleUser: { background: '#8DC63F', borderBottomRightRadius: 4, color: '#fff' },
+  bubble: { maxWidth: '78%', borderRadius: 18, padding: '10px 14px' },
+  bubbleSupport: {
+    background: '#fff', borderBottomLeftRadius: 4,
+    color: '#1a1a1a', boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+  },
+  bubbleUser: {
+    background: GRAD, borderBottomRightRadius: 4, color: '#fff',
+    boxShadow: '0 2px 8px rgba(100,160,30,0.25)',
+  },
   dots: { display: 'flex', gap: 4 },
   dot: {
-    width: 7, height: 7, borderRadius: '50%', background: '#ccc',
+    width: 7, height: 7, borderRadius: '50%', background: '#c7c7cc',
     animation: 'typingBounce 1.2s infinite',
   },
   quickWrap: {
@@ -167,24 +181,26 @@ const s = {
     overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0,
   },
   quickBtn: {
-    background: '#fff', border: '1px solid #eee', borderRadius: 20,
-    padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#8DC63F',
+    background: '#fff', border: `1.5px solid ${C}30`, borderRadius: 14,
+    padding: '8px 14px', fontSize: 13, fontWeight: 600, color: C,
     cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
   },
   inputBar: {
     display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 12px 14px', background: '#fff',
-    borderTop: '1px solid #f0f0f0', flexShrink: 0,
+    padding: '10px 12px', paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))',
+    background: '#fff', borderRadius: '18px 18px 0 0',
+    boxShadow: '0 -1px 3px rgba(0,0,0,0.04)', flexShrink: 0,
   },
   inputField: {
-    flex: 1, border: '1.5px solid #eee', borderRadius: 20,
-    padding: '10px 16px', fontSize: 15, background: '#f7f7f8',
-    color: '#111', outline: 'none', fontFamily: 'inherit',
+    flex: 1, border: '1.5px solid #e5e5ea', borderRadius: 14,
+    padding: '10px 16px', fontSize: 15, background: '#f8f8fa',
+    color: '#1a1a1a', outline: 'none', fontFamily: 'inherit',
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: '50%', border: 'none',
-    background: '#eee', color: '#bbb', cursor: 'not-allowed',
+    width: 40, height: 40, borderRadius: 14, border: 'none',
+    background: '#f0f0f2', color: '#c7c7cc', cursor: 'not-allowed',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  sendBtnActive: { background: '#8DC63F', color: '#fff', cursor: 'pointer' },
+  sendBtnActive: { background: GRAD, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(100,160,30,0.25)' },
 }

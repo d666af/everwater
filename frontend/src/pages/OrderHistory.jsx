@@ -118,16 +118,14 @@ export default function OrderHistory() {
   )
 }
 
-function ProgressBar({ status }) {
+function ProgressSteps({ status }) {
   const idx = STEPS.indexOf(status)
   if (idx < 0) return null
-  const pct = Math.round(((idx + 1) / STEPS.length) * 100)
   return (
-    <div style={s.progressWrap}>
-      <div style={s.progressTrack}>
-        <div style={{ ...s.progressFill, width: `${pct}%` }} />
-      </div>
-      <span style={s.progressPct}>{pct}%</span>
+    <div style={s.stepsWrap}>
+      {STEPS.map((step, i) => (
+        <div key={step} style={{ ...s.stepDash, background: i <= idx ? C : '#e0e0e4' }} />
+      ))}
     </div>
   )
 }
@@ -164,11 +162,11 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
         </svg>
       </div>
 
-      {isActive && !isOpen && <div style={{ padding: '0 16px 14px' }}><ProgressBar status={order.status} /></div>}
+      {isActive && !isOpen && <div style={{ padding: '0 16px 14px' }}><ProgressSteps status={order.status} /></div>}
 
       {isOpen && (
         <div style={s.details}>
-          {isActive && <ProgressBar status={order.status} />}
+          {isActive && <ProgressSteps status={order.status} />}
 
           {order.address && (
             <div style={s.detailRow}>
@@ -350,16 +348,12 @@ const s = {
   metaDot: { color: '#c7c7cc' },
   cardTotal: { fontWeight: 700, color: '#3c3c43', fontSize: 13 },
 
-  /* Progress */
-  progressWrap: { display: 'flex', alignItems: 'center', gap: 8 },
-  progressTrack: {
-    flex: 1, height: 5, background: '#f0f0f2', borderRadius: 3, overflow: 'hidden',
+  /* Progress steps */
+  stepsWrap: { display: 'flex', gap: 4 },
+  stepDash: {
+    flex: 1, height: 4, borderRadius: 2,
+    transition: 'background 0.3s ease',
   },
-  progressFill: {
-    height: '100%', background: GRAD,
-    borderRadius: 3, transition: 'width 0.3s ease',
-  },
-  progressPct: { fontSize: 11, fontWeight: 700, color: C, minWidth: 28 },
 
   /* Details */
   details: {

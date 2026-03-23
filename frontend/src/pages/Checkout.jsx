@@ -8,6 +8,8 @@ import { useUserStore } from '../store/user'
 import { useOrdersStore } from '../store/orders'
 
 const tg = window.Telegram?.WebApp
+const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const TIME_SLOTS = [
   { label: 'Сегодня 9–12', value: 'Сегодня 9:00–12:00' },
@@ -21,9 +23,24 @@ const TIME_SLOTS = [
 ]
 
 const PAYMENT_METHODS = [
-  { key: 'card', label: 'Перевод на карту', icon: '💳' },
-  { key: 'cash', label: 'Наличные курьеру', icon: '💵' },
-  { key: 'payme', label: 'Payme', icon: '📱' },
+  { key: 'card', label: 'Перевод на карту', icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M2 10h20" stroke="currentColor" strokeWidth="1.8"/>
+    </svg>
+  )},
+  { key: 'cash', label: 'Наличные курьеру', icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
+    </svg>
+  )},
+  { key: 'payme', label: 'Payme', icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  )},
 ]
 
 export default function Checkout() {
@@ -115,7 +132,6 @@ export default function Checkout() {
       })
       setCreatedOrder(order)
 
-      // For cash/payme — auto-confirm, for card — show card details
       if (form.paymentMethod === 'cash' || form.paymentMethod === 'payme') {
         await paymentConfirmed(order.id)
         finishOrder(order)
@@ -181,15 +197,15 @@ export default function Checkout() {
   if (createdOrder && form.paymentMethod === 'card') return (
     <div style={s.page}>
       <div style={s.section}>
-        <div style={s.sLabel}>Оплата заказа #{createdOrder.id}</div>
+        <div style={s.sLabel}>Оплата заказа</div>
         <div style={s.payCard}>
           <div style={s.payCardLabel}>Переведите на карту</div>
           <div style={s.payCardNum}>{settings.payment_card || '0000 0000 0000 0000'}</div>
           <div style={s.payCardHolder}>{settings.payment_holder || '—'}</div>
-          <div style={s.payDivider} />
-          <div style={s.payAmtLabel}>Сумма</div>
-          <div style={s.payAmt}>{finalTotal.toLocaleString()} <span style={s.payAmtCur}>сум</span></div>
-          <button style={{ ...s.copyBtn, ...(copied ? s.copyBtnDone : {}) }} onClick={copyCard}>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
+          <div style={s.payAmtBig}>{finalTotal.toLocaleString()} <span style={s.payAmtCur}>сум</span></div>
+          <button style={{ ...s.cpyBtn, ...(copied ? s.cpyBtnDone : {}) }} onClick={copyCard}>
             {copied ? 'Скопировано' : 'Скопировать номер карты'}
           </button>
         </div>
@@ -203,7 +219,7 @@ export default function Checkout() {
         </div>
       </div>
 
-      {error && <div style={s.errorBox}>{error}</div>}
+      {error && <div style={{ padding: '0 16px' }}><div style={s.errorBox}>{error}</div></div>}
       <div style={{ padding: '0 16px 32px' }}>
         <button style={s.primaryBtn} onClick={confirmCardPayment} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Я оплатил'}
@@ -222,6 +238,16 @@ export default function Checkout() {
           onClose={() => setShowMap(false)}
         />
       )}
+
+      {/* Back button */}
+      <div style={{ padding: '8px 16px 0' }}>
+        <button style={s.backBtn} onClick={() => navigate(-1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="#1a1a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Назад
+        </button>
+      </div>
 
       {/* Order summary */}
       <div style={s.section}>
@@ -257,7 +283,6 @@ export default function Checkout() {
             onChange={e => set('extraInfo', e.target.value)}
           />
 
-          {/* Location buttons */}
           <div style={s.locRow}>
             <button style={s.locBtn} onClick={requestLocation} disabled={form.geoLoading}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -276,7 +301,7 @@ export default function Checkout() {
           {form.lat && (
             <div style={s.locConfirmed}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M5 12l4 4L19 7" stroke="#4CAF50" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
               </svg>
               Точка на карте выбрана
             </div>
@@ -370,18 +395,18 @@ export default function Checkout() {
       {/* Payment method */}
       <div style={s.section}>
         <div style={s.sLabel}>Способ оплаты</div>
-        <div style={s.payMethods}>
+        <div style={s.card}>
           {PAYMENT_METHODS.map(m => (
             <button
               key={m.key}
               style={form.paymentMethod === m.key ? { ...s.payMethod, ...s.payMethodActive } : s.payMethod}
               onClick={() => set('paymentMethod', m.key)}
             >
-              <span style={s.payMethodIcon}>{m.icon}</span>
-              <span style={s.payMethodLabel}>{m.label}</span>
+              <div style={{ color: form.paymentMethod === m.key ? C : '#8e8e93' }}>{m.icon}</div>
+              <span style={{ ...s.payMethodLabel, color: form.paymentMethod === m.key ? '#1a1a1a' : '#3c3c43' }}>{m.label}</span>
               {form.paymentMethod === m.key && (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}>
-                  <path d="M5 12l4 4L19 7" stroke="#4CAF50" strokeWidth="2.5" strokeLinecap="round"/>
+                  <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
                 </svg>
               )}
             </button>
@@ -405,152 +430,151 @@ export default function Checkout() {
 }
 
 const s = {
-  page: { background: '#fafafa', minHeight: '100dvh', paddingBottom: 16 },
+  page: { background: '#e4e4e8', minHeight: '100dvh', paddingBottom: 16 },
 
-  section: { padding: '0 16px', marginBottom: 16 },
+  backBtn: {
+    display: 'flex', alignItems: 'center', gap: 4,
+    background: 'none', border: 'none', padding: '8px 0',
+    fontSize: 15, fontWeight: 600, color: '#1a1a1a', cursor: 'pointer',
+  },
+
+  section: { padding: '0 16px', marginBottom: 12 },
   sLabel: {
-    fontSize: 13, fontWeight: 700, color: '#999',
+    fontSize: 13, fontWeight: 700, color: '#8e8e93',
     textTransform: 'uppercase', letterSpacing: 0.5,
     marginBottom: 8, paddingLeft: 2,
   },
   card: {
-    background: '#fff', borderRadius: 14, padding: 14,
-    border: '1px solid #f0f0f0',
+    background: '#fff', borderRadius: 18, padding: 14,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     display: 'flex', flexDirection: 'column', gap: 10,
   },
 
   // Order summary
   orderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  orderName: { fontSize: 14, color: '#333', fontWeight: 500 },
-  orderQty: { color: '#999', fontWeight: 400 },
-  orderPrice: { fontSize: 14, fontWeight: 700, color: '#111' },
+  orderName: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
+  orderQty: { color: '#8e8e93', fontWeight: 400 },
+  orderPrice: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
   orderTotalRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 10, borderTop: '1px solid #f0f0f0', marginTop: 4,
-    fontSize: 14, color: '#666', fontWeight: 600,
+    paddingTop: 10, borderTop: '1px solid #f0f0f2', marginTop: 4,
+    fontSize: 14, color: '#8e8e93', fontWeight: 600,
   },
-  orderTotal: { fontSize: 18, fontWeight: 800, color: '#111' },
+  orderTotal: { fontSize: 18, fontWeight: 800, color: '#1a1a1a' },
 
   // Inputs
   input: {
-    border: '1.5px solid #eee', borderRadius: 12, padding: '13px 14px',
-    fontSize: 15, background: '#f7f7f8', color: '#111',
+    border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '13px 14px',
+    fontSize: 15, background: '#f8f8fa', color: '#1a1a1a',
     outline: 'none', width: '100%', fontFamily: 'inherit',
-    transition: 'border-color 0.2s',
   },
 
   // Location
   locRow: { display: 'flex', gap: 8 },
   locBtn: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    padding: '11px 8px', borderRadius: 12,
-    border: '1.5px solid #eee', background: '#f7f7f8',
-    fontSize: 13, fontWeight: 600, color: '#555', cursor: 'pointer',
+    padding: '11px 8px', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#f8f8fa',
+    fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
   },
   locBtnPrimary: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    padding: '11px 8px', borderRadius: 12,
-    border: '1.5px solid #4CAF50', background: '#f0faf0',
-    fontSize: 13, fontWeight: 700, color: '#2e7d32', cursor: 'pointer',
+    padding: '11px 8px', borderRadius: 14,
+    border: `1.5px solid ${C}`, background: `${C}08`,
+    fontSize: 13, fontWeight: 700, color: C, cursor: 'pointer',
   },
   locConfirmed: {
     display: 'flex', alignItems: 'center', gap: 6,
-    fontSize: 13, fontWeight: 600, color: '#4CAF50',
+    fontSize: 13, fontWeight: 600, color: C,
   },
 
   // Time
   timeGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8,
-    padding: '0 16px',
   },
   timeBtn: {
-    padding: '12px 8px', borderRadius: 12,
-    border: '1.5px solid #eee', background: '#fff',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#555',
-    textAlign: 'center', transition: 'all 0.15s',
+    padding: '12px 8px', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
+    textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
   },
   timeBtnActive: {
-    border: '1.5px solid #4CAF50', background: '#f0faf0', color: '#2e7d32',
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
   },
 
   // Bottles
   bottleRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   },
-  bottleText: { fontSize: 14, color: '#444', fontWeight: 500 },
+  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
   stepper: {
     display: 'flex', alignItems: 'center',
-    background: '#f2f2f3', borderRadius: 10, overflow: 'hidden',
+    background: '#f0f0f2', borderRadius: 12, overflow: 'hidden',
   },
   stepperBtn: {
-    background: '#4CAF50', border: 'none', width: 34, height: 34,
+    background: GRAD, border: 'none', width: 34, height: 34,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer', color: '#fff', fontSize: 18, fontWeight: 700,
   },
   stepperVal: {
-    fontWeight: 700, fontSize: 16, minWidth: 32, textAlign: 'center', color: '#111',
+    fontWeight: 700, fontSize: 16, minWidth: 32, textAlign: 'center', color: '#1a1a1a',
   },
   discountLine: {
-    fontSize: 13, fontWeight: 600, color: '#2e7d32',
-    background: '#f0faf0', borderRadius: 8, padding: '8px 10px',
+    fontSize: 13, fontWeight: 600, color: C,
+    background: `${C}08`, borderRadius: 10, padding: '8px 10px',
   },
 
   // Discounts
   discountRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   },
-  discountName: { fontSize: 14, fontWeight: 600, color: '#333' },
-  discountAvail: { fontSize: 12, color: '#999', marginTop: 2 },
+  discountName: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
+  discountAvail: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
   useBtn: {
-    padding: '8px 14px', borderRadius: 10,
-    border: '1.5px solid #eee', background: '#f7f7f8',
-    fontSize: 13, fontWeight: 700, color: '#555', cursor: 'pointer',
+    padding: '8px 14px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 700, color: '#3c3c43', cursor: 'pointer',
   },
   useBtnActive: {
-    border: '1.5px solid #4CAF50', background: '#f0faf0', color: '#2e7d32',
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
   },
 
   // Payment methods
-  payMethods: {
-    display: 'flex', flexDirection: 'column', gap: 8,
-    padding: '0 16px',
-  },
   payMethod: {
     display: 'flex', alignItems: 'center', gap: 12,
-    padding: '14px 16px', borderRadius: 14,
-    border: '1.5px solid #eee', background: '#fff',
-    cursor: 'pointer', transition: 'all 0.15s',
+    padding: '12px 14px', borderRadius: 14,
+    border: '1.5px solid transparent', background: '#f8f8fa',
+    cursor: 'pointer',
   },
   payMethodActive: {
-    border: '1.5px solid #4CAF50', background: '#f0faf0',
+    border: `1.5px solid ${C}30`, background: `${C}06`,
   },
-  payMethodIcon: { fontSize: 20 },
-  payMethodLabel: { fontSize: 15, fontWeight: 600, color: '#333' },
+  payMethodLabel: { fontSize: 15, fontWeight: 600 },
 
   // Total
   totalSection: {
-    padding: '16px 16px 8px',
+    padding: '8px 16px 8px',
     display: 'flex', flexDirection: 'column', gap: 12,
   },
   totalRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '0 4px',
   },
-  totalLabel: { fontSize: 15, fontWeight: 600, color: '#888' },
-  totalAmt: { fontSize: 26, fontWeight: 800, color: '#111', letterSpacing: -0.5 },
+  totalLabel: { fontSize: 15, fontWeight: 600, color: '#8e8e93' },
+  totalAmt: { fontSize: 26, fontWeight: 800, color: '#1a1a1a', letterSpacing: -0.5 },
   primaryBtn: {
-    background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 14,
+    background: GRAD, color: '#fff', border: 'none', borderRadius: 14,
     height: 52, fontSize: 16, fontWeight: 700, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-    width: '100%',
+    width: '100%', boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
   },
   linkBtn: {
-    background: 'none', border: 'none', color: '#888',
+    background: 'none', border: 'none', color: '#8e8e93',
     padding: '12px 0', fontSize: 14, cursor: 'pointer', textAlign: 'center',
     width: '100%',
   },
   errorBox: {
-    background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 10,
+    background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 14,
     padding: '10px 12px', fontSize: 13, color: '#ef4444', fontWeight: 500,
   },
   spinner: {
@@ -562,33 +586,31 @@ const s = {
 
   // Card payment screen
   payCard: {
-    background: '#111', borderRadius: 16, padding: '18px 16px',
+    background: '#1a1a1a', borderRadius: 18, padding: '18px 16px',
     display: 'flex', flexDirection: 'column', gap: 8,
   },
   payCardLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 600 },
   payCardNum: { fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: 3, fontFamily: 'monospace' },
   payCardHolder: { fontSize: 13, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1 },
-  payDivider: { height: 1, background: 'rgba(255,255,255,0.08)' },
-  payAmtLabel: { fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 },
-  payAmt: { fontSize: 28, fontWeight: 800, color: '#4CAF50', letterSpacing: -0.5 },
+  payAmtBig: { fontSize: 28, fontWeight: 800, color: C, letterSpacing: -0.5 },
   payAmtCur: { fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,0.35)' },
-  copyBtn: {
+  cpyBtn: {
     display: 'inline-flex', alignItems: 'center', gap: 6,
     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, padding: '8px 14px', alignSelf: 'flex-start',
+    borderRadius: 10, padding: '8px 14px', alignSelf: 'flex-start',
     fontSize: 13, color: 'rgba(255,255,255,0.55)', cursor: 'pointer',
   },
-  copyBtnDone: {
-    background: 'rgba(76,175,80,0.15)', borderColor: 'rgba(76,175,80,0.3)', color: '#4CAF50',
+  cpyBtnDone: {
+    background: `${C}25`, borderColor: `${C}50`, color: C,
   },
   helpSteps: {
     display: 'flex', flexDirection: 'column', gap: 10,
-    background: '#fff', borderRadius: 14, padding: 14,
-    border: '1px solid #f0f0f0',
+    background: '#fff', borderRadius: 18, padding: 14,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  helpStep: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#555', fontWeight: 500 },
+  helpStep: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#3c3c43', fontWeight: 500 },
   helpNum: {
-    width: 26, height: 26, borderRadius: '50%', background: '#4CAF50', color: '#fff',
+    width: 26, height: 26, borderRadius: '50%', background: GRAD, color: '#fff',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontSize: 12, fontWeight: 700, flexShrink: 0,
   },
@@ -597,13 +619,13 @@ const s = {
   successPage: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', minHeight: '85dvh', padding: '0 24px', gap: 14,
-    textAlign: 'center', background: '#fafafa',
+    textAlign: 'center', background: '#e4e4e8',
   },
   successIcon: {
-    width: 80, height: 80, borderRadius: '50%', background: '#4CAF50',
+    width: 80, height: 80, borderRadius: '50%', background: GRAD,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 8, boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
   },
-  successTitle: { fontSize: 24, fontWeight: 800, color: '#111', margin: 0 },
-  successDesc: { fontSize: 14, color: '#888', margin: 0 },
+  successTitle: { fontSize: 24, fontWeight: 800, color: '#1a1a1a', margin: 0 },
+  successDesc: { fontSize: 14, color: '#8e8e93', margin: 0 },
 }
