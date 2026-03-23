@@ -5,11 +5,10 @@ import ProductCard from '../components/ProductCard'
 import { SkeletonCard } from '../components/Skeleton'
 import { useUserStore } from '../store/user'
 import { useOrdersStore } from '../store/orders'
-import { useAuthStore } from '../store/auth'
-import { EverLogoMark } from '../components/EverLogo'
+import { useCartStore } from '../store'
 
 const C = '#8DC63F'
-const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const QUICK_CATS = [
   { key: 'all', label: 'Все' },
@@ -29,6 +28,8 @@ export default function Catalog() {
   const navigate = useNavigate()
   const { bonus_points, balance } = useUserStore()
   const orders = useOrdersStore(s => s.orders)
+  const cartItems = useCartStore(s => s.items)
+  const hasCart = cartItems.length > 0
 
   const activeOrders = useMemo(() => {
     return orders.filter(o => ['awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'].includes(o.status))
@@ -52,11 +53,6 @@ export default function Catalog() {
 
   return (
     <div style={s.page}>
-      {/* Logo centered at top */}
-      <div style={s.logoSection}>
-        <EverLogoMark width={80} />
-      </div>
-
       {/* Bonus & Balance cards */}
       <div style={s.infoRow}>
         <div style={s.statCard} onClick={() => navigate('/profile')}>
@@ -143,7 +139,8 @@ export default function Catalog() {
         )}
       </div>
 
-      <div style={{ height: 24 }} />
+      {/* Extra scroll space when cart widget is visible */}
+      <div style={{ height: hasCart ? 90 : 24 }} />
     </div>
   )
 }
@@ -154,19 +151,13 @@ const s = {
     background: '#eeeef2', minHeight: '100dvh',
   },
 
-  /* Logo centered */
-  logoSection: {
-    display: 'flex', justifyContent: 'center',
-    padding: '14px 16px 4px',
-  },
-
-  /* Stats row — bigger cards with labels */
+  /* Stats row — compact cards with labels */
   infoRow: {
-    display: 'flex', gap: 10, padding: '8px 16px 0',
+    display: 'flex', gap: 10, padding: '12px 16px 0',
   },
   statCard: {
-    flex: 1, display: 'flex', flexDirection: 'column', gap: 6,
-    background: '#fff', borderRadius: 16, padding: '14px 16px',
+    flex: 1, display: 'flex', flexDirection: 'column', gap: 3,
+    background: '#fff', borderRadius: 16, padding: '10px 14px',
     cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   statIconRow: { display: 'flex', alignItems: 'center', gap: 6 },
