@@ -123,7 +123,7 @@ export default function Catalog() {
 const s = {
   page: {
     display: 'flex', flexDirection: 'column',
-    background: '#eeeef2', minHeight: '100dvh',
+    background: '#e4e4e8', minHeight: '100dvh',
   },
 
   /* Active order */
