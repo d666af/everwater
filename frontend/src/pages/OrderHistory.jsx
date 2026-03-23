@@ -5,6 +5,7 @@ import { useOrdersStore } from '../store/orders'
 import ReviewModal from '../components/ReviewModal'
 
 const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const STATUSES = [
   { key: 'new', label: 'Новый', icon: 'clock' },
@@ -27,7 +28,6 @@ const STATUS_COLORS = {
 }
 
 const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
-
 const STEPS = ['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery', 'delivered']
 
 function StatusIcon({ status, size = 16 }) {
@@ -65,16 +65,18 @@ export default function OrderHistory() {
   }
 
   if (!orders.length) return (
-    <div style={s.empty}>
-      <div style={s.emptyIcon}>
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="3" fill={C+'20'} stroke={C} strokeWidth="1.5"/>
-          <path d="M8 8h8M8 12h5M8 16h3" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
+    <div style={s.page}>
+      <div style={s.empty}>
+        <div style={s.emptyCircle}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="3" width="18" height="18" rx="3" fill={C + '20'} stroke={C} strokeWidth="1.5"/>
+            <path d="M8 8h8M8 12h5M8 16h3" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <div style={s.emptyTitle}>Нет заказов</div>
+        <div style={s.emptyDesc}>Ваши заказы появятся здесь после оформления</div>
+        <button style={s.primaryBtn} onClick={() => navigate('/')}>Перейти в каталог</button>
       </div>
-      <div style={s.emptyTitle}>Нет заказов</div>
-      <div style={s.emptyDesc}>Ваши заказы появятся здесь<br/>после оформления</div>
-      <button style={s.primaryBtn} onClick={() => navigate('/')}>Перейти в каталог</button>
     </div>
   )
 
@@ -83,40 +85,29 @@ export default function OrderHistory() {
 
   return (
     <div style={s.page}>
-      {/* Active orders summary */}
+      {/* Active orders banner */}
       {active.length > 0 && (
-        <div style={s.activeHeader}>
-          <div style={s.activeHeaderIcon}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2"/>
-              <path d="M12 7v5l3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <span style={s.activeHeaderText}>{active.length} {active.length === 1 ? 'активный заказ' : 'активных заказа'}</span>
+        <div style={s.activeBanner}>
+          <div style={s.activeBannerDot} />
+          <span style={s.activeBannerText}>
+            {active.length} {active.length === 1 ? 'активный заказ' : 'активных заказа'}
+          </span>
         </div>
       )}
 
-      {active.length > 0 && (
-        <>
-          {active.map(order => (
-            <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-              onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} isActive />
-          ))}
-        </>
-      )}
+      {active.map(order => (
+        <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
+          onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} isActive />
+      ))}
 
       {archived.length > 0 && (
-        <>
-          <div style={s.sectionLabel}>
-            <div style={s.sectionDot} />
-            Завершённые
-          </div>
-          {archived.map(order => (
-            <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-              onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
-          ))}
-        </>
+        <div style={s.sectionLabel}>Завершённые</div>
       )}
+
+      {archived.map(order => (
+        <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
+          onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} />
+      ))}
 
       {reviewOrderId && (
         <ReviewModal orderId={reviewOrderId}
@@ -137,7 +128,7 @@ function ProgressBar({ status }) {
       <div style={s.progressTrack}>
         <div style={{ ...s.progressFill, width: `${pct}%` }} />
       </div>
-      <span style={s.progressText}>{pct}%</span>
+      <span style={s.progressPct}>{pct}%</span>
     </div>
   )
 }
@@ -150,15 +141,18 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   const itemCount = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0
 
   return (
-    <div style={{ ...s.card, ...(isActive ? { borderLeft: `3px solid ${colors.color}` } : {}) }}>
+    <div style={s.card}>
+      {/* Active indicator stripe */}
+      {isActive && <div style={{ ...s.cardStripe, background: colors.color }} />}
+
       <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
-        <div style={{ ...s.statusDot, background: colors.color, color: colors.color }}>
-          <StatusIcon status={order.status} size={16} />
+        <div style={{ ...s.statusIcon, background: colors.bg, color: colors.color }}>
+          <StatusIcon status={order.status} size={18} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={s.cardTopRow}>
             <span style={s.orderId}>#{order.id}</span>
-            <span style={{ ...s.statusPill, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>
+            <span style={{ ...s.statusBadge, background: colors.bg, color: colors.color }}>
               {statusInfo.label}
             </span>
           </div>
@@ -169,12 +163,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           </div>
         </div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-          style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
-          <path d="M6 9l6 6 6-6" stroke="#bbb" strokeWidth="2" strokeLinecap="round"/>
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s ease', flexShrink: 0 }}>
+          <path d="M6 9l6 6 6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
         </svg>
       </div>
 
-      {isActive && !isOpen && <div style={{ padding: '0 16px 12px' }}><ProgressBar status={order.status} /></div>}
+      {isActive && !isOpen && <div style={{ padding: '0 16px 14px' }}><ProgressBar status={order.status} /></div>}
 
       {isOpen && (
         <div style={s.details}>
@@ -199,8 +193,8 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           )}
 
           {(order.status === 'assigned_to_courier' || order.status === 'in_delivery') && order.courier_name && (
-            <div style={s.courierBox}>
-              <div style={s.courierHeader}>
+            <div style={s.courierCard}>
+              <div style={s.courierTop}>
                 <div style={s.courierAvatar}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <circle cx="12" cy="8" r="3.5" fill="#fff"/>
@@ -208,12 +202,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                   </svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Курьер</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{order.courier_name}</div>
+                  <div style={s.courierLabel}>Курьер</div>
+                  <div style={s.courierName}>{order.courier_name}</div>
                 </div>
               </div>
               {order.courier_phone && (
-                <a href={`tel:${order.courier_phone}`} style={s.callLink}>
+                <a href={`tel:${order.courier_phone}`} style={s.callBtn}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#fff" strokeWidth="1.5"/>
                   </svg>
@@ -224,12 +218,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           )}
 
           {order.items?.length > 0 && (
-            <div style={s.itemsList}>
-              <div style={s.itemsHeader}>Состав заказа</div>
+            <div style={s.itemsBox}>
+              <div style={s.itemsLabel}>Состав заказа</div>
               {order.items.map((i, idx) => (
                 <div key={idx} style={s.itemRow}>
-                  <span style={{ flex: 1, fontSize: 13, color: '#444' }}>{i.product_name}</span>
-                  <span style={{ fontSize: 13, color: '#999', fontWeight: 500 }}>{i.quantity} × {i.price.toLocaleString()}</span>
+                  <span style={s.itemName}>{i.product_name}</span>
+                  <span style={s.itemQty}>{i.quantity} x {i.price.toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -262,7 +256,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               </button>
             )}
             {reviewedIds.has(order.id) && (
-              <span style={{ fontSize: 13, color: C, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={s.reviewDone}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
                 </svg>
@@ -278,209 +272,164 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 
 const s = {
   page: {
-    padding: '4px 0',
-    display: 'flex',
-    flexDirection: 'column',
-    background: '#fafafa',
-    minHeight: '100dvh',
+    display: 'flex', flexDirection: 'column',
+    background: '#eeeef2', minHeight: '100dvh',
+    paddingTop: 4,
   },
+
+  /* Empty state */
   empty: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minHeight: '75vh',
-    padding: '0 24px',
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', gap: 10, minHeight: '70vh', padding: '0 24px',
   },
-  emptyIcon: {
-    width: 80, height: 80, borderRadius: '50%', background: '#f0faf0',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+  emptyCircle: {
+    width: 80, height: 80, borderRadius: '50%', background: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginBottom: 4,
   },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: '#1a1a1a' },
-  emptyDesc: { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 1.5 },
+  emptyDesc: { fontSize: 14, color: '#8e8e93', textAlign: 'center', lineHeight: 1.5 },
   primaryBtn: {
-    marginTop: 8,
-    padding: '14px 32px',
-    background: C,
-    color: '#fff',
-    border: 'none',
-    borderRadius: 14,
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
+    marginTop: 8, padding: '14px 32px',
+    background: GRAD, color: '#fff', border: 'none',
+    borderRadius: 16, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
   },
 
-  activeHeader: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 20px', margin: '0 16px 8px',
-    background: `linear-gradient(135deg, ${C} 0%, #6CA32F 100%)`,
-    borderRadius: 14,
+  /* Active banner */
+  activeBanner: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '12px 16px', margin: '4px 16px 8px',
+    background: GRAD, borderRadius: 16,
+    boxShadow: '0 3px 12px rgba(100,160,30,0.25)',
   },
-  activeHeaderIcon: { display: 'flex' },
-  activeHeaderText: { fontSize: 14, fontWeight: 700, color: '#fff' },
+  activeBannerDot: {
+    width: 10, height: 10, borderRadius: 5,
+    background: '#fff', flexShrink: 0,
+    animation: 'pulse 2s infinite',
+  },
+  activeBannerText: { fontSize: 14, fontWeight: 700, color: '#fff' },
 
+  /* Section label */
   sectionLabel: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '16px 20px 8px',
-    fontSize: 12, fontWeight: 700, color: '#aaa',
-    textTransform: 'uppercase', letterSpacing: 0.8,
+    padding: '18px 20px 8px',
+    fontSize: 13, fontWeight: 700, color: '#8e8e93',
+    letterSpacing: 0.3,
   },
-  sectionDot: { width: 6, height: 6, borderRadius: '50%', background: '#ddd' },
 
+  /* Order card */
   card: {
-    background: '#fff',
-    margin: '0 16px 8px',
-    borderRadius: 14,
-    overflow: 'hidden',
-    border: '1px solid #f0f0f0',
+    background: '#fff', margin: '0 16px 10px',
+    borderRadius: 18, overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    position: 'relative',
+  },
+  cardStripe: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '3px 0 0 3px',
   },
   cardHead: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '14px 16px',
-    cursor: 'pointer',
-    gap: 12,
+    display: 'flex', alignItems: 'center',
+    padding: '14px 16px', cursor: 'pointer', gap: 12,
   },
-  statusDot: {
-    width: 36, height: 36, borderRadius: 10,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0, opacity: 0.9,
+  statusIcon: {
+    width: 38, height: 38, borderRadius: 12,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   cardTopRow: {
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3,
   },
-  orderId: {
-    fontWeight: 700, fontSize: 15, color: '#111',
-  },
-  statusPill: {
-    display: 'inline-flex',
-    padding: '2px 8px',
-    borderRadius: 6,
-    fontSize: 11,
-    fontWeight: 700,
+  orderId: { fontWeight: 700, fontSize: 15, color: '#1a1a1a' },
+  statusBadge: {
+    display: 'inline-flex', padding: '3px 10px',
+    borderRadius: 8, fontSize: 11, fontWeight: 700,
   },
   cardMeta: {
-    display: 'flex', alignItems: 'center', gap: 4,
-    fontSize: 12, color: '#999',
+    display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#8e8e93',
   },
-  metaDot: { color: '#ddd' },
-  cardTotal: { fontWeight: 700, color: '#555' },
+  metaDot: { color: '#c7c7cc' },
+  cardTotal: { fontWeight: 700, color: '#3c3c43' },
 
-  progressWrap: {
-    display: 'flex', alignItems: 'center', gap: 8,
-  },
+  /* Progress */
+  progressWrap: { display: 'flex', alignItems: 'center', gap: 8 },
   progressTrack: {
-    flex: 1, height: 4, background: '#f0f0f0', borderRadius: 2, overflow: 'hidden',
+    flex: 1, height: 5, background: '#f0f0f2', borderRadius: 3, overflow: 'hidden',
   },
   progressFill: {
-    height: '100%', background: `linear-gradient(90deg, ${C}, #6CA32F)`,
-    borderRadius: 2, transition: 'width 0.3s ease',
+    height: '100%', background: GRAD,
+    borderRadius: 3, transition: 'width 0.3s ease',
   },
-  progressText: { fontSize: 11, fontWeight: 700, color: C, minWidth: 28 },
+  progressPct: { fontSize: 11, fontWeight: 700, color: C, minWidth: 28 },
 
+  /* Details */
   details: {
-    borderTop: '1px solid #f0f0f0',
-    padding: '12px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
+    borderTop: '1px solid #f0f0f2', padding: '14px 16px',
+    display: 'flex', flexDirection: 'column', gap: 10,
   },
-  detailRow: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'flex-start',
+  detailRow: { display: 'flex', gap: 8, alignItems: 'flex-start' },
+  detailText: { fontSize: 13, color: '#3c3c43', lineHeight: 1.4 },
+
+  /* Courier */
+  courierCard: {
+    background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+    borderRadius: 14, padding: '12px 14px',
+    display: 'flex', flexDirection: 'column', gap: 8,
   },
-  detailText: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 1.4,
-  },
-  courierBox: {
-    background: `linear-gradient(135deg, #2563EB, #1D4ED8)`,
-    borderRadius: 12,
-    padding: '12px 14px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  courierHeader: {
-    display: 'flex', alignItems: 'center', gap: 10,
-  },
+  courierTop: { display: 'flex', alignItems: 'center', gap: 10 },
   courierAvatar: {
-    width: 32, height: 32, borderRadius: '50%',
+    width: 34, height: 34, borderRadius: 10,
     background: 'rgba(255,255,255,0.2)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  callLink: {
+  courierLabel: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: 0.3 },
+  courierName: { fontSize: 14, fontWeight: 700, color: '#fff' },
+  callBtn: {
     display: 'inline-flex', alignItems: 'center', gap: 6,
     fontSize: 13, color: '#fff', fontWeight: 700,
-    textDecoration: 'none',
-    background: 'rgba(255,255,255,0.15)',
-    borderRadius: 8, padding: '8px 12px', alignSelf: 'flex-start',
+    textDecoration: 'none', background: 'rgba(255,255,255,0.15)',
+    borderRadius: 10, padding: '8px 14px', alignSelf: 'flex-start',
   },
-  itemsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    background: '#f7f7f8',
-    borderRadius: 10,
-    padding: '10px 12px',
+
+  /* Items */
+  itemsBox: {
+    display: 'flex', flexDirection: 'column', gap: 4,
+    background: '#f8f8fa', borderRadius: 12, padding: '10px 12px',
   },
-  itemsHeader: {
-    fontSize: 11, fontWeight: 700, color: '#bbb',
+  itemsLabel: {
+    fontSize: 11, fontWeight: 700, color: '#c7c7cc',
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2,
   },
-  itemRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
+  itemRow: { display: 'flex', justifyContent: 'space-between', gap: 8 },
+  itemName: { flex: 1, fontSize: 13, color: '#3c3c43' },
+  itemQty: { fontSize: 13, color: '#8e8e93', fontWeight: 500 },
+
+  /* Reject */
   rejectBox: {
-    background: '#FEF2F2',
-    borderRadius: 10,
-    padding: '10px 12px',
-    fontSize: 13,
-    color: '#EF4444',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    border: '1px solid #FECACA',
+    background: '#FEF2F2', borderRadius: 12, padding: '10px 12px',
+    fontSize: 13, color: '#EF4444', display: 'flex', alignItems: 'center',
+    gap: 8, border: '1px solid #FECACA',
   },
+
+  /* Actions */
   actions: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-    paddingTop: 2,
+    display: 'flex', gap: 8, alignItems: 'center', paddingTop: 4,
   },
   repeatBtn: {
-    flex: 1,
-    padding: '11px 0',
-    borderRadius: 10,
-    border: '1px solid #eee',
-    background: '#fff',
-    color: '#444',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    flex: 1, padding: '12px 0', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    color: '#3c3c43', fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', gap: 6,
   },
   reviewBtn: {
-    flex: 1,
-    padding: '11px 0',
-    borderRadius: 10,
-    border: 'none',
-    background: C,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    flex: 1, padding: '12px 0', borderRadius: 14,
+    border: 'none', background: GRAD,
+    color: '#fff', fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', gap: 6,
+    boxShadow: '0 3px 12px rgba(100,160,30,0.25)',
+  },
+  reviewDone: {
+    fontSize: 13, color: C, fontWeight: 600,
+    display: 'flex', alignItems: 'center', gap: 4,
   },
 }
