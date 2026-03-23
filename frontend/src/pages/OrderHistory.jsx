@@ -342,13 +342,13 @@ const s = {
   },
   statusBadge: {
     display: 'inline-flex', padding: '3px 10px',
-    borderRadius: 8, fontSize: 11, fontWeight: 700,
+    borderRadius: 8, fontSize: 12, fontWeight: 700,
   },
   cardMeta: {
-    display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#8e8e93',
+    display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#8e8e93',
   },
   metaDot: { color: '#c7c7cc' },
-  cardTotal: { fontWeight: 700, color: '#3c3c43' },
+  cardTotal: { fontWeight: 700, color: '#3c3c43', fontSize: 13 },
 
   /* Progress */
   progressWrap: { display: 'flex', alignItems: 'center', gap: 8 },
@@ -367,7 +367,7 @@ const s = {
     display: 'flex', flexDirection: 'column', gap: 10,
   },
   detailRow: { display: 'flex', gap: 8, alignItems: 'flex-start' },
-  detailText: { fontSize: 15, color: '#3c3c43', lineHeight: 1.4 },
+  detailText: { fontSize: 14, color: '#3c3c43', lineHeight: 1.4 },
 
   /* Courier */
   courierCard: {
@@ -429,10 +429,11 @@ const s = {
   },
   repeatBtn: {
     flex: 1, padding: '12px 0', borderRadius: 14,
-    border: `1.5px solid ${C}40`, background: `${C}08`,
-    color: C, fontSize: 14, fontWeight: 600,
+    border: 'none', background: GRAD,
+    color: '#fff', fontSize: 14, fontWeight: 600,
     cursor: 'pointer', display: 'flex', alignItems: 'center',
     justifyContent: 'center', gap: 6,
+    boxShadow: '0 3px 12px rgba(100,160,30,0.25)',
   },
   reviewBtn: {
     flex: 1, padding: '12px 0', borderRadius: 14,
@@ -450,7 +451,7 @@ const s = {
   /* Support button */
   supportBtn: {
     width: '100%', padding: '11px 0', borderRadius: 12,
-    border: `1.5px solid ${C}30`, background: `${C}08`,
+    border: `1.5px solid ${C}`, background: `${C}08`,
     color: '#3c3c43', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', display: 'flex', alignItems: 'center',
     justifyContent: 'center', gap: 6,
