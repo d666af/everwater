@@ -16,6 +16,7 @@ const STATUSES = [
   { key: 'delivered', label: 'Доставлен', icon: 'done' },
   { key: 'rejected', label: 'Отклонён', icon: 'x' },
   { key: 'rejected_by_manager', label: 'Отклонён менеджером', icon: 'x' },
+  { key: 'cancelled', label: 'Отклонён', icon: 'x' },
 ]
 
 /* On-brand colors: green for active/positive, light gray for neutral, muted red only for rejected */
@@ -28,6 +29,7 @@ const STATUS_COLORS = {
   delivered:              { bg: `${C}25`, color: C },
   rejected:               { bg: '#fef2f2', color: '#c0392b' },
   rejected_by_manager:    { bg: '#fef2f2', color: '#c0392b' },
+  cancelled:              { bg: '#fef2f2', color: '#c0392b' },
 }
 
 const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
@@ -89,12 +91,7 @@ export default function OrderHistory() {
   return (
     <div style={s.page}>
       {active.length > 0 && (
-        <div style={s.activeBanner}>
-          <div style={s.activeBannerDot} />
-          <span style={s.activeBannerText}>
-            {active.length} {active.length === 1 ? 'активный заказ' : 'активных заказа'}
-          </span>
-        </div>
+        <div style={s.sectionLabel}>Активные</div>
       )}
 
       {active.map(order => (
@@ -141,19 +138,16 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   const colors = STATUS_COLORS[order.status] || { bg: '#f5f5f5', color: '#888' }
   const canReview = order.status === 'delivered' && !reviewedIds.has(order.id) && !order.review_id
   const itemCount = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0
-  const isRejected = order.status === 'rejected' || order.status === 'rejected_by_manager'
+  const isRejected = order.status === 'rejected' || order.status === 'rejected_by_manager' || order.status === 'cancelled'
 
   return (
     <div style={s.card}>
-      {isActive && <div style={{ ...s.cardStripe, background: colors.color }} />}
-
       <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
-        <div style={{ ...s.statusIcon, background: colors.bg, color: colors.color }}>
+        <div style={{ ...s.statusIcon, background: colors.bg, color: colors.color, border: `1.5px solid ${colors.color}30` }}>
           <StatusIcon status={order.status} size={18} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={s.cardTopRow}>
-            <span style={s.orderId}>#{order.id}</span>
             <span style={{ ...s.statusBadge, background: colors.bg, color: colors.color }}>
               {statusInfo.label}
             </span>
@@ -178,7 +172,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 
           {order.address && (
             <div style={s.detailRow}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
                 <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z" fill={C}/>
               </svg>
               <span style={s.detailText}>{order.address}</span>
@@ -186,7 +180,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           )}
           {order.delivery_time && (
             <div style={s.detailRow}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
                 <circle cx="12" cy="12" r="9" stroke={C} strokeWidth="1.8"/>
                 <path d="M12 7v5l3 3" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
@@ -196,31 +190,31 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 
           {(order.status === 'assigned_to_courier' || order.status === 'in_delivery') && order.courier_name && (
             <div style={s.courierCard}>
-              <div style={s.courierTop}>
+              <div style={s.courierRow}>
                 <div style={s.courierAvatar}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <circle cx="12" cy="8" r="3.5" fill="#fff"/>
                     <path d="M5 20c0-3 3-5.5 7-5.5s7 2.5 7 5.5" stroke="#fff" strokeWidth="1.7" strokeLinecap="round"/>
                   </svg>
                 </div>
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={s.courierLabel}>Курьер</div>
                   <div style={s.courierName}>{order.courier_name}</div>
                 </div>
+                {order.courier_phone && (
+                  <a href={`tel:${order.courier_phone}`} style={s.callBtn}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#fff" strokeWidth="1.5"/>
+                    </svg>
+                    Позвонить
+                  </a>
+                )}
               </div>
-              {order.courier_phone && (
-                <a href={`tel:${order.courier_phone}`} style={s.callBtn}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#fff" strokeWidth="1.5"/>
-                  </svg>
-                  Позвонить
-                </a>
-              )}
             </div>
           )}
 
           {order.items?.length > 0 && (
-            <div style={s.itemsBox}>
+            <div style={{ ...s.itemsBox, background: colors.bg }}>
               <div style={s.itemsLabel}>Состав заказа</div>
               {order.items.map((i, idx) => (
                 <div key={idx} style={s.itemRow}>
@@ -298,7 +292,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
 const s = {
   page: {
     display: 'flex', flexDirection: 'column',
-    background: '#eeeef2', minHeight: '100dvh',
+    background: '#e4e4e8', minHeight: '100dvh',
     paddingTop: 4,
   },
 
@@ -321,20 +315,6 @@ const s = {
     boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
   },
 
-  /* Active banner */
-  activeBanner: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '12px 16px', margin: '4px 16px 8px',
-    background: GRAD, borderRadius: 16,
-    boxShadow: '0 3px 12px rgba(100,160,30,0.25)',
-  },
-  activeBannerDot: {
-    width: 10, height: 10, borderRadius: 5,
-    background: '#fff', flexShrink: 0,
-    animation: 'pulse 2s infinite',
-  },
-  activeBannerText: { fontSize: 14, fontWeight: 700, color: '#fff' },
-
   /* Section label */
   sectionLabel: {
     padding: '18px 20px 8px',
@@ -349,9 +329,6 @@ const s = {
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     position: 'relative',
   },
-  cardStripe: {
-    position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderRadius: '3px 0 0 3px',
-  },
   cardHead: {
     display: 'flex', alignItems: 'center',
     padding: '14px 16px', cursor: 'pointer', gap: 12,
@@ -363,7 +340,6 @@ const s = {
   cardTopRow: {
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3,
   },
-  orderId: { fontWeight: 700, fontSize: 15, color: '#1a1a1a' },
   statusBadge: {
     display: 'inline-flex', padding: '3px 10px',
     borderRadius: 8, fontSize: 11, fontWeight: 700,
@@ -391,18 +367,17 @@ const s = {
     display: 'flex', flexDirection: 'column', gap: 10,
   },
   detailRow: { display: 'flex', gap: 8, alignItems: 'flex-start' },
-  detailText: { fontSize: 13, color: '#3c3c43', lineHeight: 1.4 },
+  detailText: { fontSize: 15, color: '#3c3c43', lineHeight: 1.4 },
 
   /* Courier */
   courierCard: {
     background: GRAD, borderRadius: 14, padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: 8,
   },
-  courierTop: { display: 'flex', alignItems: 'center', gap: 10 },
+  courierRow: { display: 'flex', alignItems: 'center', gap: 10 },
   courierAvatar: {
     width: 34, height: 34, borderRadius: 10,
     background: 'rgba(255,255,255,0.25)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   courierLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: 0.3 },
   courierName: { fontSize: 14, fontWeight: 700, color: '#fff' },
@@ -410,16 +385,16 @@ const s = {
     display: 'inline-flex', alignItems: 'center', gap: 6,
     fontSize: 13, color: '#fff', fontWeight: 700,
     textDecoration: 'none', background: 'rgba(255,255,255,0.2)',
-    borderRadius: 10, padding: '8px 14px', alignSelf: 'flex-start',
+    borderRadius: 10, padding: '8px 14px', flexShrink: 0, marginLeft: 'auto',
   },
 
   /* Items */
   itemsBox: {
     display: 'flex', flexDirection: 'column', gap: 4,
-    background: '#f8f8fa', borderRadius: 12, padding: '10px 12px',
+    borderRadius: 12, padding: '10px 12px',
   },
   itemsLabel: {
-    fontSize: 11, fontWeight: 700, color: '#c7c7cc',
+    fontSize: 11, fontWeight: 700, color: C,
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2,
   },
   itemRow: { display: 'flex', justifyContent: 'space-between', gap: 8 },
@@ -454,8 +429,8 @@ const s = {
   },
   repeatBtn: {
     flex: 1, padding: '12px 0', borderRadius: 14,
-    border: '1.5px solid #e5e5ea', background: '#fff',
-    color: '#3c3c43', fontSize: 14, fontWeight: 600,
+    border: `1.5px solid ${C}40`, background: `${C}08`,
+    color: C, fontSize: 14, fontWeight: 600,
     cursor: 'pointer', display: 'flex', alignItems: 'center',
     justifyContent: 'center', gap: 6,
   },
