@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore, cartEvents } from '../store'
 
 const C = '#8DC63F'
-const GRAD = 'linear-gradient(135deg, #7EC840 0%, #5EAE2E 50%, #4A9A24 100%)'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 export default function CartWidget() {
   const navigate = useNavigate()
@@ -51,9 +51,8 @@ export default function CartWidget() {
             <div style={st.panelHeader}>
               <span style={st.panelTitle}>Корзина</span>
               <button style={st.collapseBtn} onClick={() => setExpanded(false)}>
-                {/* Collapse / chevron down icon */}
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M6 9l6 6 6-6" stroke="#8e8e93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M6 9l6 6 6-6" stroke={C} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
             </div>
@@ -104,8 +103,8 @@ export default function CartWidget() {
           </div>
           <div style={st.barRight}>
             <span style={st.barTotal}>{total.toLocaleString()} сум</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M18 15l-6-6-6 6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M6 15l6-6 6 6" stroke={C} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
         </div>
@@ -147,8 +146,8 @@ const st = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     background: '#fff', borderRadius: 20, padding: '12px 16px',
     cursor: 'pointer', pointerEvents: 'auto',
-    border: `2px solid ${C}`,
-    boxShadow: '0 4px 20px rgba(100,160,30,0.2), 0 1px 4px rgba(0,0,0,0.05)',
+    border: `2.5px solid ${C}`,
+    boxShadow: '0 6px 28px rgba(100,160,30,0.28), 0 2px 8px rgba(0,0,0,0.06)',
     animation: 'slideUp 0.3s ease',
   },
   barLeft: { display: 'flex', alignItems: 'center', gap: 10 },
@@ -166,9 +165,9 @@ const st = {
   /* Expanded panel — white with green gradient border + shadow */
   panel: {
     maxWidth: 420, width: '100%',
-    background: GRAD, borderRadius: 22, padding: 2,
+    background: GRAD, borderRadius: 22, padding: 2.5,
     pointerEvents: 'auto',
-    boxShadow: '0 8px 32px rgba(100,160,30,0.25), 0 2px 8px rgba(0,0,0,0.06)',
+    boxShadow: '0 10px 40px rgba(100,160,30,0.3), 0 3px 12px rgba(0,0,0,0.08)',
     animation: 'scaleIn 0.25s ease',
   },
   panelInner: {

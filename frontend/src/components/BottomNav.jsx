@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
-const GRAD = 'linear-gradient(135deg, #7EC840 0%, #5EAE2E 50%, #4A9A24 100%)'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const NAV = [
   { path: '/', label: 'Главная', icon: (
@@ -47,8 +47,8 @@ export default function BottomNav() {
       const navRect = navEl.getBoundingClientRect()
       const itemRect = activeEl.getBoundingClientRect()
       setPillStyle({
-        left: itemRect.left - navRect.left + 4,
-        width: itemRect.width - 8,
+        left: itemRect.left - navRect.left + 10,
+        width: itemRect.width - 20,
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
