@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore, cartEvents } from '../store'
 
-const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
-const GRAD_DARK = 'linear-gradient(135deg, #5BA01A 0%, #4A8C14 50%, #3D7A10 100%)'
+const C = '#8DC63F'
+const GRAD = 'linear-gradient(135deg, #7EC840 0%, #5EAE2E 50%, #4A9A24 100%)'
 
 export default function CartWidget() {
   const navigate = useNavigate()
@@ -31,78 +31,81 @@ export default function CartWidget() {
   if (hide || totalQty === 0) return null
 
   return (
-    <div style={s.container}>
+    <div style={st.container}>
       {/* Notification toast */}
       {notification && (
-        <div style={s.notif}>
-          <div style={s.notifCheck}>
+        <div style={st.notif}>
+          <div style={st.notifCheck}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M5 12l5 5 9-9" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span style={s.notifText}>{notification} добавлено</span>
+          <span style={st.notifText}>{notification} добавлено</span>
         </div>
       )}
 
-      {/* Expanded cart panel */}
+      {/* Expanded cart panel — white bg, green gradient border */}
       {expanded && (
-        <div style={s.panel}>
-          <div style={s.panelHeader}>
-            <span style={s.panelTitle}>Корзина</span>
-            <button style={s.closeBtn} onClick={() => setExpanded(false)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M18 6L6 18M6 6l12 12" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
-
-          <div style={s.panelItems}>
-            {items.map(({ product, quantity }) => (
-              <div key={product.id} style={s.panelItem}>
-                <div style={s.panelItemInfo}>
-                  <span style={s.panelItemName}>{product.name}</span>
-                  <span style={s.panelItemPrice}>{(product.price * quantity).toLocaleString()} сум</span>
-                </div>
-                <div style={s.panelStepper}>
-                  <button style={s.panelStepBtn}
-                    onClick={() => useCartStore.getState().updateQuantity(product.id, quantity - 1)}>−</button>
-                  <span style={s.panelQty}>{quantity}</span>
-                  <button style={s.panelStepBtn}
-                    onClick={() => useCartStore.getState().updateQuantity(product.id, quantity + 1)}>+</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={s.panelFooter}>
-            <div style={s.panelTotal}>
-              <span style={s.panelTotalLabel}>Итого</span>
-              <span style={s.panelTotalValue}>{total.toLocaleString()} сум</span>
+        <div style={st.panel}>
+          <div style={st.panelInner}>
+            <div style={st.panelHeader}>
+              <span style={st.panelTitle}>Корзина</span>
+              <button style={st.collapseBtn} onClick={() => setExpanded(false)}>
+                {/* Collapse / chevron down icon */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M6 9l6 6 6-6" stroke="#8e8e93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             </div>
-            <button style={s.orderBtn} onClick={() => { setExpanded(false); navigate('/checkout') }}>
-              Оформить заказ
-            </button>
+
+            <div style={st.panelItems}>
+              {items.map(({ product, quantity }) => (
+                <div key={product.id} style={st.panelItem}>
+                  <div style={st.panelItemInfo}>
+                    <span style={st.panelItemName}>{product.name}</span>
+                    <span style={st.panelItemPrice}>{(product.price * quantity).toLocaleString()} сум</span>
+                  </div>
+                  <div style={st.panelStepper}>
+                    <button style={st.panelStepBtn}
+                      onClick={() => useCartStore.getState().updateQuantity(product.id, quantity - 1)}>−</button>
+                    <span style={st.panelQty}>{quantity}</span>
+                    <button style={st.panelStepBtn}
+                      onClick={() => useCartStore.getState().updateQuantity(product.id, quantity + 1)}>+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={st.panelFooter}>
+              <div style={st.panelTotal}>
+                <span style={st.panelTotalLabel}>Итого</span>
+                <span style={st.panelTotalValue}>{total.toLocaleString()} сум</span>
+              </div>
+              <button style={st.orderBtn} onClick={() => { setExpanded(false); navigate('/checkout') }}>
+                Оформить заказ
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Collapsed bar */}
+      {/* Collapsed bar — white bg, green gradient border */}
       {!expanded && (
         <div
-          style={{ ...s.bar, animation: bounce ? 'cartBounce 0.4s ease' : 'none' }}
+          style={{ ...st.bar, animation: bounce ? 'cartBounce 0.4s ease' : 'none' }}
           onClick={() => setExpanded(true)}
         >
-          <div style={s.barLeft}>
-            <div style={s.barBadge}>{totalQty}</div>
-            <div style={s.barInfo}>
-              <span style={s.barTitle}>Корзина</span>
-              <span style={s.barSubtitle}>{totalQty} {totalQty === 1 ? 'товар' : totalQty < 5 ? 'товара' : 'товаров'}</span>
+          <div style={st.barLeft}>
+            <div style={st.barBadge}>{totalQty}</div>
+            <div style={st.barInfo}>
+              <span style={st.barTitle}>Корзина</span>
+              <span style={st.barSubtitle}>{totalQty} {totalQty === 1 ? 'товар' : totalQty < 5 ? 'товара' : 'товаров'}</span>
             </div>
           </div>
-          <div style={s.barRight}>
-            <span style={s.barTotal}>{total.toLocaleString()} сум</span>
+          <div style={st.barRight}>
+            <span style={st.barTotal}>{total.toLocaleString()} сум</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M6 9l6 6 6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M18 15l-6-6-6 6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
         </div>
@@ -111,7 +114,7 @@ export default function CartWidget() {
   )
 }
 
-const s = {
+const st = {
   container: {
     position: 'fixed', bottom: 90, left: 0, right: 0, zIndex: 199,
     padding: '0 12px',
@@ -138,42 +141,46 @@ const s = {
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
 
-  /* Collapsed bar — green gradient */
+  /* Collapsed bar — white with green gradient border */
   bar: {
     maxWidth: 420, width: '100%',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    background: GRAD_DARK, borderRadius: 20, padding: '12px 16px',
+    background: '#fff', borderRadius: 20, padding: '12px 16px',
     cursor: 'pointer', pointerEvents: 'auto',
-    boxShadow: '0 6px 24px rgba(60,120,10,0.35)',
+    border: `2px solid ${C}`,
+    boxShadow: '0 4px 20px rgba(100,160,30,0.2), 0 1px 4px rgba(0,0,0,0.05)',
     animation: 'slideUp 0.3s ease',
   },
   barLeft: { display: 'flex', alignItems: 'center', gap: 10 },
   barBadge: {
-    background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 10,
+    background: GRAD, color: '#fff', borderRadius: 10,
     width: 28, height: 28, fontSize: 13, fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   barInfo: { display: 'flex', flexDirection: 'column' },
-  barTitle: { color: '#fff', fontSize: 14, fontWeight: 700 },
-  barSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+  barTitle: { color: '#1a1a1a', fontSize: 14, fontWeight: 700 },
+  barSubtitle: { color: '#8e8e93', fontSize: 11 },
   barRight: { display: 'flex', alignItems: 'center', gap: 6 },
-  barTotal: { color: '#fff', fontSize: 16, fontWeight: 800, letterSpacing: -0.3 },
+  barTotal: { color: '#1a1a1a', fontSize: 16, fontWeight: 800, letterSpacing: -0.3 },
 
-  /* Expanded panel — green gradient */
+  /* Expanded panel — white with green gradient border + shadow */
   panel: {
     maxWidth: 420, width: '100%',
-    background: GRAD_DARK, borderRadius: 22,
-    pointerEvents: 'auto', overflow: 'hidden',
-    boxShadow: '0 8px 32px rgba(60,120,10,0.35)',
+    background: GRAD, borderRadius: 22, padding: 2,
+    pointerEvents: 'auto',
+    boxShadow: '0 8px 32px rgba(100,160,30,0.25), 0 2px 8px rgba(0,0,0,0.06)',
     animation: 'scaleIn 0.25s ease',
+  },
+  panelInner: {
+    background: '#fff', borderRadius: 20, overflow: 'hidden',
   },
   panelHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '14px 16px 10px',
   },
-  panelTitle: { color: '#fff', fontSize: 18, fontWeight: 800 },
-  closeBtn: {
-    background: 'rgba(255,255,255,0.15)', border: 'none', cursor: 'pointer',
+  panelTitle: { color: '#1a1a1a', fontSize: 18, fontWeight: 800 },
+  collapseBtn: {
+    background: '#f2f2f7', border: 'none', cursor: 'pointer',
     width: 32, height: 32, borderRadius: 10,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
@@ -184,27 +191,27 @@ const s = {
   },
   panelItem: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    background: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: '10px 12px',
+    background: '#f8f8fa', borderRadius: 14, padding: '10px 12px',
   },
   panelItemInfo: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 },
   panelItemName: {
-    color: '#fff', fontSize: 13, fontWeight: 600,
+    color: '#1a1a1a', fontSize: 13, fontWeight: 600,
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
-  panelItemPrice: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 1 },
+  panelItemPrice: { color: '#8e8e93', fontSize: 12, marginTop: 1 },
 
   panelStepper: {
     display: 'flex', alignItems: 'center', gap: 2,
-    background: 'rgba(255,255,255,0.15)', borderRadius: 10,
-    marginLeft: 10, flexShrink: 0,
+    background: `${C}18`, border: `1.5px solid ${C}30`,
+    borderRadius: 10, marginLeft: 10, flexShrink: 0,
   },
   panelStepBtn: {
     width: 30, height: 30, border: 'none', background: 'transparent',
-    color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer',
+    color: '#1a1a1a', fontSize: 16, fontWeight: 600, cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   panelQty: {
-    color: '#fff', fontSize: 14, fontWeight: 700,
+    color: '#1a1a1a', fontSize: 14, fontWeight: 700,
     minWidth: 18, textAlign: 'center',
   },
 
@@ -213,14 +220,14 @@ const s = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 12,
   },
-  panelTotalLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 500 },
-  panelTotalValue: { color: '#fff', fontSize: 20, fontWeight: 800, letterSpacing: -0.3 },
+  panelTotalLabel: { color: '#8e8e93', fontSize: 14, fontWeight: 500 },
+  panelTotalValue: { color: '#1a1a1a', fontSize: 20, fontWeight: 800, letterSpacing: -0.3 },
 
   orderBtn: {
     width: '100%', padding: '14px 0',
-    background: '#fff', border: 'none', borderRadius: 16,
-    color: '#2d7a0f', fontSize: 16, fontWeight: 700,
+    background: GRAD, border: 'none', borderRadius: 16,
+    color: '#fff', fontSize: 16, fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+    boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
   },
 }
