@@ -156,13 +156,13 @@ const s = {
     display: 'flex', gap: 10, padding: '12px 16px 0',
   },
   statCard: {
-    flex: 1, display: 'flex', flexDirection: 'column', gap: 3,
-    background: '#fff', borderRadius: 16, padding: '10px 14px',
+    flex: 1, display: 'flex', flexDirection: 'column', gap: 1,
+    background: '#fff', borderRadius: 14, padding: '8px 12px',
     cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  statIconRow: { display: 'flex', alignItems: 'center', gap: 6 },
-  statLabel: { fontSize: 12, fontWeight: 500, color: '#8e8e93' },
-  statValue: { fontSize: 18, fontWeight: 800, color: '#1a1a1a', letterSpacing: -0.3 },
+  statIconRow: { display: 'flex', alignItems: 'center', gap: 5 },
+  statLabel: { fontSize: 11, fontWeight: 500, color: '#8e8e93' },
+  statValue: { fontSize: 15, fontWeight: 800, color: '#1a1a1a', letterSpacing: -0.3 },
 
   /* Active order */
   activeOrder: {

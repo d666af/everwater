@@ -46,9 +46,10 @@ export default function BottomNav() {
     if (activeEl && navEl) {
       const navRect = navEl.getBoundingClientRect()
       const itemRect = activeEl.getBoundingClientRect()
+      const pillW = 90
       setPillStyle({
-        left: itemRect.left - navRect.left + 10,
-        width: itemRect.width - 20,
+        left: itemRect.left - navRect.left + (itemRect.width - pillW) / 2,
+        width: pillW,
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
@@ -58,7 +59,7 @@ export default function BottomNav() {
 
   return (
     <>
-      <div style={{ height: 84 }} />
+      <div style={{ height: 90 }} />
       <nav style={st.nav}>
         <div style={st.inner} ref={navRef}>
           {/* Animated white pill — covers icon + text */}
@@ -110,7 +111,7 @@ const st = {
   inner: {
     display: 'flex', maxWidth: 420, margin: '0 auto',
     background: GRAD, borderRadius: 22,
-    padding: '6px 0 8px',
+    padding: '8px 0 10px',
     boxShadow: '0 4px 24px rgba(80,140,20,0.35)',
     position: 'relative',
   },

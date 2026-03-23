@@ -91,7 +91,7 @@ export default function CartWidget() {
       {/* Collapsed bar — white bg, green gradient border */}
       {!expanded && (
         <div
-          style={{ ...st.bar, animation: bounce ? 'cartBounce 0.4s ease' : 'none' }}
+          style={{ ...st.bar, animation: bounce ? 'cartBounce 0.4s ease' : 'cartFloat 3s ease-in-out infinite' }}
           onClick={() => setExpanded(true)}
         >
           <div style={st.barLeft}>

@@ -1,64 +1,74 @@
 // ─── Mock data for dev mode (when backend is not running) ────────────────────
 
+const EVER_PHOTOS = [
+  'https://branding.uz/wp-content/uploads/2022/11/ever-0.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ever-1.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ever-2.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ever-3.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ever-4.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ever-5.png',
+  'https://branding.uz/wp-content/uploads/2022/11/ph_juravlev-29.png',
+]
+
 export const MOCK_PRODUCTS = [
   {
     id: 1, name: 'Вода 0.5 литровая', volume: 0.5, price: 2000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1616118132534-381148898bb4?w=400&q=80',
+    photo_url: EVER_PHOTOS[0],
     is_active: true, sort_order: 1, type: 'still',
   },
   {
     id: 2, name: 'Вода 1 литровая', volume: 1, price: 3500,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=400&q=80',
+    photo_url: EVER_PHOTOS[1],
     is_active: true, sort_order: 2, type: 'still',
   },
   {
     id: 3, name: 'Вода 1.5 литровая', volume: 1.5, price: 4500,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1606168094336-48f205e4e291?w=400&q=80',
+    photo_url: EVER_PHOTOS[2],
     is_active: true, sort_order: 3, type: 'still',
   },
   {
     id: 4, name: 'Вода 5 литровая', volume: 5, price: 8000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=400&q=80',
+    photo_url: EVER_PHOTOS[3],
     is_active: true, sort_order: 4, type: 'still',
   },
   {
     id: 5, name: 'Вода 10 литровая', volume: 10, price: 14000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1559839914-17aae19cec71?w=400&q=80',
+    photo_url: EVER_PHOTOS[4],
     is_active: true, sort_order: 5, type: 'still',
   },
   {
     id: 6, name: 'Вода 18.9 литровая', volume: 18.9, price: 25000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&q=80',
+    photo_url: EVER_PHOTOS[5],
     is_active: true, sort_order: 6, type: 'still',
   },
   {
     id: 7, name: 'Вода 0.5 литровая газированная', volume: 0.5, price: 3000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?w=400&q=80',
+    photo_url: EVER_PHOTOS[6],
     is_active: true, sort_order: 7, type: 'carbonated',
   },
   {
     id: 8, name: 'Вода 1 литровая газированная', volume: 1, price: 5000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1594568284297-7c64464062b1?w=400&q=80',
+    photo_url: EVER_PHOTOS[0],
     is_active: true, sort_order: 8, type: 'carbonated',
   },
   {
     id: 9, name: 'Вода 1.5 литровая газированная', volume: 1.5, price: 6000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=400&q=80',
+    photo_url: EVER_PHOTOS[1],
     is_active: true, sort_order: 9, type: 'carbonated',
   },
   {
     id: 10, name: 'Вода 5 литровая газированная', volume: 5, price: 10000,
     description: '',
-    photo_url: 'https://images.unsplash.com/photo-1571942676516-bcab84649e44?w=400&q=80',
+    photo_url: EVER_PHOTOS[2],
     is_active: true, sort_order: 10, type: 'carbonated',
   },
 ]
