@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
-const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
+const GRAD = 'linear-gradient(135deg, #7EC840 0%, #5EAE2E 50%, #4A9A24 100%)'
 
 const NAV = [
   { path: '/', label: 'Главная', icon: (
@@ -115,8 +115,8 @@ const st = {
     position: 'relative',
   },
   pill: {
-    position: 'absolute', top: 4, bottom: 4,
-    borderRadius: 18,
+    position: 'absolute', top: 5, bottom: 5,
+    borderRadius: 16,
     background: '#fff',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     pointerEvents: 'none',

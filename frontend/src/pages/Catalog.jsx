@@ -54,22 +54,28 @@ export default function Catalog() {
     <div style={s.page}>
       {/* Logo centered at top */}
       <div style={s.logoSection}>
-        <EverLogoMark width={56} />
+        <EverLogoMark width={80} />
       </div>
 
-      {/* Bonus & Balance chips */}
+      {/* Bonus & Balance cards */}
       <div style={s.infoRow}>
-        <div style={s.statChip} onClick={() => navigate('/profile')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z" fill={C}/>
-          </svg>
+        <div style={s.statCard} onClick={() => navigate('/profile')}>
+          <div style={s.statIconRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z" fill={C}/>
+            </svg>
+            <span style={s.statLabel}>Бонусы</span>
+          </div>
           <span style={s.statValue}>{bonus_points.toLocaleString()}</span>
         </div>
-        <div style={s.statChip} onClick={() => navigate('/profile')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <rect x="2" y="6" width="20" height="12" rx="2" stroke={C} strokeWidth="2" fill={C + '20'}/>
-            <path d="M6 10h3M6 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
+        <div style={s.statCard} onClick={() => navigate('/profile')}>
+          <div style={s.statIconRow}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="6" width="20" height="12" rx="2" stroke={C} strokeWidth="2" fill={C + '20'}/>
+              <path d="M6 10h3M6 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <span style={s.statLabel}>Баланс</span>
+          </div>
           <span style={s.statValue}>{balance.toLocaleString()} сум</span>
         </div>
       </div>
@@ -154,16 +160,18 @@ const s = {
     padding: '14px 16px 4px',
   },
 
-  /* Stats row — white chip backgrounds */
+  /* Stats row — bigger cards with labels */
   infoRow: {
-    display: 'flex', gap: 8, padding: '8px 16px 0', justifyContent: 'center',
+    display: 'flex', gap: 10, padding: '8px 16px 0',
   },
-  statChip: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    background: '#fff', borderRadius: 14, padding: '8px 14px',
+  statCard: {
+    flex: 1, display: 'flex', flexDirection: 'column', gap: 6,
+    background: '#fff', borderRadius: 16, padding: '14px 16px',
     cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
-  statValue: { fontSize: 13, fontWeight: 700, color: '#1a1a1a' },
+  statIconRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  statLabel: { fontSize: 12, fontWeight: 500, color: '#8e8e93' },
+  statValue: { fontSize: 18, fontWeight: 800, color: '#1a1a1a', letterSpacing: -0.3 },
 
   /* Active order */
   activeOrder: {
