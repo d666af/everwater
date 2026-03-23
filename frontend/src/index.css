@@ -24,6 +24,10 @@
   60% { transform: scale(0.95); }
   100% { transform: scale(1); }
 }
+@keyframes cartFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
 
 * { box-sizing: border-box; }
 body {
