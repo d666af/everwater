@@ -30,14 +30,14 @@ function TopupModal({ onClose, settings }) {
       <div style={s.sheet}>
         <div style={s.handle} />
         <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#FFA726', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <div style={s.pendingIcon}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
               <path d="M12 7v5l3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Запрос отправлен</div>
-          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6 }}>
+          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6, lineHeight: 1.5 }}>
             Заявка на <strong>{finalAmount.toLocaleString()} сум</strong> отправлена.
             Менеджер проверит и зачислит средства.
           </div>
@@ -62,6 +62,11 @@ function TopupModal({ onClose, settings }) {
           <button style={{ ...s.copyBtn, ...(copied ? s.copyDone : {}) }} onClick={copyCard}>
             {copied ? 'Скопировано' : 'Скопировать номер карты'}
           </button>
+        </div>
+        <div style={s.helpSteps}>
+          <div style={s.helpStep}><span style={s.helpNum}>1</span> Переведите сумму на карту</div>
+          <div style={s.helpStep}><span style={s.helpNum}>2</span> Нажмите «Я оплатил»</div>
+          <div style={s.helpStep}><span style={s.helpNum}>3</span> Менеджер подтвердит зачисление</div>
         </div>
         <button style={s.primaryBtn} onClick={async () => {
           setLoading(true); await new Promise(r => setTimeout(r, 1000)); setLoading(false); setStep('pending')
@@ -115,6 +120,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
+  const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
   const userStore = useUserStore()
@@ -160,6 +166,16 @@ export default function Profile() {
     <div style={s.page}>
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
 
+      {/* Order count badge — top right */}
+      <div style={s.orderBadge}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke={C} strokeWidth="1.8"/>
+          <path d="M8 8h8M8 12h5" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+        <span style={s.orderBadgeNum}>{orderCount}</span>
+        <span style={s.orderBadgeLabel}>заказов</span>
+      </div>
+
       {/* Avatar + name */}
       <div style={s.profileHeader}>
         <div style={s.avatar}>{initials}</div>
@@ -189,29 +205,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Stats row */}
-      <div style={s.statsRow}>
-        <div style={s.statCard}>
-          <div style={{ ...s.statIconWrap, background: `${C}15` }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="18" height="18" rx="3" stroke={C} strokeWidth="1.8"/>
-              <path d="M8 8h8M8 12h5" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div style={s.statNum}>{orderCount}</div>
-          <div style={s.statLabel}>Заказов</div>
-        </div>
-        <div style={s.statCard}>
-          <div style={{ ...s.statIconWrap, background: '#FEF3C720' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="#F59E0B" strokeWidth="1.8" fill="#FEF3C7"/>
-            </svg>
-          </div>
-          <div style={s.statNum}>{bonusPoints.toLocaleString()}</div>
-          <div style={s.statLabel}>Бонусы</div>
-        </div>
-      </div>
-
       {/* Bonus card */}
       {bonusPoints > 0 && (
         <div style={s.bonusCard}>
@@ -229,38 +222,37 @@ export default function Profile() {
 
       {/* Menu */}
       <div style={s.menuCard}>
-        <button style={s.menuItem} onClick={() => navigate('/orders')}>
+        <button style={s.menuItem} onClick={() => navigate('/support')}>
           <div style={{ ...s.menuIcon, background: `${C}12` }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="4" width="18" height="16" rx="3" stroke={C} strokeWidth="1.7"/>
-              <path d="M7 9h10M7 13h6" stroke={C} strokeWidth="1.7" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <span style={s.menuLabel}>История заказов</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/></svg>
-        </button>
-        <div style={s.menuDivider} />
-        <button style={s.menuItem} onClick={() => navigate('/support')}>
-          <div style={{ ...s.menuIcon, background: '#3B82F612' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" stroke="#3B82F6" strokeWidth="1.7" strokeLinejoin="round"/>
-              <path d="M8 9h8M8 13h5" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" stroke={C} strokeWidth="1.7" strokeLinejoin="round"/>
+              <path d="M8 9h8M8 13h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </div>
           <span style={s.menuLabel}>Поддержка</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
         <div style={s.menuDivider} />
-        <button style={s.menuItem} onClick={() => navigate('/')}>
-          <div style={{ ...s.menuIcon, background: '#F59E0B12' }}>
+        <div style={s.menuItem}>
+          <div style={{ ...s.menuIcon, background: `${C}12` }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="#F59E0B" strokeWidth="1.7" strokeLinejoin="round"/>
-              <path d="M9 22V12h6v10" stroke="#F59E0B" strokeWidth="1.7" strokeLinejoin="round"/>
+              <circle cx="12" cy="12" r="9" stroke={C} strokeWidth="1.7"/>
+              <path d="M2 12h20" stroke={C} strokeWidth="1.7"/>
+              <ellipse cx="12" cy="12" rx="4" ry="9" stroke={C} strokeWidth="1.7"/>
             </svg>
           </div>
-          <span style={s.menuLabel}>Каталог</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/></svg>
-        </button>
+          <span style={s.menuLabel}>Язык</span>
+          <div style={s.langSwitch}>
+            <button
+              style={lang === 'ru' ? { ...s.langBtn, ...s.langBtnActive } : s.langBtn}
+              onClick={() => setLang('ru')}
+            >RU</button>
+            <button
+              style={lang === 'uz' ? { ...s.langBtn, ...s.langBtnActive } : s.langBtn}
+              onClick={() => setLang('uz')}
+            >UZ</button>
+          </div>
+        </div>
       </div>
 
       {/* Info */}
@@ -312,7 +304,7 @@ const s = {
   page: {
     background: '#e4e4e8', minHeight: '100dvh',
     display: 'flex', flexDirection: 'column', gap: 10,
-    paddingTop: 4,
+    paddingTop: 4, position: 'relative',
   },
   center: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -324,6 +316,16 @@ const s = {
     border: `2.5px solid ${C}30`, borderTop: `2.5px solid ${C}`,
     animation: 'spin 0.8s linear infinite',
   },
+
+  /* Order badge top-right */
+  orderBadge: {
+    position: 'absolute', top: 12, right: 16,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: '#fff', borderRadius: 12, padding: '6px 12px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  },
+  orderBadgeNum: { fontSize: 15, fontWeight: 800, color: '#1a1a1a' },
+  orderBadgeLabel: { fontSize: 12, color: '#8e8e93', fontWeight: 500 },
 
   /* Profile header */
   profileHeader: {
@@ -364,22 +366,6 @@ const s = {
     display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
   },
 
-  /* Stats */
-  statsRow: {
-    display: 'flex', gap: 10, padding: '0 16px',
-  },
-  statCard: {
-    flex: 1, background: '#fff', borderRadius: 18, padding: '14px 12px',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  },
-  statIconWrap: {
-    width: 40, height: 40, borderRadius: 12,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  statNum: { fontSize: 20, fontWeight: 800, color: '#1a1a1a' },
-  statLabel: { fontSize: 11, color: '#8e8e93', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 },
-
   /* Bonus */
   bonusCard: {
     background: '#fff', margin: '0 16px',
@@ -412,6 +398,20 @@ const s = {
   },
   menuLabel: { flex: 1, fontSize: 15, fontWeight: 600, color: '#1a1a1a' },
   menuDivider: { height: 1, background: '#f0f0f2', margin: '0 16px' },
+
+  /* Language switcher */
+  langSwitch: {
+    display: 'flex', gap: 4, background: '#f0f0f2', borderRadius: 10, padding: 3,
+  },
+  langBtn: {
+    padding: '6px 14px', borderRadius: 8, border: 'none',
+    background: 'none', fontSize: 13, fontWeight: 700,
+    color: '#8e8e93', cursor: 'pointer',
+  },
+  langBtnActive: {
+    background: '#fff', color: C,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+  },
 
   /* Info */
   infoCard: {
@@ -459,6 +459,10 @@ const s = {
   },
   handle: { width: 36, height: 4, borderRadius: 2, background: '#ddd', alignSelf: 'center', marginBottom: 4 },
   sheetTitle: { fontSize: 18, fontWeight: 700, color: '#1a1a1a', textAlign: 'center' },
+  pendingIcon: {
+    width: 64, height: 64, borderRadius: '50%', background: '#FFA726',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px',
+  },
   primaryBtn: {
     width: '100%', height: 50, borderRadius: 14, border: 'none',
     background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700,
@@ -489,7 +493,7 @@ const s = {
     fontSize: 20, fontWeight: 700, color: '#1a1a1a', padding: '12px 0', fontFamily: 'inherit',
   },
 
-  // Payment card
+  // Payment card in modal
   payCard: {
     background: '#1a1a1a', borderRadius: 18, padding: '16px',
     display: 'flex', flexDirection: 'column', gap: 8,
@@ -505,4 +509,16 @@ const s = {
     fontSize: 13, color: 'rgba(255,255,255,0.55)', cursor: 'pointer',
   },
   copyDone: { background: `${C}25`, borderColor: `${C}50`, color: C },
+
+  // Help steps in payment modal
+  helpSteps: {
+    display: 'flex', flexDirection: 'column', gap: 10,
+    background: '#f8f8fa', borderRadius: 14, padding: 14,
+  },
+  helpStep: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#3c3c43', fontWeight: 500 },
+  helpNum: {
+    width: 26, height: 26, borderRadius: '50%', background: GRAD, color: '#fff',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 12, fontWeight: 700, flexShrink: 0,
+  },
 }
