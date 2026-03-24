@@ -32,7 +32,7 @@ export default function BottomNav() {
   const [pillStyle, setPillStyle] = useState({})
   const [ready, setReady] = useState(false)
 
-  const hidden = ['/checkout'].some(p => location.pathname.startsWith(p))
+  const hidden = ['/checkout', '/support'].some(p => location.pathname.startsWith(p))
     || location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
     || location.pathname.startsWith('/manager')

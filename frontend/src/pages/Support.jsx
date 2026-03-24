@@ -139,7 +139,7 @@ export default function Support() {
 const s = {
   page: {
     display: 'flex', flexDirection: 'column', height: '100dvh',
-    background: '#e4e4e8', overflow: 'hidden',
+    background: '#fff', overflow: 'hidden',
   },
   header: {
     display: 'flex', alignItems: 'center', gap: 10,
@@ -160,6 +160,7 @@ const s = {
   messageList: {
     flex: 1, overflowY: 'auto', padding: '12px 16px',
     display: 'flex', flexDirection: 'column', gap: 8,
+    background: '#e4e4e8',
   },
   msgRow: { display: 'flex', alignItems: 'flex-end', gap: 6 },
   bubble: { maxWidth: '78%', borderRadius: 18, padding: '10px 14px' },
@@ -189,7 +190,7 @@ const s = {
   inputBar: {
     display: 'flex', alignItems: 'center', gap: 8,
     padding: '10px 12px', paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))',
-    background: '#fff', borderRadius: '18px 18px 0 0',
+    background: '#fff',
     boxShadow: '0 -1px 3px rgba(0,0,0,0.04)', flexShrink: 0,
   },
   inputField: {
