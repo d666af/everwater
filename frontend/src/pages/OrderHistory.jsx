@@ -33,7 +33,11 @@ const STATUS_COLORS = {
 }
 
 const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
-const STEPS = ['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery', 'delivered']
+const STEPS = ['awaiting', 'assigned_to_courier', 'in_delivery', 'delivered']
+const STATUS_TO_STEP = {
+  new: 0, awaiting_confirmation: 0, confirmed: 0,
+  assigned_to_courier: 1, in_delivery: 2, delivered: 3,
+}
 
 function StatusIcon({ status, size = 16 }) {
   const icons = {
@@ -119,8 +123,8 @@ export default function OrderHistory() {
 }
 
 function ProgressSteps({ status }) {
-  const idx = STEPS.indexOf(status)
-  if (idx < 0) return null
+  const idx = STATUS_TO_STEP[status]
+  if (idx === undefined) return null
   return (
     <div style={s.stepsWrap}>
       {STEPS.map((step, i) => (

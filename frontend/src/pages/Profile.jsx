@@ -8,7 +8,7 @@ const tg = window.Telegram?.WebApp
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
-const TOPUP_AMOUNTS = [500, 1000, 2000, 5000]
+const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000]
 
 function TopupModal({ onClose, settings }) {
   const [amount, setAmount] = useState(1000)
@@ -319,7 +319,7 @@ const s = {
 
   /* Order badge top-right */
   orderBadge: {
-    position: 'absolute', top: 12, right: 16,
+    position: 'absolute', top: 6, right: 16,
     display: 'flex', alignItems: 'center', gap: 6,
     background: '#fff', borderRadius: 12, padding: '6px 12px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
