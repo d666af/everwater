@@ -62,6 +62,9 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
           onChange(e.latlng.lat, e.latlng.lng)
         })
         mapInstanceRef.current = map
+        // Fix tiles not rendering — force recalculate after container is laid out
+        setTimeout(() => map.invalidateSize(), 100)
+        setTimeout(() => map.invalidateSize(), 400)
       })
       .catch(() => { if (!cancelled) setError('Не удалось загрузить карту'); setLoading(false) })
 
@@ -181,7 +184,7 @@ const s = {
     display: 'flex', alignItems: 'flex-end',
   },
   sheet: {
-    width: '100%', maxHeight: '92vh',
+    width: '100%', height: '85vh',
     background: '#fff', borderRadius: '18px 18px 0 0',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
     animation: 'slideUp 0.25s ease',

@@ -42,7 +42,7 @@ export const MOCK_PRODUCTS = [
     is_active: true, sort_order: 5, type: 'still',
   },
   {
-    id: 6, name: 'Вода 18.9 литровая', volume: 18.9, price: 25000,
+    id: 6, name: 'Вода 20 литровая', volume: 20, price: 25000,
     description: '',
     photo_url: EVER_PHOTOS[5],
     is_active: true, sort_order: 6, type: 'still',
@@ -79,7 +79,7 @@ export const MOCK_ORDERS = [
     delivery_time: 'Сегодня 12:00–15:00', total: 50000, recipient_phone: '+998 90 123-45-67',
     client_telegram_id: '987654321',
     courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
-    items: [{ id: 1, product_name: 'Вода 18.9л', quantity: 2, price: 25000 }],
+    items: [{ id: 1, product_name: 'Вода 20л', quantity: 2, price: 25000 }],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 0,
   },
   {
@@ -89,7 +89,7 @@ export const MOCK_ORDERS = [
     courier_name: 'Санжар М.', courier_phone: '+998 94 555-66-77',
     latitude: 41.299496, longitude: 69.240073,
     items: [
-      { id: 2, product_name: 'Вода 18.9л', quantity: 1, price: 25000 },
+      { id: 2, product_name: 'Вода 20л', quantity: 1, price: 25000 },
       { id: 3, product_name: 'Вода 5л', quantity: 1, price: 8000 },
     ],
     bottle_discount: 4000, bonus_used: 0, return_bottles_count: 2,
@@ -99,7 +99,7 @@ export const MOCK_ORDERS = [
     id: 1003, status: 'awaiting_confirmation', address: 'Чиланзар, 7-квартал, д. 5',
     delivery_time: 'Завтра 9:00–12:00', total: 75000, recipient_phone: '+998 97 111-22-33',
     client_telegram_id: '555111222',
-    items: [{ id: 4, product_name: 'Вода 18.9л', quantity: 3, price: 25000 }],
+    items: [{ id: 4, product_name: 'Вода 20л', quantity: 3, price: 25000 }],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 3,
     extra_info: 'Офис на 2-м этаже, спросить Бобура',
   },
@@ -109,7 +109,7 @@ export const MOCK_ORDERS = [
     client_telegram_id: '444888333',
     latitude: 41.312345, longitude: 69.278901,
     items: [
-      { id: 1, product_name: 'Вода 18.9л', quantity: 1, price: 25000 },
+      { id: 1, product_name: 'Вода 20л', quantity: 1, price: 25000 },
       { id: 2, product_name: 'Вода газированная 5л', quantity: 1, price: 8000 },
     ],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 1,
