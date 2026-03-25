@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
-import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../api'
+import { createOrder, getUserByTelegram, paymentConfirmed, getSettings, getProducts } from '../api'
 import MapPicker from '../components/MapPicker'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
@@ -11,18 +11,14 @@ const tg = window.Telegram?.WebApp
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
-const TIME_SLOTS = [
-  { label: 'Сегодня 9–12', value: 'Сегодня 9:00–12:00' },
-  { label: 'Сегодня 12–15', value: 'Сегодня 12:00–15:00' },
-  { label: 'Сегодня 15–18', value: 'Сегодня 15:00–18:00' },
-  { label: 'Сегодня 18–21', value: 'Сегодня 18:00–21:00' },
-  { label: 'Завтра 9–12', value: 'Завтра 9:00–12:00' },
-  { label: 'Завтра 12–15', value: 'Завтра 12:00–15:00' },
-  { label: 'Завтра 15–18', value: 'Завтра 15:00–18:00' },
-  { label: 'Завтра 18–21', value: 'Завтра 18:00–21:00' },
-]
-
 const PAYMENT_METHODS = [
+  { key: 'balance', label: 'Баланс', icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M2 10h20" stroke="currentColor" strokeWidth="1.8"/>
+      <circle cx="16" cy="15" r="1.5" fill="currentColor"/>
+    </svg>
+  )},
   { key: 'card', label: 'Перевод на карту', icon: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
       <rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="1.8"/>
@@ -35,12 +31,6 @@ const PAYMENT_METHODS = [
       <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
     </svg>
   )},
-  { key: 'payme', label: 'Payme', icon: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8"/>
-      <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-    </svg>
-  )},
 ]
 
 export default function Checkout() {
@@ -51,15 +41,16 @@ export default function Checkout() {
   const { addOrder } = useOrdersStore()
 
   const [user, setUser] = useState(null)
+  const [products, setProducts] = useState([])
   const [settings, setSettings] = useState({
     payment_card: '', payment_holder: '',
     bottle_discount_type: 'fixed', bottle_discount_value: 2000,
   })
   const [form, setForm] = useState({
-    phone: '', address: '', extraInfo: '', deliveryTime: '',
+    phone: '', address: '', extraInfo: '',
     lat: null, lng: null, geoLoading: false,
-    returnCount: 0, bonusUsed: 0, balanceUsed: 0,
-    paymentMethod: 'card',
+    returnVolume: '', returnCount: 0, bonusUsed: 0,
+    paymentMethod: 'balance',
   })
   const [showMap, setShowMap] = useState(false)
   const [createdOrder, setCreatedOrder] = useState(null)
@@ -80,9 +71,13 @@ export default function Checkout() {
       if (!userStore.initialized) userStore.init(authUser)
     }
     getSettings().then(setSettings).catch(console.error)
+    getProducts().then(setProducts).catch(console.error)
   }, [authUser]) // eslint-disable-line
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Unique volumes from products for bottle return
+  const bottleVolumes = [...new Set(products.map(p => p.volume))].sort((a, b) => a - b)
 
   // Calculations
   const subtotal = total()
@@ -97,8 +92,13 @@ export default function Checkout() {
   const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
   const availableBalance = userStore.initialized ? userStore.balance : (user?.balance || 0)
   const bonusMax = Math.min(availableBonus, afterBottle)
-  const balanceMax = Math.min(availableBalance, afterBottle - Number(form.bonusUsed))
-  const finalTotal = Math.max(0, afterBottle - Number(form.bonusUsed) - Number(form.balanceUsed))
+
+  // Balance calculation depends on payment method
+  const isBalancePayment = form.paymentMethod === 'balance'
+  const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
+  const balanceUsed = isBalancePayment ? Math.min(availableBalance, afterBonus) : 0
+  const finalTotal = Math.max(0, afterBonus - balanceUsed)
+  const cardRemainder = isBalancePayment && finalTotal > 0 ? finalTotal : 0
 
   const requestLocation = () => {
     if (!navigator.geolocation) { setError('Геолокация недоступна'); return }
@@ -112,7 +112,6 @@ export default function Checkout() {
 
   const submitOrder = async () => {
     if (!form.address.trim()) return setError('Укажите адрес доставки')
-    if (!form.deliveryTime) return setError('Выберите время доставки')
     setLoading(true); setError('')
     try {
       const order = await createOrder({
@@ -120,22 +119,26 @@ export default function Checkout() {
         recipient_phone: form.phone || user?.phone,
         address: form.address,
         extra_info: form.extraInfo || null,
-        delivery_time: form.deliveryTime || null,
+        delivery_time: null,
         latitude: form.lat, longitude: form.lng,
         return_bottles_count: Number(form.returnCount),
-        return_bottles_volume: 0,
+        return_bottles_volume: form.returnVolume ? Number(form.returnVolume) : 0,
         bottle_discount: bottleDiscount,
         bonus_used: Number(form.bonusUsed),
-        balance_used: Number(form.balanceUsed),
-        payment_method: form.paymentMethod,
+        balance_used: balanceUsed,
+        payment_method: cardRemainder > 0 ? 'balance_card' : form.paymentMethod,
         items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.product.price })),
       })
       setCreatedOrder(order)
 
-      if (form.paymentMethod === 'cash' || form.paymentMethod === 'payme') {
+      if (form.paymentMethod === 'cash') {
+        await paymentConfirmed(order.id)
+        finishOrder(order)
+      } else if (form.paymentMethod === 'balance' && cardRemainder === 0) {
         await paymentConfirmed(order.id)
         finishOrder(order)
       }
+      // card or balance+card → show card payment screen
     } catch {
       setError('Ошибка создания заказа')
     } finally {
@@ -162,12 +165,12 @@ export default function Checkout() {
         id: i.product.id, product_name: i.product.name,
         quantity: i.quantity, price: i.product.price, volume: i.product.volume,
       })),
-      total: finalTotal, address: form.address, delivery_time: form.deliveryTime,
+      total: finalTotal, address: form.address,
       recipient_phone: form.phone || user?.phone, status: 'awaiting_confirmation',
     }
     addOrder(fullOrder)
     if (Number(form.bonusUsed)) userStore.deductBonus(Number(form.bonusUsed))
-    if (Number(form.balanceUsed)) userStore.deductBalance(Number(form.balanceUsed))
+    if (balanceUsed > 0) userStore.deductBalance(balanceUsed)
     userStore.incrementOrders()
     clearCart()
     setSuccess(true)
@@ -194,8 +197,23 @@ export default function Checkout() {
   )
 
   // ── Card payment confirmation screen ──
-  if (createdOrder && form.paymentMethod === 'card') return (
+  const needCardPayment = createdOrder && (form.paymentMethod === 'card' || cardRemainder > 0)
+  const amountToPay = cardRemainder > 0 ? cardRemainder : finalTotal
+
+  if (needCardPayment) return (
     <div style={s.page}>
+      {cardRemainder > 0 && (
+        <div style={s.section}>
+          <div style={s.balanceNote}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+            <span style={{ fontSize: 14, color: '#3c3c43' }}>
+              С баланса списано <b style={{ color: C }}>{balanceUsed.toLocaleString()} сум</b>
+            </span>
+          </div>
+        </div>
+      )}
       <div style={s.section}>
         <div style={s.sLabel}>Оплата заказа</div>
         <div style={s.payCard}>
@@ -204,7 +222,7 @@ export default function Checkout() {
           <div style={s.payCardHolder}>{settings.payment_holder || '—'}</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
-          <div style={s.payAmtBig}>{finalTotal.toLocaleString()} <span style={s.payAmtCur}>сум</span></div>
+          <div style={s.payAmtBig}>{amountToPay.toLocaleString()} <span style={s.payAmtCur}>сум</span></div>
           <button style={{ ...s.cpyBtn, ...(copied ? s.cpyBtnDone : {}) }} onClick={copyCard}>
             {copied ? 'Скопировано' : 'Скопировать номер карты'}
           </button>
@@ -309,22 +327,6 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Time */}
-      <div style={s.section}>
-        <div style={s.sLabel}>Время доставки</div>
-        <div style={s.timeGrid}>
-          {TIME_SLOTS.map(slot => (
-            <button
-              key={slot.value}
-              style={form.deliveryTime === slot.value ? { ...s.timeBtn, ...s.timeBtnActive } : s.timeBtn}
-              onClick={() => set('deliveryTime', slot.value)}
-            >
-              {slot.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Phone */}
       <div style={s.section}>
         <div style={s.sLabel}>Телефон для связи</div>
@@ -341,8 +343,24 @@ export default function Checkout() {
       <div style={s.section}>
         <div style={s.sLabel}>Возврат бутылок</div>
         <div style={s.card}>
+          {bottleVolumes.length > 0 && (
+            <div>
+              <div style={s.bottleText}>Объём бутылки</div>
+              <div style={s.volumeGrid}>
+                {bottleVolumes.map(v => (
+                  <button
+                    key={v}
+                    style={form.returnVolume === v ? { ...s.volumeBtn, ...s.volumeBtnActive } : s.volumeBtn}
+                    onClick={() => set('returnVolume', form.returnVolume === v ? '' : v)}
+                  >
+                    {v} л
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={s.bottleRow}>
-            <span style={s.bottleText}>Количество бутылок</span>
+            <span style={s.bottleText}>Количество</span>
             <div style={s.stepper}>
               <button style={s.stepperBtn} onClick={() => set('returnCount', Math.max(0, Number(form.returnCount) - 1))}>−</button>
               <span style={s.stepperVal}>{form.returnCount}</span>
@@ -355,39 +373,23 @@ export default function Checkout() {
         </div>
       </div>
 
-      {/* Bonus/balance */}
-      {(bonusMax > 0 || availableBalance > 0) && (
+      {/* Bonus */}
+      {bonusMax > 0 && (
         <div style={s.section}>
-          <div style={s.sLabel}>Скидки</div>
+          <div style={s.sLabel}>Бонусы</div>
           <div style={s.card}>
-            {bonusMax > 0 && (
-              <div style={s.discountRow}>
-                <div>
-                  <div style={s.discountName}>Бонусы</div>
-                  <div style={s.discountAvail}>Доступно: {availableBonus.toLocaleString()} сум</div>
-                </div>
-                <button
-                  style={Number(form.bonusUsed) > 0 ? { ...s.useBtn, ...s.useBtnActive } : s.useBtn}
-                  onClick={() => set('bonusUsed', Number(form.bonusUsed) > 0 ? 0 : bonusMax)}
-                >
-                  {Number(form.bonusUsed) > 0 ? `−${Number(form.bonusUsed).toLocaleString()}` : 'Списать'}
-                </button>
+            <div style={s.discountRow}>
+              <div>
+                <div style={s.discountName}>Бонусные баллы</div>
+                <div style={s.discountAvail}>Доступно: {availableBonus.toLocaleString()} сум</div>
               </div>
-            )}
-            {availableBalance > 0 && (
-              <div style={s.discountRow}>
-                <div>
-                  <div style={s.discountName}>Баланс</div>
-                  <div style={s.discountAvail}>Доступно: {availableBalance.toLocaleString()} сум</div>
-                </div>
-                <button
-                  style={Number(form.balanceUsed) > 0 ? { ...s.useBtn, ...s.useBtnActive } : s.useBtn}
-                  onClick={() => set('balanceUsed', Number(form.balanceUsed) > 0 ? 0 : balanceMax)}
-                >
-                  {Number(form.balanceUsed) > 0 ? `−${Number(form.balanceUsed).toLocaleString()}` : 'Списать'}
-                </button>
-              </div>
-            )}
+              <button
+                style={Number(form.bonusUsed) > 0 ? { ...s.useBtn, ...s.useBtnActive } : s.useBtn}
+                onClick={() => set('bonusUsed', Number(form.bonusUsed) > 0 ? 0 : bonusMax)}
+              >
+                {Number(form.bonusUsed) > 0 ? `−${Number(form.bonusUsed).toLocaleString()}` : 'Списать'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -396,21 +398,39 @@ export default function Checkout() {
       <div style={s.section}>
         <div style={s.sLabel}>Способ оплаты</div>
         <div style={s.card}>
-          {PAYMENT_METHODS.map(m => (
-            <button
-              key={m.key}
-              style={form.paymentMethod === m.key ? { ...s.payMethod, ...s.payMethodActive } : s.payMethod}
-              onClick={() => set('paymentMethod', m.key)}
-            >
-              <div style={{ color: form.paymentMethod === m.key ? C : '#8e8e93' }}>{m.icon}</div>
-              <span style={{ ...s.payMethodLabel, color: form.paymentMethod === m.key ? '#1a1a1a' : '#3c3c43' }}>{m.label}</span>
-              {form.paymentMethod === m.key && (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto' }}>
-                  <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-              )}
-            </button>
-          ))}
+          {PAYMENT_METHODS.map(m => {
+            const isBalance = m.key === 'balance'
+            const isSelected = form.paymentMethod === m.key
+            return (
+              <button
+                key={m.key}
+                style={isSelected ? { ...s.payMethod, ...s.payMethodActive } : s.payMethod}
+                onClick={() => set('paymentMethod', m.key)}
+              >
+                <div style={{ color: isSelected ? C : '#8e8e93' }}>{m.icon}</div>
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <span style={{ ...s.payMethodLabel, color: isSelected ? '#1a1a1a' : '#3c3c43' }}>
+                    {isBalance ? `Баланс (${availableBalance.toLocaleString()} сум)` : m.label}
+                  </span>
+                  {isBalance && isSelected && availableBalance > 0 && availableBalance < afterBonus && (
+                    <div style={{ fontSize: 12, color: '#e67e22', marginTop: 3, fontWeight: 500 }}>
+                      Остаток {(afterBonus - availableBalance).toLocaleString()} сум — переводом на карту
+                    </div>
+                  )}
+                  {isBalance && availableBalance === 0 && (
+                    <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 3 }}>
+                      Пополните баланс в профиле
+                    </div>
+                  )}
+                </div>
+                {isSelected && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                    <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -420,6 +440,12 @@ export default function Checkout() {
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>
         </div>
+        {isBalancePayment && balanceUsed > 0 && (
+          <div style={{ padding: '0 4px', fontSize: 13, color: '#8e8e93' }}>
+            С баланса: {balanceUsed.toLocaleString()} сум
+            {cardRemainder > 0 && <span> · Картой: {cardRemainder.toLocaleString()} сум</span>}
+          </div>
+        )}
         {error && <div style={s.errorBox}>{error}</div>}
         <button style={s.primaryBtn} onClick={submitOrder} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Оформить заказ'}
@@ -466,7 +492,7 @@ const s = {
   input: {
     border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '13px 14px',
     fontSize: 15, background: '#f8f8fa', color: '#1a1a1a',
-    outline: 'none', width: '100%', fontFamily: 'inherit',
+    outline: 'none', width: '100%', fontFamily: 'inherit', boxSizing: 'border-box',
   },
 
   // Location
@@ -488,25 +514,22 @@ const s = {
     fontSize: 13, fontWeight: 600, color: C,
   },
 
-  // Time
-  timeGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8,
-  },
-  timeBtn: {
-    padding: '12px 8px', borderRadius: 14,
-    border: '1.5px solid #e5e5ea', background: '#fff',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
-    textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-  },
-  timeBtnActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
-
   // Bottles
   bottleRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   },
-  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
+  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500, marginBottom: 6 },
+  volumeGrid: {
+    display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4,
+  },
+  volumeBtn: {
+    padding: '8px 14px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#f8f8fa',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
+  },
+  volumeBtnActive: {
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
+  },
   stepper: {
     display: 'flex', alignItems: 'center',
     background: '#f0f0f2', borderRadius: 12, overflow: 'hidden',
@@ -544,12 +567,18 @@ const s = {
     display: 'flex', alignItems: 'center', gap: 12,
     padding: '12px 14px', borderRadius: 14,
     border: '1.5px solid transparent', background: '#f8f8fa',
-    cursor: 'pointer',
+    cursor: 'pointer', width: '100%',
   },
   payMethodActive: {
     border: `1.5px solid ${C}30`, background: `${C}06`,
   },
   payMethodLabel: { fontSize: 15, fontWeight: 600 },
+
+  // Balance note on card payment screen
+  balanceNote: {
+    background: `${C}10`, borderRadius: 14, padding: '12px 14px',
+    display: 'flex', alignItems: 'center', gap: 8,
+  },
 
   // Total
   totalSection: {
