@@ -65,7 +65,6 @@ export default function OrderHistory() {
     order.items.forEach(item => {
       addToCart({ id: item.id || item.product_id, name: item.product_name, price: item.price, volume: item.volume || 0 })
     })
-    navigate('/cart')
   }
 
   const handleReviewDone = (orderId) => {
