@@ -179,15 +179,6 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               <span style={s.detailText}>{order.address}</span>
             </div>
           )}
-          {order.delivery_time && (
-            <div style={s.detailRow}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-                <circle cx="12" cy="12" r="9" stroke={C} strokeWidth="1.8"/>
-                <path d="M12 7v5l3 3" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-              <span style={s.detailText}>{order.delivery_time}</span>
-            </div>
-          )}
 
           {(order.status === 'assigned_to_courier' || order.status === 'in_delivery') && order.courier_name && (
             <div style={s.courierCard}>
