@@ -11,7 +11,7 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const QUICK_CATS = [
   { key: 'all', label: 'Все' },
-  { key: '18.9', label: '18.9л' },
+  { key: '20', label: '20л' },
   { key: '10', label: '10л' },
   { key: '5', label: '5л' },
   { key: '1.5', label: '1.5л' },

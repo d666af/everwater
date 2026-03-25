@@ -18,11 +18,11 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
       <div style={s.formGrid}>
         <div style={s.field}>
           <div style={s.label}>Название *</div>
-          <input style={s.input} placeholder="Вода питьевая 18.9л" {...f('name')} />
+          <input style={s.input} placeholder="Вода питьевая 20л" {...f('name')} />
         </div>
         <div style={s.field}>
           <div style={s.label}>Объём (л) *</div>
-          <input style={s.input} type="number" placeholder="18.9" step="0.1" {...f('volume')} />
+          <input style={s.input} type="number" placeholder="20" step="0.1" {...f('volume')} />
         </div>
         <div style={s.field}>
           <div style={s.label}>Цена (сум) *</div>

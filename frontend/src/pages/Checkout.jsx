@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
-import { createOrder, getUserByTelegram, paymentConfirmed, getSettings, getProducts } from '../api'
+import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../api'
 import MapPicker from '../components/MapPicker'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
@@ -41,7 +41,6 @@ export default function Checkout() {
   const { addOrder } = useOrdersStore()
 
   const [user, setUser] = useState(null)
-  const [products, setProducts] = useState([])
   const [settings, setSettings] = useState({
     payment_card: '', payment_holder: '',
     bottle_discount_type: 'fixed', bottle_discount_value: 2000,
@@ -49,7 +48,7 @@ export default function Checkout() {
   const [form, setForm] = useState({
     phone: '', address: '', extraInfo: '',
     lat: null, lng: null, geoLoading: false,
-    returnVolume: '', returnCount: 0, bonusUsed: 0,
+    returnCount: 0, bonusUsed: 0,
     paymentMethod: 'balance',
   })
   const [showMap, setShowMap] = useState(false)
@@ -71,13 +70,12 @@ export default function Checkout() {
       if (!userStore.initialized) userStore.init(authUser)
     }
     getSettings().then(setSettings).catch(console.error)
-    getProducts().then(setProducts).catch(console.error)
   }, [authUser]) // eslint-disable-line
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Unique volumes from products for bottle return
-  const bottleVolumes = [...new Set(products.map(p => p.volume))].sort((a, b) => a - b)
+  // Check if cart has 20L items — only then show bottle return
+  const has20L = items.some(i => i.product.volume >= 18.9)
 
   // Calculations
   const subtotal = total()
@@ -122,7 +120,7 @@ export default function Checkout() {
         delivery_time: null,
         latitude: form.lat, longitude: form.lng,
         return_bottles_count: Number(form.returnCount),
-        return_bottles_volume: form.returnVolume ? Number(form.returnVolume) : 0,
+        return_bottles_volume: has20L ? 20 : 0,
         bottle_discount: bottleDiscount,
         bonus_used: Number(form.bonusUsed),
         balance_used: balanceUsed,
@@ -339,39 +337,25 @@ export default function Checkout() {
         />
       </div>
 
-      {/* Bottle return */}
-      <div style={s.section}>
-        <div style={s.sLabel}>Возврат бутылок</div>
-        <div style={s.card}>
-          {bottleVolumes.length > 0 && (
-            <div>
-              <div style={s.bottleText}>Объём бутылки</div>
-              <div style={s.volumeGrid}>
-                {bottleVolumes.map(v => (
-                  <button
-                    key={v}
-                    style={form.returnVolume === v ? { ...s.volumeBtn, ...s.volumeBtnActive } : s.volumeBtn}
-                    onClick={() => set('returnVolume', form.returnVolume === v ? '' : v)}
-                  >
-                    {v} л
-                  </button>
-                ))}
+      {/* Bottle return — only for 20L orders */}
+      {has20L && (
+        <div style={s.section}>
+          <div style={s.sLabel}>Возврат бутылок (20 л)</div>
+          <div style={s.card}>
+            <div style={s.bottleRow}>
+              <span style={s.bottleText}>Количество бутылок</span>
+              <div style={s.stepper}>
+                <button style={s.stepperBtn} onClick={() => set('returnCount', Math.max(0, Number(form.returnCount) - 1))}>−</button>
+                <span style={s.stepperVal}>{form.returnCount}</span>
+                <button style={s.stepperBtn} onClick={() => set('returnCount', Number(form.returnCount) + 1)}>+</button>
               </div>
             </div>
-          )}
-          <div style={s.bottleRow}>
-            <span style={s.bottleText}>Количество</span>
-            <div style={s.stepper}>
-              <button style={s.stepperBtn} onClick={() => set('returnCount', Math.max(0, Number(form.returnCount) - 1))}>−</button>
-              <span style={s.stepperVal}>{form.returnCount}</span>
-              <button style={s.stepperBtn} onClick={() => set('returnCount', Number(form.returnCount) + 1)}>+</button>
-            </div>
+            {bottleDiscount > 0 && (
+              <div style={s.discountLine}>Скидка за возврат: −{bottleDiscount.toLocaleString()} сум</div>
+            )}
           </div>
-          {bottleDiscount > 0 && (
-            <div style={s.discountLine}>Скидка за возврат: −{bottleDiscount.toLocaleString()} сум</div>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Bonus */}
       {bonusMax > 0 && (
@@ -518,18 +502,7 @@ const s = {
   bottleRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
   },
-  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500, marginBottom: 6 },
-  volumeGrid: {
-    display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4,
-  },
-  volumeBtn: {
-    padding: '8px 14px', borderRadius: 12,
-    border: '1.5px solid #e5e5ea', background: '#f8f8fa',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
-  },
-  volumeBtnActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
+  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
   stepper: {
     display: 'flex', alignItems: 'center',
     background: '#f0f0f2', borderRadius: 12, overflow: 'hidden',
