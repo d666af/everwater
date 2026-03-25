@@ -24,7 +24,6 @@ function loadLeaflet() {
 export default function MapPicker({ lat, lng, onChange, onClose }) {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
-  const markerRef = useRef(null)
   const searchTimeout = useRef(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -46,23 +45,13 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
           attribution: '', maxZoom: 19,
         }).addTo(map)
 
-        const icon = L.divIcon({
-          html: `<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#8DC63F;border:3px solid #fff;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.25);"></div>`,
-          iconSize: [28, 28], iconAnchor: [14, 28], className: '',
+        // Update coordinates from map center on every move
+        map.on('moveend', () => {
+          const center = map.getCenter()
+          onChange(center.lat, center.lng)
         })
-        const marker = L.marker([initLat, initLng], { draggable: true, icon }).addTo(map)
-        markerRef.current = marker
 
-        marker.on('dragend', () => {
-          const pos = marker.getLatLng()
-          onChange(pos.lat, pos.lng)
-        })
-        map.on('click', (e) => {
-          marker.setLatLng(e.latlng)
-          onChange(e.latlng.lat, e.latlng.lng)
-        })
         mapInstanceRef.current = map
-        // Fix tiles not rendering — force recalculate after container is laid out
         setTimeout(() => map.invalidateSize(), 100)
         setTimeout(() => map.invalidateSize(), 400)
       })
@@ -101,8 +90,6 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
     setSearchQuery(result.name.split(',')[0])
     setSearchResults([])
     mapInstanceRef.current?.setView([result.lat, result.lng], 16)
-    markerRef.current?.setLatLng([result.lat, result.lng])
-    onChange(result.lat, result.lng)
   }
 
   const goToMe = () => {
@@ -110,8 +97,6 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
     navigator.geolocation.getCurrentPosition((pos) => {
       const { latitude: lt, longitude: ln } = pos.coords
       mapInstanceRef.current?.setView([lt, ln], 16)
-      markerRef.current?.setLatLng([lt, ln])
-      onChange(lt, ln)
     })
   }
 
@@ -160,6 +145,11 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
           {loading && <div style={s.loader}>Загрузка карты...</div>}
           {error && <div style={s.errMsg}>{error}</div>}
           <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+          {/* Fixed center pin */}
+          <div style={s.centerPin}>
+            <div style={s.pinIcon} />
+            <div style={s.pinShadow} />
+          </div>
         </div>
 
         <div style={s.actions}>
@@ -233,6 +223,29 @@ const s = {
   },
 
   mapWrap: { flex: 1, minHeight: 350, position: 'relative', background: '#f0f0f0' },
+
+  // Fixed center pin (always in the middle of the map)
+  centerPin: {
+    position: 'absolute', top: '50%', left: '50%',
+    transform: 'translate(-50%, -100%)',
+    zIndex: 500, pointerEvents: 'none',
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+  },
+  pinIcon: {
+    width: 30, height: 30,
+    borderRadius: '50% 50% 50% 0',
+    background: '#8DC63F',
+    border: '3px solid #fff',
+    transform: 'rotate(-45deg)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+  },
+  pinShadow: {
+    width: 12, height: 4,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.15)',
+    marginTop: 2,
+  },
+
   loader: {
     position: 'absolute', inset: 0, display: 'flex',
     alignItems: 'center', justifyContent: 'center',
