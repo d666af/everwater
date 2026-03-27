@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import CartWidget from './components/CartWidget'
+import WelcomeSurvey from './components/WelcomeSurvey'
 
 // Auth
 import Login from './pages/Login'
@@ -162,6 +163,7 @@ export default function App() {
       </Routes>
       <CartWidget />
       <BottomNav />
+      <WelcomeSurvey />
     </>
   )
 }

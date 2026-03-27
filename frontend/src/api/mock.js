@@ -134,6 +134,8 @@ export const MOCK_SETTINGS = {
   bottle_discount_type: 'fixed',
   bottle_discount_value: 2000,
   cashback_percent: 5,
+  bottle_return_buttons_visible: true,
+  bottle_return_mode: 'max',
 }
 
 export const MOCK_NOTIFICATIONS = [

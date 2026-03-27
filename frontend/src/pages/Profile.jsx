@@ -10,6 +10,232 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000]
 
+const SUB_PLANS = [
+  { key: 'weekly', label: 'Еженедельная', desc: 'Доставка каждую неделю' },
+  { key: 'monthly', label: 'Ежемесячная', desc: 'Доставка раз в месяц' },
+]
+const SUB_WATERS = [
+  { name: 'Вода 20л', volume: 20, price: 25000 },
+  { name: 'Вода 10л', volume: 10, price: 14000 },
+  { name: 'Вода 5л', volume: 5, price: 8000 },
+]
+
+function SubscriptionModal({ onClose, settings, userStore }) {
+  const [step, setStep] = useState('plan') // plan | details | payment | done
+  const [plan, setPlan] = useState('weekly')
+  const [water, setWater] = useState({ name: 'Вода 20л', volume: 20, price: 25000, qty: 1 })
+  const [addr, setAddr] = useState('')
+  const [landmark, setLandmark] = useState('')
+  const [phone, setPhone] = useState('')
+  const [payMethod, setPayMethod] = useState('balance')
+  const [loading, setLoading] = useState(false)
+
+  const total = water.price * water.qty
+  const canPayBalance = userStore.balance >= total
+
+  const submit = async () => {
+    setLoading(true)
+    await new Promise(r => setTimeout(r, 800))
+    if (payMethod === 'balance') userStore.deductBalance(total)
+    userStore.addSubscription({ plan, water: water.name, qty: water.qty, total, address: addr, landmark, phone, payMethod })
+    setLoading(false)
+    setStep('done')
+  }
+
+  if (step === 'done') return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: GRAD,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Подписка оформлена!</div>
+          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6 }}>
+            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} доставка — {water.name} x{water.qty}
+          </div>
+        </div>
+        <button style={s.primaryBtn} onClick={onClose}>Готово</button>
+      </div>
+    </div>
+  )
+
+  if (step === 'payment') return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={s.sheetTitle}>Оплата подписки</div>
+        <div style={{ background: '#f8f8fa', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#3c3c43' }}>
+            <span>{water.name} x{water.qty}</span>
+            <span style={{ fontWeight: 700 }}>{total.toLocaleString()} сум</span>
+          </div>
+          <div style={{ fontSize: 12, color: '#8e8e93' }}>
+            {plan === 'weekly' ? 'Еженедельная доставка' : 'Ежемесячная доставка'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            style={payMethod === 'balance' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+            onClick={() => canPayBalance && setPayMethod('balance')}
+          >
+            <div style={ss.payDot(payMethod === 'balance')} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Баланс</div>
+              <div style={{ fontSize: 12, color: canPayBalance ? '#8e8e93' : '#ef4444' }}>
+                {canPayBalance ? `${userStore.balance.toLocaleString()} сум` : 'Недостаточно средств'}
+              </div>
+            </div>
+          </button>
+          <button
+            style={payMethod === 'card' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+            onClick={() => setPayMethod('card')}
+          >
+            <div style={ss.payDot(payMethod === 'card')} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Карта</div>
+              <div style={{ fontSize: 12, color: '#8e8e93' }}>Перевод на карту</div>
+            </div>
+          </button>
+        </div>
+        <button style={s.primaryBtn} onClick={submit} disabled={loading}>
+          {loading ? <span style={s.spinner} /> : `Оплатить ${total.toLocaleString()} сум`}
+        </button>
+        <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
+      </div>
+    </div>
+  )
+
+  if (step === 'details') return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={s.sheetTitle}>Данные доставки</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input style={ss.inp} placeholder="Адрес доставки" value={addr} onChange={e => setAddr(e.target.value)} />
+          <input style={ss.inp} placeholder="Ориентир" value={landmark} onChange={e => setLandmark(e.target.value)} />
+          <input style={ss.inp} placeholder="Телефон" type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
+        </div>
+        <button style={{ ...s.primaryBtn, ...(!addr || !phone ? { opacity: 0.5 } : {}) }}
+          onClick={() => setStep('payment')} disabled={!addr || !phone}>
+          К оплате
+        </button>
+        <button style={s.ghostBtn} onClick={() => setStep('plan')}>Назад</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={s.sheetTitle}>Оформление подписки</div>
+
+        {/* Plan selection */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          Тип подписки
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {SUB_PLANS.map(p => (
+            <button key={p.key}
+              style={plan === p.key ? { ...ss.planChip, ...ss.planChipActive } : ss.planChip}
+              onClick={() => setPlan(p.key)}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{p.label}</div>
+              <div style={{ fontSize: 11, color: plan === p.key ? 'rgba(255,255,255,0.7)' : '#8e8e93' }}>{p.desc}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Water selection */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          Вода
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {SUB_WATERS.map(w => (
+            <button key={w.name}
+              style={water.name === w.name ? { ...ss.waterOpt, ...ss.waterOptActive } : ss.waterOpt}
+              onClick={() => setWater({ ...w, qty: water.qty })}
+            >
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{w.name}</div>
+                <div style={{ fontSize: 12, color: '#8e8e93' }}>{w.price.toLocaleString()} сум</div>
+              </div>
+              {water.name === w.name && (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 13l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Quantity */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>Количество</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: Math.max(1, w.qty - 1) }))}>−</button>
+            <span style={{ fontSize: 18, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{water.qty}</span>
+            <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: w.qty + 1 }))}>+</button>
+          </div>
+        </div>
+
+        <div style={{ background: '#f8f8fa', borderRadius: 12, padding: '10px 14px', display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14, color: '#8e8e93' }}>Итого</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: C }}>{total.toLocaleString()} сум</span>
+        </div>
+
+        <button style={s.primaryBtn} onClick={() => setStep('details')}>
+          Далее
+        </button>
+        <button style={s.ghostBtn} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+const ss = {
+  planChip: {
+    flex: 1, padding: '12px 10px', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    cursor: 'pointer', textAlign: 'center',
+  },
+  planChipActive: {
+    border: `1.5px solid ${C}`, background: GRAD, color: '#fff',
+  },
+  waterOpt: {
+    display: 'flex', alignItems: 'center', padding: '12px 14px',
+    borderRadius: 14, border: '1.5px solid #e5e5ea', background: '#fff',
+    cursor: 'pointer',
+  },
+  waterOptActive: { border: `1.5px solid ${C}`, background: `${C}08` },
+  qtyBtn: {
+    width: 34, height: 34, borderRadius: 10,
+    border: `1.5px solid ${C}`, background: '#fff',
+    fontSize: 18, fontWeight: 700, color: C,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  inp: {
+    border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '14px 16px',
+    fontSize: 15, outline: 'none', background: '#fafafa', width: '100%', boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  },
+  payOpt: {
+    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+    borderRadius: 14, border: '1.5px solid #e5e5ea', background: '#fff',
+    cursor: 'pointer', textAlign: 'left', width: '100%',
+  },
+  payOptActive: { border: `1.5px solid ${C}`, background: `${C}08` },
+  payDot: (active) => ({
+    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+    border: `2px solid ${active ? C : '#ddd'}`,
+    background: active ? C : 'transparent',
+  }),
+}
+
 function TopupModal({ onClose, settings }) {
   const [amount, setAmount] = useState(1000)
   const [custom, setCustom] = useState('')
@@ -120,6 +346,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
+  const [showSub, setShowSub] = useState(false)
   const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
@@ -165,6 +392,7 @@ export default function Profile() {
   return (
     <div style={s.page}>
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
+      {showSub && <SubscriptionModal onClose={() => setShowSub(false)} settings={settings} userStore={userStore} />}
 
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>
@@ -219,6 +447,31 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      {/* Subscription card */}
+      <div style={s.subCard} onClick={() => setShowSub(true)}>
+        <div style={s.subIcon}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={s.subTitle}>
+            {userStore.subscriptions.length > 0
+              ? `${userStore.subscriptions.length} подпис${userStore.subscriptions.length === 1 ? 'ка' : 'ки'}`
+              : 'Подписка на воду'}
+          </div>
+          <div style={s.subDesc}>
+            {userStore.subscriptions.length > 0
+              ? 'Управление подписками'
+              : 'Регулярная доставка со скидкой'}
+          </div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </div>
 
       {/* Menu */}
       <div style={s.menuCard}>
@@ -380,6 +633,23 @@ const s = {
   },
   bonusTitle: { fontSize: 15, fontWeight: 700, color: '#92400E' },
   bonusDesc: { fontSize: 12, color: '#B45309', marginTop: 2 },
+
+  /* Subscription */
+  subCard: {
+    background: '#fff', margin: '0 16px',
+    borderRadius: 18, padding: '14px 16px',
+    display: 'flex', alignItems: 'center', gap: 12,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    cursor: 'pointer',
+  },
+  subIcon: {
+    width: 42, height: 42, borderRadius: 14,
+    background: 'linear-gradient(135deg, #4FC3F7, #2196F3)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  subTitle: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
+  subDesc: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
 
   /* Menu */
   menuCard: {

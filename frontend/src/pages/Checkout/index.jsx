@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useCartStore } from '../store'
-import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../api'
-import MapPicker from '../components/MapPicker'
-import { useAuthStore } from '../store/auth'
-import { useUserStore } from '../store/user'
-import { useOrdersStore } from '../store/orders'
+import { useCartStore } from '../../store'
+import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../../api'
+import MapPicker from '../../components/MapPicker'
+import { useAuthStore } from '../../store/auth'
+import { useUserStore } from '../../store/user'
+import { useOrdersStore } from '../../store/orders'
+
+import s, { C, GRAD } from './styles'
+import SavedAddresses from './SavedAddresses'
+import DateTimePicker from './DateTimePicker'
+import BottleReturn from './BottleReturn'
+import SaveAddressPopup from './SaveAddressPopup'
+import CardPayment from './CardPayment'
+import SuccessScreen from './SuccessScreen'
 
 const tg = window.Telegram?.WebApp
-const C = '#8DC63F'
-const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const PAYMENT_METHODS = [
   { key: 'balance', label: 'Баланс', icon: (
@@ -44,19 +50,22 @@ export default function Checkout() {
   const [settings, setSettings] = useState({
     payment_card: '', payment_holder: '',
     bottle_discount_type: 'fixed', bottle_discount_value: 2000,
+    bottle_return_buttons_visible: true, bottle_return_mode: 'max',
   })
   const [form, setForm] = useState({
     phone: '', address: '', extraInfo: '',
     lat: null, lng: null, geoLoading: false,
     returnCount: 0, bonusUsed: 0,
     paymentMethod: 'balance',
+    deliveryDate: '', deliveryTime: '',
   })
+  const [selectedAddrId, setSelectedAddrId] = useState(null)
   const [showMap, setShowMap] = useState(false)
+  const [showSaveAddr, setShowSaveAddr] = useState(false)
   const [createdOrder, setCreatedOrder] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const tgUser = tg?.initDataUnsafe?.user
@@ -69,13 +78,18 @@ export default function Checkout() {
       setForm(f => ({ ...f, phone: authUser.phone || '' }))
       if (!userStore.initialized) userStore.init(authUser)
     }
-    getSettings().then(setSettings).catch(console.error)
+    getSettings().then(s => setSettings(prev => ({ ...prev, ...s }))).catch(console.error)
   }, [authUser]) // eslint-disable-line
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Check if cart has 20L items — only then show bottle return
+  // 20L items in cart
   const has20L = items.some(i => i.product.volume >= 18.9)
+  const qty20L = items.filter(i => i.product.volume >= 18.9).reduce((sum, i) => sum + i.quantity, 0)
+
+  // Bottle return limit
+  const bottlesOwed = userStore.bottles_owed
+  const maxReturn = settings.bottle_return_mode === 'equal' ? qty20L : bottlesOwed
 
   // Calculations
   const subtotal = total()
@@ -91,12 +105,25 @@ export default function Checkout() {
   const availableBalance = userStore.initialized ? userStore.balance : (user?.balance || 0)
   const bonusMax = Math.min(availableBonus, afterBottle)
 
-  // Balance calculation depends on payment method
   const isBalancePayment = form.paymentMethod === 'balance'
   const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
   const balanceUsed = isBalancePayment ? Math.min(availableBalance, afterBonus) : 0
   const finalTotal = Math.max(0, afterBonus - balanceUsed)
   const cardRemainder = isBalancePayment && finalTotal > 0 ? finalTotal : 0
+
+  // Saved addresses
+  const savedAddresses = userStore.saved_addresses
+
+  const selectSavedAddress = (addr) => {
+    setSelectedAddrId(addr.id)
+    setForm(f => ({
+      ...f,
+      address: addr.address,
+      extraInfo: addr.extraInfo || '',
+      lat: addr.lat || null,
+      lng: addr.lng || null,
+    }))
+  }
 
   const requestLocation = () => {
     if (!navigator.geolocation) { setError('Геолокация недоступна'); return }
@@ -108,8 +135,16 @@ export default function Checkout() {
     )
   }
 
+  const buildDeliveryTime = () => {
+    if (!form.deliveryDate || !form.deliveryTime) return null
+    const timeLabel = form.deliveryTime === 'morning' ? '9:00–13:00' : '13:00–18:00'
+    return `${form.deliveryDate} ${timeLabel}`
+  }
+
   const submitOrder = async () => {
     if (!form.address.trim()) return setError('Укажите адрес доставки')
+    if (!form.deliveryDate) return setError('Выберите дату доставки')
+    if (!form.deliveryTime) return setError('Выберите время доставки')
     setLoading(true); setError('')
     try {
       const order = await createOrder({
@@ -117,7 +152,7 @@ export default function Checkout() {
         recipient_phone: form.phone || user?.phone,
         address: form.address,
         extra_info: form.extraInfo || null,
-        delivery_time: null,
+        delivery_time: buildDeliveryTime(),
         latitude: form.lat, longitude: form.lng,
         return_bottles_count: Number(form.returnCount),
         return_bottles_volume: has20L ? 20 : 0,
@@ -129,6 +164,10 @@ export default function Checkout() {
       })
       setCreatedOrder(order)
 
+      // Track bottles: add ordered 20L, subtract returned
+      if (qty20L > 0) userStore.addBottlesOwed(qty20L)
+      if (Number(form.returnCount) > 0) userStore.returnBottles(Number(form.returnCount))
+
       if (form.paymentMethod === 'cash') {
         await paymentConfirmed(order.id)
         finishOrder(order)
@@ -136,7 +175,6 @@ export default function Checkout() {
         await paymentConfirmed(order.id)
         finishOrder(order)
       }
-      // card or balance+card → show card payment screen
     } catch {
       setError('Ошибка создания заказа')
     } finally {
@@ -164,6 +202,7 @@ export default function Checkout() {
         quantity: i.quantity, price: i.product.price, volume: i.product.volume,
       })),
       total: finalTotal, address: form.address,
+      delivery_time: buildDeliveryTime(),
       recipient_phone: form.phone || user?.phone, status: 'awaiting_confirmation',
     }
     addOrder(fullOrder)
@@ -171,80 +210,60 @@ export default function Checkout() {
     if (balanceUsed > 0) userStore.deductBalance(balanceUsed)
     userStore.incrementOrders()
     clearCart()
+
+    // Check if address is already saved
+    const alreadySaved = savedAddresses.some(a => a.address === form.address)
+    if (form.address.trim() && !alreadySaved) {
+      setShowSaveAddr(true)
+    } else {
+      setSuccess(true)
+    }
+  }
+
+  const handleSaveAddress = () => {
+    userStore.addSavedAddress({
+      label: form.address.split(',')[0].trim(),
+      address: form.address,
+      extraInfo: form.extraInfo,
+      lat: form.lat,
+      lng: form.lng,
+    })
+    setShowSaveAddr(false)
     setSuccess(true)
   }
 
-  const copyCard = () => {
-    navigator.clipboard?.writeText(settings.payment_card || '')
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
+  // ── Save Address Popup ──
+  if (showSaveAddr) return (
+    <SaveAddressPopup
+      address={form.address.split(',')[0]}
+      onSave={handleSaveAddress}
+      onSkip={() => { setShowSaveAddr(false); setSuccess(true) }}
+    />
+  )
 
-  // ── Success screen ──
+  // ── Success ──
   if (success) return (
-    <div style={s.successPage}>
-      <div style={s.successIcon}>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-          <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-      <h2 style={s.successTitle}>Заказ принят!</h2>
-      <p style={s.successDesc}>Ожидайте подтверждения от менеджера</p>
-      <button style={s.primaryBtn} onClick={() => navigate('/orders')}>Мои заказы</button>
-      <button style={s.linkBtn} onClick={() => navigate('/')}>Продолжить покупки</button>
-    </div>
+    <SuccessScreen
+      onOrders={() => navigate('/orders')}
+      onCatalog={() => navigate('/')}
+    />
   )
 
-  // ── Card payment confirmation screen ──
+  // ── Card Payment ──
   const needCardPayment = createdOrder && (form.paymentMethod === 'card' || cardRemainder > 0)
-  const amountToPay = cardRemainder > 0 ? cardRemainder : finalTotal
-
   if (needCardPayment) return (
-    <div style={s.page}>
-      {cardRemainder > 0 && (
-        <div style={s.section}>
-          <div style={s.balanceNote}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize: 14, color: '#3c3c43' }}>
-              С баланса списано <b style={{ color: C }}>{balanceUsed.toLocaleString()} сум</b>
-            </span>
-          </div>
-        </div>
-      )}
-      <div style={s.section}>
-        <div style={s.sLabel}>Оплата заказа</div>
-        <div style={s.payCard}>
-          <div style={s.payCardLabel}>Переведите на карту</div>
-          <div style={s.payCardNum}>{settings.payment_card || '0000 0000 0000 0000'}</div>
-          <div style={s.payCardHolder}>{settings.payment_holder || '—'}</div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
-          <div style={s.payAmtBig}>{amountToPay.toLocaleString()} <span style={s.payAmtCur}>сум</span></div>
-          <button style={{ ...s.cpyBtn, ...(copied ? s.cpyBtnDone : {}) }} onClick={copyCard}>
-            {copied ? 'Скопировано' : 'Скопировать номер карты'}
-          </button>
-        </div>
-      </div>
-
-      <div style={s.section}>
-        <div style={s.helpSteps}>
-          <div style={s.helpStep}><span style={s.helpNum}>1</span> Переведите сумму на карту</div>
-          <div style={s.helpStep}><span style={s.helpNum}>2</span> Нажмите «Я оплатил»</div>
-          <div style={s.helpStep}><span style={s.helpNum}>3</span> Менеджер подтвердит заказ</div>
-        </div>
-      </div>
-
-      {error && <div style={{ padding: '0 16px' }}><div style={s.errorBox}>{error}</div></div>}
-      <div style={{ padding: '0 16px 32px' }}>
-        <button style={s.primaryBtn} onClick={confirmCardPayment} disabled={loading}>
-          {loading ? <span style={s.spinner} /> : 'Я оплатил'}
-        </button>
-      </div>
-    </div>
+    <CardPayment
+      settings={settings}
+      amount={cardRemainder > 0 ? cardRemainder : finalTotal}
+      balanceUsed={balanceUsed}
+      cardRemainder={cardRemainder}
+      onConfirm={confirmCardPayment}
+      loading={loading}
+      error={error}
+    />
   )
 
-  // ── Main checkout form ──
+  // ── Main Form ──
   return (
     <div style={s.page}>
       {showMap && (
@@ -255,7 +274,7 @@ export default function Checkout() {
         />
       )}
 
-      {/* Back button */}
+      {/* Back */}
       <div style={{ padding: '8px 16px 0' }}>
         <button style={s.backBtn} onClick={() => navigate(-1)}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -286,11 +305,18 @@ export default function Checkout() {
       <div style={s.section}>
         <div style={s.sLabel}>Доставка</div>
         <div style={s.card}>
+          {/* Saved addresses */}
+          <SavedAddresses
+            addresses={savedAddresses}
+            selectedId={selectedAddrId}
+            onSelect={selectSavedAddress}
+          />
+
           <input
             style={s.input}
             placeholder="Адрес: улица, дом, квартира"
             value={form.address}
-            onChange={e => set('address', e.target.value)}
+            onChange={e => { set('address', e.target.value); setSelectedAddrId(null) }}
           />
           <input
             style={s.input}
@@ -325,6 +351,14 @@ export default function Checkout() {
         </div>
       </div>
 
+      {/* Date & Time */}
+      <DateTimePicker
+        selectedDate={form.deliveryDate}
+        selectedTime={form.deliveryTime}
+        onDateChange={v => set('deliveryDate', v)}
+        onTimeChange={v => set('deliveryTime', v)}
+      />
+
       {/* Phone */}
       <div style={s.section}>
         <div style={s.sLabel}>Телефон для связи</div>
@@ -337,24 +371,15 @@ export default function Checkout() {
         />
       </div>
 
-      {/* Bottle return — only for 20L orders */}
-      {has20L && (
-        <div style={s.section}>
-          <div style={s.sLabel}>Возврат бутылок (20 л)</div>
-          <div style={s.card}>
-            <div style={s.bottleRow}>
-              <span style={s.bottleText}>Количество бутылок</span>
-              <div style={s.stepper}>
-                <button style={s.stepperBtn} onClick={() => set('returnCount', Math.max(0, Number(form.returnCount) - 1))}>−</button>
-                <span style={s.stepperVal}>{form.returnCount}</span>
-                <button style={s.stepperBtn} onClick={() => set('returnCount', Number(form.returnCount) + 1)}>+</button>
-              </div>
-            </div>
-            {bottleDiscount > 0 && (
-              <div style={s.discountLine}>Скидка за возврат: −{bottleDiscount.toLocaleString()} сум</div>
-            )}
-          </div>
-        </div>
+      {/* Bottle return */}
+      {has20L && bottlesOwed > 0 && (
+        <BottleReturn
+          returnCount={Number(form.returnCount)}
+          onCountChange={v => set('returnCount', v)}
+          bottleDiscount={bottleDiscount}
+          bottlesOwed={maxReturn}
+          settings={settings}
+        />
       )}
 
       {/* Bonus */}
@@ -378,7 +403,7 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* Payment method */}
+      {/* Payment */}
       <div style={s.section}>
         <div style={s.sLabel}>Способ оплаты</div>
         <div style={s.card}>
@@ -386,8 +411,7 @@ export default function Checkout() {
             const isBalance = m.key === 'balance'
             const isSelected = form.paymentMethod === m.key
             return (
-              <button
-                key={m.key}
+              <button key={m.key}
                 style={isSelected ? { ...s.payMethod, ...s.payMethodActive } : s.payMethod}
                 onClick={() => set('paymentMethod', m.key)}
               >
@@ -402,9 +426,7 @@ export default function Checkout() {
                     </div>
                   )}
                   {isBalance && availableBalance === 0 && (
-                    <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 3 }}>
-                      Пополните баланс в профиле
-                    </div>
+                    <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 3 }}>Пополните баланс в профиле</div>
                   )}
                 </div>
                 {isSelected && (
@@ -437,197 +459,4 @@ export default function Checkout() {
       </div>
     </div>
   )
-}
-
-const s = {
-  page: { background: '#e4e4e8', minHeight: '100dvh', paddingBottom: 16 },
-
-  backBtn: {
-    display: 'flex', alignItems: 'center', gap: 4,
-    background: 'none', border: 'none', padding: '8px 0',
-    fontSize: 15, fontWeight: 600, color: '#1a1a1a', cursor: 'pointer',
-  },
-
-  section: { padding: '0 16px', marginBottom: 12 },
-  sLabel: {
-    fontSize: 13, fontWeight: 700, color: '#8e8e93',
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    marginBottom: 8, paddingLeft: 2,
-  },
-  card: {
-    background: '#fff', borderRadius: 18, padding: 14,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
-
-  // Order summary
-  orderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  orderName: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
-  orderQty: { color: '#8e8e93', fontWeight: 400 },
-  orderPrice: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
-  orderTotalRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    paddingTop: 10, borderTop: '1px solid #f0f0f2', marginTop: 4,
-    fontSize: 14, color: '#8e8e93', fontWeight: 600,
-  },
-  orderTotal: { fontSize: 18, fontWeight: 800, color: '#1a1a1a' },
-
-  // Inputs
-  input: {
-    border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '13px 14px',
-    fontSize: 15, background: '#f8f8fa', color: '#1a1a1a',
-    outline: 'none', width: '100%', fontFamily: 'inherit', boxSizing: 'border-box',
-  },
-
-  // Location
-  locRow: { display: 'flex', gap: 8 },
-  locBtn: {
-    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    padding: '11px 8px', borderRadius: 14,
-    border: '1.5px solid #e5e5ea', background: '#f8f8fa',
-    fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
-  },
-  locBtnPrimary: {
-    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    padding: '11px 8px', borderRadius: 14,
-    border: `1.5px solid ${C}`, background: `${C}08`,
-    fontSize: 13, fontWeight: 700, color: C, cursor: 'pointer',
-  },
-  locConfirmed: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    fontSize: 13, fontWeight: 600, color: C,
-  },
-
-  // Bottles
-  bottleRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  },
-  bottleText: { fontSize: 14, color: '#3c3c43', fontWeight: 500 },
-  stepper: {
-    display: 'flex', alignItems: 'center',
-    background: '#f0f0f2', borderRadius: 12, overflow: 'hidden',
-  },
-  stepperBtn: {
-    background: GRAD, border: 'none', width: 34, height: 34,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', color: '#fff', fontSize: 18, fontWeight: 700,
-  },
-  stepperVal: {
-    fontWeight: 700, fontSize: 16, minWidth: 32, textAlign: 'center', color: '#1a1a1a',
-  },
-  discountLine: {
-    fontSize: 13, fontWeight: 600, color: C,
-    background: `${C}08`, borderRadius: 10, padding: '8px 10px',
-  },
-
-  // Discounts
-  discountRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  },
-  discountName: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
-  discountAvail: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
-  useBtn: {
-    padding: '8px 14px', borderRadius: 12,
-    border: '1.5px solid #e5e5ea', background: '#fff',
-    fontSize: 13, fontWeight: 700, color: '#3c3c43', cursor: 'pointer',
-  },
-  useBtnActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
-
-  // Payment methods
-  payMethod: {
-    display: 'flex', alignItems: 'center', gap: 12,
-    padding: '12px 14px', borderRadius: 14,
-    border: '1.5px solid transparent', background: '#f8f8fa',
-    cursor: 'pointer', width: '100%',
-  },
-  payMethodActive: {
-    border: `1.5px solid ${C}30`, background: `${C}06`,
-  },
-  payMethodLabel: { fontSize: 15, fontWeight: 600 },
-
-  // Balance note on card payment screen
-  balanceNote: {
-    background: `${C}10`, borderRadius: 14, padding: '12px 14px',
-    display: 'flex', alignItems: 'center', gap: 8,
-  },
-
-  // Total
-  totalSection: {
-    padding: '8px 16px 8px',
-    display: 'flex', flexDirection: 'column', gap: 12,
-  },
-  totalRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '0 4px',
-  },
-  totalLabel: { fontSize: 15, fontWeight: 600, color: '#8e8e93' },
-  totalAmt: { fontSize: 26, fontWeight: 800, color: '#1a1a1a', letterSpacing: -0.5 },
-  primaryBtn: {
-    background: GRAD, color: '#fff', border: 'none', borderRadius: 14,
-    height: 52, fontSize: 16, fontWeight: 700, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-    width: '100%', boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
-  },
-  linkBtn: {
-    background: 'none', border: 'none', color: '#8e8e93',
-    padding: '12px 0', fontSize: 14, cursor: 'pointer', textAlign: 'center',
-    width: '100%',
-  },
-  errorBox: {
-    background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 14,
-    padding: '10px 12px', fontSize: 13, color: '#ef4444', fontWeight: 500,
-  },
-  spinner: {
-    width: 20, height: 20, borderRadius: '50%',
-    border: '2.5px solid rgba(255,255,255,0.3)',
-    borderTop: '2.5px solid #fff',
-    animation: 'spin 0.7s linear infinite', display: 'inline-block',
-  },
-
-  // Card payment screen
-  payCard: {
-    background: '#1a1a1a', borderRadius: 18, padding: '18px 16px',
-    display: 'flex', flexDirection: 'column', gap: 8,
-  },
-  payCardLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 600 },
-  payCardNum: { fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: 3, fontFamily: 'monospace' },
-  payCardHolder: { fontSize: 13, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 1 },
-  payAmtBig: { fontSize: 28, fontWeight: 800, color: C, letterSpacing: -0.5 },
-  payAmtCur: { fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,0.35)' },
-  cpyBtn: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 10, padding: '8px 14px', alignSelf: 'flex-start',
-    fontSize: 13, color: 'rgba(255,255,255,0.55)', cursor: 'pointer',
-  },
-  cpyBtnDone: {
-    background: `${C}25`, borderColor: `${C}50`, color: C,
-  },
-  helpSteps: {
-    display: 'flex', flexDirection: 'column', gap: 10,
-    background: '#fff', borderRadius: 18, padding: 14,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  },
-  helpStep: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#3c3c43', fontWeight: 500 },
-  helpNum: {
-    width: 26, height: 26, borderRadius: '50%', background: GRAD, color: '#fff',
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 12, fontWeight: 700, flexShrink: 0,
-  },
-
-  // Success
-  successPage: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', minHeight: '85dvh', padding: '0 24px', gap: 14,
-    textAlign: 'center', background: '#e4e4e8',
-  },
-  successIcon: {
-    width: 80, height: 80, borderRadius: '50%', background: GRAD,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8, boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
-  },
-  successTitle: { fontSize: 24, fontWeight: 800, color: '#1a1a1a', margin: 0 },
-  successDesc: { fontSize: 14, color: '#8e8e93', margin: 0 },
 }

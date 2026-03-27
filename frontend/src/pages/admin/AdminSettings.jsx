@@ -30,6 +30,8 @@ export default function AdminSettings() {
     bottle_discount_type: 'fixed',
     bottle_discount_value: 50,
     cashback_percent: 5,
+    bottle_return_buttons_visible: true,
+    bottle_return_mode: 'max',
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -135,6 +137,66 @@ export default function AdminSettings() {
                 ? `${3 * Number(form.bottle_discount_value)} сум`
                 : `${form.bottle_discount_value}% от суммы заказа`}
             </b>
+          </div>
+        </Section>
+
+        {/* Bottle return settings */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M3 3v5h5" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          }
+          title="Возврат бутылок"
+          hint="Настройки отображения и лимита возврата для клиентов"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Кнопки +/−</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>Клиент может менять кол-во возвращаемых бутылок</div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, bottle_return_buttons_visible: !p.bottle_return_buttons_visible }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.bottle_return_buttons_visible ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.bottle_return_buttons_visible ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+          </div>
+          <div style={s.radioGroup}>
+            <label style={{ ...s.radioOption, ...(form.bottle_return_mode === 'max' ? s.radioOptionActive : {}) }}>
+              <input type="radio" value="max" checked={form.bottle_return_mode === 'max'}
+                onChange={e => setForm(p => ({ ...p, bottle_return_mode: e.target.value }))}
+                style={{ display: 'none' }} />
+              <div style={s.radioDot(form.bottle_return_mode === 'max')} />
+              Максимальный (все долги)
+            </label>
+            <label style={{ ...s.radioOption, ...(form.bottle_return_mode === 'equal' ? s.radioOptionActive : {}) }}>
+              <input type="radio" value="equal" checked={form.bottle_return_mode === 'equal'}
+                onChange={e => setForm(p => ({ ...p, bottle_return_mode: e.target.value }))}
+                style={{ display: 'none' }} />
+              <div style={s.radioDot(form.bottle_return_mode === 'equal')} />
+              Равномерный (= кол-ву заказа)
+            </label>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {form.bottle_return_mode === 'max'
+              ? 'Клиент может вернуть до максимума (все должные бутылки)'
+              : 'Клиент может вернуть только столько, сколько заказал в текущем заказе'}
           </div>
         </Section>
 
