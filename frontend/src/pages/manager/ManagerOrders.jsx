@@ -7,7 +7,7 @@ const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BG = '#F2F2F7'
+const BG = '#e4e4e8'
 const BORDER = 'rgba(60,60,67,0.12)'
 
 const STATUS_LABELS = {
@@ -420,9 +420,9 @@ const s = {
 
   summary: { display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' },
   summaryCard: {
-    flex: 1, background: '#fff', borderRadius: 14, padding: '14px 10px',
+    flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   summaryVal: { fontSize: 26, fontWeight: 800, lineHeight: 1 },
   summaryLbl: { fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 },
@@ -435,7 +435,7 @@ const s = {
 
   searchWrap: {
     display: 'flex', alignItems: 'center', gap: 10,
-    background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14,
+    background: '#fff', borderRadius: 18,
     padding: '11px 14px', marginBottom: 14,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
@@ -483,8 +483,8 @@ const s = {
   list: { display: 'flex', flexDirection: 'column', gap: 10 },
 
   card: {
-    background: '#fff', borderRadius: 16, overflow: 'hidden',
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    background: '#fff', borderRadius: 18, overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   cardUrgent: {
     border: '1.5px solid rgba(230,119,0,0.35)',
@@ -540,8 +540,9 @@ const s = {
   btnPrimary: {
     display: 'flex', alignItems: 'center', gap: 6,
     padding: '10px 16px', borderRadius: 12, border: 'none',
-    background: C, color: '#fff', fontSize: 14, fontWeight: 700,
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700,
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
   },
   btnDanger: {
     display: 'flex', alignItems: 'center', gap: 6,

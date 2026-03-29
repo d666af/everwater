@@ -11,33 +11,121 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000]
 
 const SUB_PLANS = [
-  { key: 'weekly', label: 'Еженедельная', desc: 'Доставка каждую неделю' },
-  { key: 'monthly', label: 'Ежемесячная', desc: 'Доставка раз в месяц' },
+  { key: 'weekly', label: 'Еженедельная', desc: 'Доставка каждую неделю', days: 7 },
+  { key: 'monthly', label: 'Ежемесячная', desc: 'Доставка раз в месяц', days: 30 },
 ]
 const SUB_WATERS = [
-  { name: 'Вода 20л', volume: 20, price: 25000 },
-  { name: 'Вода 10л', volume: 10, price: 14000 },
-  { name: 'Вода 5л', volume: 5, price: 8000 },
+  { name: 'Вода 20л', volume: 20, price: 25000, blockSize: 1 },
+  { name: 'Вода 10л', volume: 10, price: 14000, blockSize: 1 },
+  { name: 'Вода 5л', volume: 5, price: 8000, blockSize: 1 },
+  { name: 'Вода 1.5л', volume: 1.5, price: 4500, blockSize: 6 },
+  { name: 'Вода 1л', volume: 1, price: 3500, blockSize: 12 },
+  { name: 'Вода 0.5л', volume: 0.5, price: 2000, blockSize: 12 },
 ]
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
+// ─── Active Subscription Detail ──────────────────────────────────────────────
+function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
+  const [confirming, setConfirming] = useState(false)
+  const endDate = new Date(sub.created)
+  endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
+  const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
+  const isExpiring = daysLeft <= 3
+
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={s.sheetTitle}>Подписка</div>
+
+        <div style={{ background: isExpiring ? '#FFF5F5' : '#f8f8fa', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#1a1a1a' }}>
+              {sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
+              background: sub.status === 'active' ? '#EBFBEE' : '#FFF5F5',
+              color: sub.status === 'active' ? '#2B8A3E' : '#E03131' }}>
+              {sub.status === 'active' ? 'Активна' : 'Истекла'}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: '#3c3c43' }}>{sub.water} × {sub.qty}</div>
+          <div style={{ fontSize: 13, color: '#3c3c43' }}>{sub.address}</div>
+          {sub.day && <div style={{ fontSize: 13, color: '#3c3c43' }}>День: {sub.day}, {sub.time === 'morning' ? '9:00–13:00' : '13:00–18:00'}</div>}
+          <div style={{ height: 1, background: '#e5e5ea' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: '#8e8e93' }}>Сумма</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: C }}>{(sub.total || 0).toLocaleString()} сум</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: '#8e8e93' }}>Действует до</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: isExpiring ? '#E03131' : '#1a1a1a' }}>
+              {endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+              {isExpiring && ` (${daysLeft} дн.)`}
+            </span>
+          </div>
+        </div>
+
+        {isExpiring && (
+          <div style={{ background: '#FFF8E6', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 9v4M12 17h.01" stroke="#E67700" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="#E67700" strokeWidth="1.5"/>
+            </svg>
+            <span style={{ fontSize: 13, color: '#E67700', fontWeight: 600 }}>Подписка скоро истекает!</span>
+          </div>
+        )}
+
+        <button style={s.primaryBtn} onClick={() => onExtend(sub)}>
+          Продлить подписку
+        </button>
+        {!confirming ? (
+          <button style={{ ...s.ghostBtn, color: '#ef4444' }} onClick={() => setConfirming(true)}>
+            Прекратить подписку
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ ...s.ghostBtn, flex: 1 }} onClick={() => setConfirming(false)}>Отмена</button>
+            <button style={{ flex: 1, padding: '12px', borderRadius: 14, border: 'none', background: '#ef4444', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+              onClick={() => { onCancel(sub.id); onClose() }}>
+              Прекратить
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Subscription Modal ──────────────────────────────────────────────────────
 function SubscriptionModal({ onClose, settings, userStore }) {
   const [step, setStep] = useState('plan') // plan | details | payment | done
   const [plan, setPlan] = useState('weekly')
-  const [water, setWater] = useState({ name: 'Вода 20л', volume: 20, price: 25000, qty: 1 })
+  const [water, setWater] = useState({ name: 'Вода 20л', volume: 20, price: 25000, qty: 1, blockSize: 1 })
+  const [carbonated, setCarbonated] = useState(false)
+  const [useBlock, setUseBlock] = useState(false)
   const [addr, setAddr] = useState('')
   const [landmark, setLandmark] = useState('')
   const [phone, setPhone] = useState('')
+  const [day, setDay] = useState('')
+  const [time, setTime] = useState('')
   const [payMethod, setPayMethod] = useState('balance')
   const [loading, setLoading] = useState(false)
 
-  const total = water.price * water.qty
+  const displayName = carbonated ? water.name.replace('Вода', 'Газ. вода') : water.name
+  const actualQty = useBlock && water.blockSize > 1 ? water.qty * water.blockSize : water.qty
+  const total = water.price * actualQty
   const canPayBalance = userStore.balance >= total
 
   const submit = async () => {
     setLoading(true)
     await new Promise(r => setTimeout(r, 800))
     if (payMethod === 'balance') userStore.deductBalance(total)
-    userStore.addSubscription({ plan, water: water.name, qty: water.qty, total, address: addr, landmark, phone, payMethod })
+    userStore.addSubscription({
+      plan, water: displayName, qty: actualQty, total,
+      address: addr, landmark, phone, payMethod, day, time,
+      carbonated,
+    })
     setLoading(false)
     setStep('done')
   }
@@ -55,7 +143,7 @@ function SubscriptionModal({ onClose, settings, userStore }) {
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Подписка оформлена!</div>
           <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6 }}>
-            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} доставка — {water.name} x{water.qty}
+            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} доставка — {displayName} x{actualQty}
           </div>
         </div>
         <button style={s.primaryBtn} onClick={onClose}>Готово</button>
@@ -70,11 +158,11 @@ function SubscriptionModal({ onClose, settings, userStore }) {
         <div style={s.sheetTitle}>Оплата подписки</div>
         <div style={{ background: '#f8f8fa', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#3c3c43' }}>
-            <span>{water.name} x{water.qty}</span>
+            <span>{displayName} x{actualQty}</span>
             <span style={{ fontWeight: 700 }}>{total.toLocaleString()} сум</span>
           </div>
           <div style={{ fontSize: 12, color: '#8e8e93' }}>
-            {plan === 'weekly' ? 'Еженедельная доставка' : 'Ежемесячная доставка'}
+            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} · {day}, {time === 'morning' ? '9:00–13:00' : '13:00–18:00'}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -114,13 +202,47 @@ function SubscriptionModal({ onClose, settings, userStore }) {
       <div style={s.sheet}>
         <div style={s.handle} />
         <div style={s.sheetTitle}>Данные доставки</div>
+
+        {/* Day of week */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          День недели
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {WEEKDAYS.map(d => (
+            <button key={d}
+              style={day === d ? { ...ss.dayChip, ...ss.dayChipActive } : ss.dayChip}
+              onClick={() => setDay(d)}>
+              {d}
+            </button>
+          ))}
+        </div>
+
+        {/* Time */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          Время
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={time === 'morning' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
+            onClick={() => setTime('morning')}>
+            <div style={{ fontWeight: 700 }}>До обеда</div>
+            <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>9:00 – 13:00</div>
+          </button>
+          <button style={time === 'afternoon' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
+            onClick={() => setTime('afternoon')}>
+            <div style={{ fontWeight: 700 }}>После обеда</div>
+            <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>13:00 – 18:00</div>
+          </button>
+        </div>
+
+        {/* Address fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input style={ss.inp} placeholder="Адрес доставки" value={addr} onChange={e => setAddr(e.target.value)} />
           <input style={ss.inp} placeholder="Ориентир" value={landmark} onChange={e => setLandmark(e.target.value)} />
           <input style={ss.inp} placeholder="Телефон" type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
         </div>
-        <button style={{ ...s.primaryBtn, ...(!addr || !phone ? { opacity: 0.5 } : {}) }}
-          onClick={() => setStep('payment')} disabled={!addr || !phone}>
+
+        <button style={{ ...s.primaryBtn, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
+          onClick={() => setStep('payment')} disabled={!addr || !phone || !day || !time}>
           К оплате
         </button>
         <button style={s.ghostBtn} onClick={() => setStep('plan')}>Назад</button>
@@ -135,15 +257,12 @@ function SubscriptionModal({ onClose, settings, userStore }) {
         <div style={s.sheetTitle}>Оформление подписки</div>
 
         {/* Plan selection */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          Тип подписки
-        </div>
+        <div style={ss.secLabel}>Тип подписки</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {SUB_PLANS.map(p => (
             <button key={p.key}
               style={plan === p.key ? { ...ss.planChip, ...ss.planChipActive } : ss.planChip}
-              onClick={() => setPlan(p.key)}
-            >
+              onClick={() => setPlan(p.key)}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{p.label}</div>
               <div style={{ fontSize: 11, color: plan === p.key ? 'rgba(255,255,255,0.7)' : '#8e8e93' }}>{p.desc}</div>
             </button>
@@ -151,17 +270,29 @@ function SubscriptionModal({ onClose, settings, userStore }) {
         </div>
 
         {/* Water selection */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          Вода
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={ss.secLabel}>Вода</div>
+          <button
+            style={{ ...ss.carbToggle, ...(carbonated ? ss.carbToggleActive : {}) }}
+            onClick={() => setCarbonated(!carbonated)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.5"/>
+              <circle cx="8" cy="11" r="1.5" fill="currentColor" opacity="0.5"/>
+              <circle cx="15" cy="13" r="1.5" fill="currentColor" opacity="0.5"/>
+              <circle cx="11" cy="17" r="1" fill="currentColor" opacity="0.5"/>
+            </svg>
+            Газированная
+          </button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {SUB_WATERS.map(w => (
             <button key={w.name}
               style={water.name === w.name ? { ...ss.waterOpt, ...ss.waterOptActive } : ss.waterOpt}
-              onClick={() => setWater({ ...w, qty: water.qty })}
-            >
+              onClick={() => { setWater({ ...w, qty: water.qty }); if (w.blockSize <= 1) setUseBlock(false) }}>
               <div style={{ flex: 1, textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{w.name}</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  {carbonated ? w.name.replace('Вода', 'Газ. вода') : w.name}
+                </div>
                 <div style={{ fontSize: 12, color: '#8e8e93' }}>{w.price.toLocaleString()} сум</div>
               </div>
               {water.name === w.name && (
@@ -173,15 +304,38 @@ function SubscriptionModal({ onClose, settings, userStore }) {
           ))}
         </div>
 
+        {/* Block toggle for small bottles */}
+        {water.blockSize > 1 && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={!useBlock ? { ...ss.blockBtn, ...ss.blockBtnActive } : ss.blockBtn}
+              onClick={() => setUseBlock(false)}>
+              Штучно
+            </button>
+            <button
+              style={useBlock ? { ...ss.blockBtn, ...ss.blockBtnActive } : ss.blockBtn}
+              onClick={() => setUseBlock(true)}>
+              Блоками ({water.blockSize} шт)
+            </button>
+          </div>
+        )}
+
         {/* Quantity */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>Количество</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>
+            {useBlock && water.blockSize > 1 ? 'Блоков' : 'Количество'}
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: Math.max(1, w.qty - 1) }))}>−</button>
             <span style={{ fontSize: 18, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{water.qty}</span>
             <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: w.qty + 1 }))}>+</button>
           </div>
         </div>
+        {useBlock && water.blockSize > 1 && (
+          <div style={{ fontSize: 12, color: '#8e8e93', marginTop: -6 }}>
+            = {actualQty} шт ({water.qty} × {water.blockSize})
+          </div>
+        )}
 
         <div style={{ background: '#f8f8fa', borderRadius: 12, padding: '10px 14px', display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 14, color: '#8e8e93' }}>Итого</span>
@@ -198,6 +352,7 @@ function SubscriptionModal({ onClose, settings, userStore }) {
 }
 
 const ss = {
+  secLabel: { fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 },
   planChip: {
     flex: 1, padding: '12px 10px', borderRadius: 14,
     border: '1.5px solid #e5e5ea', background: '#fff',
@@ -206,17 +361,53 @@ const ss = {
   planChipActive: {
     border: `1.5px solid ${C}`, background: GRAD, color: '#fff',
   },
+  carbToggle: {
+    display: 'flex', alignItems: 'center', gap: 5,
+    padding: '6px 12px', borderRadius: 10,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 12, fontWeight: 600, color: '#8e8e93', cursor: 'pointer',
+  },
+  carbToggleActive: {
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
+  },
   waterOpt: {
     display: 'flex', alignItems: 'center', padding: '12px 14px',
     borderRadius: 14, border: '1.5px solid #e5e5ea', background: '#fff',
     cursor: 'pointer',
   },
   waterOptActive: { border: `1.5px solid ${C}`, background: `${C}08` },
+  blockBtn: {
+    flex: 1, padding: '10px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 600, color: '#8e8e93', cursor: 'pointer',
+    textAlign: 'center',
+  },
+  blockBtnActive: {
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
+  },
   qtyBtn: {
     width: 34, height: 34, borderRadius: 10,
     border: `1.5px solid ${C}`, background: '#fff',
     fontSize: 18, fontWeight: 700, color: C,
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  dayChip: {
+    padding: '10px 14px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
+    minWidth: 42, textAlign: 'center',
+  },
+  dayChipActive: {
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
+  },
+  timeBtn: {
+    flex: 1, padding: '12px 8px', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
+    textAlign: 'center',
+  },
+  timeBtnActive: {
+    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
   },
   inp: {
     border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '14px 16px',
@@ -347,6 +538,7 @@ export default function Profile() {
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
   const [showSub, setShowSub] = useState(false)
+  const [subDetail, setSubDetail] = useState(null)
   const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
@@ -393,6 +585,18 @@ export default function Profile() {
     <div style={s.page}>
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
       {showSub && <SubscriptionModal onClose={() => setShowSub(false)} settings={settings} userStore={userStore} />}
+      {subDetail && (
+        <SubscriptionDetail
+          sub={subDetail}
+          onClose={() => setSubDetail(null)}
+          onExtend={() => { setSubDetail(null); setShowSub(true) }}
+          onCancel={(id) => {
+            const list = userStore.subscriptions.filter(s => s.id !== id)
+            localStorage.setItem('everwater_subscriptions', JSON.stringify(list))
+            useUserStore.setState({ subscriptions: list })
+          }}
+        />
+      )}
 
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>
@@ -449,29 +653,59 @@ export default function Profile() {
       )}
 
       {/* Subscription card */}
-      <div style={s.subCard} onClick={() => setShowSub(true)}>
-        <div style={s.subIcon}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-            <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+      {userStore.subscriptions.length > 0 ? (
+        <div style={{ margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {userStore.subscriptions.map(sub => {
+            const endDate = new Date(sub.created)
+            endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
+            const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
+            const isExpiring = daysLeft <= 3
+            return (
+              <div key={sub.id} style={s.subCard} onClick={() => setSubDetail(sub)}>
+                <div style={{ ...s.subIcon, background: isExpiring ? 'linear-gradient(135deg, #FF6B6B, #E03131)' : 'linear-gradient(135deg, #4FC3F7, #2196F3)' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={s.subTitle}>{sub.water} × {sub.qty}</div>
+                  <div style={s.subDesc}>
+                    {sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}
+                    {isExpiring ? ` · ${daysLeft} дн. осталось` : ` · до ${endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}
+                  </div>
+                </div>
+                {isExpiring && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E03131', flexShrink: 0 }} />}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </div>
+            )
+          })}
+          <button style={s.addSubBtn} onClick={() => setShowSub(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+            Новая подписка
+          </button>
+        </div>
+      ) : (
+        <div style={s.subCard} onClick={() => setShowSub(true)}>
+          <div style={s.subIcon}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={s.subTitle}>Подписка на воду</div>
+            <div style={s.subDesc}>Регулярная доставка со скидкой</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={s.subTitle}>
-            {userStore.subscriptions.length > 0
-              ? `${userStore.subscriptions.length} подпис${userStore.subscriptions.length === 1 ? 'ка' : 'ки'}`
-              : 'Подписка на воду'}
-          </div>
-          <div style={s.subDesc}>
-            {userStore.subscriptions.length > 0
-              ? 'Управление подписками'
-              : 'Регулярная доставка со скидкой'}
-          </div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </div>
+      )}
 
       {/* Menu */}
       <div style={s.menuCard}>
@@ -650,6 +884,12 @@ const s = {
   },
   subTitle: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
   subDesc: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
+  addSubBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    background: '#fff', border: `2px solid ${C}`, borderRadius: 14,
+    padding: '12px 16px', fontSize: 14, fontWeight: 700, color: C,
+    cursor: 'pointer',
+  },
 
   /* Menu */
   menuCard: {

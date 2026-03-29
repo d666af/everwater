@@ -187,8 +187,8 @@ export default function ManagerStats() {
 
 const s = {
   segmented: {
-    display: 'flex', background: '#fff', borderRadius: 12, padding: 4,
-    border: `1px solid ${BORDER}`, marginBottom: 20,
+    display: 'flex', background: '#fff', borderRadius: 18, padding: 4,
+    marginBottom: 20,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   segBtn: {
@@ -197,7 +197,7 @@ const s = {
     cursor: 'pointer', transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
   },
   segBtnActive: {
-    background: C, color: '#fff',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
     boxShadow: '0 2px 8px rgba(141,198,63,0.35)',
   },
 
@@ -213,8 +213,8 @@ const s = {
     gap: 10, marginBottom: 16,
   },
   statCard: {
-    background: '#fff', borderRadius: 16, padding: '18px 14px',
-    textAlign: 'center', border: `1px solid ${BORDER}`,
+    background: '#fff', borderRadius: 18, padding: '18px 14px',
+    textAlign: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
   },
@@ -227,8 +227,8 @@ const s = {
   statSub: { fontSize: 11, color: '#bbb', marginTop: -2 },
 
   breakdownCard: {
-    background: '#fff', borderRadius: 16, padding: '18px 20px',
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    background: '#fff', borderRadius: 18, padding: '18px 20px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     display: 'flex', flexDirection: 'column', gap: 12,
   },
   breakdownTitle: { fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 4 },

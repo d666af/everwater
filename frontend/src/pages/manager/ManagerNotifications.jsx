@@ -244,9 +244,9 @@ const s = {
 
   list: { display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 680 },
   card: {
-    background: '#fff', borderRadius: 16, padding: '14px 16px',
+    background: '#fff', borderRadius: 18, padding: '14px 16px',
     display: 'flex', gap: 14, alignItems: 'flex-start',
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     cursor: 'pointer', position: 'relative',
     transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
   },

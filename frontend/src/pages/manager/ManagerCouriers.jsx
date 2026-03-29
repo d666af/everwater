@@ -225,8 +225,8 @@ export default function ManagerCouriers() {
 const s = {
   statsRow: { display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' },
   statCard: {
-    flex: 1, background: '#fff', borderRadius: 14, padding: '14px 10px',
-    textAlign: 'center', border: `1px solid ${BORDER}`,
+    flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px',
+    textAlign: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   statNum: { fontSize: 26, fontWeight: 800, lineHeight: 1 },
@@ -234,8 +234,9 @@ const s = {
   addBtn: {
     display: 'flex', alignItems: 'center', gap: 6,
     padding: '10px 14px', borderRadius: 12, border: 'none',
-    background: C, color: '#fff', fontSize: 14, fontWeight: 700,
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700,
     cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
     WebkitTapHighlightColor: 'transparent',
   },
 
@@ -260,8 +261,8 @@ const s = {
   },
 
   card: {
-    background: '#fff', borderRadius: 16, overflow: 'hidden',
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    background: '#fff', borderRadius: 18, overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   cardTop: { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' },
   avatar: {
