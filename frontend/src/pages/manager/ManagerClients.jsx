@@ -7,7 +7,7 @@ const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BG = '#F2F2F7'
+const BG = '#e4e4e8'
 const BORDER = 'rgba(60,60,67,0.12)'
 
 const STATUS_LABELS = {
@@ -328,8 +328,8 @@ export default function ManagerClients() {
 const s = {
   statsBar: { display: 'flex', gap: 10, marginBottom: 16 },
   statCard: {
-    flex: 1, background: '#fff', borderRadius: 14, padding: '14px 10px',
-    textAlign: 'center', border: `1px solid ${BORDER}`,
+    flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px',
+    textAlign: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   statNum: { fontSize: 26, fontWeight: 800, lineHeight: 1 },
@@ -337,7 +337,7 @@ const s = {
 
   searchWrap: {
     display: 'flex', alignItems: 'center', gap: 10,
-    background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14,
+    background: '#fff', borderRadius: 18,
     padding: '11px 14px', marginBottom: 16,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
@@ -356,9 +356,9 @@ const s = {
 
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
   card: {
-    background: '#fff', borderRadius: 16, padding: '14px 16px',
+    background: '#fff', borderRadius: 18, padding: '14px 16px',
     display: 'flex', alignItems: 'center', gap: 14,
-    border: `1px solid ${BORDER}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     cursor: 'pointer', transition: 'all 0.12s',
     WebkitTapHighlightColor: 'transparent',
   },
@@ -428,7 +428,8 @@ const s = {
   actionGreen: {
     display: 'flex', alignItems: 'center', gap: 7,
     padding: '11px 16px', borderRadius: 12, border: 'none',
-    background: C, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
     WebkitTapHighlightColor: 'transparent',
   },
   actionOutline: {

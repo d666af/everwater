@@ -254,7 +254,7 @@ export default function ManagerSupport() {
 
   return (
     <ManagerLayout title="Чат поддержки" noPadding>
-      <div style={{ display: 'flex', gap: 0, height: 'calc(100vh - 120px)', background: '#fff', borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(60,60,67,0.12)' }}>
+      <div style={{ display: 'flex', gap: 0, height: 'calc(100vh - 120px)', background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
 
         {/* Chat list */}
         {showListPane && (

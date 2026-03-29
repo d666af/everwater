@@ -274,18 +274,23 @@ export default function Checkout() {
         />
       )}
 
+      {/* Title */}
+      <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
+        <div style={s.pageTitle}>Оформление заказа</div>
+      </div>
+
       {/* Back */}
       <div style={{ padding: '8px 16px 0' }}>
         <button style={s.backBtn} onClick={() => navigate(-1)}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke="#1a1a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15 18l-6-6 6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Назад
         </button>
       </div>
 
       {/* Order summary */}
-      <div style={s.section}>
+      <div style={{ ...s.section, marginTop: 12 }}>
         <div style={s.sLabel}>Ваш заказ</div>
         <div style={s.card}>
           {items.map(({ product, quantity }) => (
