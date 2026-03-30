@@ -4,16 +4,22 @@ export const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 10
 const s = {
   page: { background: '#e4e4e8', minHeight: '100dvh', paddingBottom: 16 },
 
+  pageHeader: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '12px 16px 0',
+  },
+  backBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+    background: GRAD, border: 'none', borderRadius: 10,
+    padding: '8px 14px',
+    fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(100,160,30,0.3)',
+    flexShrink: 0,
+  },
   pageTitle: {
     fontSize: 18, fontWeight: 800, color: '#1a1a1a',
     textAlign: 'center', letterSpacing: -0.3,
-  },
-  backBtn: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    background: '#fff', border: `2px solid ${C}`, borderRadius: 14,
-    padding: '12px 20px', width: '100%',
-    fontSize: 15, fontWeight: 700, color: C, cursor: 'pointer',
-    boxSizing: 'border-box',
+    flex: 1,
   },
 
   section: { padding: '0 16px', marginBottom: 12 },
