@@ -107,12 +107,12 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 {[
-                  [details.rating?.toFixed(1) || '—', 'Рейтинг', '#E67700'],
-                  [`${details.avg_delivery_time || 0} мин`, 'Ср. доставка', '#1971C2'],
-                  [details.today_deliveries || 0, 'Сегодня', '#2B8A3E'],
-                ].map(([v, l, clr]) => (
+                  [details.rating?.toFixed(1) || '—', 'Рейтинг'],
+                  [`${details.avg_delivery_time || 0} мин`, 'Ср. доставка'],
+                  [details.today_deliveries || 0, 'Сегодня'],
+                ].map(([v, l]) => (
                   <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: clr }}>{v}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{v}</div>
                     <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{l}</div>
                   </div>
                 ))}
@@ -213,9 +213,9 @@ export default function ManagerCouriers() {
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
-        {[[active.length, 'Активных', '#12B886'], [activeOrders.length, 'В доставке', '#6741D9'], [totalDeliveries, 'Всего', C]].map(([v, l, clr]) => (
+        {[[active.length, 'Активных'], [activeOrders.length, 'В доставке'], [totalDeliveries, 'Всего']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: clr }}>{v}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}

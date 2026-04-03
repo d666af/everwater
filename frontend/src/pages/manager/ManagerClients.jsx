@@ -286,7 +286,7 @@ function ClientDetail({ user, onClose, onTopup }) {
 
         <div style={{ display: 'flex', gap: 6, padding: '4px 20px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
           {TABS.map((t, i) => (
-            <button key={t} onClick={() => setTab(i)} style={{ padding: '7px 14px', borderRadius: 999, border: tab === i ? 'none' : `1.5px solid ${BORDER}`, background: tab === i ? GRAD : '#fff', color: tab === i ? '#fff' : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent', boxShadow: tab === i ? '0 2px 8px rgba(141,198,63,0.3)' : 'none' }}>{t}</button>
+            <button key={t} onClick={() => setTab(i)} style={{ padding: '7px 14px', borderRadius: 999, border: tab === i ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: tab === i ? `${C}15` : '#fff', color: tab === i ? CD : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>{t}</button>
           ))}
         </div>
 
@@ -337,9 +337,9 @@ export default function ManagerClients() {
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[users.length, 'Всего', C], [registered, 'Зарег.', '#2B8A3E'], [withBalance, 'С балансом', '#E67700']].map(([v, l, c]) => (
+        {[[users.length, 'Всего'], [registered, 'Зарег.'], [withBalance, 'С балансом']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: c }}>{v}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}
