@@ -2,6 +2,7 @@ import axios from 'axios'
 import {
   MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
   MOCK_SETTINGS, DEMO_USERS, MOCK_NOTIFICATIONS, MOCK_SUPPORT_CHATS,
+  MOCK_CLIENT_DETAILS, MOCK_COURIER_DETAILS,
 } from './mock'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
@@ -251,6 +252,19 @@ export const getAdminUsers = () =>
       { id: 2, name: 'Мария Петрова', phone: '+7 999 002-02-02', telegram_id: '22222', bonus_points: 120, balance: 500, is_registered: true },
       { id: 3, name: '', phone: '', telegram_id: '33333', bonus_points: 0, balance: 0, is_registered: false },
     ]
+  )
+
+// ─── Client details (bottles, transactions, subscriptions, addresses) ────────
+export const getClientDetails = (userId) =>
+  safeCall(
+    () => http.get(`/admin/users/${userId}/details`).then(r => r.data),
+    () => MOCK_CLIENT_DETAILS[userId] || { bottles_owed: 0, bottles_history: [], transactions: [], subscriptions: [], addresses: [] }
+  )
+
+export const getCourierDetails = (courierId) =>
+  safeCall(
+    () => http.get(`/admin/couriers/${courierId}/details`).then(r => r.data),
+    () => MOCK_COURIER_DETAILS[courierId] || { total_deliveries: 0, today_deliveries: 0, earnings_total: 0, earnings_today: 0, rating: 0, avg_delivery_time: 0, recent_deliveries: [], zones: [] }
   )
 
 // ─── Settings ────────────────────────────────────────────────────────────────

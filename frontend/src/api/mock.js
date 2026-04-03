@@ -175,6 +175,81 @@ export const MOCK_SUPPORT_CHATS = [
   },
 ]
 
+// ─── Extended client data for manager views ──────────────────────────────────
+export const MOCK_CLIENT_DETAILS = {
+  1: {
+    bottles_owed: 3,
+    bottles_history: [
+      { date: '2026-03-28', action: 'received', count: 2, order_id: 1001 },
+      { date: '2026-03-25', action: 'returned', count: 1, order_id: null },
+      { date: '2026-03-20', action: 'received', count: 3, order_id: 998 },
+      { date: '2026-03-18', action: 'returned', count: 1, order_id: null },
+    ],
+    transactions: [
+      { id: 1, type: 'payment', amount: -50000, date: '2026-03-28T14:30:00', order_id: 1001, desc: 'Оплата заказа #1001' },
+      { id: 2, type: 'topup', amount: 100000, date: '2026-03-25T10:00:00', desc: 'Пополнение баланса' },
+      { id: 3, type: 'cashback', amount: 2500, date: '2026-03-23T16:00:00', order_id: 998, desc: 'Кэшбэк 5% за заказ #998' },
+      { id: 4, type: 'payment', amount: -75000, date: '2026-03-20T12:15:00', order_id: 998, desc: 'Оплата заказа #998' },
+      { id: 5, type: 'bonus_used', amount: -500, date: '2026-03-18T09:00:00', order_id: 995, desc: 'Списание бонусов' },
+    ],
+    subscriptions: [
+      { id: 1, status: 'active', plan: 'Вода 20л × 2', period: '2 недели', day: 'Понедельник', time: '09:00–12:00', start: '2026-03-01', end: '2026-04-01', price: 50000, address: 'Юнусабад, 19-квартал, д. 12' },
+    ],
+    addresses: [
+      { id: 1, address: 'Юнусабад, 19-квартал, д. 12', lat: 41.3547, lng: 69.2848, label: 'Дом' },
+      { id: 2, address: 'Мирзо-Улугбек, ул. Навои, 42, оф. 301', lat: 41.2995, lng: 69.2401, label: 'Офис' },
+    ],
+  },
+  2: {
+    bottles_owed: 1,
+    bottles_history: [
+      { date: '2026-03-26', action: 'received', count: 1, order_id: 1002 },
+    ],
+    transactions: [
+      { id: 1, type: 'payment', amount: -39000, date: '2026-03-26T11:00:00', order_id: 1002, desc: 'Оплата заказа #1002' },
+      { id: 2, type: 'topup', amount: 50000, date: '2026-03-20T14:00:00', desc: 'Пополнение баланса' },
+    ],
+    subscriptions: [],
+    addresses: [
+      { id: 1, address: 'Мирзо-Улугбек, ул. Навои, 42', lat: 41.2995, lng: 69.2401, label: 'Дом' },
+    ],
+  },
+  3: {
+    bottles_owed: 0,
+    bottles_history: [],
+    transactions: [],
+    subscriptions: [],
+    addresses: [],
+  },
+}
+
+export const MOCK_COURIER_DETAILS = {
+  1: {
+    total_deliveries: 142, today_deliveries: 5, earnings_total: 2840000, earnings_today: 100000,
+    rating: 4.9, avg_delivery_time: 28,
+    recent_deliveries: [
+      { order_id: 1001, address: 'Юнусабад, 19-квартал, д. 12', time: '2026-03-28T14:00:00', status: 'delivered' },
+      { order_id: 999, address: 'Чиланзар, 7-квартал, д. 5', time: '2026-03-28T11:30:00', status: 'delivered' },
+      { order_id: 997, address: 'Яшнабад, 4-квартал, д. 18', time: '2026-03-27T15:00:00', status: 'delivered' },
+    ],
+    zones: ['Юнусабад', 'Мирабад', 'Шайхонтохур'],
+  },
+  2: {
+    total_deliveries: 98, today_deliveries: 3, earnings_total: 1960000, earnings_today: 60000,
+    rating: 4.7, avg_delivery_time: 35,
+    recent_deliveries: [
+      { order_id: 1002, address: 'Мирзо-Улугбек, ул. Навои, 42', time: '2026-03-28T12:00:00', status: 'in_delivery' },
+    ],
+    zones: ['Мирзо-Улугбек', 'Яшнабад'],
+  },
+  3: {
+    total_deliveries: 35, today_deliveries: 0, earnings_total: 700000, earnings_today: 0,
+    rating: 4.2, avg_delivery_time: 42,
+    recent_deliveries: [],
+    zones: ['Чиланзар'],
+  },
+}
+
 // Demo users for login (phone → role)
 export const DEMO_USERS = {
   '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 50000, order_count: 7 },

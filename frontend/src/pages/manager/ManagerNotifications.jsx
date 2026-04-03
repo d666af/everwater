@@ -4,57 +4,12 @@ import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../../api'
 
 const C = '#8DC63F'
+const CD = '#6CA32F'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BORDER = 'rgba(60,60,67,0.12)'
-
-const TYPE_CONFIG = {
-  payment: {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="2" y="5" width="20" height="14" rx="2" stroke="#2B8A3E" strokeWidth="1.8"/>
-        <path d="M2 10h20M8 15h3m5 0h-2" stroke="#2B8A3E" strokeWidth="1.5" strokeLinecap="round"/>
-      </svg>
-    ),
-    bg: '#EBFBEE', color: '#2B8A3E', label: 'Оплата заказа',
-  },
-  topup: {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="2" y="5" width="20" height="14" rx="2" stroke="#1971C2" strokeWidth="1.8"/>
-        <path d="M12 9v6M9 12h6" stroke="#1971C2" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-    bg: '#E8F4FD', color: '#1971C2', label: 'Пополнение баланса',
-  },
-  new_order: {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="16" rx="3" stroke="#E67700" strokeWidth="1.8"/>
-        <path d="M7 9h10M7 13h6" stroke="#E67700" strokeWidth="1.5" strokeLinecap="round"/>
-      </svg>
-    ),
-    bg: '#FFF8E6', color: '#E67700', label: 'Новый заказ',
-  },
-  courier: {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="8" r="4" stroke="#6741D9" strokeWidth="1.8"/>
-        <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="#6741D9" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-    bg: '#F3F0FF', color: '#6741D9', label: 'Курьер',
-  },
-  default: {
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-        <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-    bg: '#F2F2F7', color: TEXT2, label: 'Уведомление',
-  },
-}
+const BG = '#F2F2F7'
+const BORDER = 'rgba(60,60,67,0.08)'
 
 function formatRelTime(date) {
   const d = date instanceof Date ? date : new Date(date)
@@ -65,11 +20,55 @@ function formatRelTime(date) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 }
 
+const TYPE_MAP = {
+  payment: {
+    color: '#2B8A3E',
+    label: 'Оплата',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="5" width="20" height="14" rx="2.5" stroke="#2B8A3E" strokeWidth="1.7" />
+        <path d="M2 10h20" stroke="#2B8A3E" strokeWidth="1.5" />
+        <path d="M6 15h4" stroke="#2B8A3E" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  topup: {
+    color: '#1971C2',
+    label: 'Пополнение',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="4" width="18" height="16" rx="3" stroke="#1971C2" strokeWidth="1.7" />
+        <path d="M12 9v6M9 12h6" stroke="#1971C2" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  new_order: {
+    color: '#E67700',
+    label: 'Новый заказ',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M20 7l-8-4-8 4m16 0v10l-8 4m8-14l-8 4m0 10L4 17V7m8 14V11m0 0L4 7" stroke="#E67700" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  courier: {
+    color: '#6741D9',
+    label: 'Курьер',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#6741D9" strokeWidth="1.7" strokeLinecap="round" />
+        <circle cx="8.5" cy="7" r="4" stroke="#6741D9" strokeWidth="1.7" />
+        <path d="M20 8v6M23 11h-6" stroke="#6741D9" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+}
+
 const FILTERS = [
   { key: 'all', label: 'Все' },
   { key: 'unread', label: 'Новые' },
-  { key: 'payment', label: 'Оплаты' },
-  { key: 'topup', label: 'Балансы' },
+  { key: 'payment', label: 'Оплата' },
+  { key: 'topup', label: 'Пополнения' },
   { key: 'new_order', label: 'Заказы' },
 ]
 
@@ -82,7 +81,7 @@ export default function ManagerNotifications() {
   const load = () => {
     setLoading(true)
     getNotifications()
-      .then(setNotifications)
+      .then(data => setNotifications(data))
       .catch(console.error)
       .finally(() => setLoading(false))
   }
@@ -99,7 +98,7 @@ export default function ManagerNotifications() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   }
 
-  const unread = notifications.filter(n => !n.read).length
+  const unreadCount = notifications.filter(n => !n.read).length
 
   const filtered = filter === 'all'
     ? notifications
@@ -107,92 +106,248 @@ export default function ManagerNotifications() {
     ? notifications.filter(n => !n.read)
     : notifications.filter(n => n.type === filter)
 
-  const handleAction = (notif) => {
-    handleRead(notif.id)
+  const handleCardClick = (notif) => {
+    if (!notif.read) handleRead(notif.id)
     if (notif.order_id) navigate('/manager')
     else if (notif.user_id) navigate('/manager/clients')
   }
 
+  const getTypeConfig = (type) => TYPE_MAP[type] || {
+    color: TEXT2, label: 'Уведомление',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={TEXT2} strokeWidth="1.7" strokeLinecap="round" />
+        <path d="M13.73 21a2 2 0 01-3.46 0" stroke={TEXT2} strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    ),
+  }
+
   return (
     <ManagerLayout title="Уведомления">
-      {/* Filter pills + read all */}
-      <div style={s.topRow}>
-        <div style={s.filterScroll}>
-          {FILTERS.map(f => (
-            <button key={f.key}
-              style={{ ...s.pill, ...(filter === f.key ? s.pillActive : {}) }}
-              onClick={() => setFilter(f.key)}>
-              {f.label}
-              {f.key === 'unread' && unread > 0 && (
-                <span style={s.pillBadge}>{unread}</span>
-              )}
-            </button>
-          ))}
+      {/* Header row: unread badge + mark all read */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 14,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {unreadCount > 0 && (
+            <span style={{
+              background: GRAD, color: '#fff',
+              borderRadius: 999, fontSize: 12, fontWeight: 800,
+              padding: '3px 10px', minWidth: 24, textAlign: 'center',
+              boxShadow: '0 2px 8px rgba(126,200,64,0.3)',
+            }}>
+              {unreadCount} {unreadCount === 1 ? 'новое' : unreadCount < 5 ? 'новых' : 'новых'}
+            </span>
+          )}
         </div>
-        {unread > 0 && (
-          <button style={s.readAllBtn} onClick={handleReadAll}>
-            Все прочитаны
+        {unreadCount > 0 && (
+          <button
+            onClick={handleReadAll}
+            style={{
+              padding: '7px 16px', borderRadius: 999,
+              border: `1.5px solid ${C}`, background: 'transparent',
+              color: CD, fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              WebkitTapHighlightColor: 'transparent',
+              transition: 'all 0.15s',
+            }}
+          >
+            Прочитать все
           </button>
         )}
       </div>
 
+      {/* Filter pills */}
+      <div style={{
+        display: 'flex', gap: 8, overflowX: 'auto',
+        paddingBottom: 4, marginBottom: 18,
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+      }}>
+        {FILTERS.map(f => {
+          const active = filter === f.key
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              style={{
+                padding: '7px 16px', borderRadius: 999, flexShrink: 0,
+                border: active ? 'none' : `1.5px solid ${BORDER}`,
+                background: active ? GRAD : '#fff',
+                color: active ? '#fff' : TEXT2,
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.18s ease',
+                WebkitTapHighlightColor: 'transparent',
+                boxShadow: active ? '0 2px 10px rgba(126,200,64,0.25)' : 'none',
+              }}
+            >
+              {f.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Content */}
       {loading ? (
-        <div style={s.center}><div style={s.spinner} /></div>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%',
+            border: `3px solid rgba(141,198,63,0.15)`,
+            borderTopColor: C,
+            animation: 'spin 0.8s linear infinite',
+          }} />
+        </div>
       ) : filtered.length === 0 ? (
-        <div style={s.empty}>
-          <div style={s.emptyIconWrap}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={TEXT2} strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={TEXT2} strokeWidth="1.5" strokeLinecap="round"/>
+        /* Empty state */
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '64px 24px', gap: 14,
+        }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', background: '#fff',
+            border: `1.5px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={TEXT2} strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M13.73 21a2 2 0 01-3.46 0" stroke={TEXT2} strokeWidth="1.4" strokeLinecap="round" />
             </svg>
           </div>
-          <div style={s.emptyTitle}>Нет уведомлений</div>
-          <div style={s.emptyDesc}>Здесь будут появляться новые события</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: TEXT }}>
+            Нет уведомлений
+          </div>
+          <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center', lineHeight: 1.5 }}>
+            Здесь будут появляться уведомления о заказах, оплатах и пополнениях
+          </div>
         </div>
       ) : (
-        <div style={s.list}>
+        /* Notification list */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 700 }}>
           {filtered.map(notif => {
-            const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.default
+            const cfg = getTypeConfig(notif.type)
+            const isUnread = !notif.read
             return (
-              <div key={notif.id}
-                style={{ ...s.card, ...(notif.read ? {} : s.cardUnread) }}
-                onClick={() => handleAction(notif)}>
-                <div style={{ ...s.iconWrap, background: cfg.bg }}>
+              <div
+                key={notif.id}
+                onClick={() => handleCardClick(notif)}
+                style={{
+                  background: '#fff',
+                  borderRadius: 18,
+                  padding: 16,
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  gap: 14,
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                  borderLeft: isUnread ? `3px solid ${cfg.color}` : '3px solid transparent',
+                  transition: 'all 0.15s ease',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {/* Icon */}
+                <div style={{
+                  width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                  background: `${cfg.color}14`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
                   {cfg.icon}
                 </div>
-                <div style={s.body}>
-                  <div style={s.notifTop}>
-                    <span style={{ ...s.typeBadge, background: cfg.bg, color: cfg.color }}>
+
+                {/* Body */}
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {/* Top row: type badge + time */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      padding: '2px 8px', borderRadius: 999,
+                      background: `${cfg.color}1F`,
+                      color: cfg.color,
+                      letterSpacing: 0.2,
+                    }}>
                       {cfg.label}
                     </span>
-                    <span style={s.time}>{formatRelTime(notif.time)}</span>
+                    <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                      {formatRelTime(notif.time)}
+                    </span>
                   </div>
-                  <div style={s.notifTitle}>{notif.title}</div>
-                  {notif.body && <div style={s.notifBody}>{notif.body}</div>}
+
+                  {/* Title */}
+                  <div style={{
+                    fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.35,
+                  }}>
+                    {notif.title}
+                  </div>
+
+                  {/* Body text */}
+                  {notif.body && (
+                    <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.45 }}>
+                      {notif.body}
+                    </div>
+                  )}
 
                   {/* Action links */}
-                  <div style={s.actions}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                     {(notif.type === 'payment' || notif.type === 'new_order') && notif.order_id && (
-                      <button style={s.actionLink}
-                        onClick={(e) => { e.stopPropagation(); handleRead(notif.id); navigate('/manager') }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRead(notif.id)
+                          navigate('/manager')
+                        }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '5px 12px', borderRadius: 10,
+                          border: `1.5px solid ${BORDER}`,
+                          background: '#fff', color: CD,
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          WebkitTapHighlightColor: 'transparent',
+                          transition: 'all 0.15s',
+                        }}
+                      >
                         Открыть заказ
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </button>
                     )}
                     {notif.type === 'topup' && notif.user_id && (
-                      <button style={{ ...s.actionLink, color: '#1971C2' }}
-                        onClick={(e) => { e.stopPropagation(); handleRead(notif.id); navigate('/manager/clients') }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRead(notif.id)
+                          navigate('/manager/clients')
+                        }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '5px 12px', borderRadius: 10,
+                          border: `1.5px solid ${BORDER}`,
+                          background: '#fff', color: '#1971C2',
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          WebkitTapHighlightColor: 'transparent',
+                          transition: 'all 0.15s',
+                        }}
+                      >
                         Подтвердить баланс
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </button>
                     )}
                   </div>
                 </div>
-                {!notif.read && <div style={s.unreadDot} />}
+
+                {/* Unread dot */}
+                {isUnread && (
+                  <div style={{
+                    width: 9, height: 9, borderRadius: '50%',
+                    background: cfg.color, flexShrink: 0, marginTop: 6,
+                    boxShadow: `0 0 0 3px ${cfg.color}25`,
+                  }} />
+                )}
               </div>
             )
           })}
@@ -200,84 +355,4 @@ export default function ManagerNotifications() {
       )}
     </ManagerLayout>
   )
-}
-
-const s = {
-  topRow: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    marginBottom: 16, flexWrap: 'wrap',
-  },
-  filterScroll: { display: 'flex', gap: 8, flexWrap: 'wrap', flex: 1 },
-  pill: {
-    padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${BORDER}`,
-    background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-    whiteSpace: 'nowrap', color: TEXT2, display: 'flex', alignItems: 'center', gap: 5,
-    transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
-  },
-  pillActive: { background: C, borderColor: C, color: '#fff' },
-  pillBadge: {
-    background: '#FF3B30', color: '#fff', borderRadius: 999,
-    fontSize: 10, fontWeight: 800, minWidth: 16, height: 16,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-  },
-  readAllBtn: {
-    padding: '7px 14px', borderRadius: 999, border: `1.5px solid ${BORDER}`,
-    background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    whiteSpace: 'nowrap', WebkitTapHighlightColor: 'transparent',
-  },
-
-  center: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 60 },
-  spinner: {
-    width: 32, height: 32, borderRadius: '50%',
-    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
-    animation: 'spin 0.8s linear infinite',
-  },
-  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 12 },
-  emptyIconWrap: {
-    width: 72, height: 72, borderRadius: '50%',
-    background: '#fff', border: `1px solid ${BORDER}`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  },
-  emptyTitle: { fontSize: 17, fontWeight: 700, color: TEXT },
-  emptyDesc: { fontSize: 14, color: TEXT2, textAlign: 'center' },
-
-  list: { display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 680 },
-  card: {
-    background: '#fff', borderRadius: 18, padding: '14px 16px',
-    display: 'flex', gap: 14, alignItems: 'flex-start',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    cursor: 'pointer', position: 'relative',
-    transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
-  },
-  cardUnread: {
-    background: '#FDFFFE',
-    border: '1.5px solid rgba(141,198,63,0.3)',
-    boxShadow: '0 2px 10px rgba(141,198,63,0.08)',
-  },
-  iconWrap: {
-    width: 50, height: 50, borderRadius: 14, flexShrink: 0,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  body: { flex: 1, display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 },
-  notifTop: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  typeBadge: {
-    fontSize: 11, fontWeight: 700, padding: '3px 9px',
-    borderRadius: 999, textTransform: 'uppercase', letterSpacing: 0.3,
-  },
-  time: { fontSize: 12, color: TEXT2, marginLeft: 'auto' },
-  notifTitle: { fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.3 },
-  notifBody: { fontSize: 13, color: TEXT2, lineHeight: 1.4 },
-  actions: { display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' },
-  actionLink: {
-    display: 'flex', alignItems: 'center', gap: 4,
-    padding: '6px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`,
-    background: '#fff', color: C, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent',
-  },
-  unreadDot: {
-    width: 10, height: 10, borderRadius: '50%', background: C,
-    flexShrink: 0, marginTop: 5,
-    boxShadow: '0 0 0 3px rgba(141,198,63,0.2)',
-  },
 }
