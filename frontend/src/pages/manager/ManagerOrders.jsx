@@ -16,11 +16,11 @@ const STATUS_LABELS = {
   delivered: 'Доставлен', rejected: 'Отклонён',
 }
 const STATUS_STYLE = {
-  new:                   { bg: '#EDF3FF', color: '#3B5BDB' },
+  new:                   { bg: '#F2F2F7', color: '#636366' },
   awaiting_confirmation: { bg: '#FFF8E6', color: '#E67700' },
-  confirmed:             { bg: '#EBFBEE', color: '#2B8A3E' },
-  assigned_to_courier:   { bg: '#F3F0FF', color: '#6741D9' },
-  in_delivery:           { bg: '#E8F4FD', color: '#1971C2' },
+  confirmed:             { bg: '#F2F2F7', color: '#636366' },
+  assigned_to_courier:   { bg: '#F2F2F7', color: '#636366' },
+  in_delivery:           { bg: '#F2F2F7', color: '#636366' },
   delivered:             { bg: '#EBFBEE', color: '#2B8A3E' },
   rejected:              { bg: '#FFF5F5', color: '#E03131' },
 }
@@ -98,9 +98,9 @@ export default function ManagerOrders() {
       )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-        {[[pending.length, 'Ждут', '#E67700'], [active.length, 'В работе', '#6741D9'], [orders.length, 'Всего', C]].map(([v, l, c]) => (
+        {[[pending.length, 'Ждут'], [active.length, 'В работе'], [orders.length, 'Всего']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: c }}>{v}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}
@@ -117,7 +117,7 @@ export default function ManagerOrders() {
 
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2, marginBottom: 16 }}>
         {FILTERS.map(f => (
-          <button key={f.key} style={{ padding: '7px 16px', borderRadius: 999, border: filter === f.key ? 'none' : `1.5px solid ${BORDER}`, background: filter === f.key ? GRAD : '#fff', color: filter === f.key ? '#fff' : TEXT2, fontSize: 14, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, WebkitTapHighlightColor: 'transparent', boxShadow: filter === f.key ? '0 2px 8px rgba(141,198,63,0.3)' : 'none' }} onClick={() => { setFilter(f.key); setSearch('') }}>
+          <button key={f.key} style={{ padding: '7px 16px', borderRadius: 999, border: filter === f.key ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: filter === f.key ? `${C}15` : '#fff', color: filter === f.key ? CD : TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, WebkitTapHighlightColor: 'transparent' }} onClick={() => { setFilter(f.key); setSearch('') }}>
             {f.label}
             {f.key === 'awaiting_confirmation' && pending.length > 0 && (
               <span style={{ background: '#FF3B30', color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>{pending.length}</span>
@@ -278,8 +278,8 @@ const s = {
   },
   btnSecondary: {
     display: 'flex', alignItems: 'center', gap: 6,
-    padding: '10px 16px', borderRadius: 12, border: 'none',
-    background: '#6741D9', color: '#fff', fontSize: 14, fontWeight: 700,
+    padding: '10px 16px', borderRadius: 12, border: `1.5px solid ${C}`,
+    background: '#fff', color: CD, fontSize: 14, fontWeight: 700,
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
   btnOutline: {

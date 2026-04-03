@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getUserByTelegram, getSettings } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
+import MapPicker from '../components/MapPicker'
 
 const tg = window.Telegram?.WebApp
 const C = '#8DC63F'
@@ -104,7 +105,7 @@ function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
 function SubscriptionModal({ onClose, settings, userStore }) {
   const [step, setStep] = useState('plan') // plan | details | payment | done
   const [plan, setPlan] = useState('weekly')
-  // Multi-select: { [waterId]: { qty, useBlock } }
+  // Multi-select: { [waterId]: { qty } }
   const [selected, setSelected] = useState({})
   const [showMap, setShowMap] = useState(false)
   const [addr, setAddr] = useState('')
@@ -126,23 +127,20 @@ function SubscriptionModal({ onClose, settings, userStore }) {
       if (prev[w.id]) {
         const n = { ...prev }; delete n[w.id]; return n
       }
-      return { ...prev, [w.id]: { qty: 1, useBlock: false } }
+      return { ...prev, [w.id]: { qty: 1 } }
     })
   }
   const setQty = (id, q) => setSelected(p => ({ ...p, [id]: { ...p[id], qty: Math.max(1, q) } }))
-  const setBlock = (id, v) => setSelected(p => ({ ...p, [id]: { ...p[id], useBlock: v } }))
 
-  const total = Object.entries(selected).reduce((sum, [id, { qty, useBlock }]) => {
+  const total = Object.entries(selected).reduce((sum, [id, { qty }]) => {
     const w = SUB_WATERS.find(w => w.id === id)
     if (!w) return sum
-    const actualQty = useBlock && w.blockSize > 1 ? qty * w.blockSize : qty
-    return sum + w.price * actualQty
+    return sum + w.price * qty
   }, 0)
 
-  const selectedItems = Object.entries(selected).map(([id, { qty, useBlock }]) => {
+  const selectedItems = Object.entries(selected).map(([id, { qty }]) => {
     const w = SUB_WATERS.find(w => w.id === id)
-    const actualQty = useBlock && w.blockSize > 1 ? qty * w.blockSize : qty
-    return { ...w, qty: actualQty }
+    return { ...w, qty }
   }).filter(Boolean)
 
   const itemsSummary = selectedItems.map(i => `${i.name} x${i.qty}`).join(', ')
@@ -359,13 +357,9 @@ function SubscriptionModal({ onClose, settings, userStore }) {
         <button style={s.ghostBtn} onClick={() => setStep('plan')}>Назад</button>
       </div>
       {showMap && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000 }}>
-          {(() => { const MapPicker = require('../components/MapPicker').default; return (
-            <MapPicker lat={lat} lng={lng}
-              onChange={(la, ln) => { setLat(la); setLng(ln) }}
-              onClose={() => setShowMap(false)} />
-          )})()}
-        </div>
+        <MapPicker lat={lat} lng={lng}
+          onChange={(la, ln) => { setLat(la); setLng(ln) }}
+          onClose={() => setShowMap(false)} />
       )}
     </div>
   )
@@ -409,24 +403,10 @@ function SubscriptionModal({ onClose, settings, userStore }) {
                   </div>
                 </div>
                 {sel && (
-                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {/* Block toggle for small bottles */}
-                    {w.blockSize > 1 && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={!sel.useBlock ? { ...ss.miniBtn, ...ss.miniBtnActive } : ss.miniBtn}
-                          onClick={() => setBlock(w.id, false)}>Штучно</button>
-                        <button style={sel.useBlock ? { ...ss.miniBtn, ...ss.miniBtnActive } : ss.miniBtn}
-                          onClick={() => setBlock(w.id, true)}>Блок ({w.blockSize} шт)</button>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty - 1)}>−</button>
-                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel.qty}</span>
-                      <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty + 1)}>+</button>
-                      {sel.useBlock && w.blockSize > 1 && (
-                        <span style={{ fontSize: 12, color: '#8e8e93' }}>= {sel.qty * w.blockSize} шт</span>
-                      )}
-                    </div>
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty - 1)}>−</button>
+                    <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel.qty}</span>
+                    <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty + 1)}>+</button>
                   </div>
                 )}
               </div>
@@ -779,9 +759,9 @@ export default function Profile() {
                 </svg>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={s.subTitle}>{sub.water} × {sub.qty}</div>
+                <div style={s.subTitle}>{sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}</div>
                 <div style={s.subDesc}>
-                  {sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}
+                  {sub.water}
                   {isExpiring ? ` · ${daysLeft} дн. осталось` : ` · до ${endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}
                 </div>
               </div>
