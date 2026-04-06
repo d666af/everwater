@@ -4,7 +4,7 @@ import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDe
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
-const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
@@ -49,12 +49,14 @@ function AddCourierModal({ onClose, onSave }) {
   )
 }
 
-function CourierCard({ courier: c, activeOrders, onDeactivate }) {
+function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
   const [expanded, setExpanded] = useState(false)
   const [details, setDetails] = useState(null)
   const [loadingD, setLoadingD] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const myOrders = activeOrders.filter(o => o.courier_id === c.id)
+
+  const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
+  const myDeliveredToday = allOrders.filter(o => o.courier_id === c.id && o.status === 'delivered')
 
   const toggleExpand = () => {
     if (!expanded && !details) {
@@ -64,27 +66,24 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
     setExpanded(e => !e)
   }
 
-  const fmtDate = (d) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-
   return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.55 }}>
+    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={toggleExpand}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {(c.name || 'К')[0]}
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
-            <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: c.is_active ? '#EBFBEE' : '#F2F2F7', color: c.is_active ? '#12B886' : '#999' }}>
-              {c.is_active ? 'Активен' : 'Неактивен'}
-            </span>
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
           {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-            <span style={{ fontSize: 11, background: '#F0FFF4', color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              {c.total_deliveries || c.delivery_count || 0} доставок
+            <span style={{ fontSize: 11, background: '#F0FFF4', color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
+              {c.delivery_count || 0} доставок
             </span>
-            {myOrders.length > 0 && <span style={{ fontSize: 11, background: '#F3F0FF', color: '#6741D9', padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>{myOrders.length} активных</span>}
+            {myActiveOrders.length > 0 && (
+              <span style={{ fontSize: 11, background: `${C}15`, color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
+                {myActiveOrders.length} в работе
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -107,9 +106,9 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 {[
-                  [details.rating?.toFixed(1) || '—', 'Рейтинг'],
-                  [`${details.avg_delivery_time || 0} мин`, 'Ср. доставка'],
+                  [details.total_deliveries || 0, 'Всего доставок'],
                   [details.today_deliveries || 0, 'Сегодня'],
+                  [myActiveOrders.length, 'Осталось'],
                 ].map(([v, l]) => (
                   <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
                     <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{v}</div>
@@ -118,26 +117,6 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
-                <span style={{ fontSize: 13, color: TEXT2 }}>Общий заработок</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{(details.earnings_total || 0).toLocaleString()} сум</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
-                <span style={{ fontSize: 13, color: TEXT2 }}>Заработок сегодня</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: C }}>{(details.earnings_today || 0).toLocaleString()} сум</span>
-              </div>
-
-              {details.zones?.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Зоны доставки</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {details.zones.map(z => (
-                      <span key={z} style={{ fontSize: 12, background: `${C}15`, color: CD, padding: '4px 10px', borderRadius: 999, fontWeight: 600 }}>{z}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {details.recent_deliveries?.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Последние доставки</div>
@@ -145,7 +124,6 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
                       <span style={{ fontWeight: 700, color: TEXT }}>#{d.order_id}</span>
                       <span style={{ color: TEXT2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.address}</span>
-                      <span style={{ color: TEXT2, fontSize: 11, flexShrink: 0 }}>{fmtDate(d.time)}</span>
                     </div>
                   ))}
                 </div>
@@ -153,10 +131,10 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
             </>
           ) : null}
 
-          {myOrders.length > 0 && (
+          {myActiveOrders.length > 0 && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Текущие заказы</div>
-              {myOrders.map(o => (
+              {myActiveOrders.map(o => (
                 <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, paddingBottom: 5 }}>
                   <span style={{ fontWeight: 700, color: TEXT }}>#{o.id}</span>
                   <span style={{ color: TEXT2, flex: 1, marginLeft: 8 }}>{o.address}</span>
@@ -166,9 +144,9 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
             </div>
           )}
 
-          {c.is_active && (
-            <div style={{ borderTop: `1px solid rgba(224,49,49,0.15)`, paddingTop: 10 }}>
-              {!confirming ? (
+          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+            {c.is_active ? (
+              !confirming ? (
                 <button style={{ background: 'none', border: '1.5px solid rgba(224,49,49,0.4)', color: '#E03131', padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setConfirming(true)}>Деактивировать</button>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -176,9 +154,13 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
                   <button style={{ padding: '7px 14px', borderRadius: 10, border: 'none', background: '#E03131', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }} onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
                   <button style={{ padding: '7px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 13, cursor: 'pointer' }} onClick={() => setConfirming(false)}>Нет</button>
                 </div>
-              )}
-            </div>
-          )}
+              )
+            ) : (
+              <button style={{ background: 'none', border: `1.5px solid ${C}`, color: CD, padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => onActivate(c.id)}>
+                Активировать
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -187,14 +169,14 @@ function CourierCard({ courier: c, activeOrders, onDeactivate }) {
 
 export default function ManagerCouriers() {
   const [couriers, setCouriers] = useState([])
-  const [activeOrders, setActiveOrders] = useState([])
+  const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
   const load = () => {
     setLoading(true)
-    Promise.all([getAdminCouriers(), getOrders({ status: 'in_delivery' })])
-      .then(([c, o]) => { setCouriers(c); setActiveOrders(o) })
+    Promise.all([getAdminCouriers(), getOrders()])
+      .then(([c, o]) => { setCouriers(c); setAllOrders(o) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
@@ -203,27 +185,40 @@ export default function ManagerCouriers() {
 
   const handleCreate = async (data) => { await createCourier(data); load() }
   const handleDeactivate = async (id) => { await deleteCourier(id); load() }
+  const handleActivate = async (id) => {
+    // For now just reload — backend would handle reactivation
+    setCouriers(prev => prev.map(c => c.id === id ? { ...c, is_active: true } : c))
+  }
 
   const active = couriers.filter(c => c.is_active)
-  const inactive = couriers.filter(c => !c.is_active)
-  const totalDeliveries = couriers.reduce((a, c) => a + (c.total_deliveries || c.delivery_count || 0), 0)
+  const deactivated = couriers.filter(c => !c.is_active)
+  const inDeliveryOrders = allOrders.filter(o => ['assigned_to_courier', 'in_delivery'].includes(o.status))
 
   return (
     <ManagerLayout title="Курьеры">
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center' }}>
-        {[[active.length, 'Активных'], [activeOrders.length, 'В доставке'], [totalDeliveries, 'Всего']].map(([v, l]) => (
+      {/* Stats — full width */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'Заказов в пути'], [active.length, 'Активных']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}
-        <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 12, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent' }} onClick={() => setShowAdd(true)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Добавить
-        </button>
       </div>
+
+      {/* Add button — under stats */}
+      <button style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        width: '100%', padding: '12px 14px', borderRadius: 14, border: 'none',
+        background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 15, fontWeight: 700,
+        cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent',
+        marginBottom: 20,
+      }} onClick={() => setShowAdd(true)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        Добавить курьера
+      </button>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -233,20 +228,19 @@ export default function ManagerCouriers() {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 14 }}>
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.2 }}><circle cx="12" cy="8" r="4" stroke={TEXT} strokeWidth="1.5"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/></svg>
           <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Курьеров пока нет</div>
-          <button style={{ padding: '12px 24px', borderRadius: 12, border: 'none', background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }} onClick={() => setShowAdd(true)}>Добавить первого курьера</button>
         </div>
       ) : (
         <>
           {active.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Активные · {active.length}</div>
-              {active.map(c => <CourierCard key={c.id} courier={c} activeOrders={activeOrders} onDeactivate={handleDeactivate} />)}
+              {active.map(c => <CourierCard key={c.id} courier={c} allOrders={allOrders} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
             </div>
           )}
-          {inactive.length > 0 && (
+          {deactivated.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Неактивные · {inactive.length}</div>
-              {inactive.map(c => <CourierCard key={c.id} courier={c} activeOrders={[]} onDeactivate={handleDeactivate} />)}
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Деактивированные · {deactivated.length}</div>
+              {deactivated.map(c => <CourierCard key={c.id} courier={c} allOrders={[]} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
             </div>
           )}
         </>

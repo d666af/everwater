@@ -9,14 +9,21 @@ const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
 const STAGES = [
-  { key: 'all', label: 'Все', icon: '📋' },
-  { key: 'payment', label: 'Проверка оплаты', icon: '💳' },
-  { key: 'assign', label: 'Назначение курьера', icon: '🚚' },
-  { key: 'delivery', label: 'В доставке', icon: '📦' },
-  { key: 'done', label: 'Завершённые', icon: '✅' },
+  { key: 'all', label: 'Все' },
+  { key: 'payment', label: 'Оплата' },
+  { key: 'assign', label: 'Курьер' },
+  { key: 'delivery', label: 'Доставка' },
+  { key: 'done', label: 'Готово' },
 ]
 
 function getStage(order) {
+  if (order.type === 'topup' || order.type === 'subscription') {
+    if (!order.payment_confirmed) return 'payment'
+    if (order.type === 'subscription' && !order.courier_id) return 'assign'
+    if (order.type === 'subscription' && order.status === 'in_delivery') return 'delivery'
+    if (order.type === 'subscription' && order.status === 'assigned_to_courier') return 'delivery'
+    return 'done'
+  }
   if (order.status === 'awaiting_confirmation') {
     if (order.payment_method === 'card' && !order.payment_confirmed) return 'payment'
     return 'assign'
@@ -75,27 +82,35 @@ export default function ManagerOrders() {
 
   return (
     <ManagerLayout title="Панель">
-      {/* Stage filter cards */}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4, marginBottom: 16 }}>
+      {/* Stage filter cards — equal width grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
           const active = stage === s.key
           const count = s.key === 'all' ? orders.length : (counts[s.key] || 0)
-          const urgent = s.key === 'payment' && counts.payment > 0
+          const newCount = s.key !== 'all' && s.key !== 'done' ? count : 0
           return (
             <button key={s.key} onClick={() => setStage(s.key)} style={{
-              flexShrink: 0, minWidth: 100, padding: '12px 14px', borderRadius: 16,
+              padding: '12px 4px', borderRadius: 16,
               background: active ? '#fff' : 'rgba(255,255,255,0.6)',
               border: active ? `2px solid ${C}` : `1.5px solid ${BORDER}`,
-              cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4,
-              boxShadow: active ? `0 2px 12px rgba(141,198,63,0.15)` : '0 1px 4px rgba(0,0,0,0.04)',
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              boxShadow: active ? '0 2px 12px rgba(141,198,63,0.15)' : '0 1px 4px rgba(0,0,0,0.04)',
               WebkitTapHighlightColor: 'transparent', position: 'relative',
             }}>
-              {urgent && !active && (
-                <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: '#FF3B30' }} />
+              {newCount > 0 && !active && (
+                <span style={{
+                  position: 'absolute', top: -6, right: -4,
+                  background: '#fff', border: '1.5px solid #FF3B30', color: '#FF3B30',
+                  borderRadius: 999, fontSize: 10, fontWeight: 800,
+                  minWidth: 20, height: 20,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 4px',
+                }}>
+                  +{newCount}
+                </span>
               )}
-              <div style={{ fontSize: 22, lineHeight: 1 }}>{s.icon}</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{count}</div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: active ? CD : TEXT2, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{s.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{count}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: active ? CD : TEXT2, lineHeight: 1.2, textAlign: 'center' }}>{s.label}</div>
             </button>
           )
         })}
@@ -155,12 +170,6 @@ function OrderCard({
   actionLoading, act,
 }) {
   const orderStage = getStage(order)
-  const stageColor = {
-    payment: '#E67700',
-    assign: '#1971C2',
-    delivery: '#9C36B5',
-    done: '#2B8A3E',
-  }[orderStage] || TEXT2
 
   const stageLabel = {
     payment: 'Проверка оплаты',
@@ -169,29 +178,48 @@ function OrderCard({
     done: order.status === 'rejected' ? 'Отклонён' : 'Доставлен',
   }[orderStage] || order.status
 
+  const stageBg = {
+    payment: `${C}15`,
+    assign: `${C}15`,
+    delivery: `${C}15`,
+    done: '#EBFBEE',
+  }[orderStage] || '#F2F2F7'
+
+  const stageClr = {
+    payment: CD,
+    assign: CD,
+    delivery: CD,
+    done: order.status === 'rejected' ? '#E03131' : '#2B8A3E',
+  }[orderStage] || TEXT2
+
+  const typeLabel = order.type === 'topup' ? 'Пополнение' : order.type === 'subscription' ? 'Подписка' : 'Заказ'
+
   return (
     <div style={{
       background: '#fff', borderRadius: 18, overflow: 'hidden',
       boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-      borderLeft: orderStage === 'payment' ? '3px solid #E67700' : orderStage === 'assign' ? '3px solid #1971C2' : 'none',
+      borderLeft: (orderStage === 'payment' || orderStage === 'assign') ? `3px solid ${C}` : 'none',
     }}>
-      {/* Header — always visible */}
+      {/* Header */}
       <div style={{ padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={onToggle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>#{order.id}</span>
-              <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: stageColor + '18', color: stageColor }}>{stageLabel}</span>
+              <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: stageBg, color: stageClr }}>{stageLabel}</span>
+              {order.type && order.type !== 'order' && (
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>{typeLabel}</span>
+              )}
               {order.payment_method === 'card' && (
-                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>💳 Карта</span>
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>Карта</span>
               )}
               {order.payment_method === 'balance' && (
-                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>💰 Баланс</span>
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>Баланс</span>
               )}
             </div>
             {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
-            <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3 }}>{order.address}</div>
-            {order.delivery_time && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>🕐 {order.delivery_time}</div>}
+            {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3 }}>{order.address}</div>}
+            {order.delivery_date && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>{order.delivery_date}{order.delivery_period ? ` · ${order.delivery_period}` : ''}</div>}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 17, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
@@ -202,18 +230,18 @@ function OrderCard({
         </div>
       </div>
 
-      {/* Expanded details */}
+      {/* Expanded */}
       {expanded && (
         <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Items */}
           {order.items?.length > 0 && (
-            <Section title="Состав заказа">
+            <Section title="Состав">
               {order.items.map(i => (
                 <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, paddingBottom: 6, borderBottom: `1px solid ${BORDER}` }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
                   <span style={{ flex: 1, color: TEXT }}>{i.product_name}</span>
-                  <span style={{ color: TEXT2, flexShrink: 0 }}>× {i.quantity}</span>
+                  <span style={{ color: TEXT2, flexShrink: 0 }}>x{i.quantity}</span>
                   <span style={{ fontWeight: 700, color: TEXT, flexShrink: 0 }}>{((i.price || 0) * i.quantity).toLocaleString()} сум</span>
                 </div>
               ))}
@@ -221,37 +249,40 @@ function OrderCard({
           )}
 
           {/* Delivery info */}
-          <Section title="Доставка">
-            <Row k="Адрес" v={order.address} />
-            {order.extra_info && <Row k="Доп. инфо" v={order.extra_info} />}
-            {order.delivery_time && <Row k="Время" v={order.delivery_time} />}
-            {order.recipient_phone && <Row k="Телефон" v={order.recipient_phone} />}
-            {order.latitude && (
-              <div style={{ marginTop: 4 }}>
-                <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#1971C2', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/></svg>
-                  Открыть на карте
-                </a>
-              </div>
-            )}
-          </Section>
+          {order.address && (
+            <Section title="Доставка">
+              <Row k="Адрес" v={order.address} />
+              {order.extra_info && <Row k="Доп. инфо" v={order.extra_info} />}
+              {order.delivery_date && <Row k="Дата" v={order.delivery_date} />}
+              {order.delivery_period && <Row k="Время" v={order.delivery_period} />}
+              {order.recipient_phone && <Row k="Телефон" v={order.recipient_phone} />}
+              {order.latitude && (
+                <div style={{ marginTop: 4 }}>
+                  <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: CD, fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/></svg>
+                    Открыть на карте
+                  </a>
+                </div>
+              )}
+            </Section>
+          )}
 
-          {/* Payment info */}
+          {/* Payment */}
           <Section title="Оплата">
             <Row k="Способ" v={order.payment_method === 'card' ? 'Карта' : 'Баланс'} />
             {order.payment_method === 'card' && order.payment_details && (
               <>
-                <Row k="Карта" v={`•••• ${order.payment_details.card_last4}`} />
-                <Row k="Время оплаты" v={new Date(order.payment_details.paid_at).toLocaleString('ru')} />
+                <Row k="Карта" v={`**** ${order.payment_details.card_last4}`} />
+                <Row k="Время" v={new Date(order.payment_details.paid_at).toLocaleString('ru')} />
                 <Row k="Сумма" v={`${(order.payment_details.amount || 0).toLocaleString()} сум`} />
-                <Row k="Статус" v={order.payment_confirmed ? '✅ Подтверждена' : '⏳ Ожидает проверки'} accent={order.payment_confirmed ? '#2B8A3E' : '#E67700'} />
+                <Row k="Статус" v={order.payment_confirmed ? 'Подтверждена' : 'Ожидает проверки'} accent={order.payment_confirmed ? '#2B8A3E' : CD} />
               </>
             )}
             {order.payment_method === 'balance' && (
-              <Row k="Статус" v="✅ Списано с баланса" accent="#2B8A3E" />
+              <Row k="Статус" v="Списано с баланса" accent="#2B8A3E" />
             )}
-            {order.bonus_used > 0 && <Row k="Бонусы" v={`−${order.bonus_used} бон.`} accent="#E67700" />}
-            {order.bottle_discount > 0 && <Row k="Скидка" v={`−${(order.bottle_discount).toLocaleString()} сум`} accent={CD} />}
+            {order.bonus_used > 0 && <Row k="Бонусы" v={`-${order.bonus_used} бон.`} />}
+            {order.bottle_discount > 0 && <Row k="Скидка" v={`-${(order.bottle_discount).toLocaleString()} сум`} />}
             <div style={{ display: 'flex', gap: 10, borderTop: `1px solid ${BORDER}`, marginTop: 6, paddingTop: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, minWidth: 90 }}>Итого</span>
               <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</span>
@@ -266,7 +297,7 @@ function OrderCard({
             </Section>
           )}
 
-          {/* Courier info — visible when assigned */}
+          {/* Courier info */}
           {(order.courier_name || order.courier_id) && (
             <Section title="Курьер">
               <Row k="Имя" v={order.courier_name || `ID: ${order.courier_id}`} />
@@ -274,16 +305,16 @@ function OrderCard({
             </Section>
           )}
 
-          {/* ─── ACTION BUTTONS by stage ─── */}
+          {/* ─── ACTIONS by stage ─── */}
 
-          {/* Stage: Payment verification (card orders) */}
+          {/* Payment verification */}
           {orderStage === 'payment' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: '#FFF8E6', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 22 }}>💳</span>
+              <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke={CD} strokeWidth="1.8"/><path d="M2 10h20" stroke={CD} strokeWidth="1.5"/></svg>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Подтвердите оплату</div>
-                  <div style={{ fontSize: 12, color: TEXT2 }}>Проверьте поступление средств на карту</div>
+                  <div style={{ fontSize: 12, color: TEXT2 }}>Проверьте поступление средств</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -298,22 +329,22 @@ function OrderCard({
             </div>
           )}
 
-          {/* Stage: Assign courier */}
+          {/* Assign courier */}
           {orderStage === 'assign' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: '#E7F5FF', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 22 }}>🚚</span>
+              <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={CD} strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={CD} strokeWidth="1.8" strokeLinecap="round"/></svg>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Назначьте курьера</div>
-                  <div style={{ fontSize: 12, color: TEXT2 }}>Выберите свободного курьера на дату доставки</div>
+                  <div style={{ fontSize: 12, color: TEXT2 }}>Выберите свободного курьера</div>
                 </div>
               </div>
               {assigningId === order.id ? (
                 <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}` }}>
                   <select style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={selectedCourier} onChange={e => setSelectedCourier(e.target.value)}>
-                    <option value="">— Выберите курьера —</option>
+                    <option value="">-- Выберите курьера --</option>
                     {couriers.filter(c => c.is_active !== false).map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.delivery_count} дост.)</option>
+                      <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -325,34 +356,33 @@ function OrderCard({
                 </div>
               ) : (
                 <button style={st.btnSecondary} onClick={() => { setAssigningId(order.id); setSelectedCourier('') }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                   Выбрать курьера
                 </button>
               )}
             </div>
           )}
 
-          {/* Stage: In delivery */}
+          {/* In delivery */}
           {orderStage === 'delivery' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {order.status === 'assigned_to_courier' && (
                 <>
-                  <div style={{ background: '#F3F0FF', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 22 }}>📦</span>
+                  <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke={CD} strokeWidth="1.8"/><path d="M8 12h8M12 8v8" stroke={CD} strokeWidth="1.5" strokeLinecap="round"/></svg>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Курьер назначен</div>
-                      <div style={{ fontSize: 12, color: TEXT2 }}>Ожидание забора заказа курьером</div>
+                      <div style={{ fontSize: 12, color: TEXT2 }}>Ожидание забора</div>
                     </div>
                   </div>
                   <button style={st.btnSecondary} disabled={actionLoading} onClick={() => act(() => markInDelivery(order.id))}>
-                    Отметить «В пути» вручную
+                    Отметить "В пути"
                   </button>
                 </>
               )}
               {order.status === 'in_delivery' && (
                 <>
-                  <div style={{ background: '#F3F0FF', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 22 }}>🏃</span>
+                  <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>В пути</div>
                       <div style={{ fontSize: 12, color: TEXT2 }}>Курьер доставляет заказ</div>
@@ -360,14 +390,14 @@ function OrderCard({
                   </div>
                   <button style={st.btnPrimary} disabled={actionLoading} onClick={() => act(() => markDelivered(order.id))}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Отметить «Доставлен»
+                    Отметить "Доставлен"
                   </button>
                 </>
               )}
             </div>
           )}
 
-          {/* Reject form (shared) */}
+          {/* Reject form */}
           {rejectingId === order.id && (
             <div style={{ background: '#FFF5F5', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #FFC9C9' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Причина отказа</div>
@@ -381,27 +411,38 @@ function OrderCard({
                   }}>{s}</button>
                 ))}
               </div>
-              <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Или введите свою причину..." />
+              <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Или введите причину..." />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setRejectingId(null)}>Отмена</button>
-                <button style={{ ...st.btnDanger, opacity: !rejectReason.trim() ? 0.5 : 1 }} disabled={actionLoading || !rejectReason.trim()} onClick={() => act(() => rejectOrder(order.id, rejectReason).then(() => setRejectingId(null)))}>Отклонить заказ</button>
+                <button style={{ ...st.btnDanger, opacity: !rejectReason.trim() ? 0.5 : 1 }} disabled={actionLoading || !rejectReason.trim()} onClick={() => act(() => rejectOrder(order.id, rejectReason).then(() => setRejectingId(null)))}>Отклонить</button>
               </div>
             </div>
           )}
 
-          {/* Quick actions row */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Always visible: cancel + contact client */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
             {order.recipient_phone && (
-              <a href={`tel:${order.recipient_phone}`} style={st.btnOutline}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-                Клиент
-              </a>
+              <>
+                <a href={`tel:${order.recipient_phone}`} style={st.btnOutline}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+                  Позвонить
+                </a>
+                <a href={`https://t.me/${order.client_telegram_id || ''}`} target="_blank" rel="noopener noreferrer" style={st.btnOutline}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
+                  Написать
+                </a>
+              </>
             )}
             {order.courier_phone && (
               <a href={`tel:${order.courier_phone}`} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
                 Курьер
               </a>
+            )}
+            {orderStage !== 'done' && rejectingId !== order.id && (
+              <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} onClick={() => { setRejectingId(order.id); setRejectReason('') }}>
+                Отменить заказ
+              </button>
             )}
           </div>
         </div>
@@ -447,7 +488,7 @@ const st = {
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
   btnSecondary: {
-    display: 'flex', alignItems: 'center', gap: 6,
+    display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center',
     padding: '10px 16px', borderRadius: 12, border: `1.5px solid ${C}`,
     background: '#fff', color: CD, fontSize: 14, fontWeight: 700,
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
