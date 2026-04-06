@@ -328,8 +328,8 @@ export default function ManagerClients() {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, balance: (u.balance || 0) + amount } : u))
   }
 
-  const registered = users.filter(u => u.is_registered).length
-  const withBalance = users.filter(u => (u.balance || 0) > 0).length
+  const totalBalance = users.reduce((a, u) => a + (u.balance || 0), 0)
+  const totalBonuses = users.reduce((a, u) => a + (u.bonus_points || 0), 0)
 
   return (
     <ManagerLayout title="Клиенты">
@@ -337,10 +337,10 @@ export default function ManagerClients() {
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[users.length, 'Всего'], [registered, 'Зарег.'], [withBalance, 'С балансом']].map(([v, l]) => (
+        {[[users.length, 'Клиентов'], [totalBalance.toLocaleString(), 'Балансы (сум)'], [Math.round(totalBonuses), 'Бонусов']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}
       </div>

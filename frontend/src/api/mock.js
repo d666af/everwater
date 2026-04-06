@@ -76,7 +76,8 @@ export const MOCK_PRODUCTS = [
 export const MOCK_ORDERS = [
   {
     id: 1001, status: 'delivered', address: 'Юнусабад, 19-квартал, д. 12',
-    delivery_time: 'Сегодня 12:00–15:00', total: 50000, recipient_phone: '+998 90 123-45-67',
+    delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
+    total: 50000, recipient_phone: '+998 90 123-45-67',
     client_name: 'Алишер Каримов', client_telegram_id: '987654321',
     payment_method: 'balance', payment_confirmed: true,
     courier_id: 1, courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
@@ -87,7 +88,8 @@ export const MOCK_ORDERS = [
   },
   {
     id: 1002, status: 'in_delivery', address: 'Мирзо-Улугбек, ул. Навои, 42',
-    delivery_time: 'Сегодня 11:00–13:00', total: 39000, recipient_phone: '+998 93 456-78-90',
+    delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
+    total: 39000, recipient_phone: '+998 93 456-78-90',
     client_name: 'Мария Петрова', client_telegram_id: '123456789',
     payment_method: 'card', payment_confirmed: true,
     payment_details: { card_last4: '9012', paid_at: '2026-04-06T10:15:00', amount: 39000 },
@@ -103,7 +105,8 @@ export const MOCK_ORDERS = [
   },
   {
     id: 1003, status: 'awaiting_confirmation', address: 'Чиланзар, 7-квартал, д. 5',
-    delivery_time: 'Завтра 9:00–12:00', total: 75000, recipient_phone: '+998 97 111-22-33',
+    delivery_date: 'Завтра', delivery_period: 'До обеда (9:00–13:00)',
+    total: 75000, recipient_phone: '+998 97 111-22-33',
     client_name: 'Бобур Рашидов', client_telegram_id: '555111222',
     payment_method: 'card', payment_confirmed: false,
     payment_details: { card_last4: '9012', paid_at: '2026-04-06T11:02:00', amount: 75000 },
@@ -115,7 +118,8 @@ export const MOCK_ORDERS = [
   },
   {
     id: 1004, status: 'assigned_to_courier', address: 'Яшнабад, 4-квартал, д. 18',
-    delivery_time: 'Сегодня 14:00–16:00', total: 33000, recipient_phone: '+998 91 777-88-99',
+    delivery_date: 'Сегодня', delivery_period: 'После обеда (13:00–18:00)',
+    total: 33000, recipient_phone: '+998 91 777-88-99',
     client_name: 'Санжар Тоиров', client_telegram_id: '444888333',
     payment_method: 'balance', payment_confirmed: true,
     courier_id: 1, courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
@@ -129,13 +133,37 @@ export const MOCK_ORDERS = [
   },
   {
     id: 1005, status: 'confirmed', address: 'Сергели, ул. Янги Сергели, 15',
-    delivery_time: 'Сегодня 15:00–17:00', total: 25000, recipient_phone: '+998 95 333-44-55',
+    delivery_date: 'Сегодня', delivery_period: 'После обеда (13:00–18:00)',
+    total: 25000, recipient_phone: '+998 95 333-44-55',
     client_name: 'Дилшод Умаров', client_telegram_id: '666777888',
     payment_method: 'balance', payment_confirmed: true,
     items: [{ id: 5, product_name: 'Вода 20л', quantity: 1, price: 25000 }],
     bottle_discount: 0, bonus_used: 500, return_bottles_count: 0, bottles_owed: 0,
     latitude: 41.2253, longitude: 69.2284,
     created_at: '2026-04-06T10:20:00',
+  },
+  // Topup awaiting confirmation
+  {
+    id: 2001, type: 'topup', status: 'awaiting_confirmation',
+    client_name: 'Мария Петрова', client_telegram_id: '123456789',
+    recipient_phone: '+998 93 456-78-90',
+    total: 50000,
+    payment_method: 'card', payment_confirmed: false,
+    payment_details: { card_last4: '9012', paid_at: '2026-04-06T10:45:00', amount: 50000 },
+    created_at: '2026-04-06T10:45:00',
+  },
+  // Subscription delivery for today
+  {
+    id: 3001, type: 'subscription', status: 'confirmed',
+    address: 'Юнусабад, 19-квартал, д. 12',
+    delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
+    total: 50000, recipient_phone: '+998 90 123-45-67',
+    client_name: 'Алишер Каримов', client_telegram_id: '987654321',
+    payment_method: 'balance', payment_confirmed: true,
+    items: [{ id: 1, product_name: 'Вода 20л', quantity: 2, price: 25000 }],
+    bottle_discount: 0, bonus_used: 0, return_bottles_count: 0, bottles_owed: 2,
+    latitude: 41.3547, longitude: 69.2848,
+    created_at: '2026-04-06T06:00:00',
   },
 ]
 
