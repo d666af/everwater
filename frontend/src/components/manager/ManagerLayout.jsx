@@ -2,18 +2,17 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { EverLogoMark } from '../EverLogo'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
-import { getNotifications } from '../../api'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const NAV = [
   {
-    path: '/manager', label: 'Заказы', exactMatch: true,
+    path: '/manager', label: 'Панель', exactMatch: true,
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+        <path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
       </svg>
     ),
   },
@@ -61,7 +60,6 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const [unreadCount, setUnreadCount] = useState(0)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const itemRefs = useRef({})
   const navRef = useRef(null)
@@ -72,17 +70,6 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
     const handleResize = () => setIsMobile(window.innerWidth <= 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  useEffect(() => {
-    const fetchUnread = () => {
-      getNotifications()
-        .then(ns => setUnreadCount(ns.filter(n => !n.read).length))
-        .catch(() => {})
-    }
-    fetchUnread()
-    const iv = setInterval(fetchUnread, 30000)
-    return () => clearInterval(iv)
   }, [])
 
   const doLogout = () => { logout(); navigate('/login') }
@@ -161,37 +148,13 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
 
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Header */}
-        <header style={isMobile ? s.mobileHeader : s.desktopHeader}>
-          {isMobile ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <EverLogoMark width={28} />
-                <span style={s.mobileTitle}>{title}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button style={s.bellBtn} onClick={() => navigate('/manager/notifications')}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="#1C1C1E" strokeWidth="1.7" strokeLinecap="round"/>
-                  </svg>
-                  {unreadCount > 0 && <span style={s.bellBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>}
-                </button>
-                <button style={s.bellBtn} onClick={doLogout} title="Выйти">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                      stroke="#8E8E93" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1 style={s.desktopTitle}>{title}</h1>
-              <div style={s.headerBadge}>Панель менеджера</div>
-            </>
-          )}
-        </header>
+        {/* Desktop-only header */}
+        {!isMobile && (
+          <header style={s.desktopHeader}>
+            <h1 style={s.desktopTitle}>{title}</h1>
+            <div style={s.headerBadge}>Панель менеджера</div>
+          </header>
+        )}
 
         {/* Page content */}
         <div style={{ ...s.content, paddingBottom: isMobile ? 100 : 24, ...(noPadding ? { padding: isMobile ? '0 0 100px' : 0 } : {}) }}>
@@ -224,10 +187,7 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
                     onClick={() => navigate(nav.path)}>
                     <div style={{ color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                       {nav.icon}
-                      {nav.path === '/manager/support' && unreadCount > 0 && (
-                        <span style={s.mobileNavBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
-                      )}
-                    </div>
+                      </div>
                     <span style={{
                       fontSize: 9, fontWeight: active ? 700 : 500,
                       color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
@@ -289,30 +249,6 @@ const s = {
     color: 'rgba(255,255,255,0.3)', padding: '14px 16px',
     cursor: 'pointer', fontSize: 12, fontWeight: 500,
     borderTop: '1px solid rgba(255,255,255,0.06)',
-  },
-
-  // Mobile header
-  mobileHeader: {
-    background: '#fff', padding: '10px 16px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    borderBottom: '1px solid rgba(60,60,67,0.1)',
-    position: 'sticky', top: 0, zIndex: 10,
-    boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
-    minHeight: 54,
-  },
-  mobileTitle: { fontWeight: 700, fontSize: 15, color: '#1C1C1E', letterSpacing: -0.2 },
-  bellBtn: {
-    position: 'relative', background: 'rgba(118,118,128,0.1)',
-    border: 'none', borderRadius: 10, width: 36, height: 36,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-  },
-  bellBadge: {
-    position: 'absolute', top: 5, right: 5,
-    background: '#FF3B30', color: '#fff',
-    borderRadius: 999, fontSize: 8, fontWeight: 800,
-    minWidth: 14, height: 14,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '0 2px', border: '1.5px solid #fff',
   },
 
   // Desktop header

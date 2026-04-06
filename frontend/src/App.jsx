@@ -29,7 +29,6 @@ import ManagerOrders from './pages/manager/ManagerOrders'
 import ManagerClients from './pages/manager/ManagerClients'
 import ManagerCouriers from './pages/manager/ManagerCouriers'
 import ManagerStats from './pages/manager/ManagerStats'
-import ManagerNotifications from './pages/manager/ManagerNotifications'
 import ManagerSupport from './pages/manager/ManagerSupport'
 
 // Courier
@@ -113,11 +112,6 @@ export default function App() {
         <Route path="/manager" element={
           <ProtectedRoute allowedRoles={['manager']}>
             <ManagerOrders />
-          </ProtectedRoute>
-        } />
-        <Route path="/manager/notifications" element={
-          <ProtectedRoute allowedRoles={['manager']}>
-            <ManagerNotifications />
           </ProtectedRoute>
         } />
         <Route path="/manager/support" element={
