@@ -619,7 +619,9 @@ export default function ManagerSupport() {
       <div style={{
         display: 'flex',
         gap: 0,
-        height: 'calc(100vh - 70px)',
+        flex: 1,
+        height: isMobile ? 'calc(100vh - 90px)' : 'calc(100vh - 70px)',
+        maxHeight: isMobile ? 'calc(100vh - 90px)' : 'calc(100vh - 70px)',
         background: '#fff',
         borderRadius: isMobile ? 0 : 18,
         overflow: 'hidden',

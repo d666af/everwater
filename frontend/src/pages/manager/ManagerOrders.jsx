@@ -14,9 +14,11 @@ const STAGES = [
   { key: 'assign', label: 'Курьер' },
   { key: 'delivery', label: 'Доставка' },
   { key: 'done', label: 'Готово' },
+  { key: 'cancelled', label: 'Отменённые' },
 ]
 
 function getStage(order) {
+  if (order.status === 'rejected') return 'cancelled'
   if (order.type === 'topup' || order.type === 'subscription') {
     if (!order.payment_confirmed) return 'payment'
     if (order.type === 'subscription' && !order.courier_id) return 'assign'
@@ -31,12 +33,11 @@ function getStage(order) {
   if (order.status === 'confirmed') return 'assign'
   if (order.status === 'assigned_to_courier' || order.status === 'in_delivery') return 'delivery'
   if (order.status === 'delivered') return 'done'
-  if (order.status === 'rejected') return 'done'
   return 'payment'
 }
 
 function stageCounts(orders) {
-  const c = { payment: 0, assign: 0, delivery: 0, done: 0 }
+  const c = { payment: 0, assign: 0, delivery: 0, done: 0, cancelled: 0 }
   orders.forEach(o => { const s = getStage(o); if (c[s] !== undefined) c[s]++ })
   return c
 }
@@ -83,11 +84,11 @@ export default function ManagerOrders() {
   return (
     <ManagerLayout title="Панель">
       {/* Stage filter cards — equal width grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
           const active = stage === s.key
           const count = s.key === 'all' ? orders.length : (counts[s.key] || 0)
-          const newCount = s.key !== 'all' && s.key !== 'done' ? count : 0
+          const newCount = s.key !== 'all' && s.key !== 'done' && s.key !== 'cancelled' ? count : 0
           return (
             <button key={s.key} onClick={() => setStage(s.key)} style={{
               padding: '12px 4px', borderRadius: 16,
@@ -175,7 +176,8 @@ function OrderCard({
     payment: 'Проверка оплаты',
     assign: 'Назначение курьера',
     delivery: order.status === 'in_delivery' ? 'В пути' : 'Курьер назначен',
-    done: order.status === 'rejected' ? 'Отклонён' : 'Доставлен',
+    done: 'Доставлен',
+    cancelled: 'Отменён',
   }[orderStage] || order.status
 
   const stageBg = {
@@ -183,13 +185,15 @@ function OrderCard({
     assign: `${C}15`,
     delivery: `${C}15`,
     done: '#EBFBEE',
+    cancelled: '#FFF5F5',
   }[orderStage] || '#F2F2F7'
 
   const stageClr = {
     payment: CD,
     assign: CD,
     delivery: CD,
-    done: order.status === 'rejected' ? '#E03131' : '#2B8A3E',
+    done: '#2B8A3E',
+    cancelled: '#E03131',
   }[orderStage] || TEXT2
 
   const typeLabel = order.type === 'topup' ? 'Пополнение' : order.type === 'subscription' ? 'Подписка' : 'Заказ'
