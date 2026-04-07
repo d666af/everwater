@@ -620,12 +620,12 @@ export default function ManagerSupport() {
         display: 'flex',
         gap: 0,
         flex: 1,
-        height: isMobile ? 'calc(100vh - 90px)' : 'calc(100vh - 70px)',
-        maxHeight: isMobile ? 'calc(100vh - 90px)' : 'calc(100vh - 70px)',
+        minHeight: 0,
         background: '#fff',
         borderRadius: isMobile ? 0 : 18,
         overflow: 'hidden',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        boxShadow: isMobile ? 'none' : '0 1px 4px rgba(0,0,0,0.04)',
+        marginBottom: isMobile ? 82 : 0,
       }}>
         {showListPane && renderChatList()}
         {showChatPane && (activeChatId !== null ? renderChatView() : renderNoChatSelected())}
