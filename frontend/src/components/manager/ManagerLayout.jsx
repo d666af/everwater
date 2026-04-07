@@ -97,7 +97,7 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
   }, [location.pathname, isMobile]) // eslint-disable-line
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#e4e4e8' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>
 
       {/* Desktop sidebar */}
       {!isMobile && (
