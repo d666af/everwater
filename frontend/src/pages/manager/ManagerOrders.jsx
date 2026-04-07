@@ -126,11 +126,11 @@ export default function ManagerOrders() {
           const newCount = s.key !== 'all' && s.key !== 'done' && s.key !== 'cancelled' ? count : 0
           return (
             <button key={s.key} onClick={() => setStage(s.key)} style={{
-              padding: '12px 4px', borderRadius: 16,
-              background: active ? '#fff' : 'rgba(255,255,255,0.6)',
-              border: active ? `2px solid ${C}` : `1.5px solid ${BORDER}`,
+              padding: '14px 4px 12px', borderRadius: 16,
+              background: active ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+              border: active ? 'none' : `1.5px solid ${C}40`,
               cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              boxShadow: active ? '0 2px 12px rgba(141,198,63,0.15)' : '0 1px 4px rgba(0,0,0,0.04)',
+              boxShadow: active ? '0 4px 14px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
               WebkitTapHighlightColor: 'transparent', position: 'relative',
             }}>
               {newCount > 0 && !active && (
@@ -145,8 +145,8 @@ export default function ManagerOrders() {
                   +{newCount}
                 </span>
               )}
-              <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{count}</div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: active ? CD : TEXT2, lineHeight: 1.2, textAlign: 'center' }}>{s.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: active ? '#fff' : TEXT, lineHeight: 1 }}>{count}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: active ? 'rgba(255,255,255,0.85)' : CD, lineHeight: 1.2, textAlign: 'center' }}>{s.label}</div>
             </button>
           )
         })}
