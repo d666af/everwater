@@ -14,9 +14,11 @@ const STAGES = [
   { key: 'assign', label: 'Курьер' },
   { key: 'delivery', label: 'Доставка' },
   { key: 'done', label: 'Готово' },
+  { key: 'cancelled', label: 'Отменённые' },
 ]
 
 function getStage(order) {
+  if (order.status === 'rejected') return 'cancelled'
   if (order.type === 'topup' || order.type === 'subscription') {
     if (!order.payment_confirmed) return 'payment'
     if (order.type === 'subscription' && !order.courier_id) return 'assign'
@@ -31,12 +33,11 @@ function getStage(order) {
   if (order.status === 'confirmed') return 'assign'
   if (order.status === 'assigned_to_courier' || order.status === 'in_delivery') return 'delivery'
   if (order.status === 'delivered') return 'done'
-  if (order.status === 'rejected') return 'done'
   return 'payment'
 }
 
 function stageCounts(orders) {
-  const c = { payment: 0, assign: 0, delivery: 0, done: 0 }
+  const c = { payment: 0, assign: 0, delivery: 0, done: 0, cancelled: 0 }
   orders.forEach(o => { const s = getStage(o); if (c[s] !== undefined) c[s]++ })
   return c
 }
@@ -48,9 +49,43 @@ const REJECT_SCRIPTS = [
   'Клиент не выходит на связь',
 ]
 
+const TIME_FILTERS = [
+  { key: 'all', label: 'Все' },
+  { key: 'today', label: 'Сегодня' },
+  { key: 'yesterday', label: 'Вчера' },
+  { key: 'week', label: 'Неделя' },
+  { key: 'month', label: 'Месяц' },
+]
+
+function matchesTime(order, timeFilter) {
+  if (timeFilter === 'all') return true
+  const created = order.created_at ? new Date(order.created_at) : null
+  if (!created) return true
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (timeFilter === 'today') return created >= startOfToday
+  if (timeFilter === 'yesterday') {
+    const startOfYesterday = new Date(startOfToday)
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+    return created >= startOfYesterday && created < startOfToday
+  }
+  if (timeFilter === 'week') {
+    const weekAgo = new Date(startOfToday)
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    return created >= weekAgo
+  }
+  if (timeFilter === 'month') {
+    const monthAgo = new Date(startOfToday)
+    monthAgo.setMonth(monthAgo.getMonth() - 1)
+    return created >= monthAgo
+  }
+  return true
+}
+
 export default function ManagerOrders() {
   const [orders, setOrders] = useState([])
   const [stage, setStage] = useState('all')
+  const [timeFilter, setTimeFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [couriers, setCouriers] = useState([])
@@ -77,17 +112,18 @@ export default function ManagerOrders() {
     finally { setActionLoading(false) }
   }
 
-  const counts = stageCounts(orders)
-  const displayed = stage === 'all' ? orders : orders.filter(o => getStage(o) === stage)
+  const timeFiltered = orders.filter(o => matchesTime(o, timeFilter))
+  const counts = stageCounts(timeFiltered)
+  const displayed = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
 
   return (
     <ManagerLayout title="Панель">
       {/* Stage filter cards — equal width grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
           const active = stage === s.key
-          const count = s.key === 'all' ? orders.length : (counts[s.key] || 0)
-          const newCount = s.key !== 'all' && s.key !== 'done' ? count : 0
+          const count = s.key === 'all' ? timeFiltered.length : (counts[s.key] || 0)
+          const newCount = s.key !== 'all' && s.key !== 'done' && s.key !== 'cancelled' ? count : 0
           return (
             <button key={s.key} onClick={() => setStage(s.key)} style={{
               padding: '12px 4px', borderRadius: 16,
@@ -116,9 +152,26 @@ export default function ManagerOrders() {
         })}
       </div>
 
-      {/* Refresh */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2 }} onClick={load} disabled={loading}>
+      {/* Time sub-filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {TIME_FILTERS.map(t => {
+            const active = timeFilter === t.key
+            return (
+              <button key={t.key} onClick={() => setTimeFilter(t.key)} style={{
+                padding: '6px 14px', borderRadius: 999, flexShrink: 0,
+                border: active ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`,
+                background: active ? `${C}15` : '#fff',
+                color: active ? CD : TEXT2,
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+              }}>
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
@@ -175,7 +228,8 @@ function OrderCard({
     payment: 'Проверка оплаты',
     assign: 'Назначение курьера',
     delivery: order.status === 'in_delivery' ? 'В пути' : 'Курьер назначен',
-    done: order.status === 'rejected' ? 'Отклонён' : 'Доставлен',
+    done: 'Доставлен',
+    cancelled: 'Отменён',
   }[orderStage] || order.status
 
   const stageBg = {
@@ -183,13 +237,15 @@ function OrderCard({
     assign: `${C}15`,
     delivery: `${C}15`,
     done: '#EBFBEE',
+    cancelled: '#FFF5F5',
   }[orderStage] || '#F2F2F7'
 
   const stageClr = {
     payment: CD,
     assign: CD,
     delivery: CD,
-    done: order.status === 'rejected' ? '#E03131' : '#2B8A3E',
+    done: '#2B8A3E',
+    cancelled: '#E03131',
   }[orderStage] || TEXT2
 
   const typeLabel = order.type === 'topup' ? 'Пополнение' : order.type === 'subscription' ? 'Подписка' : 'Заказ'

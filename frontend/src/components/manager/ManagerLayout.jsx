@@ -157,7 +157,11 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
         )}
 
         {/* Page content */}
-        <div style={{ ...s.content, paddingBottom: isMobile ? 100 : 24, ...(noPadding ? { padding: isMobile ? '0 0 100px' : 0 } : {}) }}>
+        <div style={{
+          ...s.content,
+          paddingBottom: isMobile ? 100 : 24,
+          ...(noPadding ? { padding: 0, paddingBottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}),
+        }}>
           {children}
         </div>
       </div>
@@ -165,7 +169,7 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
       {/* Mobile bottom navigation — green gradient with animated pill */}
       {isMobile && (
         <>
-          <div style={{ height: 90 }} />
+          {!noPadding && <div style={{ height: 90 }} />}
           <nav style={s.mobileNav}>
             <div style={s.mobileNavInner} ref={navRef}>
               {/* Animated pill */}
