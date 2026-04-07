@@ -11,7 +11,7 @@ const BORDER = 'rgba(60,60,67,0.08)'
 const STAGES = [
   { key: 'all', label: 'Все заказы' },
   { key: 'payment', label: 'Проверка оплат' },
-  { key: 'assign', label: 'Назначение курьера' },
+  { key: 'assign', label: 'Назн. курьера' },
   { key: 'delivery', label: 'Доставка' },
   { key: 'done', label: 'Готово' },
   { key: 'cancelled', label: 'Отменённые' },
