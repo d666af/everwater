@@ -243,54 +243,44 @@ function ClientDetail({ user, onClose, onTopup }) {
 
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, padding: 0, paddingBottom: 40 }}>
-        <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}><div style={st.handle} /></div>
+      <div style={{ ...st.sheet, padding: 0, paddingBottom: 0 }}>
+        {/* Fixed top: handle + user info */}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}><div style={st.handle} /></div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 20px 14px', borderBottom: `1px solid ${BORDER}` }}>
-          <div style={{ width: 58, height: 58, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 24, fontWeight: 800, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(user.name || '?')[0].toUpperCase()}</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 18, color: TEXT }}>{user.name || 'Без имени'}</div>
-            {user.phone && <div style={{ fontSize: 14, color: TEXT2, marginTop: 2 }}>{user.phone}</div>}
-            <div style={{ fontSize: 11, color: '#bbb', marginTop: 2 }}>ID: {user.telegram_id}</div>
-          </div>
-          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: '#F2F2F7', color: TEXT2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2.2" strokeLinecap="round"/></svg>
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, padding: '14px 20px 0' }}>
-          {[
-            [(user.balance || 0).toLocaleString(), 'Баланс сум'],
-            [Math.round(user.bonus_points || 0), 'Бонусов'],
-            [orders.length, 'Заказов'],
-          ].map(([v, l]) => (
-            <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: TEXT }}>{v}</div>
-              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{l}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px 10px' }}>
+            <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 20, fontWeight: 800, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(user.name || '?')[0].toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{user.name || 'Без имени'}</div>
+              {user.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 1 }}>{user.phone}</div>}
             </div>
-          ))}
+            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: '#F2F2F7', color: TEXT2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2.2" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, padding: '0 20px 8px' }}>
+            <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent' }} onClick={onTopup}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20" stroke="currentColor" strokeWidth="1.5"/></svg>
+              Пополнить
+            </button>
+            {user.phone && (
+              <a href={`tel:${user.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+                Позвонить
+              </a>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, padding: '0 20px 10px', overflowX: 'auto', scrollbarWidth: 'none', borderBottom: `1px solid ${BORDER}` }}>
+            {TABS.map((t, i) => (
+              <button key={t} onClick={() => setTab(i)} style={{ padding: '6px 12px', borderRadius: 999, border: tab === i ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: tab === i ? `${C}15` : '#fff', color: tab === i ? CD : TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>{t}</button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: '12px 20px', flexWrap: 'wrap' }}>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 16px', borderRadius: 12, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent' }} onClick={onTopup}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M8 15h3m5 0h-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            Пополнить баланс
-          </button>
-          {user.phone && (
-            <a href={`tel:${user.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '11px 16px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT, fontSize: 14, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-              Позвонить
-            </a>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, padding: '4px 20px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {TABS.map((t, i) => (
-            <button key={t} onClick={() => setTab(i)} style={{ padding: '7px 14px', borderRadius: 999, border: tab === i ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: tab === i ? `${C}15` : '#fff', color: tab === i ? CD : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>{t}</button>
-          ))}
-        </div>
-
-        <div style={{ padding: '14px 20px' }}>{renderTab()}</div>
+        {/* Scrollable tab content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 30px' }}>{renderTab()}</div>
       </div>
     </div>
   )
@@ -387,7 +377,7 @@ export default function ManagerClients() {
 
 const st = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
-  sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '92vh', overflowY: 'auto', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
+  sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '95vh', overflow: 'hidden', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 0, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
   handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
   primaryBtn: { padding: 16, borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(141,198,63,0.35)', width: '100%' },
 }
