@@ -11,26 +11,103 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
+const MANAGER_PHONE = '+998900000003'
+
 const STATUS_CFG = {
-  confirmed:           { label: 'Новый',         bg: '#FFF3BF', color: '#E67700' },
-  assigned_to_courier: { label: 'Назначен',      bg: `${C}15`,  color: CD },
-  in_delivery:         { label: 'В пути',        bg: '#E7F5FF', color: '#1971C2' },
-  delivered:           { label: 'Доставлен',     bg: '#EBFBEE', color: '#2B8A3E' },
+  confirmed:           { label: 'Новый',    bg: '#FFF3BF', color: '#E67700' },
+  assigned_to_courier: { label: 'Назначен', bg: `${C}15`,  color: CD },
+  in_delivery:         { label: 'В пути',   bg: '#E7F5FF', color: '#1971C2' },
+  delivered:           { label: 'Доставлен', bg: '#EBFBEE', color: '#2B8A3E' },
 }
 
+const FILTERS = [
+  { key: 'waiting', label: 'Ожидают' },
+  { key: 'enroute', label: 'В пути' },
+  { key: 'done',    label: 'Доставлено' },
+]
+
+/* ── Urgency: parse delivery_period end time, check if today & approaching ── */
+function parseEndHour(period) {
+  if (!period) return null
+  const m = period.match(/(\d{1,2}):(\d{2})\s*[–\-]\s*(\d{1,2}):(\d{2})/)
+  if (!m) return null
+  return { h: parseInt(m[3]), m: parseInt(m[4]) }
+}
+
+function getUrgency(order) {
+  // Only for orders not yet in delivery
+  if (order.status === 'in_delivery' || order.status === 'delivered') return 'none'
+  if (!order.delivery_date || !/сегодня/i.test(order.delivery_date)) return 'none'
+  const end = parseEndHour(order.delivery_period)
+  if (!end) return 'none'
+  const now = new Date()
+  const endMin = end.h * 60 + end.m
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const diff = endMin - nowMin
+  if (diff <= 0) return 'overdue'    // past deadline
+  if (diff <= 60) return 'urgent'    // less than 1 hour
+  if (diff <= 120) return 'warning'  // less than 2 hours
+  return 'none'
+}
+
+/* ── Phone icon SVG ── */
+const PhoneIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+)
+
+/* ── OrderCard ───────────────────────────────────────────────────────────────── */
 function OrderCard({ order, onAction, actionLoading }) {
   const [open, setOpen] = useState(false)
   const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
   const deliveryInfo = [order.delivery_date, order.delivery_period].filter(Boolean).join(' · ')
+  const urgency = getUrgency(order)
+  const isCash = order.payment_method === 'cash'
+
+  const urgencyBorder = urgency === 'overdue'
+    ? '2px solid #E03131'
+    : urgency === 'urgent'
+      ? '2px solid #E67700'
+      : urgency === 'warning'
+        ? '2px solid #FFD43B'
+        : 'none'
+
+  const urgencyShadow = urgency === 'overdue'
+    ? '0 0 0 3px rgba(224,49,49,0.15), 0 2px 12px rgba(224,49,49,0.2)'
+    : urgency === 'urgent'
+      ? '0 0 0 3px rgba(230,119,0,0.12), 0 2px 12px rgba(230,119,0,0.15)'
+      : '0 1px 4px rgba(0,0,0,0.04)'
 
   return (
     <div style={{
       background: '#fff', borderRadius: 18, overflow: 'hidden',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      border: urgencyBorder,
+      boxShadow: urgencyShadow,
       opacity: order.status === 'delivered' ? 0.7 : 1,
-      borderLeft: order.status === 'in_delivery' ? '3px solid #1971C2' : order.status === 'assigned_to_courier' ? `3px solid ${C}` : 'none',
+      borderLeft: urgency !== 'none' ? undefined
+        : order.status === 'in_delivery' ? '3px solid #1971C2'
+        : order.status === 'assigned_to_courier' ? `3px solid ${C}`
+        : 'none',
+      animation: urgency === 'overdue' ? 'urgencyPulse 1.5s ease-in-out infinite' : urgency === 'urgent' ? 'urgencyPulse 2.5s ease-in-out infinite' : 'none',
     }}>
+
+      {/* Urgency strip */}
+      {urgency !== 'none' && (
+        <div style={{
+          padding: '7px 14px', fontSize: 12, fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: urgency === 'overdue' ? 'linear-gradient(90deg, #E03131, #C92A2A)' : urgency === 'urgent' ? 'linear-gradient(90deg, #E67700, #D9480F)' : '#FFF3BF',
+          color: urgency === 'warning' ? '#E67700' : '#fff',
+        }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: urgency === 'warning' ? '#E67700' : '#fff',
+            boxShadow: `0 0 0 3px ${urgency === 'warning' ? 'rgba(230,119,0,0.3)' : 'rgba(255,255,255,0.3)'}`,
+            animation: 'pulse 1.5s infinite',
+          }} />
+          {urgency === 'overdue' ? 'Время доставки вышло!' : urgency === 'urgent' ? 'Срочно — менее 1 часа!' : 'Скоро истечёт время доставки'}
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setOpen(o => !o)}>
@@ -42,7 +119,11 @@ function OrderCard({ order, onAction, actionLoading }) {
             </div>
             {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
             {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.address}</div>}
-            {deliveryInfo && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>{deliveryInfo}</div>}
+            {deliveryInfo && (
+              <div style={{ fontSize: 12, marginTop: 2, color: urgency === 'overdue' ? '#E03131' : urgency === 'urgent' ? '#E67700' : TEXT2, fontWeight: urgency !== 'none' ? 700 : 400 }}>
+                {deliveryInfo}
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 17, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
@@ -64,7 +145,7 @@ function OrderCard({ order, onAction, actionLoading }) {
               <div style={{ fontSize: 15, fontWeight: 600, color: TEXT, lineHeight: 1.4 }}>{order.address}</div>
               {order.extra_info && <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.3 }}>{order.extra_info}</div>}
               {deliveryInfo && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: CD, fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: urgency !== 'none' ? '#E03131' : CD, fontWeight: 600 }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
                   {deliveryInfo}
                 </div>
@@ -104,26 +185,26 @@ function OrderCard({ order, onAction, actionLoading }) {
             </div>
           )}
 
-          {/* Total */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
-            <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
-            <span style={{ fontWeight: 900, fontSize: 22, color: C }}>{(order.total || 0).toLocaleString()} сум</span>
-          </div>
+          {/* Total — only for cash */}
+          {isCash && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
+              <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
+              <span style={{ fontWeight: 900, fontSize: 22, color: C }}>{(order.total || 0).toLocaleString()} сум</span>
+            </div>
+          )}
 
-          {/* Contact client */}
+          {/* Call buttons: client + manager */}
           <div style={{ display: 'flex', gap: 8 }}>
             {order.recipient_phone && (
               <a href={`tel:${order.recipient_phone}`} style={s.contactBtn}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-                Позвонить
+                <PhoneIcon />
+                Клиенту
               </a>
             )}
-            {order.client_telegram_id && (
-              <a href={`tg://user?id=${order.client_telegram_id}`} style={s.contactBtn}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
-                Написать
-              </a>
-            )}
+            <a href={`tel:${MANAGER_PHONE}`} style={s.contactBtn}>
+              <PhoneIcon />
+              Менеджеру
+            </a>
           </div>
 
           {/* Action buttons */}
@@ -136,7 +217,7 @@ function OrderCard({ order, onAction, actionLoading }) {
                 </button>
               )}
               {order.status === 'assigned_to_courier' && (
-                <button style={s.btnPrimary} disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}>
+                <button style={urgency !== 'none' ? s.btnUrgent : s.btnPrimary} disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Выехал
                 </button>
@@ -155,11 +236,12 @@ function OrderCard({ order, onAction, actionLoading }) {
   )
 }
 
+/* ── Main page ───────────────────────────────────────────────────────────────── */
 export default function CourierOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [filter, setFilter] = useState('active')
+  const [filter, setFilter] = useState('waiting')
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
@@ -175,7 +257,6 @@ export default function CourierOrders() {
 
   useEffect(load, [load])
 
-  // Auto-refresh every 30s
   useEffect(() => {
     const t = setInterval(load, 30000)
     return () => clearInterval(t)
@@ -188,50 +269,69 @@ export default function CourierOrders() {
     finally { setActionLoading(false) }
   }
 
-  const active = orders.filter(o => ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(o.status))
+  const waiting = orders.filter(o => ['confirmed', 'assigned_to_courier'].includes(o.status))
+  const enroute = orders.filter(o => o.status === 'in_delivery')
   const done = orders.filter(o => o.status === 'delivered')
-  const shown = filter === 'active' ? active : done
+  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length }
 
-  // Sort: in_delivery first, then assigned, then confirmed
+  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : done
+
+  // Sort: urgent first
   const sorted = shown.slice().sort((a, b) => {
-    const priority = { in_delivery: 0, assigned_to_courier: 1, confirmed: 2, delivered: 3 }
-    return (priority[a.status] ?? 9) - (priority[b.status] ?? 9)
+    const urgA = getUrgency(a) === 'overdue' ? 0 : getUrgency(a) === 'urgent' ? 1 : getUrgency(a) === 'warning' ? 2 : 3
+    const urgB = getUrgency(b) === 'overdue' ? 0 : getUrgency(b) === 'urgent' ? 1 : getUrgency(b) === 'warning' ? 2 : 3
+    if (urgA !== urgB) return urgA - urgB
+    const pri = { in_delivery: 0, assigned_to_courier: 1, confirmed: 2, delivered: 3 }
+    return (pri[a.status] ?? 9) - (pri[b.status] ?? 9)
   })
+
+  const urgentWaiting = waiting.filter(o => getUrgency(o) !== 'none').length
+
+  const emptyMsg = {
+    waiting: { title: 'Нет ожидающих заказов', hint: 'Ожидайте назначения от менеджера' },
+    enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "Выехал" чтобы начать доставку' },
+    done:    { title: 'Нет доставленных', hint: 'Выполненные заказы появятся здесь' },
+  }[filter]
 
   return (
     <CourierLayout title="Заказы">
+      {/* CSS for urgency pulse animation */}
+      <style>{`
+        @keyframes urgencyPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
+          50% { box-shadow: 0 0 0 6px rgba(224,49,49,0.12); }
+        }
+      `}</style>
 
-      {/* Filter chips */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {[
-          { key: 'active', label: 'Активные', count: active.length },
-          { key: 'done', label: 'Выполненные', count: done.length },
-        ].map(f => {
-          const isActive = filter === f.key
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {FILTERS.map(f => {
+          const active = filter === f.key
+          const count = counts[f.key] || 0
+          const hasUrgent = f.key === 'waiting' && urgentWaiting > 0
           return (
             <button key={f.key} onClick={() => setFilter(f.key)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              background: isActive ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-              color: isActive ? '#fff' : TEXT2,
-              border: isActive ? 'none' : `1.5px solid ${C}40`,
-              boxShadow: isActive ? '0 4px 12px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
-              WebkitTapHighlightColor: 'transparent',
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              padding: '10px 6px', borderRadius: 14, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: active ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+              color: active ? '#fff' : TEXT2,
+              border: active ? 'none' : `1.5px solid ${C}40`,
+              boxShadow: active ? '0 4px 12px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
+              WebkitTapHighlightColor: 'transparent', position: 'relative',
             }}>
               {f.label}
-              {f.count > 0 && (
+              {count > 0 && (
                 <span style={{
                   fontSize: 10, fontWeight: 800, borderRadius: 999,
                   padding: '1px 6px', minWidth: 18, textAlign: 'center',
-                  background: isActive ? 'rgba(255,255,255,0.3)' : '#F2F2F7',
-                  color: isActive ? '#fff' : TEXT2,
-                }}>{f.count}</span>
+                  background: active ? 'rgba(255,255,255,0.3)' : hasUrgent ? '#E03131' : '#F2F2F7',
+                  color: active ? '#fff' : hasUrgent ? '#fff' : TEXT2,
+                }}>{count}</span>
               )}
             </button>
           )
         })}
-        <div style={{ flex: 1 }} />
-        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
+        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
@@ -247,12 +347,8 @@ export default function CourierOrders() {
             <rect x="3" y="4" width="18" height="16" rx="3" stroke={TEXT} strokeWidth="1.5"/>
             <path d="M7 9h10M7 13h6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <div style={{ fontSize: 17, fontWeight: 700, color: TEXT }}>
-            {filter === 'active' ? 'Нет активных заказов' : 'Нет выполненных заказов'}
-          </div>
-          <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>
-            {filter === 'active' ? 'Ожидайте назначения от менеджера' : 'Выполненные заказы появятся здесь'}
-          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: TEXT }}>{emptyMsg.title}</div>
+          <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>{emptyMsg.hint}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -282,6 +378,13 @@ const s = {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
     padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
     background: '#111827', color: '#fff', border: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnUrgent: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: 'linear-gradient(135deg, #E03131, #C92A2A)', color: '#fff', border: 'none',
+    boxShadow: '0 4px 14px rgba(224,49,49,0.3)',
     WebkitTapHighlightColor: 'transparent',
   },
   btnSuccess: {
