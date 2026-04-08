@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
 import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered } from '../../api'
 import { useAuthStore } from '../../store/auth'
@@ -9,198 +9,85 @@ const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BORDER = 'rgba(60,60,67,0.12)'
+const BORDER = 'rgba(60,60,67,0.08)'
 
-const STATUS = {
-  confirmed:           { label: 'Назначен',      bg: '#EBFBEE', color: '#2B8A3E' },
-  assigned_to_courier: { label: 'Ожидает старта', bg: '#F3F0FF', color: '#6741D9' },
-  in_delivery:         { label: 'В доставке',    bg: '#E8F4FD', color: '#1971C2' },
-  delivered:           { label: 'Доставлен',     bg: '#EBFBEE', color: C },
+const STATUS_CFG = {
+  confirmed:           { label: 'Новый',         bg: '#FFF3BF', color: '#E67700' },
+  assigned_to_courier: { label: 'Назначен',      bg: `${C}15`,  color: CD },
+  in_delivery:         { label: 'В пути',        bg: '#E7F5FF', color: '#1971C2' },
+  delivered:           { label: 'Доставлен',     bg: '#EBFBEE', color: '#2B8A3E' },
 }
 
-// ── Parse delivery_time string → Date (today) ──────────────────────────────
-function parseDeliveryEnd(delivery_time) {
-  if (!delivery_time) return null
-  // Formats: "Сегодня 14:00–15:00", "14:00-15:00", "14:30", "Завтра 09:00–12:00"
-  if (/завтра/i.test(delivery_time)) return null  // future → not overdue
-  const ranges = delivery_time.match(/(\d{1,2}):(\d{2})[\s–\-]+(\d{1,2}):(\d{2})/)
-  const single = delivery_time.match(/(\d{1,2}):(\d{2})/)
-  const now = new Date()
-  const d = new Date(now)
-  if (ranges) {
-    d.setHours(parseInt(ranges[3]), parseInt(ranges[4]), 0, 0)
-  } else if (single) {
-    d.setHours(parseInt(single[1]), parseInt(single[2]), 0, 0)
-  } else {
-    return null
-  }
-  return d
-}
-
-function isOverdue(order) {
-  if (order.status !== 'in_delivery') return false
-  const end = parseDeliveryEnd(order.delivery_time)
-  if (!end) return false
-  return new Date() > end
-}
-
-function minutesPastDue(order) {
-  const end = parseDeliveryEnd(order.delivery_time)
-  if (!end) return 0
-  return Math.floor((Date.now() - end.getTime()) / 60000)
-}
-
-// ── OrderCard ─────────────────────────────────────────────────────────────────
 function OrderCard({ order, onAction, actionLoading }) {
   const [open, setOpen] = useState(false)
-  const st = STATUS[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
+  const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
-  const overdue = isOverdue(order)
-  const minsLate = overdue ? minutesPastDue(order) : 0
+  const deliveryInfo = [order.delivery_date, order.delivery_period].filter(Boolean).join(' · ')
 
   return (
     <div style={{
-      ...s.card,
-      opacity: order.status === 'delivered' ? 0.75 : 1,
-      border: overdue
-        ? '1.5px solid rgba(224,49,49,0.4)'
-        : order.status === 'in_delivery'
-          ? `1.5px solid rgba(25,113,194,0.25)`
-          : `1px solid ${BORDER}`,
-      boxShadow: overdue ? '0 2px 16px rgba(224,49,49,0.12)' : '0 1px 3px rgba(0,0,0,0.04)',
+      background: '#fff', borderRadius: 18, overflow: 'hidden',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      opacity: order.status === 'delivered' ? 0.7 : 1,
+      borderLeft: order.status === 'in_delivery' ? '3px solid #1971C2' : order.status === 'assigned_to_courier' ? `3px solid ${C}` : 'none',
     }}>
 
-      {/* Overdue strip */}
-      {overdue && (
-        <div style={s.overdueStrip}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-            <path d="M12 8v4M12 16h.01" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" fill="none" stroke="#fff" strokeWidth="1.6"/>
-          </svg>
-          Время доставки прошло {minsLate > 0 ? `${minsLate} мин назад` : ''}— подтвердите доставку!
-        </div>
-      )}
-
-      {/* Card header */}
-      <div style={s.cardTop} onClick={() => setOpen(o => !o)}>
-        <div style={s.cardLeft}>
-          <div style={s.orderBadge}>#{order.id}</div>
-          <div style={s.cardInfo}>
-            <div style={s.cardAddr}>{order.address}</div>
-            {order.delivery_time && (
-              <div style={{ ...s.cardTime, color: overdue ? '#E03131' : TEXT2 }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                {order.delivery_time}
-              </div>
-            )}
+      {/* Header */}
+      <div style={{ padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setOpen(o => !o)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>#{order.id}</span>
+              <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: st.bg, color: st.color }}>{st.label}</span>
+            </div>
+            {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
+            {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.address}</div>}
+            {deliveryInfo && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>{deliveryInfo}</div>}
           </div>
-        </div>
-        <div style={s.cardRight}>
-          <div style={{ ...s.cardTotal, color: overdue ? '#E03131' : C }}>{Number(order.total || 0).toLocaleString()} сум</div>
-          <span style={{ ...s.statusBadge, background: st.bg, color: st.color }}>{st.label}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-            style={{ marginTop: 4, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
-            <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginTop: 6, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
         </div>
       </div>
 
       {/* Expanded details */}
       {open && (
-        <div style={s.details}>
+        <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* Client contacts */}
-          <div style={s.infoBlock}>
-            {order.recipient_phone && (
-              <a href={`tel:${order.recipient_phone}`} style={s.contactRow}>
-                <div style={{ ...s.contactIcon, background: '#EDF3FF' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4l1.9-1.9c.2-.2.5-.3.8-.1 1 .4 2.1.6 3.1.6.4 0 .8.3.8.8V19c0 .4-.4.8-.8.8C9.1 19.8 4.2 14.9 4.2 8.8c0-.5.4-.8.8-.8H8c.5 0 .8.4.8.8 0 1.1.2 2.1.6 3.1.1.3 0 .6-.1.8l-1.9 1.9-.6-3.8z" fill="#3B5BDB"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={s.contactLabel}>Позвонить клиенту</div>
-                  <div style={{ ...s.contactVal, color: '#3B5BDB' }}>{order.recipient_phone}</div>
-                </div>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 18l6-6-6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </a>
-            )}
-
-            {order.client_telegram_id && (
-              <a href={`tg://user?id=${order.client_telegram_id}`} style={s.contactRow}>
-                <div style={{ ...s.contactIcon, background: '#E8F4FD' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M21.6 12.3C21.6 17.4 17.4 21.6 12 21.6C9.8 21.6 7.7 20.9 6 19.7L2.4 20.4 3.1 17C1.9 15.2 1.2 13.1 1.2 10.9 1.2 5.8 5.4 1.6 10.8 1.6" stroke="#1971C2" strokeWidth="1.4" strokeLinecap="round"/>
-                    <path d="M17.5 5.5l-7 4 3 1 1 3 3-4" stroke="#1971C2" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={s.contactLabel}>Написать в Telegram</div>
-                  <div style={{ ...s.contactVal, color: '#1971C2' }}>Открыть чат</div>
-                </div>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 18l6-6-6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </a>
-            )}
-          </div>
-
-          {/* Address + map */}
-          <div style={s.addrBlock}>
-            <div style={{ flex: 1 }}>
-              <div style={s.blockLabel}>Адрес доставки</div>
+          {/* Delivery info */}
+          {order.address && (
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Доставка</div>
               <div style={{ fontSize: 15, fontWeight: 600, color: TEXT, lineHeight: 1.4 }}>{order.address}</div>
-              {order.extra_info && (
-                <div style={{ fontSize: 13, color: TEXT2, marginTop: 4, lineHeight: 1.4 }}>
-                  {order.extra_info}
+              {order.extra_info && <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.3 }}>{order.extra_info}</div>}
+              {deliveryInfo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: CD, fontWeight: 600 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  {deliveryInfo}
                 </div>
               )}
-            </div>
-            {order.latitude && order.longitude && (
-              <a
-                href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
-                target="_blank" rel="noopener noreferrer"
-                style={s.mapBtn}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7M9 20l6-3M9 20V7m6 13l5.447-2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m0 13V7M9 7l6-2"
-                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Карта
-              </a>
-            )}
-          </div>
-
-          {/* Delivery time highlight */}
-          {order.delivery_time && (
-            <div style={{ ...s.timeBlock, background: overdue ? '#FFF5F5' : '#F3F0FF', borderColor: overdue ? 'rgba(224,49,49,0.2)' : 'rgba(103,65,217,0.15)' }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke={overdue ? '#E03131' : '#6741D9'} strokeWidth="1.6"/>
-                <path d="M12 7v5l3 3" stroke={overdue ? '#E03131' : '#6741D9'} strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: overdue ? '#E03131' : '#6741D9', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                  {overdue ? 'Время вышло!' : 'Время доставки'}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: overdue ? '#E03131' : '#6741D9' }}>{order.delivery_time}</div>
-              </div>
+              {order.latitude && (
+                <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, background: '#111827', color: '#fff', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/></svg>
+                  Открыть на карте
+                </a>
+              )}
             </div>
           )}
 
-          {/* Items to deliver */}
+          {/* Items */}
           {order.items?.length > 0 && (
-            <div style={s.itemsBlock}>
-              <div style={s.blockLabel}>Доставить</div>
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Доставить</div>
               {order.items.map((item, idx) => (
-                <div key={item.id ?? idx} style={s.itemRow}>
-                  <div style={s.itemDot} />
-                  <span style={{ flex: 1, fontSize: 14, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
-                  <span style={s.itemQty}>× {item.quantity}</span>
+                <div key={item.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                  <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
+                  <span style={{ fontWeight: 700, color: TEXT2 }}>x{item.quantity}</span>
                 </div>
               ))}
             </div>
@@ -208,93 +95,56 @@ function OrderCard({ order, onAction, actionLoading }) {
 
           {/* Return bottles */}
           {order.return_bottles_count > 0 && (
-            <div style={s.bottleBlock}>
-              <div style={{ ...s.bottleIcon }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/>
-                  <path d="M3 3v5h5" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#E6FCF5', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(18,184,134,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 3v5h5" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/></svg>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0A7A5C' }}>Забрать пустые бутылки</div>
-                <div style={{ fontSize: 13, color: '#12B886' }}>
-                  {order.return_bottles_count} шт.{order.return_bottles_volume ? ` · ${order.return_bottles_volume} л каждая` : ''}
-                </div>
+                <div style={{ fontSize: 13, color: '#12B886' }}>{order.return_bottles_count} шт.</div>
               </div>
             </div>
           )}
 
           {/* Total */}
-          <div style={s.totalRow}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
             <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
-            <span style={s.totalVal}>{Number(order.total || 0).toLocaleString()} сум</span>
+            <span style={{ fontWeight: 900, fontSize: 22, color: C }}>{(order.total || 0).toLocaleString()} сум</span>
+          </div>
+
+          {/* Contact client */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {order.recipient_phone && (
+              <a href={`tel:${order.recipient_phone}`} style={s.contactBtn}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+                Позвонить
+              </a>
+            )}
+            {order.client_telegram_id && (
+              <a href={`tg://user?id=${order.client_telegram_id}`} style={s.contactBtn}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
+                Написать
+              </a>
+            )}
           </div>
 
           {/* Action buttons */}
           {isActive && (
-            <div style={s.actions}>
-              {/* confirmed: just show "Принял" to acknowledge */}
+            <div style={{ display: 'flex', gap: 8 }}>
               {order.status === 'confirmed' && (
-                <button
-                  style={{ ...s.actionBtn, background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)', flex: 1 }}
-                  disabled={actionLoading}
-                  onClick={() => onAction(courierAccept, order.id)}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                <button style={s.btnAccent} disabled={actionLoading} onClick={() => onAction(courierAccept, order.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Принял заказ
                 </button>
               )}
-
-              {/* assigned_to_courier: Принял + Выехал */}
               {order.status === 'assigned_to_courier' && (
-                <>
-                  <button
-                    style={{ ...s.actionBtn, background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)' }}
-                    disabled={actionLoading}
-                    onClick={() => onAction(courierAccept, order.id)}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Принял
-                  </button>
-                  <button
-                    style={{ ...s.actionBtn, background: '#111827', color: '#fff', border: 'none', flex: 1.5 }}
-                    disabled={actionLoading}
-                    onClick={() => onAction(courierInDelivery, order.id)}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/>
-                      <circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/>
-                      <path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Выехал
-                  </button>
-                </>
+                <button style={s.btnPrimary} disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Выехал
+                </button>
               )}
-
-              {/* in_delivery: Доставлено */}
               {order.status === 'in_delivery' && (
-                <button
-                  style={{
-                    ...s.actionBtn, border: 'none', flex: 1,
-                    background: overdue
-                      ? 'linear-gradient(135deg, #E03131, #C92A2A)'
-                      : `linear-gradient(135deg, ${C}, ${CD})`,
-                    color: '#fff',
-                    boxShadow: overdue
-                      ? '0 4px 14px rgba(224,49,49,0.35)'
-                      : '0 4px 14px rgba(141,198,63,0.35)',
-                  }}
-                  disabled={actionLoading}
-                  onClick={() => onAction(courierDelivered, order.id)}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  {overdue ? 'Подтвердить доставку!' : 'Доставлено'}
+                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => onAction(courierDelivered, order.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Доставлено
                 </button>
               )}
             </div>
@@ -305,13 +155,11 @@ function OrderCard({ order, onAction, actionLoading }) {
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function CourierOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [filter, setFilter] = useState('active')
-  const [now, setNow] = useState(new Date())
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
@@ -327,247 +175,120 @@ export default function CourierOrders() {
 
   useEffect(load, [load])
 
-  // ── Tick every 30s for overdue detection
+  // Auto-refresh every 30s
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30000)
+    const t = setInterval(load, 30000)
     return () => clearInterval(t)
-  }, [])
+  }, [load])
 
   const doAction = async (fn, orderId) => {
     setActionLoading(true)
     try { await fn(orderId); load() }
-    catch (e) { console.error(e) }
+    catch { alert('Ошибка операции') }
     finally { setActionLoading(false) }
   }
 
   const active = orders.filter(o => ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(o.status))
   const done = orders.filter(o => o.status === 'delivered')
-  const overdueOrders = active.filter(o => isOverdue(o))
   const shown = filter === 'active' ? active : done
 
-  return (
-    <CourierLayout title="Заказы" activeCount={active.length} onRefresh={load}>
+  // Sort: in_delivery first, then assigned, then confirmed
+  const sorted = shown.slice().sort((a, b) => {
+    const priority = { in_delivery: 0, assigned_to_courier: 1, confirmed: 2, delivered: 3 }
+    return (priority[a.status] ?? 9) - (priority[b.status] ?? 9)
+  })
 
-      {/* Overdue alert */}
-      {overdueOrders.length > 0 && (
-        <div style={s.overdueAlert}>
-          <div style={s.overdueAlertLeft}>
-            <div style={s.overdueAlertPulse} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>
-                {overdueOrders.length === 1
-                  ? '⚠️ Просроченная доставка!'
-                  : `⚠️ ${overdueOrders.length} просроченных доставки!`}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-                Нажмите на заказ и подтвердите доставку
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+  return (
+    <CourierLayout title="Заказы">
 
       {/* Filter chips */}
-      <div style={s.summaryRow}>
-        <button style={{ ...s.chip, ...(filter === 'active' ? s.chipActive : {}) }} onClick={() => setFilter('active')}>
-          Активные
-          {active.length > 0 && (
-            <span style={{ ...s.chipBadge, background: filter === 'active' ? '#fff' : (overdueOrders.length > 0 ? '#E03131' : '#F2F2F7'), color: filter === 'active' ? C : (overdueOrders.length > 0 ? '#fff' : TEXT2) }}>
-              {active.length}
-            </span>
-          )}
-        </button>
-        <button style={{ ...s.chip, ...(filter === 'done' ? s.chipActive : {}) }} onClick={() => setFilter('done')}>
-          Выполнено сегодня
-          {done.length > 0 && (
-            <span style={{ ...s.chipBadge, background: filter === 'done' ? '#fff' : '#F2F2F7', color: filter === 'done' ? C : TEXT2 }}>
-              {done.length}
-            </span>
-          )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {[
+          { key: 'active', label: 'Активные', count: active.length },
+          { key: 'done', label: 'Выполненные', count: done.length },
+        ].map(f => {
+          const isActive = filter === f.key
+          return (
+            <button key={f.key} onClick={() => setFilter(f.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              background: isActive ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+              color: isActive ? '#fff' : TEXT2,
+              border: isActive ? 'none' : `1.5px solid ${C}40`,
+              boxShadow: isActive ? '0 4px 12px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
+              WebkitTapHighlightColor: 'transparent',
+            }}>
+              {f.label}
+              {f.count > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 800, borderRadius: 999,
+                  padding: '1px 6px', minWidth: 18, textAlign: 'center',
+                  background: isActive ? 'rgba(255,255,255,0.3)' : '#F2F2F7',
+                  color: isActive ? '#fff' : TEXT2,
+                }}>{f.count}</span>
+              )}
+            </button>
+          )
+        })}
+        <div style={{ flex: 1 }} />
+        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
 
+      {/* Orders list */}
       {loading ? (
-        <div style={s.center}><div style={s.spinner} /></div>
-      ) : shown.length === 0 ? (
-        <div style={s.empty}>
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="4" width="18" height="16" rx="3" stroke={C} strokeWidth="1.2"/>
-            <path d="M7 9h10M7 13h6" stroke={C} strokeWidth="1.4" strokeLinecap="round"/>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      ) : sorted.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 10 }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
+            <rect x="3" y="4" width="18" height="16" rx="3" stroke={TEXT} strokeWidth="1.5"/>
+            <path d="M7 9h10M7 13h6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <div style={s.emptyTitle}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: TEXT }}>
             {filter === 'active' ? 'Нет активных заказов' : 'Нет выполненных заказов'}
           </div>
-          <div style={s.emptyHint}>
-            {filter === 'active' ? 'Ожидайте назначения от менеджера' : 'Выполненные заказы за сегодня появятся здесь'}
+          <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>
+            {filter === 'active' ? 'Ожидайте назначения от менеджера' : 'Выполненные заказы появятся здесь'}
           </div>
         </div>
       ) : (
-        <div style={s.list}>
-          {/* Sort: overdue first, then in_delivery, then rest */}
-          {shown
-            .slice()
-            .sort((a, b) => {
-              if (isOverdue(a) && !isOverdue(b)) return -1
-              if (!isOverdue(a) && isOverdue(b)) return 1
-              if (a.status === 'in_delivery' && b.status !== 'in_delivery') return -1
-              if (a.status !== 'in_delivery' && b.status === 'in_delivery') return 1
-              return 0
-            })
-            .map(order => (
-              <OrderCard key={order.id} order={order} onAction={doAction} actionLoading={actionLoading} />
-            ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {sorted.map(order => (
+            <OrderCard key={order.id} order={order} onAction={doAction} actionLoading={actionLoading} />
+          ))}
         </div>
       )}
     </CourierLayout>
   )
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const s = {
-  overdueAlert: {
-    background: 'linear-gradient(135deg, #E03131, #C92A2A)',
-    borderRadius: 14, padding: '14px 16px',
-    color: '#fff', marginBottom: 14,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    boxShadow: '0 4px 16px rgba(224,49,49,0.3)',
+  contactBtn: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${BORDER}`,
+    background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent',
   },
-  overdueAlertLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  overdueAlertPulse: {
-    width: 12, height: 12, borderRadius: '50%',
-    background: '#fff', flexShrink: 0,
-    boxShadow: '0 0 0 4px rgba(255,255,255,0.3)',
-    animation: 'pulse 1.5s infinite',
-  },
-
-  summaryRow: { display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  chip: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '8px 16px', borderRadius: 999, border: `1.5px solid rgba(60,60,67,0.12)`,
-    background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent', whiteSpace: 'nowrap',
-  },
-  chipActive: { background: C, color: '#fff', borderColor: 'transparent', boxShadow: '0 4px 12px rgba(141,198,63,0.3)' },
-  chipBadge: {
-    fontSize: 10, fontWeight: 800, borderRadius: 999,
-    padding: '1px 6px', minWidth: 18, textAlign: 'center',
-  },
-
-  center: { display: 'flex', justifyContent: 'center', padding: 60 },
-  spinner: {
-    width: 32, height: 32, borderRadius: '50%',
-    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
-    animation: 'spin 0.8s linear infinite',
-  },
-  empty: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: 10, padding: '60px 20px', textAlign: 'center',
-  },
-  emptyTitle: { fontSize: 17, fontWeight: 700, color: TEXT },
-  emptyHint: { fontSize: 13, color: TEXT2 },
-
-  list: { display: 'flex', flexDirection: 'column', gap: 10 },
-
-  // Card
-  card: {
-    background: '#fff', borderRadius: 16, overflow: 'hidden',
-    transition: 'box-shadow 0.2s',
-  },
-  overdueStrip: {
-    background: 'linear-gradient(90deg, #E03131, #C92A2A)',
-    color: '#fff', padding: '8px 16px',
-    fontSize: 12, fontWeight: 700,
-    display: 'flex', alignItems: 'center', gap: 8,
-  },
-  cardTop: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '14px 16px', cursor: 'pointer', gap: 12,
-    WebkitTapHighlightColor: 'transparent',
-  },
-  cardLeft: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 },
-  orderBadge: {
-    background: '#F2F2F7', borderRadius: 8, padding: '4px 8px',
-    fontSize: 12, fontWeight: 800, color: TEXT2, flexShrink: 0,
-  },
-  cardInfo: { flex: 1, minWidth: 0 },
-  cardAddr: { fontSize: 14, fontWeight: 600, color: TEXT, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  cardTime: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, marginTop: 3 },
-  cardRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-  cardTotal: { fontWeight: 900, fontSize: 16 },
-  statusBadge: { fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700 },
-
-  details: {
-    borderTop: `1px solid ${BORDER}`, padding: '14px 16px',
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
-
-  // Contacts
-  infoBlock: { display: 'flex', flexDirection: 'column', gap: 4 },
-  contactRow: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '11px 12px', background: '#FAFAFA', borderRadius: 13,
-    textDecoration: 'none', cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent',
-  },
-  contactIcon: {
-    width: 34, height: 34, borderRadius: 9,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  contactLabel: { fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 },
-  contactVal: { fontSize: 14, fontWeight: 700, marginTop: 1 },
-
-  // Address
-  addrBlock: {
-    display: 'flex', alignItems: 'flex-start', gap: 10,
-    background: '#FAFAFA', borderRadius: 13, padding: '12px 14px',
-  },
-  blockLabel: { fontSize: 10, color: TEXT2, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  mapBtn: {
-    display: 'flex', alignItems: 'center', gap: 6, flexDirection: 'column',
-    background: '#111827', color: '#fff', borderRadius: 12,
-    padding: '12px 14px', fontSize: 11, fontWeight: 700, textDecoration: 'none',
-    flexShrink: 0, WebkitTapHighlightColor: 'transparent',
-  },
-
-  // Time
-  timeBlock: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    borderRadius: 12, padding: '11px 14px', border: '1px solid',
-  },
-
-  // Items
-  itemsBlock: {
-    background: '#FAFAFA', borderRadius: 12, padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: 8,
-  },
-  itemRow: { display: 'flex', alignItems: 'center', gap: 8 },
-  itemDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
-  itemQty: { fontSize: 14, fontWeight: 700, color: TEXT2 },
-
-  // Bottles
-  bottleBlock: {
-    display: 'flex', alignItems: 'center', gap: 12,
-    background: '#E6FCF5', borderRadius: 12, padding: '13px 14px',
-    border: '1px solid rgba(18,184,134,0.25)',
-  },
-  bottleIcon: {
-    width: 38, height: 38, borderRadius: 10, background: 'rgba(18,184,134,0.15)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-
-  // Total
-  totalRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: '#F0FFF0', borderRadius: 12, padding: '13px 14px',
-    border: `1px solid rgba(141,198,63,0.25)`,
-  },
-  totalVal: { fontWeight: 900, fontSize: 22, color: C },
-
-  // Actions
-  actions: { display: 'flex', gap: 8 },
-  actionBtn: {
+  btnAccent: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
     padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent', transition: 'opacity 0.15s',
+    background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnPrimary: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: '#111827', color: '#fff', border: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnSuccess: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', border: 'none',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.35)',
+    WebkitTapHighlightColor: 'transparent',
   },
 }
