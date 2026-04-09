@@ -36,6 +36,11 @@ import CourierOrders from './pages/courier/CourierOrders'
 import CourierStats from './pages/courier/CourierStats'
 import CourierProfile from './pages/courier/CourierProfile'
 
+// Warehouse
+import WarehouseStock from './pages/warehouse/WarehouseStock'
+import WarehouseIssue from './pages/warehouse/WarehouseIssue'
+import WarehouseProfile from './pages/warehouse/WarehouseProfile'
+
 export default function App() {
   return (
     <>
@@ -149,6 +154,23 @@ export default function App() {
         <Route path="/courier/profile" element={
           <ProtectedRoute allowedRoles={['courier']}>
             <CourierProfile />
+          </ProtectedRoute>
+        } />
+
+        {/* Warehouse */}
+        <Route path="/warehouse" element={
+          <ProtectedRoute allowedRoles={['warehouse']}>
+            <WarehouseStock />
+          </ProtectedRoute>
+        } />
+        <Route path="/warehouse/issue" element={
+          <ProtectedRoute allowedRoles={['warehouse']}>
+            <WarehouseIssue />
+          </ProtectedRoute>
+        } />
+        <Route path="/warehouse/profile" element={
+          <ProtectedRoute allowedRoles={['warehouse']}>
+            <WarehouseProfile />
           </ProtectedRoute>
         } />
 

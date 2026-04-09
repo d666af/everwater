@@ -3,6 +3,7 @@ import {
   MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
   MOCK_SETTINGS, DEMO_USERS, MOCK_NOTIFICATIONS, MOCK_SUPPORT_CHATS,
   MOCK_CLIENT_DETAILS, MOCK_COURIER_DETAILS,
+  MOCK_CASH_DEBTS, MOCK_DEBT_REQUESTS, MOCK_COOLERS, MOCK_WAREHOUSE,
 } from './mock'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
@@ -178,10 +179,17 @@ export const markInDelivery = (orderId) =>
     () => ({ ok: true })
   )
 
-export const markDelivered = (orderId) =>
+export const markDelivered = (orderId, cashCollected) =>
   safeCall(
-    () => http.patch(`/orders/${orderId}/delivered`).then(r => r.data),
-    () => ({ ok: true })
+    () => http.patch(`/orders/${orderId}/delivered`, { cash_collected: cashCollected }).then(r => r.data),
+    () => {
+      const order = mockOrdersStore.find(o => o.id === orderId)
+      if (order) {
+        order.status = 'delivered'
+        if (order.payment_method === 'cash') order.cash_collected = !!cashCollected
+      }
+      return { ok: true }
+    }
   )
 
 export const courierInDelivery = markInDelivery
@@ -380,4 +388,142 @@ export const confirmTopup = (userId, amount) =>
   safeCall(
     () => http.post(`/admin/users/${userId}/topup`, { amount }).then(r => r.data),
     () => ({ ok: true, new_balance: 100000 })
+  )
+
+// ─── Cash debt tracking ─────────────────────────────────────────────────────
+let mockCashDebts = [...MOCK_CASH_DEBTS]
+let mockDebtRequests = [...MOCK_DEBT_REQUESTS]
+
+export const getCashDebts = (courierId) =>
+  safeCall(
+    () => http.get(`/couriers/${courierId}/cash_debts`).then(r => r.data),
+    () => mockCashDebts.filter(d => (!courierId || d.courier_id === courierId) && d.status === 'pending')
+  )
+
+export const getAllCashDebts = () =>
+  safeCall(
+    () => http.get('/admin/cash_debts').then(r => r.data),
+    () => mockCashDebts.filter(d => d.status === 'pending')
+  )
+
+export const requestDebtClearance = (debtId, comment) =>
+  safeCall(
+    () => http.post(`/couriers/cash_debts/${debtId}/request_clearance`, { comment }).then(r => r.data),
+    () => {
+      const req = { id: Date.now(), debt_id: debtId, comment, status: 'pending', created_at: new Date().toISOString() }
+      const debt = mockCashDebts.find(d => d.id === debtId)
+      if (debt) req.amount = debt.amount
+      mockDebtRequests = [...mockDebtRequests, req]
+      return req
+    }
+  )
+
+export const approveDebtClearance = (debtId) =>
+  safeCall(
+    () => http.patch(`/admin/cash_debts/${debtId}/approve`).then(r => r.data),
+    () => {
+      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, status: 'cleared' } : d)
+      return { ok: true }
+    }
+  )
+
+export const rejectDebtClearance = (debtId) =>
+  safeCall(
+    () => http.patch(`/admin/cash_debts/${debtId}/reject`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+// ─── Courier create order ───────────────────────────────────────────────────
+export const courierCreateOrder = (data) =>
+  safeCall(
+    () => http.post('/couriers/orders', data).then(r => r.data),
+    () => {
+      const newOrder = {
+        id: Date.now(),
+        status: 'assigned_to_courier',
+        ...data,
+        payment_confirmed: data.payment_method === 'cash',
+        created_at: new Date().toISOString(),
+        items: data.items || [],
+      }
+      mockOrdersStore = [newOrder, ...mockOrdersStore]
+      return newOrder
+    }
+  )
+
+// ─── Cooler management ──────────────────────────────────────────────────────
+export const getClientCoolers = (userId) =>
+  safeCall(
+    () => http.get(`/admin/users/${userId}/coolers`).then(r => r.data),
+    () => MOCK_COOLERS[userId] || []
+  )
+
+export const addClientCooler = (userId, data) =>
+  safeCall(
+    () => http.post(`/admin/users/${userId}/coolers`, data).then(r => r.data),
+    () => {
+      const cooler = { id: Date.now(), ...data, status: 'active' }
+      if (!MOCK_COOLERS[userId]) MOCK_COOLERS[userId] = []
+      MOCK_COOLERS[userId].push(cooler)
+      return cooler
+    }
+  )
+
+export const removeClientCooler = (userId, coolerId) =>
+  safeCall(
+    () => http.delete(`/admin/users/${userId}/coolers/${coolerId}`).then(r => r.data),
+    () => {
+      if (MOCK_COOLERS[userId]) MOCK_COOLERS[userId] = MOCK_COOLERS[userId].filter(c => c.id !== coolerId)
+      return { ok: true }
+    }
+  )
+
+// ─── Warehouse ──────────────────────────────────────────────────────────────
+export const getWarehouseStock = () =>
+  safeCall(
+    () => http.get('/warehouse/stock').then(r => r.data),
+    () => ({ stock: MOCK_WAREHOUSE.stock, history: MOCK_WAREHOUSE.history, courier_water: MOCK_WAREHOUSE.courier_water })
+  )
+
+export const addProduction = (productName, quantity, note) =>
+  safeCall(
+    () => http.post('/warehouse/production', { product_name: productName, quantity, note }).then(r => r.data),
+    () => {
+      const item = MOCK_WAREHOUSE.stock.find(s => s.product_name === productName)
+      if (item) item.quantity += quantity
+      MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'production', product_name: productName, quantity, date: new Date().toISOString(), note })
+      return { ok: true }
+    }
+  )
+
+export const issueWaterToCourier = (courierId, courierName, productName, quantity) =>
+  safeCall(
+    () => http.post('/warehouse/issue', { courier_id: courierId, product_name: productName, quantity }).then(r => r.data),
+    () => {
+      const item = MOCK_WAREHOUSE.stock.find(s => s.product_name === productName)
+      if (item) item.quantity = Math.max(0, item.quantity - quantity)
+      MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'issued', product_name: productName, quantity, date: new Date().toISOString(), courier_name: courierName, courier_id: courierId })
+      if (!MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId] = { courier_name: courierName, received: 0, delivered: 0, remaining: 0 }
+      MOCK_WAREHOUSE.courier_water[courierId].received += quantity
+      MOCK_WAREHOUSE.courier_water[courierId].remaining += quantity
+      return { ok: true }
+    }
+  )
+
+export const returnWaterFromCourier = (courierId, courierName, productName, quantity) =>
+  safeCall(
+    () => http.post('/warehouse/return', { courier_id: courierId, product_name: productName, quantity }).then(r => r.data),
+    () => {
+      const item = MOCK_WAREHOUSE.stock.find(s => s.product_name === productName)
+      if (item) item.quantity += quantity
+      MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'returned', product_name: productName, quantity, date: new Date().toISOString(), courier_name: courierName, courier_id: courierId })
+      if (MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId].remaining = Math.max(0, MOCK_WAREHOUSE.courier_water[courierId].remaining - quantity)
+      return { ok: true }
+    }
+  )
+
+export const getCourierWater = (courierId) =>
+  safeCall(
+    () => http.get(`/couriers/${courierId}/water`).then(r => r.data),
+    () => MOCK_WAREHOUSE.courier_water[courierId] || { received: 0, delivered: 0, remaining: 0 }
   )

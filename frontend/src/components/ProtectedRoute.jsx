@@ -11,6 +11,7 @@ const ROLE_HOME = {
   admin: '/admin',
   manager: '/manager',
   courier: '/courier',
+  warehouse: '/warehouse',
 }
 
 export default function ProtectedRoute({ children, allowedRoles }) {

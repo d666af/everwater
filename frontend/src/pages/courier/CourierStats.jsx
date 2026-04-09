@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierStats, getCourierOrders } from '../../api'
+import { getCourierStats, getCourierOrders, getCashDebts, requestDebtClearance, getCourierWater } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const tg = window.Telegram?.WebApp
@@ -14,25 +14,42 @@ const BORDER = 'rgba(60,60,67,0.08)'
 export default function CourierStats() {
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
+  const [debts, setDebts] = useState([])
+  const [water, setWater] = useState({})
   const [loading, setLoading] = useState(true)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
 
-  useEffect(() => {
+  const load = () => {
     if (!courierId) { setLoading(false); return }
     setLoading(true)
     Promise.all([
       getCourierStats(courierId),
       getCourierOrders(courierId),
+      getCashDebts(courierId),
+      getCourierWater(courierId),
     ])
-      .then(([st, orders]) => {
+      .then(([st, orders, d, w]) => {
         setStats(st)
         setRecent(orders.filter(o => o.status === 'delivered').slice(0, 8))
+        setDebts(d)
+        setWater(w || {})
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [courierId])
+  }
+
+  useEffect(load, [courierId]) // eslint-disable-line
+
+  const handleClearanceRequest = async (debtId) => {
+    try { await requestDebtClearance(debtId); load() }
+    catch { alert('Ошибка') }
+  }
+
+  const totalDebt = debts.filter(d => d.clearance_status !== 'approved').reduce((s, d) => s + (d.amount || 0), 0)
+  const pendingDebts = debts.filter(d => !d.clearance_status || d.clearance_status === 'none')
+  const requestedDebts = debts.filter(d => d.clearance_status === 'pending')
 
   return (
     <CourierLayout title="Статистика">
@@ -65,6 +82,27 @@ export default function CourierStats() {
             } />
           </div>
 
+          {/* Water counters */}
+          {Object.keys(water).length > 0 && (
+            <div style={{ background: '#fff', borderRadius: 18, padding: '16px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 10 }}>Вода на руках</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {Object.entries(water).filter(([, v]) => v > 0).map(([product, qty]) => (
+                  <div key={product} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8F9FA', borderRadius: 12 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0L12 2.69z" fill={C} opacity="0.5"/></svg>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{product}</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: CD }}>{qty}</span>
+                    <span style={{ fontSize: 11, color: TEXT2 }}>шт.</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, padding: '8px 12px', background: `${C}10`, borderRadius: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>Всего</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: C }}>{Object.values(water).reduce((s, v) => s + v, 0)} шт.</span>
+              </div>
+            </div>
+          )}
+
           {/* Rating bar */}
           {stats.rating > 0 && (
             <div style={{ background: '#fff', borderRadius: 18, padding: '16px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
@@ -80,6 +118,37 @@ export default function CourierStats() {
                  stats.rating >= 4.0 ? 'Хороший рейтинг' :
                  'Старайтесь доставлять быстро и аккуратно'}
               </div>
+            </div>
+          )}
+
+          {/* Cash debt section */}
+          {debts.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: 18, padding: '16px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Долг по наличным</div>
+                {totalDebt > 0 && <span style={{ fontSize: 14, fontWeight: 800, color: '#E03131' }}>{totalDebt.toLocaleString()} сум</span>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {debts.filter(d => d.clearance_status !== 'approved').map(d => (
+                  <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#F8F9FA', borderRadius: 12, border: `1px solid ${BORDER}` }}>
+                    <span style={{ fontWeight: 700, fontSize: 12, color: TEXT2 }}>#{d.order_id}</span>
+                    <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: TEXT }}>{(d.amount || 0).toLocaleString()} сум</span>
+                    {d.clearance_status === 'pending' ? (
+                      <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 999, background: '#FFF8E6', color: '#E67700', fontWeight: 700 }}>Запрошено</span>
+                    ) : d.clearance_status === 'rejected' ? (
+                      <button style={{ fontSize: 11, padding: '5px 12px', borderRadius: 10, background: '#FFF5F5', color: '#E03131', fontWeight: 700, border: '1px solid rgba(224,49,49,0.2)', cursor: 'pointer' }} onClick={() => handleClearanceRequest(d.id)}>Повторить</button>
+                    ) : (
+                      <button style={{ fontSize: 11, padding: '5px 12px', borderRadius: 10, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer' }} onClick={() => handleClearanceRequest(d.id)}>Погасить</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {pendingDebts.length > 1 && (
+                <button style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 12, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(141,198,63,0.3)' }}
+                  onClick={() => pendingDebts.forEach(d => handleClearanceRequest(d.id))}>
+                  Запросить погашение всех
+                </button>
+              )}
             </div>
           )}
 
