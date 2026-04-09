@@ -105,6 +105,7 @@ export default function Login() {
                 { phone: '+998 90 000-00-02', role: 'Админ' },
                 { phone: '+998 90 000-00-03', role: 'Менеджер' },
                 { phone: '+998 90 000-00-04', role: 'Курьер' },
+                { phone: '+998 90 000-00-05', role: 'Завсклад' },
               ].map(d => (
                 <button key={d.phone} style={s.demoBtn} onClick={() => setPhone(d.phone)}>
                   <span style={s.demoRole}>{d.role}</span>

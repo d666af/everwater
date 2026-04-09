@@ -28,20 +28,53 @@ export default function WarehouseStock() {
   useEffect(load, [])
 
   const totalItems = stock.reduce((s, p) => s + (p.quantity || 0), 0)
+  const lowStock = stock.filter(p => p.quantity <= 10)
+
+  // Today's summary
+  const today = new Date().toDateString()
+  const todayOps = history.filter(h => new Date(h.date).toDateString() === today)
+  const todayProduced = todayOps.filter(h => h.type === 'production').reduce((s, h) => s + (h.quantity || 0), 0)
+  const todayIssued = todayOps.filter(h => h.type === 'issue' || h.type === 'issued').reduce((s, h) => s + (h.quantity || 0), 0)
+  const todayReturned = todayOps.filter(h => h.type === 'returned' || h.type === 'return').reduce((s, h) => s + (h.quantity || 0), 0)
 
   return (
     <WarehouseLayout title="Склад">
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (name, qty, note) => { await addProduction(name, qty, note); load() }} />}
 
       {/* Stats */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[stock.length, 'Позиций'], [totalItems, 'Единиц'], [history.length, 'Записей']].map(([v, l]) => (
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        {[
+          [stock.length, 'Позиций', null],
+          [totalItems, 'На складе', null],
+          [lowStock.length, 'Мало', lowStock.length > 0 ? '#E03131' : null],
+        ].map(([v, l, clr]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: clr || TEXT }}>{v}</div>
             <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
         ))}
       </div>
+
+      {/* Today's summary */}
+      {(todayProduced > 0 || todayIssued > 0 || todayReturned > 0) && (
+        <div style={{ background: '#fff', borderRadius: 18, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Сегодня</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, background: '#EBFBEE', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>+{todayProduced}</div>
+              <div style={{ fontSize: 10, color: '#2B8A3E', marginTop: 3, fontWeight: 600 }}>Произведено</div>
+            </div>
+            <div style={{ flex: 1, background: '#FFF8E6', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>−{todayIssued}</div>
+              <div style={{ fontSize: 10, color: '#E67700', marginTop: 3, fontWeight: 600 }}>Выдано</div>
+            </div>
+            <div style={{ flex: 1, background: '#E8F4FD', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>+{todayReturned}</div>
+              <div style={{ fontSize: 10, color: '#1971C2', marginTop: 3, fontWeight: 600 }}>Возвраты</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add production button */}
       <button style={{
@@ -89,7 +122,7 @@ export default function WarehouseStock() {
               <div style={{ background: '#fff', borderRadius: 18, padding: '10px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 {history.map((h, i) => {
                   const isAdd = h.type === 'production'
-                  const isIssue = h.type === 'issue'
+                  const isIssue = h.type === 'issue' || h.type === 'issued'
                   return (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                       <div style={{ width: 32, height: 32, borderRadius: 10, background: isAdd ? '#EBFBEE' : isIssue ? '#FFF8E6' : '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

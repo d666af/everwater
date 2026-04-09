@@ -77,7 +77,7 @@ export default function CourierStats() {
             <StatCard label="Заработано" value={stats.earnings ? `${Math.round(stats.earnings / 1000)}к` : '—'} sub={stats.earnings ? `${Number(stats.earnings).toLocaleString()} сум` : null} accent="#1971C2" icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="#1971C2" strokeWidth="1.8"/><path d="M2 10h20" stroke="#1971C2" strokeWidth="1.5"/></svg>
             } />
-            <StatCard label="Рейтинг" value={stats.rating ? stats.rating.toFixed(1) : '—'} sub={stats.rating ? 'из 5.0' : null} accent="#E67700" icon={
+            <StatCard label="Рейтинг" value={stats.rating ? stats.rating.toFixed(1) : '—'} sub={stats.review_count ? `${stats.review_count} отзывов` : stats.rating ? 'из 5.0' : null} accent="#E67700" icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="#E67700" strokeWidth="1.8" strokeLinejoin="round" fill={stats.rating >= 4 ? '#FFF3BF' : 'none'}/></svg>
             } />
           </div>

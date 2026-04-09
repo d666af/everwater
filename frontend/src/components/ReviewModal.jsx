@@ -1,7 +1,15 @@
 import { useState } from 'react'
 import { createReview } from '../api'
 
-export default function ReviewModal({ orderId, onClose, onDone }) {
+const C = '#8DC63F'
+const CD = '#6CA32F'
+
+export default function ReviewModal({ order, orderId, onClose, onDone }) {
+  // Support both old calling style (orderId only) and new (full order)
+  const id = order?.id || orderId
+  const courier = order?.courier_name
+  const courierId = order?.courier_id
+
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
   const [loading, setLoading] = useState(false)
@@ -11,7 +19,7 @@ export default function ReviewModal({ orderId, onClose, onDone }) {
     if (!rating) { setError('Поставьте оценку'); return }
     setLoading(true); setError('')
     try {
-      await createReview({ order_id: orderId, rating, comment: comment || null })
+      await createReview({ order_id: id, courier_id: courierId, rating, comment: comment || null })
       onDone()
     } catch {
       setError('Не удалось отправить отзыв')
@@ -20,22 +28,35 @@ export default function ReviewModal({ orderId, onClose, onDone }) {
     }
   }
 
+  const ratingText = ['', 'Ужасно', 'Плохо', 'Нормально', 'Хорошо', 'Отлично'][rating] || ''
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.sheet} onClick={e => e.stopPropagation()}>
         <div style={s.handle} />
         <h3 style={s.title}>Как прошла доставка?</h3>
 
+        {courier && (
+          <div style={s.courierCard}>
+            <div style={s.courierAvatar}>{courier[0]?.toUpperCase()}</div>
+            <div>
+              <div style={s.courierLabel}>Курьер</div>
+              <div style={s.courierName}>{courier}</div>
+            </div>
+          </div>
+        )}
+
         <div style={s.stars}>
           {[1, 2, 3, 4, 5].map(n => (
             <button key={n} style={s.star} onClick={() => setRating(n)}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill={n <= rating ? '#FFA726' : 'none'}>
+              <svg width="38" height="38" viewBox="0 0 24 24" fill={n <= rating ? '#FFA726' : 'none'}>
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
                   stroke={n <= rating ? '#FFA726' : '#ddd'} strokeWidth="1.5" strokeLinejoin="round"/>
               </svg>
             </button>
           ))}
         </div>
+        {ratingText && <div style={s.ratingLabel}>{ratingText}</div>}
 
         <textarea
           style={s.textarea}
@@ -47,7 +68,7 @@ export default function ReviewModal({ orderId, onClose, onDone }) {
 
         {error && <div style={s.error}>{error}</div>}
 
-        <button style={s.submitBtn} onClick={submit} disabled={loading}>
+        <button style={{ ...s.submitBtn, ...(rating ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }} disabled={loading || !rating} onClick={submit}>
           {loading ? 'Отправка...' : 'Отправить отзыв'}
         </button>
         <button style={s.cancelBtn} onClick={onClose}>Отмена</button>
@@ -78,19 +99,33 @@ const s = {
     fontSize: 20, fontWeight: 700, textAlign: 'center',
     color: '#111', letterSpacing: -0.3, margin: 0,
   },
-  stars: { display: 'flex', justifyContent: 'center', gap: 6 },
-  star: { background: 'none', border: 'none', cursor: 'pointer', padding: 4 },
+  courierCard: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    background: `linear-gradient(135deg, ${C}, ${CD})`, borderRadius: 14, padding: '12px 16px',
+    color: '#fff',
+  },
+  courierAvatar: {
+    width: 40, height: 40, borderRadius: '50%',
+    background: 'rgba(255,255,255,0.25)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 18, fontWeight: 800, color: '#fff', flexShrink: 0,
+  },
+  courierLabel: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: 600, letterSpacing: 0.3 },
+  courierName: { fontSize: 15, fontWeight: 700, color: '#fff' },
+  stars: { display: 'flex', justifyContent: 'center', gap: 4 },
+  star: { background: 'none', border: 'none', cursor: 'pointer', padding: 2 },
+  ratingLabel: { textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#FFA726', marginTop: -4 },
   textarea: {
     border: '1.5px solid #eee', borderRadius: 14, padding: '12px 14px',
     fontSize: 15, resize: 'none', background: '#f7f7f8',
     color: '#111', outline: 'none', width: '100%', lineHeight: 1.5,
-    fontFamily: 'inherit', transition: 'border-color 0.2s',
+    fontFamily: 'inherit', transition: 'border-color 0.2s', boxSizing: 'border-box',
   },
   error: { color: '#ef4444', fontSize: 13, textAlign: 'center', fontWeight: 600 },
   submitBtn: {
     width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
-    background: '#8DC63F', color: '#fff', fontSize: 16, fontWeight: 700,
-    cursor: 'pointer',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 700,
+    cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.35)',
   },
   cancelBtn: {
     width: '100%', padding: '12px 0', borderRadius: 14,

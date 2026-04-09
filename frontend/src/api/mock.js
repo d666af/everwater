@@ -331,17 +331,17 @@ export const MOCK_COURIER_DETAILS = {
 }
 
 // ─── Cash debt tracking ─────────────────────────────────────────────────────
+// clearance_status: 'none' | 'pending' | 'approved' | 'rejected'
 export const MOCK_CASH_DEBTS = [
-  { id: 1, courier_id: 1, order_id: 1007, amount: 25000, status: 'pending', client_name: 'Нодир Хасанов', created_at: '2026-04-08T11:00:00' },
+  { id: 1, courier_id: 1, order_id: 1006, amount: 50000, clearance_status: 'none', client_name: 'Алишер Каримов', created_at: '2026-04-07T14:00:00' },
+  { id: 2, courier_id: 1, order_id: 1007, amount: 25000, clearance_status: 'pending', client_name: 'Нодир Хасанов', created_at: '2026-04-08T11:00:00' },
 ]
-
-// ─── Cash debt clearance requests ───────────────────────────────────────────
-export const MOCK_DEBT_REQUESTS = []
 
 // ─── Cooler management ──────────────────────────────────────────────────────
 export const MOCK_COOLERS = {
   1: [
-    { id: 1, model: 'AQUA-100', given_date: '2026-03-01', deposit: 200000, monthly_fee: 30000, next_payment: '2026-04-01', status: 'active', notes: 'Белый напольный' },
+    { id: 1, model: 'AQUA-100', serial_number: 'AQ-2024-001', installed_date: '2026-03-01',
+      plan: { type: 'weekly', days: ['Пн', 'Чт'], qty_per_delivery: 2, total_monthly: 16 } },
   ],
 }
 
@@ -363,8 +363,8 @@ export const MOCK_WAREHOUSE = {
     { id: 5, type: 'returned', product_name: 'Вода 20л', quantity: 3, date: '2026-04-07T18:00:00', courier_name: 'Жавлон К.', courier_id: 1 },
   ],
   courier_water: {
-    1: { courier_name: 'Жавлон К.', received: 15, delivered: 10, remaining: 5 },
-    2: { courier_name: 'Санжар Д.', received: 10, delivered: 7, remaining: 3 },
+    1: { 'Вода 20л': 5, 'Вода 10л': 3 },
+    2: { 'Вода 10л': 3, 'Вода 5л': 4 },
   },
 }
 

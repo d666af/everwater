@@ -83,8 +83,7 @@ function ClientDetail({ user, onClose, onTopup }) {
   const [loadingO, setLoadingO] = useState(true)
   const [loadingD, setLoadingD] = useState(true)
   const [loadingC, setLoadingC] = useState(true)
-  const [coolerModel, setCoolerModel] = useState('')
-  const [coolerSerial, setCoolerSerial] = useState('')
+  const [showCoolerForm, setShowCoolerForm] = useState(false)
 
   useEffect(() => {
     getUserOrders(user.id).then(setOrders).catch(() => setOrders([])).finally(() => setLoadingO(false))
@@ -92,11 +91,10 @@ function ClientDetail({ user, onClose, onTopup }) {
     getClientCoolers(user.id).then(setCoolers).catch(() => setCoolers([])).finally(() => setLoadingC(false))
   }, [user.id])
 
-  const handleAddCooler = async () => {
-    if (!coolerModel.trim()) return
-    const result = await addClientCooler(user.id, { model: coolerModel.trim(), serial_number: coolerSerial.trim() })
+  const handleAddCooler = async (data) => {
+    const result = await addClientCooler(user.id, data)
     setCoolers(prev => [...prev, result])
-    setCoolerModel(''); setCoolerSerial('')
+    setShowCoolerForm(false)
   }
 
   const handleRemoveCooler = async (coolerId) => {
@@ -257,32 +255,17 @@ function ClientDetail({ user, onClose, onTopup }) {
 
     if (tab === 6) return loadingC ? <Spinner /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* Add cooler form */}
-        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, border: `1px solid ${BORDER}` }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Добавить кулер</div>
-          <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, width: '100%', boxSizing: 'border-box' }} placeholder="Модель кулера *" value={coolerModel} onChange={e => setCoolerModel(e.target.value)} />
-          <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, width: '100%', boxSizing: 'border-box' }} placeholder="Серийный номер" value={coolerSerial} onChange={e => setCoolerSerial(e.target.value)} />
-          <button style={{ padding: '10px 14px', borderRadius: 12, border: 'none', background: coolerModel.trim() ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: coolerModel.trim() ? '#fff' : TEXT2, fontSize: 14, fontWeight: 700, cursor: coolerModel.trim() ? 'pointer' : 'not-allowed' }} disabled={!coolerModel.trim()} onClick={handleAddCooler}>
-            Добавить
+        {showCoolerForm && <CoolerForm onCancel={() => setShowCoolerForm(false)} onSave={handleAddCooler} />}
+
+        {!showCoolerForm && (
+          <button style={{ padding: '12px 14px', borderRadius: 12, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, boxShadow: '0 3px 10px rgba(141,198,63,0.3)' }} onClick={() => setShowCoolerForm(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            Добавить кулер с планом
           </button>
-        </div>
+        )}
 
         {/* Cooler list */}
-        {coolers.length === 0 ? <Empty text="Нет кулеров" /> : coolers.map(c => (
-          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="2" stroke="#1971C2" strokeWidth="1.5"/><circle cx="12" cy="8" r="2" stroke="#1971C2" strokeWidth="1.5"/><path d="M9 14h6" stroke="#1971C2" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{c.model}</div>
-              {c.serial_number && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>S/N: {c.serial_number}</div>}
-              {c.installed_date && <div style={{ fontSize: 11, color: TEXT2 }}>Установлен: {new Date(c.installed_date).toLocaleDateString('ru-RU')}</div>}
-            </div>
-            <button style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }} onClick={() => handleRemoveCooler(c.id)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-            </button>
-          </div>
-        ))}
+        {coolers.length === 0 ? <Empty text="Нет кулеров" /> : coolers.map(c => <CoolerCard key={c.id} cooler={c} onRemove={() => handleRemoveCooler(c.id)} />)}
       </div>
     )
 
@@ -329,6 +312,161 @@ function ClientDetail({ user, onClose, onTopup }) {
 
         {/* Scrollable tab content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 30px' }}>{renderTab()}</div>
+      </div>
+    </div>
+  )
+}
+
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+function CoolerCard({ cooler, onRemove }) {
+  const plan = cooler.plan
+  const planText = plan
+    ? plan.type === 'weekly'
+      ? `${plan.days?.join(', ') || '—'} · ${plan.qty_per_delivery || 0} × 20л`
+      : `${(plan.dates || []).join(', ')} числа · ${plan.qty_per_delivery || 0} × 20л`
+    : 'План не задан'
+  const monthly = plan?.total_monthly || 0
+
+  return (
+    <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 42, height: 42, borderRadius: 12, background: '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="2" stroke="#1971C2" strokeWidth="1.5"/><circle cx="12" cy="8" r="2" stroke="#1971C2" strokeWidth="1.5"/><path d="M9 14h6" stroke="#1971C2" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{cooler.model}</div>
+          {cooler.serial_number && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>S/N: {cooler.serial_number}</div>}
+        </div>
+        <button style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }} onClick={onRemove}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        </button>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke={C} strokeWidth="1.8"/><path d="M16 2v4M8 2v4M3 10h18" stroke={C} strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C, textTransform: 'uppercase', letterSpacing: 0.4 }}>План доставки</span>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{planText}</div>
+        {monthly > 0 && (
+          <div style={{ fontSize: 12, color: TEXT2 }}>Итого в месяц: <b style={{ color: CD }}>{monthly} бут.</b></div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CoolerForm({ onCancel, onSave }) {
+  const [model, setModel] = useState('')
+  const [serial, setSerial] = useState('')
+  const [planType, setPlanType] = useState('weekly')
+  const [days, setDays] = useState([])
+  const [dates, setDates] = useState([])
+  const [qty, setQty] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const toggleDay = (d) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+  const toggleDate = (n) => setDates(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])
+
+  // Auto total
+  const q = Number(qty) || 0
+  const total = planType === 'weekly'
+    ? days.length * q * 4  // ~4 weeks per month
+    : dates.length * q
+
+  const canSave = model.trim() && q > 0 && (planType === 'weekly' ? days.length > 0 : dates.length > 0)
+
+  const handle = async () => {
+    if (!canSave) return
+    setLoading(true)
+    try {
+      await onSave({
+        model: model.trim(),
+        serial_number: serial.trim(),
+        installed_date: new Date().toISOString().slice(0, 10),
+        plan: {
+          type: planType,
+          days: planType === 'weekly' ? [...days].sort((a, b) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b)) : undefined,
+          dates: planType === 'monthly' ? [...dates].sort((a, b) => a - b) : undefined,
+          qty_per_delivery: q,
+          total_monthly: total,
+        },
+      })
+    } catch { alert('Ошибка'); setLoading(false) }
+  }
+
+  return (
+    <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Новый кулер</div>
+
+      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} placeholder="Модель кулера *" value={model} onChange={e => setModel(e.target.value)} />
+      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} placeholder="Серийный номер" value={serial} onChange={e => setSerial(e.target.value)} />
+
+      {/* Plan schedule type */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>График доставки 20л</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[['weekly', 'Еженедельно'], ['monthly', 'По числам']].map(([k, l]) => (
+          <button key={k} onClick={() => setPlanType(k)} style={{
+            flex: 1, padding: '10px 12px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            background: planType === k ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+            color: planType === k ? '#fff' : TEXT2,
+            border: planType === k ? 'none' : `1px solid ${BORDER}`,
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {/* Weekly days */}
+      {planType === 'weekly' && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, marginBottom: 6 }}>Дни недели</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {WEEKDAYS.map(d => (
+              <button key={d} onClick={() => toggleDay(d)} style={{
+                padding: '8px 0', minWidth: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: days.includes(d) ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+                color: days.includes(d) ? '#fff' : TEXT,
+                border: days.includes(d) ? 'none' : `1px solid ${BORDER}`,
+              }}>{d}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Monthly dates */}
+      {planType === 'monthly' && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, marginBottom: 6 }}>Числа месяца</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map(n => (
+              <button key={n} onClick={() => toggleDate(n)} style={{
+                padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: dates.includes(n) ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+                color: dates.includes(n) ? '#fff' : TEXT,
+                border: dates.includes(n) ? 'none' : `1px solid ${BORDER}`,
+              }}>{n}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Qty per delivery */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>Количество 20л за доставку</div>
+      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 15, fontWeight: 700, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
+
+      {/* Total preview */}
+      {total > 0 && (
+        <div style={{ background: `${C}12`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: TEXT2 }}>Итого в месяц</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: CD }}>{total} бут. 20л</span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <button style={{ flex: 1, padding: '12px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, fontWeight: 600, cursor: 'pointer' }} onClick={onCancel}>Отмена</button>
+        <button style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: canSave ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: canSave ? '#fff' : TEXT2, fontSize: 14, fontWeight: 700, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave || loading} onClick={handle}>
+          {loading ? 'Сохраняю...' : 'Сохранить'}
+        </button>
       </div>
     </div>
   )

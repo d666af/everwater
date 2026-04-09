@@ -361,11 +361,11 @@ function SubscriptionModal({ onClose, settings, userStore }) {
           <input style={ss.inp} type="tel" placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} />
         </div>
 
-        <button style={{ ...s.primaryBtn, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
+        <button style={{ ...s.primaryBtn, flexShrink: 0, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
           onClick={() => setStep('payment')} disabled={!addr || !phone || !day || !time}>
           К оплате
         </button>
-        <button style={s.ghostBtn} onClick={() => setStep('plan')}>Назад</button>
+        <button style={{ ...s.ghostBtn, flexShrink: 0 }} onClick={() => setStep('plan')}>Назад</button>
       </div>
       {showMap && (
         <MapPicker lat={lat} lng={lng}
@@ -540,7 +540,17 @@ function TopupModal({ onClose, settings }) {
   const finalAmount = useCustom ? (Number(custom) || 0) : amount
 
   const copyCard = () => {
-    navigator.clipboard?.writeText(settings?.payment_card || '')
+    const text = settings?.payment_card || ''
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+    } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 

@@ -5,7 +5,17 @@ export default function CardPayment({ settings, amount, balanceUsed, cardRemaind
   const [copied, setCopied] = useState(false)
 
   const copyCard = () => {
-    navigator.clipboard?.writeText(settings.payment_card || '')
+    const text = settings.payment_card || ''
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+    } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
