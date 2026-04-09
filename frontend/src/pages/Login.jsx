@@ -9,6 +9,7 @@ const ROLE_ROUTES = {
   admin: '/admin',
   manager: '/manager',
   courier: '/courier',
+  warehouse: '/warehouse',
 }
 
 export default function Login() {

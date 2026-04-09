@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, getAdminCouriers } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const tg = window.Telegram?.WebApp
@@ -24,6 +24,7 @@ const FILTERS = [
   { key: 'waiting', label: 'Ожидают' },
   { key: 'enroute', label: 'В пути' },
   { key: 'done',    label: 'Доставлено' },
+  { key: 'all',     label: 'Все' },
 ]
 
 /* ── Urgency: parse delivery_period end time, check if today & approaching ── */
@@ -56,8 +57,9 @@ const PhoneIcon = () => (
 )
 
 /* ── OrderCard ───────────────────────────────────────────────────────────────── */
-function OrderCard({ order, onAction, actionLoading }) {
+function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
   const [open, setOpen] = useState(false)
+  const [cashConfirm, setCashConfirm] = useState(false)
   const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
   const deliveryInfo = [order.delivery_date, order.delivery_period].filter(Boolean).join(' · ')
@@ -222,16 +224,95 @@ function OrderCard({ order, onAction, actionLoading }) {
                   Выехал
                 </button>
               )}
-              {order.status === 'in_delivery' && (
-                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => onAction(courierDelivered, order.id)}>
+              {order.status === 'in_delivery' && !cashConfirm && (
+                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => {
+                  if (isCash) setCashConfirm(true)
+                  else onAction(courierDelivered, order.id)
+                }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Доставлено
                 </button>
+              )}
+              {cashConfirm && (
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ background: '#FFF8E6', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#E67700', textAlign: 'center' }}>
+                    Вы получили {(order.total || 0).toLocaleString()} сум наличными?
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={s.btnSuccess} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, true); setCashConfirm(false) }}>
+                      Да, получил
+                    </button>
+                    <button style={{ ...s.btnAccent, flex: 1, background: '#FFF5F5', color: '#E03131', border: '1.5px solid rgba(224,49,49,0.2)' }} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, false); setCashConfirm(false) }}>
+                      Нет
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── Create Order Modal ──────────────────────────────────────────────────────── */
+function CreateOrderModal({ onClose, onSave, courierId }) {
+  const [clientName, setClientName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [items, setItems] = useState('')
+  const [total, setTotal] = useState('')
+  const [payMethod, setPayMethod] = useState('cash')
+  const [loading, setLoading] = useState(false)
+
+  const canSave = clientName.trim() && phone.trim() && address.trim() && total
+
+  const handle = async () => {
+    if (!canSave) return
+    setLoading(true)
+    try {
+      await onSave({
+        client_name: clientName.trim(),
+        recipient_phone: phone.trim(),
+        address: address.trim(),
+        items_text: items.trim(),
+        total: Number(total),
+        payment_method: payMethod,
+        courier_id: courierId,
+      })
+      onClose()
+    } catch { alert('Ошибка при создании') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.sheetHandle} />
+        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input style={s.inp} placeholder="Имя клиента *" value={clientName} onChange={e => setClientName(e.target.value)} />
+          <input style={s.inp} placeholder="Телефон клиента *" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
+          <input style={s.inp} placeholder="Адрес доставки *" value={address} onChange={e => setAddress(e.target.value)} />
+          <input style={s.inp} placeholder="Состав (напр. Вода 20л x2)" value={items} onChange={e => setItems(e.target.value)} />
+          <input style={s.inp} placeholder="Сумма *" value={total} onChange={e => setTotal(e.target.value)} inputMode="numeric" type="number" />
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[['cash', 'Наличные'], ['card', 'Карта']].map(([k, l]) => (
+              <button key={k} onClick={() => setPayMethod(k)} style={{
+                flex: 1, padding: '12px 8px', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                background: payMethod === k ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+                color: payMethod === k ? '#fff' : TEXT2,
+                border: payMethod === k ? 'none' : `1.5px solid ${BORDER}`,
+              }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <button style={{ ...s.btnSuccess, ...(canSave ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }} disabled={!canSave || loading} onClick={handle}>
+          {loading ? 'Создаю...' : 'Создать заказ'}
+        </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
     </div>
   )
 }
@@ -242,6 +323,7 @@ export default function CourierOrders() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [filter, setFilter] = useState('waiting')
+  const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
@@ -269,12 +351,24 @@ export default function CourierOrders() {
     finally { setActionLoading(false) }
   }
 
+  const doDeliverCash = async (orderId, cashCollected) => {
+    setActionLoading(true)
+    try { await courierDelivered(orderId, cashCollected); load() }
+    catch { alert('Ошибка операции') }
+    finally { setActionLoading(false) }
+  }
+
+  const handleCreateOrder = async (data) => {
+    await courierCreateOrder(data)
+    load()
+  }
+
   const waiting = orders.filter(o => ['confirmed', 'assigned_to_courier'].includes(o.status))
   const enroute = orders.filter(o => o.status === 'in_delivery')
   const done = orders.filter(o => o.status === 'delivered')
-  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length }
+  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length, all: orders.length }
 
-  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : done
+  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : filter === 'done' ? done : orders
 
   // Sort: urgent first
   const sorted = shown.slice().sort((a, b) => {
@@ -291,10 +385,13 @@ export default function CourierOrders() {
     waiting: { title: 'Нет ожидающих заказов', hint: 'Ожидайте назначения от менеджера' },
     enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "Выехал" чтобы начать доставку' },
     done:    { title: 'Нет доставленных', hint: 'Выполненные заказы появятся здесь' },
+    all:     { title: 'Нет заказов', hint: 'Создайте заказ или ожидайте назначения' },
   }[filter]
 
   return (
     <CourierLayout title="Заказы">
+      {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} courierId={courierId} />}
+
       {/* CSS for urgency pulse animation */}
       <style>{`
         @keyframes urgencyPulse {
@@ -302,6 +399,18 @@ export default function CourierOrders() {
           50% { box-shadow: 0 0 0 6px rgba(224,49,49,0.12); }
         }
       `}</style>
+
+      {/* Create order button */}
+      <button style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        width: '100%', padding: '11px 14px', borderRadius: 14, border: 'none',
+        background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700,
+        cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent',
+        marginBottom: 12,
+      }} onClick={() => setShowCreate(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        Создать заказ
+      </button>
 
       {/* Filter tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -311,8 +420,8 @@ export default function CourierOrders() {
           const hasUrgent = f.key === 'waiting' && urgentWaiting > 0
           return (
             <button key={f.key} onClick={() => setFilter(f.key)} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-              padding: '10px 6px', borderRadius: 14, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              padding: '10px 4px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer',
               background: active ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
               color: active ? '#fff' : TEXT2,
               border: active ? 'none' : `1.5px solid ${C}40`,
@@ -323,7 +432,7 @@ export default function CourierOrders() {
               {count > 0 && (
                 <span style={{
                   fontSize: 10, fontWeight: 800, borderRadius: 999,
-                  padding: '1px 6px', minWidth: 18, textAlign: 'center',
+                  padding: '1px 5px', minWidth: 16, textAlign: 'center',
                   background: active ? 'rgba(255,255,255,0.3)' : hasUrgent ? '#E03131' : '#F2F2F7',
                   color: active ? '#fff' : hasUrgent ? '#fff' : TEXT2,
                 }}>{count}</span>
@@ -353,7 +462,7 @@ export default function CourierOrders() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map(order => (
-            <OrderCard key={order.id} order={order} onAction={doAction} actionLoading={actionLoading} />
+            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} actionLoading={actionLoading} />
           ))}
         </div>
       )}
@@ -362,6 +471,10 @@ export default function CourierOrders() {
 }
 
 const s = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
+  sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
+  sheetHandle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
+  inp: { border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 15, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' },
   contactBtn: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
     padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${BORDER}`,

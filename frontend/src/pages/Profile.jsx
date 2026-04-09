@@ -249,6 +249,14 @@ function SubscriptionModal({ onClose, settings, userStore }) {
                 <div style={{ fontSize: 12, color: '#8e8e93' }}>Перевод на карту</div>
               </div>
             </button>
+            <button style={payMethod === 'cash' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+              onClick={() => setPayMethod('cash')}>
+              <div style={ss.payDot(payMethod === 'cash')} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Наличные</div>
+                <div style={{ fontSize: 12, color: '#8e8e93' }}>Оплата курьеру при доставке</div>
+              </div>
+            </button>
           </div>
 
           {afterBonus < total && (
@@ -257,8 +265,11 @@ function SubscriptionModal({ onClose, settings, userStore }) {
             </div>
           )}
 
-          <button style={s.primaryBtn} onClick={submit} disabled={loading}>
-            {loading ? <span style={s.spinner} /> : `Оплатить ${afterBonus.toLocaleString()} сум`}
+          <button style={{ ...s.primaryBtn, ...(payMethod === 'balance' && !canPayBalance ? { opacity: 0.5 } : {}) }}
+            onClick={submit} disabled={loading || (payMethod === 'balance' && !canPayBalance)}>
+            {loading ? <span style={s.spinner} /> :
+              payMethod === 'cash' ? `Оформить · ${afterBonus.toLocaleString()} сум` :
+              `Оплатить ${afterBonus.toLocaleString()} сум`}
           </button>
           <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
         </div>
@@ -562,7 +573,10 @@ function TopupModal({ onClose, settings }) {
         <div style={s.sheetTitle}>Оплата пополнения</div>
         <div style={s.payCard}>
           <div style={s.payLabel}>Переведите на карту</div>
-          <div style={s.payNum}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ ...s.payNum, cursor: 'pointer' }} onClick={copyCard}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ fontSize: 11, color: copied ? '#8DC63F' : 'rgba(255,255,255,0.4)', marginTop: 2, textAlign: 'center' }}>
+            {copied ? 'Скопировано!' : 'Нажмите на номер чтобы скопировать'}
+          </div>
           <div style={s.payHolder}>{settings?.payment_holder || '—'}</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>

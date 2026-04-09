@@ -165,6 +165,35 @@ export const MOCK_ORDERS = [
     latitude: 41.3547, longitude: 69.2848,
     created_at: '2026-04-06T06:00:00',
   },
+  // Cash order — skips payment, goes to assign courier
+  {
+    id: 1006, status: 'confirmed', address: 'Алмазар, ул. Фурката, д. 7',
+    delivery_date: 'Сегодня', delivery_period: 'После обеда (13:00–18:00)',
+    total: 42000, recipient_phone: '+998 91 444-55-66',
+    client_name: 'Фарход Азимов', client_telegram_id: '777888999',
+    payment_method: 'cash', payment_confirmed: true,
+    items: [
+      { id: 1, product_name: 'Вода 20л', quantity: 1, price: 25000 },
+      { id: 2, product_name: 'Вода 10л', quantity: 1, price: 14000 },
+      { id: 3, product_name: 'Вода 1.5л газ.', quantity: 1, price: 3000 },
+    ],
+    bottle_discount: 0, bonus_used: 0, return_bottles_count: 0, bottles_owed: 0,
+    latitude: 41.3180, longitude: 69.2390,
+    created_at: '2026-04-08T08:15:00',
+  },
+  // Cash order delivered — courier has cash debt
+  {
+    id: 1007, status: 'delivered', address: 'Чиланзар, 14-квартал, д. 3',
+    delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
+    total: 25000, recipient_phone: '+998 93 555-66-77',
+    client_name: 'Нодир Хасанов', client_telegram_id: '333444555',
+    payment_method: 'cash', payment_confirmed: true, cash_collected: true,
+    courier_id: 1, courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
+    items: [{ id: 1, product_name: 'Вода 20л', quantity: 1, price: 25000 }],
+    bottle_discount: 0, bonus_used: 0, return_bottles_count: 0, bottles_owed: 1,
+    latitude: 41.2850, longitude: 69.2050,
+    created_at: '2026-04-08T07:00:00',
+  },
 ]
 
 export const MOCK_STATS = {
@@ -301,10 +330,49 @@ export const MOCK_COURIER_DETAILS = {
   },
 }
 
+// ─── Cash debt tracking ─────────────────────────────────────────────────────
+export const MOCK_CASH_DEBTS = [
+  { id: 1, courier_id: 1, order_id: 1007, amount: 25000, status: 'pending', client_name: 'Нодир Хасанов', created_at: '2026-04-08T11:00:00' },
+]
+
+// ─── Cash debt clearance requests ───────────────────────────────────────────
+export const MOCK_DEBT_REQUESTS = []
+
+// ─── Cooler management ──────────────────────────────────────────────────────
+export const MOCK_COOLERS = {
+  1: [
+    { id: 1, model: 'AQUA-100', given_date: '2026-03-01', deposit: 200000, monthly_fee: 30000, next_payment: '2026-04-01', status: 'active', notes: 'Белый напольный' },
+  ],
+}
+
+// ─── Warehouse inventory ────────────────────────────────────────────────────
+export const MOCK_WAREHOUSE = {
+  stock: [
+    { product_id: 6, product_name: 'Вода 20л', quantity: 120 },
+    { product_id: 5, product_name: 'Вода 10л', quantity: 85 },
+    { product_id: 4, product_name: 'Вода 5л', quantity: 200 },
+    { product_id: 3, product_name: 'Вода 1.5л', quantity: 480 },
+    { product_id: 2, product_name: 'Вода 1л', quantity: 360 },
+    { product_id: 1, product_name: 'Вода 0.5л', quantity: 600 },
+  ],
+  history: [
+    { id: 1, type: 'production', product_name: 'Вода 20л', quantity: 50, date: '2026-04-08T06:00:00', note: 'Утренняя партия' },
+    { id: 2, type: 'issued', product_name: 'Вода 20л', quantity: 15, date: '2026-04-08T08:00:00', courier_name: 'Жавлон К.', courier_id: 1 },
+    { id: 3, type: 'issued', product_name: 'Вода 10л', quantity: 10, date: '2026-04-08T08:00:00', courier_name: 'Санжар Д.', courier_id: 2 },
+    { id: 4, type: 'production', product_name: 'Вода 10л', quantity: 30, date: '2026-04-07T06:00:00', note: 'Дневная партия' },
+    { id: 5, type: 'returned', product_name: 'Вода 20л', quantity: 3, date: '2026-04-07T18:00:00', courier_name: 'Жавлон К.', courier_id: 1 },
+  ],
+  courier_water: {
+    1: { courier_name: 'Жавлон К.', received: 15, delivered: 10, remaining: 5 },
+    2: { courier_name: 'Санжар Д.', received: 10, delivered: 7, remaining: 3 },
+  },
+}
+
 // Demo users for login (phone → role)
 export const DEMO_USERS = {
   '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 50000, order_count: 7 },
   '+998 90 000-00-02': { id: 2, name: 'Администратор',   phone: '+998 90 000-00-02', role: 'admin',   bonus_points: 0,    balance: 0 },
   '+998 90 000-00-03': { id: 3, name: 'Менеджер',        phone: '+998 90 000-00-03', role: 'manager', bonus_points: 0,    balance: 0 },
   '+998 90 000-00-04': { id: 4, name: 'Жавлон Курьер',   phone: '+998 90 000-00-04', role: 'courier', bonus_points: 0,    balance: 0 },
+  '+998 90 000-00-05': { id: 5, name: 'Завсклад',        phone: '+998 90 000-00-05', role: 'warehouse', bonus_points: 0,  balance: 0 },
 }
