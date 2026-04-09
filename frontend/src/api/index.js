@@ -3,7 +3,7 @@ import {
   MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
   MOCK_SETTINGS, DEMO_USERS, MOCK_NOTIFICATIONS, MOCK_SUPPORT_CHATS,
   MOCK_CLIENT_DETAILS, MOCK_COURIER_DETAILS,
-  MOCK_CASH_DEBTS, MOCK_DEBT_REQUESTS, MOCK_COOLERS, MOCK_WAREHOUSE,
+  MOCK_CASH_DEBTS, MOCK_COOLERS, MOCK_WAREHOUSE,
 } from './mock'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
@@ -202,10 +202,25 @@ export const courierAccept = (orderId) =>
   )
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────
+let mockReviews = []
+
 export const createReview = (data) =>
   safeCall(
     () => http.post('/orders/reviews/', data).then(r => r.data),
-    () => ({ id: Date.now(), ...data })
+    () => {
+      const review = { id: Date.now(), ...data, created_at: new Date().toISOString() }
+      mockReviews.unshift(review)
+      // Attach to order
+      const order = mockOrdersStore.find(o => o.id === data.order_id)
+      if (order) { order.review_id = review.id; order.review_rating = data.rating }
+      return review
+    }
+  )
+
+export const getCourierReviews = (courierId) =>
+  safeCall(
+    () => http.get(`/couriers/${courierId}/reviews`).then(r => r.data),
+    () => mockReviews.filter(r => r.courier_id === courierId || r.courier_id === Number(courierId))
   )
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -298,7 +313,20 @@ export const getCourierOrders = (telegramId) =>
 export const getCourierStats = (telegramId) =>
   safeCall(
     () => http.get(`/couriers/${telegramId}/stats`).then(r => r.data),
-    () => ({ delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, recent: MOCK_ORDERS.slice(0, 3) })
+    () => {
+      // Base mock stats
+      const base = { delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, review_count: 12, recent: MOCK_ORDERS.slice(0, 3) }
+      // If any reviews were submitted for this courier, incorporate them
+      const courierReviews = mockReviews.filter(r => !r.courier_id || r.courier_id === telegramId || r.courier_id === Number(telegramId))
+      if (courierReviews.length > 0) {
+        const sum = courierReviews.reduce((s, r) => s + (r.rating || 0), 0)
+        const totalRating = base.rating * base.review_count + sum
+        const totalCount = base.review_count + courierReviews.length
+        base.rating = Number((totalRating / totalCount).toFixed(2))
+        base.review_count = totalCount
+      }
+      return base
+    }
   )
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -392,29 +420,25 @@ export const confirmTopup = (userId, amount) =>
 
 // ─── Cash debt tracking ─────────────────────────────────────────────────────
 let mockCashDebts = [...MOCK_CASH_DEBTS]
-let mockDebtRequests = [...MOCK_DEBT_REQUESTS]
 
 export const getCashDebts = (courierId) =>
   safeCall(
     () => http.get(`/couriers/${courierId}/cash_debts`).then(r => r.data),
-    () => mockCashDebts.filter(d => (!courierId || d.courier_id === courierId) && d.status === 'pending')
+    () => mockCashDebts.filter(d => d.courier_id === courierId && d.clearance_status !== 'approved')
   )
 
 export const getAllCashDebts = () =>
   safeCall(
     () => http.get('/admin/cash_debts').then(r => r.data),
-    () => mockCashDebts.filter(d => d.status === 'pending')
+    () => mockCashDebts
   )
 
-export const requestDebtClearance = (debtId, comment) =>
+export const requestDebtClearance = (debtId) =>
   safeCall(
-    () => http.post(`/couriers/cash_debts/${debtId}/request_clearance`, { comment }).then(r => r.data),
+    () => http.post(`/couriers/cash_debts/${debtId}/request_clearance`).then(r => r.data),
     () => {
-      const req = { id: Date.now(), debt_id: debtId, comment, status: 'pending', created_at: new Date().toISOString() }
-      const debt = mockCashDebts.find(d => d.id === debtId)
-      if (debt) req.amount = debt.amount
-      mockDebtRequests = [...mockDebtRequests, req]
-      return req
+      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'pending' } : d)
+      return { ok: true }
     }
   )
 
@@ -422,7 +446,7 @@ export const approveDebtClearance = (debtId) =>
   safeCall(
     () => http.patch(`/admin/cash_debts/${debtId}/approve`).then(r => r.data),
     () => {
-      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, status: 'cleared' } : d)
+      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'approved' } : d)
       return { ok: true }
     }
   )
@@ -430,7 +454,31 @@ export const approveDebtClearance = (debtId) =>
 export const rejectDebtClearance = (debtId) =>
   safeCall(
     () => http.patch(`/admin/cash_debts/${debtId}/reject`).then(r => r.data),
-    () => ({ ok: true })
+    () => {
+      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'rejected' } : d)
+      return { ok: true }
+    }
+  )
+
+// ─── Client lookup by phone ───────────────────────────────────────────────
+export const lookupClientByPhone = (phone) =>
+  safeCall(
+    () => http.get(`/users/lookup?phone=${encodeURIComponent(phone)}`).then(r => r.data),
+    () => {
+      const normalized = phone.replace(/\D/g, '')
+      const found = Object.values(DEMO_USERS).find(u => {
+        return u.phone.replace(/\D/g, '') === normalized && u.role === 'client'
+      })
+      if (!found) return null
+      const details = MOCK_CLIENT_DETAILS[found.id]
+      return {
+        id: found.id,
+        name: found.name,
+        phone: found.phone,
+        bottles_owed: details?.bottles_owed || 0,
+        addresses: details?.addresses || [],
+      }
+    }
   )
 
 // ─── Courier create order ───────────────────────────────────────────────────
@@ -441,10 +489,16 @@ export const courierCreateOrder = (data) =>
       const newOrder = {
         id: Date.now(),
         status: 'assigned_to_courier',
-        ...data,
-        payment_confirmed: data.payment_method === 'cash',
+        client_name: data.client_name,
+        recipient_phone: data.recipient_phone,
+        address: data.address,
+        total: data.total,
+        payment_method: 'cash',
+        payment_confirmed: true,
+        courier_id: data.courier_id,
         created_at: new Date().toISOString(),
         items: data.items || [],
+        user_id: data.user_id || null,
       }
       mockOrdersStore = [newOrder, ...mockOrdersStore]
       return newOrder
@@ -503,9 +557,8 @@ export const issueWaterToCourier = (courierId, courierName, productName, quantit
       const item = MOCK_WAREHOUSE.stock.find(s => s.product_name === productName)
       if (item) item.quantity = Math.max(0, item.quantity - quantity)
       MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'issued', product_name: productName, quantity, date: new Date().toISOString(), courier_name: courierName, courier_id: courierId })
-      if (!MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId] = { courier_name: courierName, received: 0, delivered: 0, remaining: 0 }
-      MOCK_WAREHOUSE.courier_water[courierId].received += quantity
-      MOCK_WAREHOUSE.courier_water[courierId].remaining += quantity
+      if (!MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId] = {}
+      MOCK_WAREHOUSE.courier_water[courierId][productName] = (MOCK_WAREHOUSE.courier_water[courierId][productName] || 0) + quantity
       return { ok: true }
     }
   )
@@ -517,7 +570,10 @@ export const returnWaterFromCourier = (courierId, courierName, productName, quan
       const item = MOCK_WAREHOUSE.stock.find(s => s.product_name === productName)
       if (item) item.quantity += quantity
       MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'returned', product_name: productName, quantity, date: new Date().toISOString(), courier_name: courierName, courier_id: courierId })
-      if (MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId].remaining = Math.max(0, MOCK_WAREHOUSE.courier_water[courierId].remaining - quantity)
+      if (MOCK_WAREHOUSE.courier_water[courierId]) {
+        MOCK_WAREHOUSE.courier_water[courierId][productName] = Math.max(0, (MOCK_WAREHOUSE.courier_water[courierId][productName] || 0) - quantity)
+        if (MOCK_WAREHOUSE.courier_water[courierId][productName] === 0) delete MOCK_WAREHOUSE.courier_water[courierId][productName]
+      }
       return { ok: true }
     }
   )
@@ -525,5 +581,5 @@ export const returnWaterFromCourier = (courierId, courierName, productName, quan
 export const getCourierWater = (courierId) =>
   safeCall(
     () => http.get(`/couriers/${courierId}/water`).then(r => r.data),
-    () => MOCK_WAREHOUSE.courier_water[courierId] || { received: 0, delivered: 0, remaining: 0 }
+    () => MOCK_WAREHOUSE.courier_water[courierId] || {}
   )

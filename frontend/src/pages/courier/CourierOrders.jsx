@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, getAdminCouriers } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const tg = window.Telegram?.WebApp
@@ -257,29 +257,72 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
 }
 
 /* ── Create Order Modal ──────────────────────────────────────────────────────── */
+const ORDER_WATERS = [
+  { id: 'w20', name: 'Вода 20л', price: 25000 },
+  { id: 'w10', name: 'Вода 10л', price: 14000 },
+  { id: 'w5', name: 'Вода 5л', price: 8000 },
+  { id: 'w1.5', name: 'Вода 1.5л', price: 4500 },
+  { id: 'w1', name: 'Вода 1л', price: 3500 },
+  { id: 'w0.5', name: 'Вода 0.5л', price: 2000 },
+  { id: 'g1.5', name: 'Газ. вода 1.5л', price: 6000 },
+  { id: 'g1', name: 'Газ. вода 1л', price: 5000 },
+  { id: 'g0.5', name: 'Газ. вода 0.5л', price: 3000 },
+]
+
 function CreateOrderModal({ onClose, onSave, courierId }) {
-  const [clientName, setClientName] = useState('')
   const [phone, setPhone] = useState('')
+  const [client, setClient] = useState(null) // found client or null
+  const [lookingUp, setLookingUp] = useState(false)
+  const [looked, setLooked] = useState(false)
   const [address, setAddress] = useState('')
-  const [items, setItems] = useState('')
-  const [total, setTotal] = useState('')
-  const [payMethod, setPayMethod] = useState('cash')
+  const [selected, setSelected] = useState({}) // { waterId: qty }
   const [loading, setLoading] = useState(false)
 
-  const canSave = clientName.trim() && phone.trim() && address.trim() && total
+  // Phone lookup with debounce
+  const doLookup = async () => {
+    const raw = phone.replace(/\D/g, '')
+    if (raw.length < 9) { setClient(null); setLooked(false); return }
+    setLookingUp(true)
+    try {
+      const result = await lookupClientByPhone(phone)
+      setClient(result)
+      if (result?.addresses?.[0]?.address) setAddress(result.addresses[0].address)
+    } catch { setClient(null) }
+    finally { setLookingUp(false); setLooked(true) }
+  }
+
+  const toggleWater = (w) => {
+    setSelected(prev => {
+      if (prev[w.id]) { const n = { ...prev }; delete n[w.id]; return n }
+      return { ...prev, [w.id]: 1 }
+    })
+  }
+  const setQty = (id, q) => setSelected(p => ({ ...p, [id]: Math.max(1, q) }))
+
+  const total = Object.entries(selected).reduce((sum, [id, qty]) => {
+    const w = ORDER_WATERS.find(w => w.id === id)
+    return sum + (w ? w.price * qty : 0)
+  }, 0)
+
+  const items = Object.entries(selected).map(([id, qty]) => {
+    const w = ORDER_WATERS.find(w => w.id === id)
+    return w ? { product_name: w.name, quantity: qty, price: w.price } : null
+  }).filter(Boolean)
+
+  const canSave = phone.trim() && address.trim() && items.length > 0
 
   const handle = async () => {
     if (!canSave) return
     setLoading(true)
     try {
       await onSave({
-        client_name: clientName.trim(),
+        client_name: client?.name || '',
         recipient_phone: phone.trim(),
         address: address.trim(),
-        items_text: items.trim(),
-        total: Number(total),
-        payment_method: payMethod,
+        total,
+        items,
         courier_id: courierId,
+        user_id: client?.id || null,
       })
       onClose()
     } catch { alert('Ошибка при создании') }
@@ -288,28 +331,99 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.sheet}>
+      <div style={{ ...s.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={s.sheetHandle} />
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input style={s.inp} placeholder="Имя клиента *" value={clientName} onChange={e => setClientName(e.target.value)} />
-          <input style={s.inp} placeholder="Телефон клиента *" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
-          <input style={s.inp} placeholder="Адрес доставки *" value={address} onChange={e => setAddress(e.target.value)} />
-          <input style={s.inp} placeholder="Состав (напр. Вода 20л x2)" value={items} onChange={e => setItems(e.target.value)} />
-          <input style={s.inp} placeholder="Сумма *" value={total} onChange={e => setTotal(e.target.value)} inputMode="numeric" type="number" />
+
+        {/* Phone lookup */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Телефон клиента</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {[['cash', 'Наличные'], ['card', 'Карта']].map(([k, l]) => (
-              <button key={k} onClick={() => setPayMethod(k)} style={{
-                flex: 1, padding: '12px 8px', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                background: payMethod === k ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-                color: payMethod === k ? '#fff' : TEXT2,
-                border: payMethod === k ? 'none' : `1.5px solid ${BORDER}`,
-              }}>{l}</button>
-            ))}
+            <input style={{ ...s.inp, flex: 1 }} placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
+            <button style={{ padding: '0 16px', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }} onClick={doLookup} disabled={lookingUp}>
+              {lookingUp ? '...' : 'Найти'}
+            </button>
+          </div>
+
+          {/* Client info */}
+          {looked && client && (
+            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>{client.name}</div>
+              {client.bottles_owed > 0 && (
+                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>Долг: {client.bottles_owed} бутылок (20л)</div>
+              )}
+            </div>
+          )}
+          {looked && !client && (
+            <div style={{ fontSize: 12, color: TEXT2, fontStyle: 'italic' }}>Клиент не найден — заказ сохранится по номеру</div>
+          )}
+        </div>
+
+        {/* Address */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Адрес доставки</div>
+          {client?.addresses?.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {client.addresses.map(a => (
+                <button key={a.id} onClick={() => setAddress(a.address)} style={{
+                  padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: address === a.address ? `${C}15` : '#F8F9FA',
+                  color: address === a.address ? CD : TEXT2,
+                  border: address === a.address ? `1px solid ${C}` : `1px solid ${BORDER}`,
+                }}>{a.label || a.address?.split(',')[0] || a.address}</button>
+              ))}
+            </div>
+          )}
+          <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
+        </div>
+
+        {/* Water selection */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав заказа</div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ORDER_WATERS.map(w => {
+              const sel = selected[w.id]
+              return (
+                <div key={w.id} style={{
+                  borderRadius: 12, border: sel ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
+                  background: sel ? `${C}06` : '#fff', padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => toggleWater(w)}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                      background: sel ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+                      border: sel ? 'none' : '2px solid #ddd',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg>}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{w.name}</span>
+                    <span style={{ fontSize: 12, color: TEXT2 }}>{w.price.toLocaleString()} сум</span>
+                  </div>
+                  {sel && (
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
+                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel - 1)}>−</button>
+                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel}</span>
+                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel + 1)}>+</button>
+                      <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>{(w.price * sel).toLocaleString()} сум</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
+
+        {/* Total + payment info */}
+        {total > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 12, padding: '12px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
+            <span style={{ fontSize: 13, color: TEXT2 }}>Итого (наличные)</span>
+            <span style={{ fontWeight: 800, fontSize: 20, color: C }}>{total.toLocaleString()} сум</span>
+          </div>
+        )}
+
         <button style={{ ...s.btnSuccess, ...(canSave ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }} disabled={!canSave || loading} onClick={handle}>
-          {loading ? 'Создаю...' : 'Создать заказ'}
+          {loading ? 'Создаю...' : `Создать заказ · ${total.toLocaleString()} сум`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>

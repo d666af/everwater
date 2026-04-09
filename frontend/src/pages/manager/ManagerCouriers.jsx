@@ -56,7 +56,7 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
   const [confirming, setConfirming] = useState(false)
 
   const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
-  const myDebts = debts.filter(d => d.courier_id === c.id)
+  const myDebts = debts.filter(d => d.courier_id === c.id && d.clearance_status !== 'approved')
   const totalDebt = myDebts.reduce((s, d) => s + (d.amount || 0), 0)
   const pendingRequests = myDebts.filter(d => d.clearance_status === 'pending')
 
@@ -241,14 +241,28 @@ export default function ManagerCouriers() {
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
       {/* Stats — full width */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'Заказов в пути'], [active.length, 'Активных']].map(([v, l]) => (
-          <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
+      {(() => {
+        const totalDebtAll = debts.filter(d => d.clearance_status !== 'approved').reduce((s, d) => s + (d.amount || 0), 0)
+        const pendingCount = debts.filter(d => d.clearance_status === 'pending').length
+        return (
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+            {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'В пути'], [active.length, 'Активных'],
+              [totalDebtAll > 0 ? `${Math.round(totalDebtAll / 1000)}к` : '0', 'Долг (сум)', totalDebtAll > 0 ? '#E03131' : undefined]
+            ].map(([v, l, clr]) => (
+              <div key={l} style={{ flex: 1, minWidth: 70, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: clr || TEXT }}>{v}</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
+              </div>
+            ))}
+            {pendingCount > 0 && (
+              <div style={{ flex: 1, minWidth: 70, background: '#FFF8E6', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: '#E67700' }}>{pendingCount}</div>
+                <div style={{ fontSize: 10, color: '#E67700', marginTop: 3, fontWeight: 500 }}>Запросов</div>
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+        )
+      })()}
 
       {/* Add button — under stats */}
       <button style={{
