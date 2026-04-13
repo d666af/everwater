@@ -38,7 +38,8 @@ import CourierProfile from './pages/courier/CourierProfile'
 
 // Warehouse
 import WarehouseStock from './pages/warehouse/WarehouseStock'
-import WarehouseIssue from './pages/warehouse/WarehouseIssue'
+import WarehouseCouriers from './pages/warehouse/WarehouseCouriers'
+import WarehouseHistory from './pages/warehouse/WarehouseHistory'
 import WarehouseProfile from './pages/warehouse/WarehouseProfile'
 
 export default function App() {
@@ -163,9 +164,14 @@ export default function App() {
             <WarehouseStock />
           </ProtectedRoute>
         } />
-        <Route path="/warehouse/issue" element={
+        <Route path="/warehouse/couriers" element={
           <ProtectedRoute allowedRoles={['warehouse']}>
-            <WarehouseIssue />
+            <WarehouseCouriers />
+          </ProtectedRoute>
+        } />
+        <Route path="/warehouse/history" element={
+          <ProtectedRoute allowedRoles={['warehouse']}>
+            <WarehouseHistory />
           </ProtectedRoute>
         } />
         <Route path="/warehouse/profile" element={

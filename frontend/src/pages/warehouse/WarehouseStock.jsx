@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
-import { getWarehouseStock, addProduction } from '../../api'
+import { getWarehouseOverview, addProduction, getProductionPlan } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -8,145 +8,220 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
+const PRODUCTS = ['Вода 20л', 'Вода 10л', 'Вода 5л', 'Вода 1.5л', 'Вода 1л', 'Вода 0.5л', 'Газ. вода 1.5л', 'Газ. вода 1л', 'Газ. вода 0.5л']
+
 export default function WarehouseStock() {
-  const [stock, setStock] = useState([])
-  const [history, setHistory] = useState([])
+  const [overview, setOverview] = useState(null)
+  const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
   const load = () => {
     setLoading(true)
-    getWarehouseStock()
-      .then(data => {
-        setStock(data.stock || [])
-        setHistory((data.history || []).slice(0, 20))
-      })
+    Promise.all([getWarehouseOverview(), getProductionPlan()])
+      .then(([ov, pl]) => { setOverview(ov); setPlan(pl) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
 
   useEffect(load, [])
 
-  const totalItems = stock.reduce((s, p) => s + (p.quantity || 0), 0)
-  const lowStock = stock.filter(p => p.quantity <= 10)
+  if (loading || !overview) {
+    return (
+      <WarehouseLayout title="Склад">
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      </WarehouseLayout>
+    )
+  }
 
-  // Today's summary
-  const today = new Date().toDateString()
-  const todayOps = history.filter(h => new Date(h.date).toDateString() === today)
-  const todayProduced = todayOps.filter(h => h.type === 'production').reduce((s, h) => s + (h.quantity || 0), 0)
-  const todayIssued = todayOps.filter(h => h.type === 'issue' || h.type === 'issued').reduce((s, h) => s + (h.quantity || 0), 0)
-  const todayReturned = todayOps.filter(h => h.type === 'returned' || h.type === 'return').reduce((s, h) => s + (h.quantity || 0), 0)
+  const { products, totals } = overview
+  const hasShortfall = totals.shortfall > 0
+  const lowStockProducts = products.filter(p => p.stock <= 10 && p.stock > 0)
 
   return (
     <WarehouseLayout title="Склад">
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (name, qty, note) => { await addProduction(name, qty, note); load() }} />}
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-        {[
-          [stock.length, 'Позиций', null],
-          [totalItems, 'На складе', null],
-          [lowStock.length, 'Мало', lowStock.length > 0 ? '#E03131' : null],
-        ].map(([v, l, clr]) => (
-          <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: clr || TEXT }}>{v}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
-          </div>
-        ))}
+      {/* Top KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+        <Kpi label="На складе" value={totals.stock} color={C} />
+        <Kpi label="У курьеров" value={totals.on_couriers} color="#1971C2" />
+        <Kpi label="В заказах" value={totals.reserved} color="#E67700" />
+        <Kpi label="Нужно сегодня" value={totals.needed_today} color="#7048E8" />
       </div>
 
-      {/* Today's summary */}
-      {(todayProduced > 0 || todayIssued > 0 || todayReturned > 0) && (
-        <div style={{ background: '#fff', borderRadius: 18, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Сегодня</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1, background: '#EBFBEE', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>+{todayProduced}</div>
-              <div style={{ fontSize: 10, color: '#2B8A3E', marginTop: 3, fontWeight: 600 }}>Произведено</div>
-            </div>
-            <div style={{ flex: 1, background: '#FFF8E6', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>−{todayIssued}</div>
-              <div style={{ fontSize: 10, color: '#E67700', marginTop: 3, fontWeight: 600 }}>Выдано</div>
-            </div>
-            <div style={{ flex: 1, background: '#E8F4FD', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>+{todayReturned}</div>
-              <div style={{ fontSize: 10, color: '#1971C2', marginTop: 3, fontWeight: 600 }}>Возвраты</div>
-            </div>
+      {/* Shortfall alert */}
+      {hasShortfall && (
+        <div style={{ background: 'linear-gradient(135deg, #FFE8E8, #FFF5F5)', border: '1.5px solid #FFB4B4', borderRadius: 16, padding: '12px 14px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+            <path d="M12 2L2 20h20L12 2z" fill="#E03131" />
+            <path d="M12 9v5M12 17v.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#C92A2A' }}>Недостаток: {totals.shortfall} шт.</div>
+            <div style={{ fontSize: 11, color: '#862020', marginTop: 2 }}>Заказано больше, чем есть. Проверьте производство.</div>
           </div>
         </div>
       )}
 
+      {/* Today's summary */}
+      <div style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Сегодня</div>
+          <div style={{ fontSize: 11, color: TEXT2 }}>{new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <Mini bg="#EBFBEE" color="#2B8A3E" label="Произведено" value={`+${totals.produced_today}`} />
+          <Mini bg="#FFF8E6" color="#E67700" label="Выдано курьерам" value={`−${totals.issued_today}`} />
+          <Mini bg="#E8F4FD" color="#1971C2" label="Возвраты" value={`+${totals.returned_today}`} />
+          <Mini bg="#F3F0FF" color="#7048E8" label="Доставлено" value={totals.delivered_today_orders} sub={`${totals.delivered_today} шт.`} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, padding: '8px 10px', background: '#F8F9FA', borderRadius: 10 }}>
+          <span style={{ fontSize: 12, color: TEXT2 }}>Бутылей возвращено</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#1971C2' }}>{totals.bottles_returned_today} шт.</span>
+        </div>
+      </div>
+
       {/* Add production button */}
       <button style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        width: '100%', padding: '12px 14px', borderRadius: 14, border: 'none',
+        width: '100%', padding: '13px 14px', borderRadius: 14, border: 'none',
         background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 15, fontWeight: 700,
         cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent',
-        marginBottom: 20,
+        marginBottom: 16,
       }} onClick={() => setShowAdd(true)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
         Записать производство
       </button>
 
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
-        </div>
-      ) : (
+      {/* Current stock — 2-column grid */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Остатки по продуктам</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+        {products.length === 0 ? (
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Нет товаров на складе</div>
+        ) : products.map(p => <ProductCard key={p.product_name} p={p} />)}
+      </div>
+
+      {/* Production recommendations */}
+      {plan?.recommendations?.length > 0 && (
         <>
-          {/* Current stock */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Текущий остаток</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-            {stock.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Нет товаров на складе</div>
-            ) : stock.map(p => (
-              <div key={p.product_name} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ width: 48, height: 48, borderRadius: 14, background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0L12 2.69z" fill={C} opacity="0.4"/><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0L12 2.69z" stroke={C} strokeWidth="1.5"/></svg>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Рекомендуется произвести</div>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            {plan.recommendations.map((r, i) => (
+              <div key={r.product_name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < plan.recommendations.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: r.priority === 'high' ? '#FFE8E8' : '#FFF8E6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M2 12h20" stroke={r.priority === 'high' ? '#E03131' : '#E67700'} strokeWidth="2.2" strokeLinecap="round"/></svg>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: TEXT }}>{p.product_name}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{r.product_name}</div>
+                  <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>
+                    Есть {r.current} · нужно {r.needed}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: p.quantity <= 5 ? '#E03131' : C }}>{p.quantity}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: r.priority === 'high' ? '#E03131' : '#E67700' }}>+{r.produce}</div>
                   <div style={{ fontSize: 10, color: TEXT2 }}>шт.</div>
                 </div>
               </div>
             ))}
           </div>
+        </>
+      )}
 
-          {/* History */}
-          {history.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Последние операции</div>
-              <div style={{ background: '#fff', borderRadius: 18, padding: '10px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                {history.map((h, i) => {
-                  const isAdd = h.type === 'production'
-                  const isIssue = h.type === 'issue' || h.type === 'issued'
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 10, background: isAdd ? '#EBFBEE' : isIssue ? '#FFF8E6' : '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {isAdd && <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#2B8A3E" strokeWidth="2.2" strokeLinecap="round"/></svg>}
-                        {isIssue && <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="#E67700" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                        {!isAdd && !isIssue && <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="#1971C2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{h.product_name} × {h.quantity}</div>
-                        <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>
-                          {isAdd ? 'Производство' : isIssue ? `Выдано: ${h.courier_name}` : `Возврат: ${h.courier_name}`}
-                          {h.note && ` · ${h.note}`}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 11, color: TEXT2, flexShrink: 0 }}>{new Date(h.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</div>
-                    </div>
-                  )
-                })}
+      {/* Low stock warning */}
+      {lowStockProducts.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Мало на складе</div>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            {lowStockProducts.map((p, i) => (
+              <div key={p.product_name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < lowStockProducts.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E03131', flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{p.product_name}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#E03131' }}>{p.stock}</span>
+                <span style={{ fontSize: 11, color: TEXT2 }}>шт.</span>
               </div>
-            </>
-          )}
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Subscription demand */}
+      {plan?.subscriptions?.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Подписки клиентов</div>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: TEXT2 }}>Активных подписок</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: C }}>{plan.subscriptions.length}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {Object.entries(plan.subscription_demand || {}).map(([product, qty]) => (
+                <div key={product} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: '#F8F9FA', borderRadius: 10 }}>
+                  <span style={{ fontSize: 13, color: TEXT }}>{product}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{qty} шт.</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 8 }}>Плановая отгрузка по подпискам</div>
+          </div>
         </>
       )}
     </WarehouseLayout>
+  )
+}
+
+function Kpi({ label, value, color }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 16, padding: '14px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: TEXT2, marginTop: 4, fontWeight: 500 }}>{label}</div>
+    </div>
+  )
+}
+
+function Mini({ bg, color, label, value, sub }) {
+  return (
+    <div style={{ background: bg, borderRadius: 12, padding: '10px 10px', textAlign: 'center' }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 9, color, opacity: 0.7, marginTop: 1 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function ProductCard({ p }) {
+  const isShort = p.shortfall > 0
+  const isLow = p.stock <= 10
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, padding: '12px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: isShort ? '1.5px solid #FFB4B4' : '1.5px solid transparent' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6, minHeight: 30, lineHeight: 1.2 }}>{p.product_name}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: isLow ? '#E03131' : (isShort ? '#E03131' : C), lineHeight: 1 }}>{p.stock}</div>
+      <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>на складе</div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+        <Row label="У курьеров" value={p.on_couriers} color="#1971C2" />
+        <Row label="В заказах" value={p.reserved} color="#E67700" />
+        {p.needed_today > 0 && <Row label="Нужно сегодня" value={p.needed_today} color="#7048E8" />}
+        {p.delivered_today > 0 && <Row label="Доставлено" value={p.delivered_today} color="#2B8A3E" />}
+      </div>
+
+      {isShort && (
+        <div style={{ marginTop: 8, padding: '5px 8px', background: '#FFE8E8', borderRadius: 8, textAlign: 'center' }}>
+          <span style={{ fontSize: 10, color: '#C92A2A', fontWeight: 700 }}>Нехватка: {p.shortfall}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Row({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <span style={{ fontSize: 10, color: TEXT2 }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
+    </div>
   )
 }
 
@@ -155,8 +230,6 @@ function AddProductionModal({ onClose, onSave }) {
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
-
-  const PRODUCTS = ['Вода 20л', 'Вода 10л', 'Вода 5л', 'Вода 1.5л', 'Вода 1л', 'Вода 0.5л', 'Газ. вода 1.5л', 'Газ. вода 1л', 'Газ. вода 0.5л']
 
   const handle = async () => {
     if (!qty || Number(qty) <= 0) return
