@@ -7,7 +7,7 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const NAV = [
   {
-    path: '/warehouse', label: 'Склад', exactMatch: true,
+    path: '/warehouse', label: 'Главная', exactMatch: true,
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M3 21V8l9-5 9 5v13" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
@@ -16,11 +16,22 @@ const NAV = [
     ),
   },
   {
-    path: '/warehouse/issue', label: 'Выдача',
+    path: '/warehouse/couriers', label: 'Курьеры',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M4 20c0-3 3.6-5 8-5s8 2 8 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="9" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M2 20c0-2.8 3-4.5 7-4.5s7 1.7 7 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="17" cy="9" r="2.4" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="M14 18c.5-1.8 2.3-3 4-3 1.3 0 2.7.7 3.5 1.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/warehouse/history', label: 'История',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M12 7v5l3.5 2.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
       </svg>
     ),
   },

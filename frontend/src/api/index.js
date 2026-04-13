@@ -583,3 +583,273 @@ export const getCourierWater = (courierId) =>
     () => http.get(`/couriers/${courierId}/water`).then(r => r.data),
     () => MOCK_WAREHOUSE.courier_water[courierId] || {}
   )
+
+// ─── Warehouse analytics (computed from orders + stock) ───────────────────────
+const isSameDay = (d1, d2) => {
+  const a = new Date(d1), b = new Date(d2)
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+const ACTIVE_STATUSES = ['awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery']
+
+// Dashboard aggregate: stock vs demand vs production/issue/return activity
+export const getWarehouseOverview = () =>
+  safeCall(
+    () => http.get('/warehouse/overview').then(r => r.data),
+    () => {
+      const today = new Date()
+      const stock = MOCK_WAREHOUSE.stock.map(s => ({ ...s }))
+      const history = MOCK_WAREHOUSE.history
+
+      // Per-product: reserved (active orders), delivered_today, on_couriers, needed_today
+      const perProduct = {}
+      stock.forEach(s => {
+        perProduct[s.product_name] = {
+          product_name: s.product_name,
+          stock: s.quantity,
+          reserved: 0,
+          needed_today: 0,
+          delivered_today: 0,
+          on_couriers: 0,
+          produced_today: 0,
+          issued_today: 0,
+          returned_today: 0,
+        }
+      })
+
+      const ensureProduct = (name) => {
+        if (!perProduct[name]) {
+          perProduct[name] = {
+            product_name: name, stock: 0, reserved: 0, needed_today: 0,
+            delivered_today: 0, on_couriers: 0, produced_today: 0, issued_today: 0, returned_today: 0,
+          }
+        }
+        return perProduct[name]
+      }
+
+      // Walk orders
+      let activeCount = 0, awaitingCount = 0, deliveredTodayCount = 0
+      let bottlesReturnedToday = 0, bottlesOwedTotal = 0
+      mockOrdersStore.forEach(o => {
+        if (o.type === 'topup') return
+        const isActive = ACTIVE_STATUSES.includes(o.status)
+        const isDeliveredToday = o.status === 'delivered' && isSameDay(o.created_at || o.delivery_date, today)
+        const isToday = o.delivery_date === 'Сегодня'
+
+        if (isActive) activeCount++
+        if (o.status === 'awaiting_confirmation') awaitingCount++
+        if (isDeliveredToday) {
+          deliveredTodayCount++
+          bottlesReturnedToday += o.return_bottles_count || 0
+        }
+        bottlesOwedTotal += o.bottles_owed || 0
+
+        ;(o.items || []).forEach(it => {
+          const p = ensureProduct(it.product_name)
+          if (isActive) {
+            p.reserved += it.quantity
+            if (isToday) p.needed_today += it.quantity
+          }
+          if (isDeliveredToday) p.delivered_today += it.quantity
+        })
+      })
+
+      // On-courier totals from courier_water
+      Object.values(MOCK_WAREHOUSE.courier_water || {}).forEach(inv => {
+        Object.entries(inv).forEach(([name, qty]) => {
+          ensureProduct(name).on_couriers += qty
+        })
+      })
+
+      // Today production/issue/return per product
+      history.forEach(h => {
+        if (!isSameDay(h.date, today)) return
+        const p = ensureProduct(h.product_name)
+        if (h.type === 'production') p.produced_today += h.quantity
+        if (h.type === 'issued' || h.type === 'issue') p.issued_today += h.quantity
+        if (h.type === 'returned' || h.type === 'return') p.returned_today += h.quantity
+      })
+
+      // Compute shortfall for each product (stock + on_couriers vs reserved)
+      const products = Object.values(perProduct).map(p => ({
+        ...p,
+        available: p.stock + p.on_couriers,
+        shortfall: Math.max(0, p.reserved - (p.stock + p.on_couriers)),
+      }))
+
+      // Totals
+      const totals = {
+        stock: products.reduce((s, p) => s + p.stock, 0),
+        reserved: products.reduce((s, p) => s + p.reserved, 0),
+        needed_today: products.reduce((s, p) => s + p.needed_today, 0),
+        delivered_today: products.reduce((s, p) => s + p.delivered_today, 0),
+        on_couriers: products.reduce((s, p) => s + p.on_couriers, 0),
+        produced_today: products.reduce((s, p) => s + p.produced_today, 0),
+        issued_today: products.reduce((s, p) => s + p.issued_today, 0),
+        returned_today: products.reduce((s, p) => s + p.returned_today, 0),
+        shortfall: products.reduce((s, p) => s + p.shortfall, 0),
+        active_orders: activeCount,
+        awaiting_orders: awaitingCount,
+        delivered_today_orders: deliveredTodayCount,
+        bottles_returned_today: bottlesReturnedToday,
+        bottles_owed_total: bottlesOwedTotal,
+      }
+
+      return { products, totals, history }
+    }
+  )
+
+// Per-courier warehouse-relevant stats
+export const getWarehouseCourierStats = () =>
+  safeCall(
+    () => http.get('/warehouse/couriers').then(r => r.data),
+    () => {
+      const today = new Date()
+      const couriers = MOCK_COURIERS.filter(c => c.is_active)
+      const history = MOCK_WAREHOUSE.history
+
+      return couriers.map(c => {
+        const water = MOCK_WAREHOUSE.courier_water[c.id] || {}
+        const onHand = Object.values(water).reduce((s, v) => s + v, 0)
+
+        const courierHist = history.filter(h => h.courier_id === c.id)
+        const issuedToday = courierHist
+          .filter(h => (h.type === 'issued' || h.type === 'issue') && isSameDay(h.date, today))
+          .reduce((s, h) => s + h.quantity, 0)
+        const returnedToday = courierHist
+          .filter(h => (h.type === 'returned' || h.type === 'return') && isSameDay(h.date, today))
+          .reduce((s, h) => s + h.quantity, 0)
+
+        // Orders assigned / delivered today
+        const courierOrders = mockOrdersStore.filter(o =>
+          o.courier_id === c.id || o.courier_id === Number(c.id) || o.courier_id === c.telegram_id
+        )
+        const activeOrders = courierOrders.filter(o => ACTIVE_STATUSES.includes(o.status))
+        const deliveredToday = courierOrders.filter(o => o.status === 'delivered' && isSameDay(o.created_at || new Date(), today))
+        const bottlesReturnedToday = deliveredToday.reduce((s, o) => s + (o.return_bottles_count || 0), 0)
+
+        // Per-product deliveries today
+        const deliveredProducts = {}
+        deliveredToday.forEach(o => (o.items || []).forEach(it => {
+          deliveredProducts[it.product_name] = (deliveredProducts[it.product_name] || 0) + it.quantity
+        }))
+
+        // Cash debt
+        const debts = mockCashDebts.filter(d => d.courier_id === c.id && d.clearance_status !== 'approved')
+        const debtAmount = debts.reduce((s, d) => s + (d.amount || 0), 0)
+
+        return {
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          telegram_id: c.telegram_id,
+          water,
+          on_hand: onHand,
+          issued_today: issuedToday,
+          returned_today: returnedToday,
+          active_orders: activeOrders.length,
+          delivered_today: deliveredToday.length,
+          delivered_products: deliveredProducts,
+          bottles_returned_today: bottlesReturnedToday,
+          cash_debt: debtAmount,
+        }
+      })
+    }
+  )
+
+// Filtered warehouse history
+export const getWarehouseHistory = (filters = {}) =>
+  safeCall(
+    () => http.get('/warehouse/history', { params: filters }).then(r => r.data),
+    () => {
+      const { period, type, product, courier_id, from, to } = filters
+      let list = [...MOCK_WAREHOUSE.history]
+
+      if (type && type !== 'all') {
+        list = list.filter(h => {
+          if (type === 'production') return h.type === 'production'
+          if (type === 'issue') return h.type === 'issued' || h.type === 'issue'
+          if (type === 'return') return h.type === 'returned' || h.type === 'return'
+          return true
+        })
+      }
+      if (product && product !== 'all') list = list.filter(h => h.product_name === product)
+      if (courier_id) list = list.filter(h => h.courier_id === courier_id)
+
+      const now = new Date()
+      if (period === 'today') {
+        list = list.filter(h => isSameDay(h.date, now))
+      } else if (period === 'yesterday') {
+        const y = new Date(now); y.setDate(y.getDate() - 1)
+        list = list.filter(h => isSameDay(h.date, y))
+      } else if (period === 'week') {
+        const w = new Date(now); w.setDate(w.getDate() - 7)
+        list = list.filter(h => new Date(h.date) >= w)
+      } else if (period === 'custom' && from) {
+        const fromD = new Date(from)
+        list = list.filter(h => new Date(h.date) >= fromD)
+        if (to) {
+          const toD = new Date(to); toD.setHours(23, 59, 59)
+          list = list.filter(h => new Date(h.date) <= toD)
+        }
+      }
+
+      return list.sort((a, b) => new Date(b.date) - new Date(a.date))
+    }
+  )
+
+// Production planning based on subscriptions + active orders
+export const getProductionPlan = () =>
+  safeCall(
+    () => http.get('/warehouse/production_plan').then(r => r.data),
+    () => {
+      const planByProduct = {}
+      const activeSubs = []
+
+      // Walk all client subscriptions
+      Object.entries(MOCK_CLIENT_DETAILS).forEach(([userId, details]) => {
+        ;(details.subscriptions || []).filter(s => s.status === 'active').forEach(s => {
+          activeSubs.push({ ...s, user_id: Number(userId) })
+          // Parse "Вода 20л × 2" format
+          const match = s.plan?.match(/^(.+?)\s*×\s*(\d+)$/)
+          if (match) {
+            const [, name, qty] = match
+            const productName = name.trim()
+            planByProduct[productName] = (planByProduct[productName] || 0) + Number(qty)
+          }
+        })
+      })
+
+      // Upcoming demand from active orders (not delivered yet)
+      const upcoming = {}
+      mockOrdersStore.forEach(o => {
+        if (o.type === 'topup') return
+        if (!ACTIVE_STATUSES.includes(o.status)) return
+        ;(o.items || []).forEach(it => {
+          upcoming[it.product_name] = (upcoming[it.product_name] || 0) + it.quantity
+        })
+      })
+
+      // Recommendation: what to produce more of
+      const recommendations = []
+      MOCK_WAREHOUSE.stock.forEach(s => {
+        const needed = (upcoming[s.product_name] || 0) + (planByProduct[s.product_name] || 0)
+        if (needed > s.quantity) {
+          recommendations.push({
+            product_name: s.product_name,
+            current: s.quantity,
+            needed,
+            produce: needed - s.quantity,
+            priority: needed - s.quantity > 20 ? 'high' : 'medium',
+          })
+        }
+      })
+
+      return {
+        subscriptions: activeSubs,
+        subscription_demand: planByProduct,
+        upcoming_demand: upcoming,
+        recommendations: recommendations.sort((a, b) => b.produce - a.produce),
+      }
+    }
+  )
