@@ -36,6 +36,7 @@ export default function BottomNav() {
     || location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
     || location.pathname.startsWith('/manager')
+    || location.pathname.startsWith('/warehouse')
     || location.pathname === '/login'
 
   // Calculate pill position — covers the entire button (icon + text)
