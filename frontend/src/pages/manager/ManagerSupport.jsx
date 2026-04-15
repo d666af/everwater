@@ -152,7 +152,7 @@ const QUICK_REPLIES = [
   'Спасибо за обращение!',
 ]
 
-export default function ManagerSupport() {
+export default function ManagerSupport({ Layout = ManagerLayout, title = 'Чат поддержки' }) {
   const [chats, setChats] = useState([])
   const [activeChatId, setActiveChatId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -615,7 +615,7 @@ export default function ManagerSupport() {
   }
 
   return (
-    <ManagerLayout title="Чат поддержки" noPadding>
+    <Layout title={title} noPadding>
       <div style={{
         display: 'flex',
         gap: 0,
@@ -630,6 +630,6 @@ export default function ManagerSupport() {
         {showListPane && renderChatList()}
         {showChatPane && (activeChatId !== null ? renderChatView() : renderNoChatSelected())}
       </div>
-    </ManagerLayout>
+    </Layout>
   )
 }

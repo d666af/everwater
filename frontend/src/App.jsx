@@ -19,10 +19,16 @@ import Support from './pages/Support'
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminOrders from './pages/admin/AdminOrders'
+import AdminClients from './pages/admin/AdminClients'
 import AdminProducts from './pages/admin/AdminProducts'
 import AdminCouriers from './pages/admin/AdminCouriers'
 import AdminSettings from './pages/admin/AdminSettings'
 import AdminManagers from './pages/admin/AdminManagers'
+import AdminStats from './pages/admin/AdminStats'
+import AdminSupport from './pages/admin/AdminSupport'
+import AdminWarehouse from './pages/admin/AdminWarehouse'
+import AdminWarehouseCouriers from './pages/admin/AdminWarehouseCouriers'
+import AdminWarehouseHistory from './pages/admin/AdminWarehouseHistory'
 
 // Manager
 import ManagerOrders from './pages/manager/ManagerOrders'
@@ -93,6 +99,11 @@ export default function App() {
             <AdminOrders />
           </ProtectedRoute>
         } />
+        <Route path="/admin/clients" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminClients />
+          </ProtectedRoute>
+        } />
         <Route path="/admin/products" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminProducts />
@@ -101,6 +112,31 @@ export default function App() {
         <Route path="/admin/couriers" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminCouriers />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/warehouse" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminWarehouse />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/warehouse/couriers" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminWarehouseCouriers />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/warehouse/history" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminWarehouseHistory />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/stats" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminStats />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/support" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminSupport />
           </ProtectedRoute>
         } />
         <Route path="/admin/settings" element={

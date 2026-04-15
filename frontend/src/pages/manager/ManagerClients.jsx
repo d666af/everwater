@@ -484,7 +484,7 @@ function Empty({ text }) {
   return <div style={{ padding: '30px 0', textAlign: 'center', color: TEXT2, fontSize: 14 }}>{text}</div>
 }
 
-export default function ManagerClients() {
+export default function ManagerClients({ Layout = ManagerLayout, title = 'Клиенты' }) {
   const navigate = useNavigate()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -508,7 +508,7 @@ export default function ManagerClients() {
   const totalBonuses = users.reduce((a, u) => a + (u.bonus_points || 0), 0)
 
   return (
-    <ManagerLayout title="Клиенты">
+    <Layout title={title}>
       {topupUser && <TopupModal user={topupUser} onClose={() => setTopupUser(null)} onConfirm={(amt) => handleTopupConfirm(topupUser.id, amt)} />}
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
@@ -557,7 +557,7 @@ export default function ManagerClients() {
           ))}
         </div>
       )}
-    </ManagerLayout>
+    </Layout>
   )
 }
 

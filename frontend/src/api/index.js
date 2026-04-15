@@ -550,7 +550,16 @@ export const removeClientCooler = (userId, coolerId) =>
 export const getWarehouseStock = () =>
   safeCall(
     () => http.get('/warehouse/stock').then(r => r.data),
-    () => ({ stock: MOCK_WAREHOUSE.stock, history: MOCK_WAREHOUSE.history, courier_water: MOCK_WAREHOUSE.courier_water })
+    () => ({
+      stock: MOCK_WAREHOUSE.stock.filter(s => isWarehouseProduct(s.product_name)),
+      history: MOCK_WAREHOUSE.history.filter(h => isWarehouseProduct(h.product_name)),
+      courier_water: Object.fromEntries(
+        Object.entries(MOCK_WAREHOUSE.courier_water).map(([cid, inv]) => [
+          cid,
+          Object.fromEntries(Object.entries(inv).filter(([name]) => isWarehouseProduct(name))),
+        ])
+      ),
+    })
   )
 
 export const addProduction = (productName, quantity, note) =>
@@ -674,20 +683,33 @@ export const shortProductName = (nameOrVol, isCarb) => {
   return isCarb ? `Газ. вода ${nameOrVol}л` : `Вода ${nameOrVol}л`
 }
 
-// Return active catalog products, with normalized keys and short names
+// Product keys that should never appear in the warehouse flow
+// (marketing decision — sparkling 5L isn't produced/stocked by the warehouse).
+export const WAREHOUSE_EXCLUDED_KEYS = ['5-carb']
+export const isWarehouseProduct = (nameOrKey) => {
+  const key = nameOrKey?.includes?.('-') ? nameOrKey : normalizeProductKey(nameOrKey)
+  return !!key && !WAREHOUSE_EXCLUDED_KEYS.includes(key)
+}
+
+// Return active catalog products relevant to the warehouse flow — with
+// normalized keys and short names. Excludes warehouse-blacklisted products.
 export const getCatalogProducts = () => {
-  return MOCK_PRODUCTS.filter(p => p.is_active).map(p => ({
-    id: p.id,
-    name: p.name,
-    short_name: shortProductName(p.name),
-    key: normalizeProductKey(p.name),
-    volume: p.volume,
-    type: p.type,
-    price: p.price,
-  })).sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'still' ? -1 : 1
-    return b.volume - a.volume
-  })
+  return MOCK_PRODUCTS
+    .filter(p => p.is_active)
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      short_name: shortProductName(p.name),
+      key: normalizeProductKey(p.name),
+      volume: p.volume,
+      type: p.type,
+      price: p.price,
+    }))
+    .filter(p => p.key && !WAREHOUSE_EXCLUDED_KEYS.includes(p.key))
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'still' ? -1 : 1
+      return b.volume - a.volume
+    })
 }
 
 // Date helpers
@@ -881,13 +903,15 @@ export const getWarehouseCourierStats = () =>
     () => {
       const today = new Date()
       const couriers = MOCK_COURIERS.filter(c => c.is_active)
-      const history = MOCK_WAREHOUSE.history
+      // History/inventory filtered to warehouse-relevant products only
+      const history = MOCK_WAREHOUSE.history.filter(h => isWarehouseProduct(h.product_name))
 
       return couriers.map(c => {
-        // On-hand inventory (normalize to short names)
+        // On-hand inventory (normalize to short names, drop excluded products)
         const rawWater = MOCK_WAREHOUSE.courier_water[c.id] || {}
         const water = {}
         Object.entries(rawWater).forEach(([name, qty]) => {
+          if (!isWarehouseProduct(name)) return
           const short = shortProductName(name)
           water[short] = (water[short] || 0) + qty
         })
@@ -904,7 +928,8 @@ export const getWarehouseCourierStats = () =>
         const courierOrders = mockOrdersStore.filter(o =>
           o.courier_id === c.id || o.courier_id === Number(c.id) || o.courier_id === c.telegram_id
         )
-        // Active orders: assigned but not yet delivered — these need water issued
+        // Active orders: assigned but not yet delivered — these need water issued.
+        // Drop items that are blacklisted for warehouse (e.g. sparkling 5L).
         const activeOrders = courierOrders
           .filter(o => ACTIVE_STATUSES.includes(o.status) && o.status !== 'awaiting_confirmation')
           .map(o => ({
@@ -915,12 +940,15 @@ export const getWarehouseCourierStats = () =>
             delivery_date: o.delivery_date,
             delivery_period: o.delivery_period,
             total: o.total,
+            water_issued: !!o.water_issued,
             return_bottles_count: o.return_bottles_count || 0,
-            items: (o.items || []).map(it => ({
-              ...it,
-              short_name: shortProductName(it.product_name),
-              key: normalizeProductKey(it.product_name),
-            })),
+            items: (o.items || [])
+              .filter(it => isWarehouseProduct(it.product_name))
+              .map(it => ({
+                ...it,
+                short_name: shortProductName(it.product_name),
+                key: normalizeProductKey(it.product_name),
+              })),
           }))
 
         const deliveredToday = courierOrders.filter(o => o.status === 'delivered' && isSameDay(o.created_at || new Date(), today))
@@ -931,9 +959,10 @@ export const getWarehouseCourierStats = () =>
           toPickup[it.short_name] = (toPickup[it.short_name] || 0) + it.quantity
         }))
 
-        // Delivered today — per product
+        // Delivered today — per product (skip excluded)
         const deliveredProducts = {}
         deliveredToday.forEach(o => (o.items || []).forEach(it => {
+          if (!isWarehouseProduct(it.product_name)) return
           const short = shortProductName(it.product_name)
           deliveredProducts[short] = (deliveredProducts[short] || 0) + it.quantity
         }))
@@ -971,11 +1000,13 @@ export const getWarehouseHistory = (filters = {}) =>
     () => http.get('/warehouse/history', { params: filters }).then(r => r.data),
     () => {
       const { period = 'all', type, product, courier_id, customDate, timeFrom, timeTo } = filters
-      let list = [...MOCK_WAREHOUSE.history].map(h => ({
-        ...h,
-        product_short: shortProductName(h.product_name),
-        product_key: normalizeProductKey(h.product_name),
-      }))
+      let list = MOCK_WAREHOUSE.history
+        .filter(h => isWarehouseProduct(h.product_name))
+        .map(h => ({
+          ...h,
+          product_short: shortProductName(h.product_name),
+          product_key: normalizeProductKey(h.product_name),
+        }))
 
       if (type && type !== 'all') {
         list = list.filter(h => {
@@ -1030,20 +1061,22 @@ export const getProductionPlan = () =>
         })
       })
 
-      // Recommendation: what to produce more of
+      // Recommendation: what to produce more of (skip warehouse-excluded products)
       const recommendations = []
-      MOCK_WAREHOUSE.stock.forEach(s => {
-        const needed = (upcoming[s.product_name] || 0) + (planByProduct[s.product_name] || 0)
-        if (needed > s.quantity) {
-          recommendations.push({
-            product_name: s.product_name,
-            current: s.quantity,
-            needed,
-            produce: needed - s.quantity,
-            priority: needed - s.quantity > 20 ? 'high' : 'medium',
-          })
-        }
-      })
+      MOCK_WAREHOUSE.stock
+        .filter(s => isWarehouseProduct(s.product_name))
+        .forEach(s => {
+          const needed = (upcoming[s.product_name] || 0) + (planByProduct[s.product_name] || 0)
+          if (needed > s.quantity) {
+            recommendations.push({
+              product_name: shortProductName(s.product_name),
+              current: s.quantity,
+              needed,
+              produce: needed - s.quantity,
+              priority: needed - s.quantity > 20 ? 'high' : 'medium',
+            })
+          }
+        })
 
       return {
         subscriptions: activeSubs,

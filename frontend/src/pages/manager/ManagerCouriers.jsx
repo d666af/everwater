@@ -202,7 +202,7 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
   )
 }
 
-export default function ManagerCouriers() {
+export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры' }) {
   const [couriers, setCouriers] = useState([])
   const [allOrders, setAllOrders] = useState([])
   const [debts, setDebts] = useState([])
@@ -237,7 +237,7 @@ export default function ManagerCouriers() {
   const inDeliveryOrders = allOrders.filter(o => ['assigned_to_courier', 'in_delivery'].includes(o.status))
 
   return (
-    <ManagerLayout title="Курьеры">
+    <Layout title={title}>
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
       {/* Stats — full width */}
@@ -301,7 +301,7 @@ export default function ManagerCouriers() {
           )}
         </>
       )}
-    </ManagerLayout>
+    </Layout>
   )
 }
 

@@ -290,7 +290,7 @@ function RevenueContext({ stats, period }) {
   )
 }
 
-export default function ManagerStats() {
+export default function ManagerStats({ Layout = ManagerLayout, title = 'Статистика' }) {
   const [period, setPeriod] = useState('day')
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -309,7 +309,7 @@ export default function ManagerStats() {
       : 0
 
   return (
-    <ManagerLayout title="Статистика">
+    <Layout title={title}>
       {/* Keyframes for spinner */}
       <style>{`@keyframes evSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
@@ -432,6 +432,6 @@ export default function ManagerStats() {
           <RevenueContext stats={stats} period={period} />
         </>
       )}
-    </ManagerLayout>
+    </Layout>
   )
 }

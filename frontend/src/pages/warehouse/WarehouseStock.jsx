@@ -21,7 +21,7 @@ const RANGES = [
   { key: 'month', label: 'Месяц' },
 ]
 
-export default function WarehouseStock() {
+export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Склад' }) {
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
   const [timeFrom, setTimeFrom] = useState('')
@@ -62,11 +62,11 @@ export default function WarehouseStock() {
 
   if (loading && !overview) {
     return (
-      <WarehouseLayout title="Склад">
+      <Layout title={title}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
           <div style={{ width: 30, height: 30, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
         </div>
-      </WarehouseLayout>
+      </Layout>
     )
   }
 
@@ -76,7 +76,7 @@ export default function WarehouseStock() {
   const lowStockProducts = products.filter(p => p.stock <= 10 && p.stock > 0)
 
   return (
-    <WarehouseLayout title="Склад">
+    <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (name, qty, note) => { await addProduction(name, qty, note); load() }} />}
       {pickerOpen && (
         <DateTimePickerModal
@@ -250,7 +250,7 @@ export default function WarehouseStock() {
           </>
         )}
       </div>
-    </WarehouseLayout>
+    </Layout>
   )
 }
 

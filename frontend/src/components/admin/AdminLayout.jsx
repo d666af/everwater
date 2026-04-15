@@ -1,62 +1,56 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { EverLogoMark } from '../EverLogo'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
 const C = '#8DC63F'
-const CD = '#6CA32F'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const NAV = [
-  { path: '/admin', label: 'Дашборд', exactMatch: true,
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.8"/>
-        <rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/>
-        <rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.5"/>
-        <rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.3"/>
+  {
+    path: '/admin', label: 'Панель', exactMatch: true,
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+        <path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
       </svg>
     ),
   },
-  { path: '/admin/orders', label: 'Заказы',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" opacity="0.15" stroke="currentColor" strokeWidth="1.6"/>
-        <path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  {
+    path: '/admin/orders', label: 'Заказы',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
       </svg>
     ),
   },
-  { path: '/admin/products', label: 'Товары',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <path d="M12 2C12 2 4 10 4 15.5C4 19.6 7.6 23 12 23C16.4 23 20 19.6 20 15.5C20 10 12 2 12 2Z"
-          fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.5"/>
+  {
+    path: '/admin/clients', label: 'Клиенты',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M3 19c0-2.2 2.7-4 6-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="16" cy="11" r="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M13 21c0-2.2 1.3-4 3-4s3 1.8 3 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
       </svg>
     ),
   },
-  { path: '/admin/managers', label: 'Менеджеры',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <circle cx="9" cy="7" r="4" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.6"/>
-        <path d="M3 21C3 18 5.7 16 9 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-        <circle cx="17" cy="10" r="3" fill="currentColor" opacity="0.4" stroke="currentColor" strokeWidth="1.4"/>
-        <path d="M14 21C14 19 15.3 17 17 17C18.7 17 20 19 20 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  {
+    path: '/admin/couriers', label: 'Курьеры',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M4 20c0-3 3.6-5 8-5s8 2 8 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
       </svg>
     ),
   },
-  { path: '/admin/couriers', label: 'Курьеры',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.2" stroke="currentColor" strokeWidth="1.6"/>
-        <path d="M4 20C4 17 7.6 15 12 15C16.4 15 20 17 20 20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  { path: '/admin/settings', label: 'Настройки',
-    Icon: ({ size = 20 }) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.5"/>
-        <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"
-          stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  {
+    path: '/admin/warehouse', label: 'Склад',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M3 21V8l9-5 9 5v13" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+        <path d="M9 21v-6h6v6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
       </svg>
     ),
   },
@@ -67,21 +61,44 @@ export default function AdminLayout({ children, title, noPadding = false }) {
   const location = useLocation()
   const { user, logout } = useAuthStore()
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const itemRefs = useRef({})
+  const navRef = useRef(null)
+  const [pillStyle, setPillStyle] = useState({})
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    const h = () => setIsMobile(window.innerWidth <= 768)
-    window.addEventListener('resize', h)
-    return () => window.removeEventListener('resize', h)
+    const handleResize = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   const doLogout = () => { logout(); navigate('/login') }
-  const isActive = ({ path, exactMatch }) =>
-    exactMatch ? location.pathname === path : location.pathname.startsWith(path)
+
+  const isActive = (nav) =>
+    nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
+
+  useLayoutEffect(() => {
+    if (!isMobile) return
+    const activeNav = NAV.find(n => isActive(n))
+    if (!activeNav) return
+    const activeEl = itemRefs.current[activeNav.path]
+    const navEl = navRef.current
+    if (activeEl && navEl) {
+      const navRect = navEl.getBoundingClientRect()
+      const itemRect = activeEl.getBoundingClientRect()
+      const pillW = 64
+      setPillStyle({
+        left: itemRect.left - navRect.left + (itemRect.width - pillW) / 2,
+        width: pillW,
+      })
+      if (!ready) setTimeout(() => setReady(true), 50)
+    }
+  }, [location.pathname, isMobile]) // eslint-disable-line
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F2F2F7' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>
 
-      {/* ── Desktop sidebar ── */}
+      {/* Desktop sidebar */}
       {!isMobile && (
         <aside style={s.sidebar}>
           <div style={s.sidebarTop}>
@@ -92,35 +109,32 @@ export default function AdminLayout({ children, title, noPadding = false }) {
                 <div style={s.logoBadge}>Администратор</div>
               </div>
             </div>
-
             {user && (
               <div style={s.userCard}>
                 <div style={s.userAvatar}>{(user.name || 'A')[0].toUpperCase()}</div>
                 <div>
                   <div style={s.userName}>{user.name}</div>
-                  <div style={s.userRole}>Администратор</div>
+                  <div style={s.userRole}>Админ</div>
                 </div>
               </div>
             )}
-
             <nav style={s.nav}>
-              {NAV.map((nav) => {
+              {NAV.map(nav => {
                 const active = isActive(nav)
                 return (
                   <button key={nav.path}
                     style={{ ...s.navItem, ...(active ? s.navItemActive : {}) }}
                     onClick={() => navigate(nav.path)}>
                     <span style={{ color: active ? C : 'rgba(255,255,255,0.5)', flexShrink: 0 }}>
-                      <nav.Icon size={18} />
+                      {nav.icon}
                     </span>
                     <span style={{ flex: 1 }}>{nav.label}</span>
-                    {active && <span style={s.navActiveDot} />}
+                    {active && <span style={s.navDot} />}
                   </button>
                 )
               })}
             </nav>
           </div>
-
           <button style={s.logoutBtn} onClick={doLogout}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
@@ -131,61 +145,62 @@ export default function AdminLayout({ children, title, noPadding = false }) {
         </aside>
       )}
 
-      {/* ── Main ── */}
+      {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <header style={isMobile ? s.mobileHeader : s.desktopHeader}>
-          {isMobile ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <EverLogoMark width={28} />
-                <span style={s.mobileTitle}>{title}</span>
-              </div>
-              <button style={s.headerBtn} onClick={doLogout} title="Выйти">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                    stroke="#8E8E93" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            </>
-          ) : (
-            <>
-              <h1 style={s.desktopTitle}>{title}</h1>
-              <div style={s.headerBadge}>
-                <div style={s.headerBadgeDot} />
-                Администратор
-              </div>
-            </>
-          )}
-        </header>
+        {!isMobile && (
+          <header style={s.desktopHeader}>
+            <h1 style={s.desktopTitle}>{title}</h1>
+            <div style={s.headerBadge}>Панель администратора</div>
+          </header>
+        )}
 
         <div style={{
           ...s.content,
-          paddingBottom: isMobile ? 80 : 24,
-          ...(noPadding ? { padding: isMobile ? '0 0 80px' : 0 } : {}),
+          paddingBottom: isMobile ? 100 : 24,
+          ...(noPadding ? { padding: 0, paddingBottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}),
         }}>
           {children}
         </div>
       </div>
 
-      {/* ── Mobile bottom nav ── */}
+      {/* Mobile bottom navigation */}
       {isMobile && (
-        <nav style={s.mobileNav}>
-          {NAV.map((nav) => {
-            const active = isActive(nav)
-            return (
-              <button key={nav.path}
-                style={{ ...s.mobileItem, color: active ? C : '#8E8E93' }}
-                onClick={() => navigate(nav.path)}>
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <nav.Icon size={20} />
-                </span>
-                <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, lineHeight: 1, whiteSpace: 'nowrap', color: active ? C : '#8E8E93' }}>
-                  {nav.label}
-                </span>
-              </button>
-            )
-          })}
-        </nav>
+        <>
+          {!noPadding && <div style={{ height: 90 }} />}
+          <nav style={s.mobileNav}>
+            <div style={s.mobileNavInner} ref={navRef}>
+              <div style={{
+                ...s.pill,
+                left: pillStyle.left ?? 0,
+                width: pillStyle.width ?? 50,
+                opacity: pillStyle.width ? 1 : 0,
+                transition: ready
+                  ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+                  : 'none',
+              }} />
+              {NAV.map(nav => {
+                const active = isActive(nav)
+                return (
+                  <button key={nav.path}
+                    ref={el => { itemRefs.current[nav.path] = el }}
+                    style={s.mobileItem}
+                    onClick={() => navigate(nav.path)}>
+                    <div style={{ color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {nav.icon}
+                    </div>
+                    <span style={{
+                      fontSize: 9, fontWeight: active ? 700 : 500,
+                      color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
+                      lineHeight: 1, whiteSpace: 'nowrap',
+                    }}>
+                      {nav.label}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </nav>
+        </>
       )}
     </div>
   )
@@ -205,14 +220,15 @@ const s = {
   logoName: { color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: -0.5 },
   logoBadge: { fontSize: 9, color: C, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 },
   userCard: {
-    margin: '10px 10px 0', background: 'rgba(255,255,255,0.05)', borderRadius: 10,
+    margin: '10px 10px 0',
+    background: 'rgba(255,255,255,0.05)', borderRadius: 10,
     padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
     border: '1px solid rgba(255,255,255,0.07)',
   },
   userAvatar: {
     width: 30, height: 30, borderRadius: '50%',
-    background: `linear-gradient(135deg, ${C}, ${CD})`,
-    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: GRAD, color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 800, fontSize: 12, flexShrink: 0,
   },
   userName: { color: '#fff', fontWeight: 600, fontSize: 12, lineHeight: 1.2 },
@@ -222,31 +238,17 @@ const s = {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '10px 14px', background: 'none', border: 'none',
     color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: 500,
-    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', position: 'relative',
+    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
   },
   navItemActive: { background: 'rgba(141,198,63,0.1)', color: '#fff', borderLeft: `3px solid ${C}` },
-  navActiveDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
+  navDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
   logoutBtn: {
     display: 'flex', alignItems: 'center', gap: 8,
-    background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)',
-    padding: '14px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+    background: 'none', border: 'none',
+    color: 'rgba(255,255,255,0.3)', padding: '14px 16px',
+    cursor: 'pointer', fontSize: 12, fontWeight: 500,
     borderTop: '1px solid rgba(255,255,255,0.06)',
   },
-
-  mobileHeader: {
-    background: '#fff', padding: '10px 16px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    borderBottom: '1px solid rgba(60,60,67,0.1)',
-    position: 'sticky', top: 0, zIndex: 10,
-    boxShadow: '0 1px 8px rgba(0,0,0,0.04)', minHeight: 54,
-  },
-  mobileTitle: { fontWeight: 700, fontSize: 15, color: '#1C1C1E', letterSpacing: -0.2 },
-  headerBtn: {
-    width: 36, height: 36, borderRadius: 10, border: 'none',
-    background: 'rgba(118,118,128,0.1)', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-
   desktopHeader: {
     background: '#fff', padding: '14px 22px',
     borderBottom: '1px solid #EBEBEB',
@@ -255,30 +257,35 @@ const s = {
   },
   desktopTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: '#1A1A1A' },
   headerBadge: {
-    background: '#8DC63F20', color: '#6CA32F',
-    border: '1px solid #8DC63F40', borderRadius: 8,
-    padding: '4px 12px', fontSize: 11, fontWeight: 700,
-    display: 'flex', alignItems: 'center', gap: 6,
+    background: `${C}20`, color: '#6CA32F',
+    border: `1px solid ${C}40`, borderRadius: 8,
+    padding: '4px 10px', fontSize: 11, fontWeight: 700,
   },
-  headerBadgeDot: {
-    width: 7, height: 7, borderRadius: '50%', background: C,
-    animation: 'pulse 2s infinite',
-  },
-
-  content: { padding: 16, flex: 1 },
-
+  content: { padding: 16, flex: 1, overflowY: 'auto' },
   mobileNav: {
-    display: 'flex', position: 'fixed', bottom: 0, left: 0, right: 0,
-    background: '#fff', zIndex: 200,
-    borderTop: '1px solid rgba(60,60,67,0.12)',
-    paddingBottom: 'env(safe-area-inset-bottom, 0)',
-    boxShadow: '0 -2px 16px rgba(0,0,0,0.06)',
+    position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
+    padding: '0 6px 8px',
+    paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))',
+  },
+  mobileNavInner: {
+    display: 'flex', maxWidth: 420, margin: '0 auto',
+    background: GRAD, borderRadius: 22,
+    padding: '8px 0 10px',
+    boxShadow: '0 4px 24px rgba(80,140,20,0.35)',
+    position: 'relative',
+  },
+  pill: {
+    position: 'absolute', top: 5, bottom: 5,
+    borderRadius: 16,
+    background: '#fff',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    pointerEvents: 'none',
   },
   mobileItem: {
     flex: 1, background: 'none', border: 'none',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    padding: '9px 2px 5px', gap: 3, cursor: 'pointer',
-    transition: 'color 0.15s', minWidth: 0,
+    padding: '4px 0 0', gap: 0, cursor: 'pointer',
+    position: 'relative', zIndex: 1,
     WebkitTapHighlightColor: 'transparent',
   },
 }
