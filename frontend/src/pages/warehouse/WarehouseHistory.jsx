@@ -28,7 +28,7 @@ const TYPES = [
   { key: 'return', label: 'Возврат', color: '#1971C2' },
 ]
 
-export default function WarehouseHistory() {
+export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
   const [timeFrom, setTimeFrom] = useState('')
@@ -84,7 +84,7 @@ export default function WarehouseHistory() {
   const activeFilterCount = (type !== 'all' ? 1 : 0) + (product !== 'all' ? 1 : 0) + (courierId ? 1 : 0)
 
   return (
-    <WarehouseLayout title="История">
+    <Layout title={title}>
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
@@ -207,7 +207,7 @@ export default function WarehouseHistory() {
           })}
         </div>
       )}
-    </WarehouseLayout>
+    </Layout>
   )
 }
 

@@ -12,7 +12,7 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
-export default function WarehouseCouriers() {
+export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Курьеры' }) {
   const [couriers, setCouriers] = useState([])
   const [stock, setStock] = useState([])
   const [loading, setLoading] = useState(true)
@@ -57,7 +57,7 @@ export default function WarehouseCouriers() {
   const totalBottlesRet = couriers.reduce((s, c) => s + (c.bottles_returned_today || 0), 0)
 
   return (
-    <WarehouseLayout title="Курьеры">
+    <Layout title={title}>
       {showManual && (
         <BatchModal
           mode={showManual.mode}
@@ -122,7 +122,7 @@ export default function WarehouseCouriers() {
           </div>
         </>
       )}
-    </WarehouseLayout>
+    </Layout>
   )
 }
 

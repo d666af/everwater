@@ -82,7 +82,7 @@ function matchesTime(order, timeFilter) {
   return true
 }
 
-export default function ManagerOrders() {
+export default function ManagerOrders({ Layout = ManagerLayout, title = 'Панель' }) {
   const [orders, setOrders] = useState([])
   const [stage, setStage] = useState('all')
   const [timeFilter, setTimeFilter] = useState('all')
@@ -117,7 +117,7 @@ export default function ManagerOrders() {
   const displayed = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
 
   return (
-    <ManagerLayout title="Панель">
+    <Layout title={title}>
       {/* Stage filter cards — equal width grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
@@ -210,7 +210,7 @@ export default function ManagerOrders() {
           ))}
         </div>
       )}
-    </ManagerLayout>
+    </Layout>
   )
 }
 
