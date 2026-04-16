@@ -4,7 +4,7 @@ import { createReview } from '../api'
 const C = '#8DC63F'
 const CD = '#6CA32F'
 
-export default function ReviewModal({ order, orderId, onClose, onDone }) {
+export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup = false }) {
   // Support both old calling style (orderId only) and new (full order)
   const id = order?.id || orderId
   const courier = order?.courier_name
@@ -34,6 +34,12 @@ export default function ReviewModal({ order, orderId, onClose, onDone }) {
     <div style={s.overlay} onClick={onClose}>
       <div style={s.sheet} onClick={e => e.stopPropagation()}>
         <div style={s.handle} />
+        {autoPopup && (
+          <div style={{ background: 'linear-gradient(135deg,#A8D86D,#7EC840)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', marginBottom: -6 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Заказ доставлен!</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>Оцените доставку ниже</div>
+          </div>
+        )}
         <h3 style={s.title}>Как прошла доставка?</h3>
 
         {courier && (

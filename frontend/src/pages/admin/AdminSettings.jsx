@@ -8,6 +8,8 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
+const ALL_BOTTLE_COMPANIES = ['Grand Water', 'Fresco', 'Hamd', 'Hydrolife', 'Zam-Zam', 'Kavsar', 'Montella']
+
 function Section({ icon, title, hint, children }) {
   return (
     <div style={s.section}>
@@ -32,6 +34,7 @@ export default function AdminSettings() {
     cashback_percent: 5,
     bottle_return_buttons_visible: true,
     bottle_return_mode: 'max',
+    accepted_bottle_companies: [],
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -197,6 +200,61 @@ export default function AdminSettings() {
             {form.bottle_return_mode === 'max'
               ? 'Клиент может вернуть до максимума (все должные бутылки)'
               : 'Клиент может вернуть только столько, сколько заказал в текущем заказе'}
+          </div>
+        </Section>
+
+        {/* Accepted bottle companies */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M9 2h6v3l3 3v12a2 2 0 01-2 2H8a2 2 0 01-2-2V8l3-3V2z" stroke={C} strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M9 2v3h6V2" stroke={C} strokeWidth="1.8" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Приём чужих бутылок"
+          hint="Отметьте компании, бутылки которых мы принимаем — клиент получит скидку за возврат"
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+            {ALL_BOTTLE_COMPANIES.map(co => {
+              const active = (form.accepted_bottle_companies || []).includes(co)
+              return (
+                <button key={co}
+                  onClick={() => setForm(p => {
+                    const cur = p.accepted_bottle_companies || []
+                    const next = active ? cur.filter(x => x !== co) : [...cur, co]
+                    return { ...p, accepted_bottle_companies: next }
+                  })}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                    border: `1.5px solid ${active ? C : BORDER}`,
+                    background: active ? '#F0FFF0' : '#fff',
+                    fontSize: 14, fontWeight: 600, color: active ? TEXT : TEXT2,
+                    textAlign: 'left',
+                  }}>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                    border: `2px solid ${active ? C : BORDER}`,
+                    background: active ? C : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {active && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span style={{ flex: 1 }}>{co}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Принимаем: <b>{(form.accepted_bottle_companies || []).length === 0 ? 'только свои' : (form.accepted_bottle_companies || []).join(', ')}</b>
           </div>
         </Section>
 

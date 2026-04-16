@@ -56,6 +56,7 @@ export default function OrderHistory() {
   const [expanded, setExpanded] = useState(null)
   const [reviewOrder, setReviewOrder] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
+  const [dismissedIds, setDismissedIds] = useState(new Set())
   const addToCart = useCartStore(s => s.addToCart)
   const orders = useOrdersStore(s => s.orders)
   const navigate = useNavigate()
@@ -71,6 +72,17 @@ export default function OrderHistory() {
     setReviewedIds(s => new Set([...s, orderId]))
     setReviewOrder(null)
   }
+
+  const handleReviewDismiss = (orderId) => {
+    setDismissedIds(s => new Set([...s, orderId]))
+    setReviewOrder(null)
+  }
+
+  // Auto-popup for newly delivered orders
+  const autoReviewOrder = orders.find(o =>
+    o.status === 'delivered' && !reviewedIds.has(o.id) && !dismissedIds.has(o.id) && !o.review_id
+  )
+  const showAutoReview = autoReviewOrder && !reviewOrder
 
   if (!orders.length) return (
     <div style={s.page}>
@@ -111,10 +123,12 @@ export default function OrderHistory() {
           onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} navigate={navigate} />
       ))}
 
-      {reviewOrder && (
-        <ReviewModal order={reviewOrder}
-          onClose={() => setReviewOrder(null)}
-          onDone={() => handleReviewDone(reviewOrder.id)} />
+      {(reviewOrder || showAutoReview) && (
+        <ReviewModal
+          order={reviewOrder || autoReviewOrder}
+          autoPopup={!reviewOrder && showAutoReview}
+          onClose={() => reviewOrder ? setReviewOrder(null) : handleReviewDismiss(autoReviewOrder.id)}
+          onDone={() => handleReviewDone((reviewOrder || autoReviewOrder).id)} />
       )}
       <div style={{ height: 100 }} />
     </div>

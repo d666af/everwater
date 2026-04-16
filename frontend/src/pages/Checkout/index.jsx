@@ -136,15 +136,13 @@ export default function Checkout() {
   }
 
   const buildDeliveryTime = () => {
-    if (!form.deliveryDate || !form.deliveryTime) return null
-    const timeLabel = form.deliveryTime === 'morning' ? '9:00–13:00' : '13:00–18:00'
-    return `${form.deliveryDate} ${timeLabel}`
+    if (!form.deliveryDate && !form.deliveryTime) return null
+    const timeLabel = form.deliveryTime === 'morning' ? ' 9:00–13:00' : form.deliveryTime === 'afternoon' ? ' 13:00–18:00' : ''
+    return form.deliveryDate ? `${form.deliveryDate}${timeLabel}` : null
   }
 
   const submitOrder = async () => {
     if (!form.address.trim()) return setError('Укажите адрес доставки')
-    if (!form.deliveryDate) return setError('Выберите дату доставки')
-    if (!form.deliveryTime) return setError('Выберите время доставки')
     setLoading(true); setError('')
     try {
       const order = await createOrder({

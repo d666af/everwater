@@ -16,6 +16,12 @@ const NAV = [
       <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
     </svg>
   )},
+  { path: '/subscription', label: 'Подписка', icon: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M12 22V12M12 12L3.27 7M12 12l8.73-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )},
   { path: '/profile', label: 'Профиль', icon: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
@@ -47,7 +53,7 @@ export default function BottomNav() {
     if (activeEl && navEl) {
       const navRect = navEl.getBoundingClientRect()
       const itemRect = activeEl.getBoundingClientRect()
-      const pillW = 90
+      const pillW = 74
       setPillStyle({
         left: itemRect.left - navRect.left + (itemRect.width - pillW) / 2,
         width: pillW,
