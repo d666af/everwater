@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -33,6 +33,9 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showIssue, setShowIssue] = useState(false)
+  const [couriers, setCouriers] = useState([])
+  const [adjustProduct, setAdjustProduct] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -48,6 +51,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   }
 
   useEffect(load, [period, customDate, timeFrom, timeTo]) // eslint-disable-line
+  useEffect(() => { getAdminCouriers().then(cs => setCouriers(cs.filter(c => c.is_active))).catch(console.error) }, [])
 
   const applyCustom = (date, from, to) => {
     setCustomDate(date)
@@ -78,6 +82,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (name, qty, note) => { await addProduction(name, qty, note); load() }} />}
+      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
+      {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note); load() }} />}
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
@@ -135,17 +141,27 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </div>
       </div>
 
-      {/* Add production */}
-      <button style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        width: '100%', padding: '13px 14px', borderRadius: 14, border: 'none',
-        background: GRAD, color: '#fff', fontSize: 15, fontWeight: 700,
-        cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
-        marginBottom: 16,
-      }} onClick={() => setShowAdd(true)}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-        Записать производство
-      </button>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '13px 10px', borderRadius: 14, border: 'none',
+          background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700,
+          cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
+        }} onClick={() => setShowAdd(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+          Производство
+        </button>
+        <button style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '13px 10px', borderRadius: 14, border: `1.5px solid ${C}`,
+          background: '#fff', color: CD, fontSize: 14, fontWeight: 700,
+          cursor: 'pointer',
+        }} onClick={() => setShowIssue(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать курьеру
+        </button>
+      </div>
 
       {/* Summary totals (labels under numbers, no + =) */}
       <div style={{ background: '#fff', borderRadius: 14, padding: '14px 10px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -166,7 +182,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         {products.length === 0 ? (
           <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Каталог пуст</div>
-        ) : products.map(p => <ProductCard key={p.key} p={p} period={period} />)}
+        ) : products.map(p => <ProductCard key={p.key} p={p} period={period} onAdjust={() => setAdjustProduct(p)} />)}
       </div>
 
       {/* Production recommendations */}
@@ -279,14 +295,19 @@ function TotalStat({ value, label, color }) {
   )
 }
 
-function ProductCard({ p, period }) {
+function ProductCard({ p, period, onAdjust }) {
   const isShort = p.shortfall > 0
   const isLow = p.stock <= 10 && p.stock > 0
   const needLabel = period === 'yesterday' ? 'Нужно было' : period === 'week' ? 'Нужно за неделю' : period === 'month' ? 'Нужно за месяц' : 'К выдаче'
 
   return (
     <div style={{ background: '#fff', borderRadius: 14, padding: '12px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: isShort ? '1.5px solid #FFB4B4' : '1.5px solid transparent' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 8, minHeight: 30, lineHeight: 1.2 }}>{p.product_name}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, lineHeight: 1.2, flex: 1 }}>{p.product_name}</div>
+        <button onClick={onAdjust} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: TEXT2, flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+      </div>
 
       {/* Header row: stock (left) + total (right), both: number on top, label below */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -367,6 +388,114 @@ function AddProductionModal({ onClose, onSave }) {
         </div>
         <button style={{ ...st.primaryBtn, ...(!qty || Number(qty) <= 0 ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={!qty || Number(qty) <= 0 || loading} onClick={handle}>
           {loading ? 'Записываю...' : `Добавить ${qty || 0} шт.`}
+        </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+function IssueToCourierModal({ couriers, onClose, onSave }) {
+  const catalog = getCatalogProducts()
+  const [courierId, setCourierId] = useState(couriers[0]?.id || null)
+  const [name, setName] = useState(catalog[0]?.short_name || '')
+  const [qty, setQty] = useState('')
+  const [loading, setLoading] = useState(false)
+  const courier = couriers.find(c => c.id === courierId)
+  const dis = !qty || Number(qty) <= 0 || !courierId
+  const handle = async () => {
+    if (dis) return
+    setLoading(true)
+    try { await onSave(courierId, courier?.name || '', name, Number(qty)); onClose() }
+    catch { alert('Ошибка') }
+    finally { setLoading(false) }
+  }
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.sheet}>
+        <div style={st.handle} />
+        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Выдать курьеру</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Курьер</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {couriers.map(c => (
+              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
+                padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: courierId === c.id ? GRAD : '#F8F9FA',
+                color: courierId === c.id ? '#fff' : TEXT,
+                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
+              }}>{c.name}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {catalog.map(p => (
+              <button key={p.id} onClick={() => setName(p.short_name)} style={{
+                padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: name === p.short_name ? GRAD : '#F8F9FA',
+                color: name === p.short_name ? '#fff' : TEXT,
+                border: name === p.short_name ? 'none' : `1px solid ${BORDER}`,
+              }}>{p.short_name}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
+          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
+        </div>
+        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
+          {loading ? 'Выдаю...' : `Выдать ${qty || 0} шт. → ${courier?.name || '?'}`}
+        </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+const ADJUST_TYPES = [
+  { key: 'plus', label: '+', desc: 'Добавить' },
+  { key: 'minus', label: '−', desc: 'Списать' },
+]
+
+function AdjustStockModal({ product, onClose, onSave }) {
+  const [adjType, setAdjType] = useState('plus')
+  const [qty, setQty] = useState('')
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const dis = !qty || Number(qty) <= 0
+  const handle = async () => {
+    if (dis) return
+    setLoading(true)
+    const delta = adjType === 'plus' ? Number(qty) : -Number(qty)
+    try { await onSave(product.product_name, delta, `adjustment_${adjType}`, note.trim()); onClose() }
+    catch { alert('Ошибка') }
+    finally { setLoading(false) }
+  }
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.sheet}>
+        <div style={st.handle} />
+        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Корректировка</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT2, textAlign: 'center', marginTop: -6 }}>{product.product_name}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {ADJUST_TYPES.map(t => (
+            <button key={t.key} onClick={() => setAdjType(t.key)} style={{
+              flex: 1, padding: '12px', borderRadius: 12, fontSize: 22, fontWeight: 800, cursor: 'pointer',
+              background: adjType === t.key ? (t.key === 'plus' ? '#EBFBEE' : '#FFF5F5') : '#F8F9FA',
+              color: adjType === t.key ? (t.key === 'plus' ? '#2B8A3E' : '#E03131') : TEXT2,
+              border: adjType === t.key ? `2px solid ${t.key === 'plus' ? '#2B8A3E' : '#E03131'}` : `1.5px solid ${BORDER}`,
+            }}>{t.label} {t.desc}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество (шт.)</div>
+          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Заметка</div>
+          <input style={st.input} placeholder="Необязательно" value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: TEXT2 }}>
+          На складе: <b style={{ color: TEXT }}>{product.stock}</b> → будет: <b style={{ color: adjType === 'plus' ? '#2B8A3E' : '#E03131' }}>{Math.max(0, product.stock + (adjType === 'plus' ? 1 : -1) * (Number(qty) || 0))}</b>
+        </div>
+        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}, adjType === 'minus' ? { background: 'linear-gradient(135deg,#E03131,#C92A2A)' } : {}) }} disabled={dis || loading} onClick={handle}>
+          {loading ? 'Сохраняю...' : `${adjType === 'plus' ? 'Добавить' : 'Списать'} ${qty || 0} шт.`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>

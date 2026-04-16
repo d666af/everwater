@@ -29,7 +29,7 @@ const SUB_WATERS = [
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 // ─── Active Subscription Detail ──────────────────────────────────────────────
-function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
+export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
   const [confirming, setConfirming] = useState(false)
   const endDate = new Date(sub.created)
   endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
@@ -102,7 +102,7 @@ function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
 }
 
 // ─── Subscription Modal ──────────────────────────────────────────────────────
-function SubscriptionModal({ onClose, settings, userStore }) {
+export function SubscriptionModal({ onClose, settings, userStore }) {
   const [step, setStep] = useState('plan') // plan | details | payment | done
   const [plan, setPlan] = useState('weekly')
   // Multi-select: { [waterId]: { qty } }
@@ -652,8 +652,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
-  const [showSub, setShowSub] = useState(false)
-  const [subDetail, setSubDetail] = useState(null)
   const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
@@ -699,19 +697,6 @@ export default function Profile() {
   return (
     <div style={s.page}>
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
-      {showSub && <SubscriptionModal onClose={() => setShowSub(false)} settings={settings} userStore={userStore} />}
-      {subDetail && (
-        <SubscriptionDetail
-          sub={subDetail}
-          onClose={() => setSubDetail(null)}
-          onExtend={() => { setSubDetail(null); setShowSub(true) }}
-          onCancel={(id) => {
-            const list = userStore.subscriptions.filter(s => s.id !== id)
-            localStorage.setItem('everwater_subscriptions', JSON.stringify(list))
-            useUserStore.setState({ subscriptions: list })
-          }}
-        />
-      )}
 
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>
@@ -766,51 +751,6 @@ export default function Profile() {
           </div>
         </div>
       )}
-
-      {/* Subscription section */}
-      <div style={s.subSection}>
-        {userStore.subscriptions.map(sub => {
-          const endDate = new Date(sub.created)
-          endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
-          const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
-          const isExpiring = daysLeft <= 3
-          return (
-            <div key={sub.id} style={s.subCard} onClick={() => setSubDetail(sub)}>
-              <div style={{ ...s.subIcon, background: isExpiring ? 'linear-gradient(135deg, #FF6B6B, #E03131)' : 'linear-gradient(135deg, #4FC3F7, #2196F3)' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-                  <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={s.subTitle}>{sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}</div>
-                <div style={s.subDesc}>
-                  {sub.water}
-                  {isExpiring ? ` · ${daysLeft} дн. осталось` : ` · до ${endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}
-                </div>
-              </div>
-              {isExpiring && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E03131', flexShrink: 0 }} />}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </div>
-          )
-        })}
-        <div style={s.subCard} onClick={() => setShowSub(true)}>
-          <div style={{ ...s.subIcon, background: GRAD }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={s.subTitle}>{userStore.subscriptions.length > 0 ? 'Новая подписка' : 'Подписка на воду'}</div>
-            <div style={s.subDesc}>{userStore.subscriptions.length > 0 ? 'Оформить ещё одну подписку' : 'Регулярная доставка со скидкой'}</div>
-          </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </div>
-      </div>
 
       {/* Menu */}
       <div style={s.menuCard}>

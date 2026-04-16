@@ -1086,3 +1086,19 @@ export const getProductionPlan = () =>
       }
     }
   )
+
+// ─── Warehouse stock adjustment ────────────────────────────────────────────────
+export const adjustStock = (productName, delta, type, note) =>
+  safeCall(
+    () => http.post('/warehouse/stock/adjust', { product_name: productName, delta, type, note }).then(r => r.data),
+    () => {
+      const item = MOCK_WAREHOUSE.stock.find(s => shortProductName(s.product_name) === productName || s.product_name === productName)
+      if (item) item.quantity = Math.max(0, item.quantity + delta)
+      MOCK_WAREHOUSE.history.unshift({
+        id: Date.now(), type: 'adjustment', product_name: productName, product_short: productName,
+        quantity: Math.abs(delta), note: note || '',
+        date: new Date().toISOString(), courier_name: null,
+      })
+      return { ok: true }
+    }
+  )

@@ -29,7 +29,10 @@ const dates = getNextDays(7)
 export default function DateTimePicker({ selectedDate, selectedTime, onDateChange, onTimeChange }) {
   return (
     <div style={s.section}>
-      <div style={s.sLabel}>Дата и время доставки</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+        <span style={s.sLabel}>Дата и время доставки</span>
+        <span style={{ fontSize: 11, color: '#8e8e93', fontWeight: 500 }}>по желанию</span>
+      </div>
       <div style={s.card}>
         <div style={s.dateScroll}>
           {dates.map(d => (

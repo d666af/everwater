@@ -216,6 +216,7 @@ export const MOCK_SETTINGS = {
   cashback_percent: 5,
   bottle_return_buttons_visible: true,
   bottle_return_mode: 'max',
+  accepted_bottle_companies: ['Grand Water', 'Fresco', 'Hamd', 'Hydrolife'],
 }
 
 export const MOCK_NOTIFICATIONS = [
