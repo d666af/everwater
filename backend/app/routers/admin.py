@@ -178,26 +178,19 @@ async def deactivate_manager(manager_id: int):
     return {"ok": True}
 
 
-# ─── Settings (simple key-value, in-memory for now) ──────────────────────────
-
-_settings_store = {
-    "delivery_price": 5000,
-    "bottle_discount": 2000,
-    "bonus_percent": 5,
-    "min_order": 25000,
-    "working_hours": "08:00–22:00",
-}
-
+# ─── Settings (DB-backed key-value) ──────────────────────────────────────────
 
 @router.get("/settings")
-async def get_settings():
-    return _settings_store
+async def get_settings(db: AsyncSession = Depends(get_db)):
+    from app.services.settings_service import get_all_settings
+    return await get_all_settings(db)
 
 
 @router.patch("/settings")
-async def update_settings(data: dict):
-    _settings_store.update(data)
-    return {"ok": True, **_settings_store}
+async def update_settings_route(data: dict, db: AsyncSession = Depends(get_db)):
+    from app.services.settings_service import update_settings
+    result = await update_settings(db, data)
+    return {"ok": True, **result}
 
 
 # ─── Broadcast / Notify ──────────────────────────────────────────────────────

@@ -20,6 +20,9 @@ class OrderCreate(BaseModel):
     return_bottles_volume: float = 0.0
     items: list[OrderItemCreate]
     bonus_used: float = 0.0
+    balance_used: float = 0.0
+    payment_method: str = "cash"
+    bottle_discount: float | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -49,6 +52,9 @@ class OrderOut(BaseModel):
     subtotal: float
     total: float
     bonus_used: float
+    balance_used: float
+    payment_method: str
+    cash_collected: bool
     rejection_reason: str | None
     payment_confirmed: bool
     created_at: datetime
@@ -58,8 +64,9 @@ class OrderOut(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    user_id: int
+    user_id: int | None = None
     order_id: int
+    courier_id: int | None = None
     rating: int
     comment: str | None = None
 

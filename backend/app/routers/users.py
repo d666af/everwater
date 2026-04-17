@@ -8,6 +8,20 @@ from app.schemas.user import UserCreate, UserUpdate, UserOut
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+@router.get("/lookup", response_model=UserOut)
+async def lookup_user(phone: str | None = None, telegram_id: int | None = None, db: AsyncSession = Depends(get_db)):
+    if phone:
+        result = await db.execute(select(User).where(User.phone == phone))
+    elif telegram_id:
+        result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+    else:
+        raise HTTPException(status_code=400, detail="Provide phone or telegram_id")
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @router.get("/by_telegram/{telegram_id}", response_model=UserOut)
 async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.telegram_id == telegram_id))
