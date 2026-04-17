@@ -46,6 +46,11 @@ class Order(Base):
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)
     total: Mapped[float] = mapped_column(Float, default=0.0)
     bonus_used: Mapped[float] = mapped_column(Float, default=0.0)
+    balance_used: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Payment
+    payment_method: Mapped[str] = mapped_column(String(32), default="cash")  # cash | card | balance | balance_card
+    cash_collected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Admin
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -81,11 +86,12 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True)
+    courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
     rating: Mapped[int] = mapped_column(Integer)  # 1-5
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    user: Mapped["User"] = relationship("User", back_populates="reviews")  # noqa: F821
+    user: Mapped["User | None"] = relationship("User", back_populates="reviews")  # noqa: F821
     order: Mapped["Order"] = relationship("Order", back_populates="review")
