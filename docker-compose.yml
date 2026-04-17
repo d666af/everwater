@@ -48,7 +48,7 @@ services:
         VITE_MOCK: "false"
     restart: always
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - backend
 
