@@ -6,9 +6,15 @@ from config import settings
 
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
+    url = settings.MINI_APP_URL
+    catalog_btn = (
+        KeyboardButton(text="🛒 Открыть каталог", web_app=WebAppInfo(url=url))
+        if url.startswith("https")
+        else KeyboardButton(text="🛒 Открыть каталог")
+    )
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🛒 Открыть каталог", web_app=WebAppInfo(url=settings.MINI_APP_URL))],
+            [catalog_btn],
             [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
             [KeyboardButton(text="🆘 Поддержка")],
         ],

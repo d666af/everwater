@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, Contact
+from aiogram.types import Message, CallbackQuery, Contact, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -80,6 +80,19 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
         f"🎉 Отлично, {name}! Регистрация завершена.\n\n"
         "Теперь вы можете делать заказы. Нажмите «Открыть каталог» чтобы начать!",
         reply_markup=main_menu_kb(),
+    )
+
+
+@router.message(F.text == "🛒 Открыть каталог")
+async def open_catalog(message: Message):
+    url = settings.MINI_APP_URL
+    if url.startswith("https"):
+        return
+    await message.answer(
+        "Откройте каталог по ссылке ниже:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛒 Открыть каталог", url=url)]
+        ]),
     )
 
 
