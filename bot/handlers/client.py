@@ -1,0 +1,725 @@
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+import services.api_client as api
+from keyboards.user import main_menu_kb, order_actions_kb
+from config import settings
+
+router = Router()
+
+
+def fmt(amount):
+    return f"{int(amount):,}".replace(",", " ") + " сум"
+
+
+# ─── FSM States ───────────────────────────────────────────────────────────────
+
+class SurveyState(StatesGroup):
+    asking_bottles = State()
+    asking_company = State()
+    asking_count   = State()
+
+
+class CheckoutState(StatesGroup):
+    choosing_address  = State()
+    waiting_address   = State()
+    waiting_time      = State()
+    waiting_phone     = State()
+    asking_return     = State()
+    asking_bonus      = State()
+    choosing_payment  = State()
+    confirming        = State()
+
+
+class SubscriptionState(StatesGroup):
+    choosing_plan    = State()
+    choosing_water   = State()
+    choosing_day     = State()
+    waiting_address  = State()
+    waiting_phone    = State()
+    choosing_payment = State()
+
+
+class TopupState(StatesGroup):
+    waiting_amount = State()
+
+
+# ─── Survey after registration ────────────────────────────────────────────────
+
+async def start_survey(message: Message, state: FSMContext):
+    await state.set_state(SurveyState.asking_bottles)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Да", callback_data="survey:yes"),
+        InlineKeyboardButton(text="Нет", callback_data="survey:no"),
+    ]])
+    await message.answer(
+        "У вас есть пустые 19-литровые бутылки для возврата?",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(SurveyState.asking_bottles, F.data.startswith("survey:"))
+async def survey_answer(call: CallbackQuery, state: FSMContext):
+    if call.data == "survey:no":
+        await state.clear()
+        await call.message.edit_text("Отлично! Вы можете сделать заказ через каталог 🛒")
+        await call.answer()
+        return
+    await state.set_state(SurveyState.asking_company)
+    await call.message.edit_text("Укажите компанию (производителя воды на бутылке):")
+    await call.answer()
+
+
+@router.message(SurveyState.asking_company)
+async def survey_company(message: Message, state: FSMContext):
+    await state.update_data(return_company=message.text.strip())
+    await state.set_state(SurveyState.asking_count)
+    await message.answer("Сколько бутылок хотите вернуть?")
+
+
+@router.message(SurveyState.asking_count)
+async def survey_count(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if not text.isdigit() or int(text) <= 0:
+        await message.answer("Введите корректное число бутылок.")
+        return
+    count = int(text)
+    data = await state.get_data()
+    user = await api.get_user(message.from_user.id)
+    if user:
+        await api.change_bottles_owed(user["id"], count)
+    await state.clear()
+    await message.answer(
+        f"Записали: {count} бутылок ({data.get('return_company', '')}) к возврату. "
+        "Это учтётся при оформлении заказа.",
+        reply_markup=main_menu_kb(),
+    )
+
+
+# ─── Catalog ─────────────────────────────────────────────────────────────────
+
+def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboardMarkup:
+    buttons = [[
+        InlineKeyboardButton(
+            text=("✅ " if ftype == "all" else "") + "Все",
+            callback_data="cf:all",
+        ),
+        InlineKeyboardButton(
+            text=("✅ " if ftype == "still" else "") + "Без газа",
+            callback_data="cf:still",
+        ),
+        InlineKeyboardButton(
+            text=("✅ " if ftype == "carbonated" else "") + "Газ.",
+            callback_data="cf:carbonated",
+        ),
+    ]]
+
+    for p in products:
+        if ftype != "all" and p.get("type") != ftype:
+            continue
+        pid = str(p["id"])
+        qty = cart.get(pid, {}).get("qty", 0)
+        vol = f" {p['volume']}л" if p.get("volume") else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{p['name']}{vol} — {fmt(p['price'])}",
+            callback_data="noop",
+        )])
+        row = []
+        if qty > 0:
+            row.append(InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"))
+            row.append(InlineKeyboardButton(text=str(qty), callback_data="noop"))
+        row.append(InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"))
+        buttons.append(row)
+
+    if cart:
+        total_qty = sum(v["qty"] for v in cart.values())
+        total_sum = sum(v["price"] * v["qty"] for v in cart.values())
+        buttons.append([InlineKeyboardButton(
+            text=f"🛒 Корзина ({total_qty} шт.) — {fmt(total_sum)}",
+            callback_data="show_cart",
+        )])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: bool = False):
+    products = await api.get_products() or []
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    for p in products:
+        pid = str(p["id"])
+        if pid in cart:
+            cart[pid].update(name=p["name"], price=p["price"],
+                             volume=p.get("volume", 0), product_id=p["id"])
+    await state.update_data(products=products, cf=ftype, cart=cart)
+    kb = _catalog_kb(products, cart, ftype)
+    text = "🛒 <b>Каталог</b>\n\nВыберите товары:"
+    if edit:
+        msg = target.message if isinstance(target, CallbackQuery) else target
+        await msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        msg = target if isinstance(target, Message) else target.message
+        await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(F.text == "🛒 Каталог")
+async def catalog(message: Message, state: FSMContext):
+    await _render_catalog(message, state)
+
+
+@router.callback_query(F.data.startswith("cf:"))
+async def catalog_filter(call: CallbackQuery, state: FSMContext):
+    await _render_catalog(call, state, ftype=call.data.split(":")[1], edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ca:"))
+async def cart_add(call: CallbackQuery, state: FSMContext):
+    pid = call.data.split(":")[1]
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    products = data.get("products") or await api.get_products() or []
+    p = next((x for x in products if str(x["id"]) == pid), None)
+    if not p:
+        await call.answer("Товар не найден")
+        return
+    if pid not in cart:
+        cart[pid] = {"name": p["name"], "price": p["price"],
+                     "qty": 0, "volume": p.get("volume", 0), "product_id": p["id"]}
+    cart[pid]["qty"] += 1
+    await state.update_data(cart=cart)
+    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cr:"))
+async def cart_remove(call: CallbackQuery, state: FSMContext):
+    pid = call.data.split(":")[1]
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    if pid in cart:
+        cart[pid]["qty"] -= 1
+        if cart[pid]["qty"] <= 0:
+            del cart[pid]
+    await state.update_data(cart=cart)
+    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data == "noop")
+async def noop_cb(call: CallbackQuery):
+    await call.answer()
+
+
+# ─── Cart ─────────────────────────────────────────────────────────────────────
+
+def _cart_kb(cart: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for pid, item in cart.items():
+        rows.append([InlineKeyboardButton(
+            text=f"❌ {item['name']} × {item['qty']}",
+            callback_data=f"cd:{pid}",
+        )])
+    rows.append([
+        InlineKeyboardButton(text="🗑 Очистить", callback_data="cart_clear"),
+        InlineKeyboardButton(text="✅ Оформить", callback_data="checkout_start"),
+    ])
+    rows.append([InlineKeyboardButton(text="← Каталог", callback_data="back_catalog")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def show_cart(target, state: FSMContext):
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    if not cart:
+        text = "🛒 Корзина пуста."
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🛒 В каталог", callback_data="back_catalog")
+        ]])
+    else:
+        lines = ["🛒 <b>Корзина</b>\n"]
+        total = 0
+        for item in cart.values():
+            s = item["price"] * item["qty"]
+            total += s
+            lines.append(f"• {item['name']} × {item['qty']} — {fmt(s)}")
+        lines.append(f"\n<b>Итого: {fmt(total)}</b>")
+        lines.append("\n(Нажмите на товар, чтобы удалить)")
+        text = "\n".join(lines)
+        kb = _cart_kb(cart)
+
+    if isinstance(target, CallbackQuery):
+        try:
+            await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await target.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await target.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "show_cart")
+async def show_cart_cb(call: CallbackQuery, state: FSMContext):
+    await show_cart(call, state)
+    await call.answer()
+
+
+@router.callback_query(F.data == "back_catalog")
+async def back_catalog(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cd:"))
+async def cart_delete_item(call: CallbackQuery, state: FSMContext):
+    pid = call.data.split(":")[1]
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    cart.pop(pid, None)
+    await state.update_data(cart=cart)
+    await show_cart(call, state)
+    await call.answer()
+
+
+@router.callback_query(F.data == "cart_clear")
+async def cart_clear(call: CallbackQuery, state: FSMContext):
+    await state.update_data(cart={})
+    await show_cart(call, state)
+    await call.answer("Корзина очищена")
+
+
+# ─── Checkout ─────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "checkout_start")
+async def checkout_start(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("cart"):
+        await call.answer("Корзина пуста!")
+        return
+    user = await api.get_user(call.from_user.id)
+    if not user:
+        await call.answer("Пользователь не найден")
+        return
+    saved = await api.get_addresses(user["id"]) or []
+    await state.update_data(co_user=user, saved_addrs=saved)
+    if saved:
+        await state.set_state(CheckoutState.choosing_address)
+        rows = [[InlineKeyboardButton(
+            text=f"📍 {a.get('label') or a['address']}",
+            callback_data=f"ua:{i}",
+        )] for i, a in enumerate(saved)]
+        rows.append([InlineKeyboardButton(text="✏️ Новый адрес", callback_data="new_addr")])
+        await call.message.edit_text(
+            "Выберите адрес доставки:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    else:
+        await state.set_state(CheckoutState.waiting_address)
+        await call.message.edit_text("Введите адрес доставки:")
+    await call.answer()
+
+
+@router.callback_query(CheckoutState.choosing_address, F.data.startswith("ua:"))
+async def use_saved_addr(call: CallbackQuery, state: FSMContext):
+    idx = int(call.data.split(":")[1])
+    data = await state.get_data()
+    addr = data["saved_addrs"][idx]
+    await state.update_data(co_address=addr["address"])
+    await state.set_state(CheckoutState.waiting_time)
+    await call.message.edit_text(
+        f"Адрес: {addr['address']}\n\n"
+        "Укажите желаемое время доставки (например: 14:00–16:00, «как можно скорее»):"
+    )
+    await call.answer()
+
+
+@router.callback_query(CheckoutState.choosing_address, F.data == "new_addr")
+async def new_addr(call: CallbackQuery, state: FSMContext):
+    await state.set_state(CheckoutState.waiting_address)
+    await call.message.edit_text("Введите адрес доставки:")
+    await call.answer()
+
+
+@router.message(CheckoutState.waiting_address)
+async def co_address(message: Message, state: FSMContext):
+    await state.update_data(co_address=message.text.strip())
+    await state.set_state(CheckoutState.waiting_time)
+    await message.answer("Укажите желаемое время доставки (например: 14:00–16:00, «как можно скорее»):")
+
+
+@router.message(CheckoutState.waiting_time)
+async def co_time(message: Message, state: FSMContext):
+    await state.update_data(co_time=message.text.strip())
+    data = await state.get_data()
+    phone = data.get("co_user", {}).get("phone", "")
+    await state.set_state(CheckoutState.waiting_phone)
+    await message.answer(
+        f"Телефон получателя (ваш текущий: {phone}).\n"
+        "Введите номер или «-» чтобы оставить текущий:"
+    )
+
+
+@router.message(CheckoutState.waiting_phone)
+async def co_phone(message: Message, state: FSMContext):
+    data = await state.get_data()
+    phone = data["co_user"].get("phone", "") if message.text.strip() == "-" else message.text.strip()
+    await state.update_data(co_phone=phone)
+
+    bottles = await api.get_bottles_owed(data["co_user"]["id"])
+    count = bottles.get("count", 0)
+    await state.update_data(bottles_owed=count)
+
+    if count > 0:
+        await state.set_state(CheckoutState.asking_return)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"Да, верну {count} шт.", callback_data=f"rb:{count}"),
+            InlineKeyboardButton(text="Нет", callback_data="rb:0"),
+        ]])
+        await message.answer(
+            f"У вас числится {count} бутылок к возврату. Вернёте при этой доставке?",
+            reply_markup=kb,
+        )
+    else:
+        await state.update_data(co_return=0)
+        await _ask_bonus(message, state)
+
+
+@router.callback_query(CheckoutState.asking_return, F.data.startswith("rb:"))
+async def co_return(call: CallbackQuery, state: FSMContext):
+    await state.update_data(co_return=int(call.data.split(":")[1]))
+    await _ask_bonus(call.message, state)
+    await call.answer()
+
+
+async def _ask_bonus(message: Message, state: FSMContext):
+    data = await state.get_data()
+    bonus = data.get("co_user", {}).get("bonus_points", 0)
+    if bonus and bonus > 0:
+        await state.set_state(CheckoutState.asking_bonus)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"ub:{int(bonus)}"),
+            InlineKeyboardButton(text="Не использовать", callback_data="ub:0"),
+        ]])
+        await message.answer(
+            f"У вас {fmt(bonus)} бонусных баллов. Использовать при оплате?",
+            reply_markup=kb,
+        )
+    else:
+        await state.update_data(co_bonus=0)
+        await _ask_payment(message, state)
+
+
+@router.callback_query(CheckoutState.asking_bonus, F.data.startswith("ub:"))
+async def co_bonus(call: CallbackQuery, state: FSMContext):
+    await state.update_data(co_bonus=int(call.data.split(":")[1]))
+    await _ask_payment(call.message, state)
+    await call.answer()
+
+
+async def _ask_payment(message: Message, state: FSMContext):
+    await state.set_state(CheckoutState.choosing_payment)
+    data = await state.get_data()
+    balance = data.get("co_user", {}).get("balance", 0)
+    rows = [
+        [InlineKeyboardButton(text="💵 Наличные", callback_data="pm:cash")],
+        [InlineKeyboardButton(text="💳 Карта", callback_data="pm:card")],
+    ]
+    if balance and balance > 0:
+        rows.append([InlineKeyboardButton(text=f"💰 Баланс ({fmt(balance)})", callback_data="pm:balance")])
+    await message.answer("Выберите способ оплаты:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(CheckoutState.choosing_payment, F.data.startswith("pm:"))
+async def co_payment(call: CallbackQuery, state: FSMContext):
+    await state.update_data(co_pay=call.data.split(":")[1])
+    await state.set_state(CheckoutState.confirming)
+    await _show_summary(call.message, state)
+    await call.answer()
+
+
+async def _show_summary(message: Message, state: FSMContext):
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+    lines = ["<b>📋 Подтверждение заказа</b>\n", "<b>Товары:</b>"]
+    total = 0
+    for item in cart.values():
+        s = item["price"] * item["qty"]
+        total += s
+        lines.append(f"  • {item['name']} × {item['qty']} — {fmt(s)}")
+    lines += [
+        f"\nСумма: {fmt(total)}",
+        f"Адрес: {data.get('co_address', '—')}",
+        f"Время: {data.get('co_time', '—')}",
+        f"Телефон: {data.get('co_phone', '—')}",
+        f"Оплата: {pay_labels.get(data.get('co_pay', ''), '—')}",
+    ]
+    if data.get("co_return", 0) > 0:
+        lines.append(f"Бутылок к возврату: {data['co_return']} шт.")
+    if data.get("co_bonus", 0) > 0:
+        lines.append(f"Бонусы: −{fmt(data['co_bonus'])}")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="co_confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="co_cancel")],
+    ])
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(CheckoutState.confirming, F.data == "co_confirm")
+async def co_confirm(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user = data["co_user"]
+    cart = data.get("cart", {})
+    items = [
+        {"product_id": v["product_id"], "quantity": v["qty"], "price": v["price"]}
+        for v in cart.values()
+    ]
+    order = await api.create_order({
+        "user_id": user["id"],
+        "items": items,
+        "address": data.get("co_address", ""),
+        "delivery_time": data.get("co_time"),
+        "recipient_phone": data.get("co_phone", user.get("phone", "")),
+        "return_bottles_count": data.get("co_return", 0),
+        "bonus_used": data.get("co_bonus", 0),
+        "payment_method": data.get("co_pay", "cash"),
+    })
+    if not order or "id" not in order:
+        await call.message.answer("Ошибка при создании заказа. Попробуйте ещё раз.")
+        await call.answer()
+        return
+
+    order_id = order["id"]
+    await state.update_data(cart={})
+    await state.clear()
+
+    if data.get("co_pay") == "card":
+        await call.message.edit_text(
+            f"✅ Заказ #{order_id} создан!\n\n"
+            f"Переведите <b>{fmt(order.get('total', 0))}</b> на карту:\n\n"
+            f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
+            f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
+            "После оплаты нажмите кнопку ниже:",
+            reply_markup=order_actions_kb(order_id),
+            parse_mode="HTML",
+        )
+    else:
+        await call.message.edit_text(
+            f"✅ Заказ #{order_id} создан!\n"
+            "Ожидайте звонка оператора для подтверждения."
+        )
+        await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+@router.callback_query(CheckoutState.confirming, F.data == "co_cancel")
+async def co_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Заказ отменён.")
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+# ─── Subscriptions ────────────────────────────────────────────────────────────
+
+@router.message(F.text == "📋 Подписки")
+async def subscriptions(message: Message, state: FSMContext):
+    user = await api.get_user(message.from_user.id)
+    if not user:
+        return
+    await state.update_data(sub_user=user)
+    subs = await api.get_subscriptions(user["id"]) or []
+    active = [s for s in subs if s.get("status") == "active"]
+
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    if active:
+        lines = ["<b>📋 Активные подписки:</b>\n"]
+        for s in active:
+            lines.append(
+                f"• {plan_label.get(s.get('plan', ''), s.get('plan', ''))}"
+                f" | {s.get('water_summary', '')} | {s.get('qty', '')} шт.\n"
+                f"  День: {s.get('day', '—')} | Адрес: {s.get('address', '—')}"
+            )
+        rows = [[InlineKeyboardButton(text="➕ Добавить подписку", callback_data="sub_new")]]
+        for s in active:
+            rows.append([InlineKeyboardButton(
+                text=f"❌ Отменить #{s['id']}",
+                callback_data=f"sub_del:{s['id']}",
+            )])
+        await message.answer("\n".join(lines),
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                             parse_mode="HTML")
+    else:
+        await message.answer(
+            "У вас нет активных подписок.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="➕ Оформить подписку", callback_data="sub_new")
+            ]]),
+        )
+
+
+@router.callback_query(F.data.startswith("sub_del:"))
+async def sub_cancel(call: CallbackQuery, state: FSMContext):
+    sub_id = int(call.data.split(":")[1])
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    if user:
+        await api.cancel_subscription(user["id"], sub_id)
+    await call.message.edit_text("Подписка отменена.")
+    await call.answer()
+
+
+@router.callback_query(F.data == "sub_new")
+async def sub_new(call: CallbackQuery, state: FSMContext):
+    await state.set_state(SubscriptionState.choosing_plan)
+    await call.message.edit_text(
+        "Выберите план подписки:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Еженедельная", callback_data="sp:weekly")],
+            [InlineKeyboardButton(text="🗓 Ежемесячная", callback_data="sp:monthly")],
+        ]),
+    )
+    await call.answer()
+
+
+@router.callback_query(SubscriptionState.choosing_plan, F.data.startswith("sp:"))
+async def sub_plan(call: CallbackQuery, state: FSMContext):
+    await state.update_data(sub_plan=call.data.split(":")[1])
+    await state.set_state(SubscriptionState.choosing_water)
+    await call.message.edit_text("Опишите вид воды (например: 19л без газа, 5л газированная):")
+    await call.answer()
+
+
+@router.message(SubscriptionState.choosing_water)
+async def sub_water(message: Message, state: FSMContext):
+    await state.update_data(sub_water=message.text.strip())
+    await state.set_state(SubscriptionState.choosing_day)
+    await message.answer("Укажите день доставки (например: понедельник, 1-е число месяца):")
+
+
+@router.message(SubscriptionState.choosing_day)
+async def sub_day(message: Message, state: FSMContext):
+    await state.update_data(sub_day=message.text.strip())
+    await state.set_state(SubscriptionState.waiting_address)
+    await message.answer("Введите адрес доставки:")
+
+
+@router.message(SubscriptionState.waiting_address)
+async def sub_address(message: Message, state: FSMContext):
+    await state.update_data(sub_address=message.text.strip())
+    await state.set_state(SubscriptionState.waiting_phone)
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(message.from_user.id)
+    phone = user.get("phone", "") if user else ""
+    await message.answer(
+        f"Телефон получателя (текущий: {phone}). Введите номер или «-» для текущего:"
+    )
+
+
+@router.message(SubscriptionState.waiting_phone)
+async def sub_phone(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text.strip() == "-":
+        user = data.get("sub_user") or await api.get_user(message.from_user.id)
+        phone = user.get("phone", "") if user else ""
+    else:
+        phone = message.text.strip()
+    await state.update_data(sub_phone=phone)
+    await state.set_state(SubscriptionState.choosing_payment)
+    await message.answer(
+        "Способ оплаты:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💵 Наличные", callback_data="subpm:cash")],
+            [InlineKeyboardButton(text="💳 Карта", callback_data="subpm:card")],
+            [InlineKeyboardButton(text="💰 Баланс", callback_data="subpm:balance")],
+        ]),
+    )
+
+
+@router.callback_query(SubscriptionState.choosing_payment, F.data.startswith("subpm:"))
+async def sub_payment(call: CallbackQuery, state: FSMContext):
+    method = call.data.split(":")[1]
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    if not user:
+        await call.answer("Пользователь не найден")
+        return
+    result = await api.create_subscription(user["id"], {
+        "plan": data.get("sub_plan"),
+        "water_summary": data.get("sub_water"),
+        "day": data.get("sub_day"),
+        "address": data.get("sub_address"),
+        "phone": data.get("sub_phone"),
+        "payment_method": method,
+    })
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    if result:
+        await call.message.edit_text(
+            f"✅ Подписка оформлена!\n\n"
+            f"План: {plan_label.get(data.get('sub_plan', ''), '')}\n"
+            f"Вода: {data.get('sub_water')}\n"
+            f"День: {data.get('sub_day')}\n"
+            f"Адрес: {data.get('sub_address')}\n"
+            f"Оплата: {pay_label.get(method, method)}"
+        )
+    else:
+        await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
+    await state.clear()
+    await call.answer()
+
+
+# ─── Balance Topup ────────────────────────────────────────────────────────────
+
+@router.message(F.text == "💰 Пополнить")
+async def topup_start(message: Message, state: FSMContext):
+    await state.set_state(TopupState.waiting_amount)
+    await message.answer("Введите сумму пополнения баланса (в сум):")
+
+
+@router.message(TopupState.waiting_amount)
+async def topup_amount(message: Message, state: FSMContext):
+    text = message.text.strip().replace(" ", "")
+    if not text.isdigit() or int(text) <= 0:
+        await message.answer("Введите корректную сумму числом.")
+        return
+    amount = int(text)
+    user = await api.get_user(message.from_user.id)
+    user_id = user["id"] if user else None
+    await state.clear()
+    await message.answer(
+        f"Для пополнения на <b>{fmt(amount)}</b> переведите средства на карту:\n\n"
+        f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
+        f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
+        "После перевода нажмите кнопку ниже:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"tp:{amount}:{user_id}")
+        ]]),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("tp:"))
+async def topup_paid(call: CallbackQuery):
+    parts = call.data.split(":")
+    amount = int(parts[1])
+    user_id = parts[2] if len(parts) > 2 else "?"
+    from aiogram import Bot
+    bot: Bot = call.bot
+    for admin_id in settings.ADMIN_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                f"💰 Запрос на пополнение баланса!\n"
+                f"Пользователь: {call.from_user.full_name} (tg: {call.from_user.id})\n"
+                f"ID в системе: {user_id}\n"
+                f"Сумма: {fmt(amount)}",
+            )
+        except Exception:
+            pass
+    await call.message.edit_text(
+        f"✅ Заявка на пополнение {fmt(amount)} отправлена.\n"
+        "Баланс будет зачислен после проверки администратором."
+    )
+    await call.answer()
