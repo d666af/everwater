@@ -151,6 +151,24 @@ async def admin_set_courier(call: CallbackQuery):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("admin_topup_confirm:"))
+async def admin_topup_confirm(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    user_id = int(parts[1])
+    amount  = int(parts[2])
+    try:
+        await api.topup_user(user_id, amount)
+        amount_str = f"{amount:,}".replace(",", " ")
+        await call.message.edit_text(
+            f"✅ Баланс пользователя (ID {user_id}) пополнен на {amount_str} сум."
+        )
+    except Exception:
+        await call.message.edit_text("❌ Ошибка при пополнении баланса.")
+    await call.answer()
+
+
 @router.callback_query(F.data == "admin:stats")
 async def admin_stats_menu(call: CallbackQuery):
     if not is_admin(call.from_user.id):

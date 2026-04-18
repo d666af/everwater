@@ -510,14 +510,17 @@ async def co_phone(message: Message, state: FSMContext):
     count = bottles.get("count", 0)
     await state.update_data(bottles_owed=count)
 
-    if count > 0:
+    cart = data.get("cart", {})
+    has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
+
+    if count > 0 and has_20l:
         await state.set_state(CheckoutState.asking_return)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=f"Да, верну {count} шт.", callback_data=f"rb:{count}"),
             InlineKeyboardButton(text="Нет", callback_data="rb:0"),
         ]])
         await message.answer(
-            f"У вас числится {count} бутылок к возврату. Вернёте при этой доставке?",
+            f"У вас числится {count} бутылок 20л к возврату. Вернёте при этой доставке?",
             reply_markup=kb,
         )
     else:
@@ -812,6 +815,33 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
+
+
+# ─── Support Chat ─────────────────────────────────────────────────────────────
+
+@router.message(F.text == "💬 Поддержка")
+async def support_menu(message: Message):
+    await message.answer(
+        "💬 <b>Поддержка</b>\n\n"
+        "Напишите ваш вопрос — оператор ответит в ближайшее время.\n"
+        "Ответы придут вам прямо в этот чат.",
+        parse_mode="HTML",
+    )
+
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def forward_to_support(message: Message, state: FSMContext):
+    """Catch-all: forward unhandled text messages to support chat."""
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    tg_id = message.from_user.id
+    name = message.from_user.full_name or str(tg_id)
+    try:
+        await api.send_user_support_message(tg_id, name, message.text)
+        await message.answer("✉️ Сообщение отправлено в поддержку. Ожидайте ответа.")
+    except Exception:
+        await message.answer("Не удалось отправить сообщение. Попробуйте позже.")
 
 
 # ─── Balance Topup ────────────────────────────────────────────────────────────

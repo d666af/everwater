@@ -68,11 +68,28 @@ async def check_delivery_reminders(bot):
                     pass
 
 
+async def deliver_support_replies(bot):
+    """Доставляет ответы поддержки пользователям через Telegram."""
+    messages = await api.get_undelivered_support_messages()
+    for msg in messages:
+        chat_id = msg.get("chat_id")
+        if not chat_id:
+            continue
+        try:
+            await bot.send_message(chat_id, f"💬 Поддержка:\n{msg['text']}")
+            await api.mark_support_message_delivered(msg["id"])
+        except Exception:
+            pass
+
+
 def setup_scheduler(bot):
     scheduler.add_job(
         send_registration_reminders, "interval", minutes=5, args=[bot]
     )
     scheduler.add_job(
         check_delivery_reminders, "interval", minutes=5, args=[bot]
+    )
+    scheduler.add_job(
+        deliver_support_replies, "interval", seconds=30, args=[bot]
     )
     scheduler.start()
