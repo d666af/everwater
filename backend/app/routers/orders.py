@@ -86,16 +86,24 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(order)
 
     result = await db.execute(
-        select(Order).where(Order.id == order.id).options(selectinload(Order.items).selectinload(OrderItem.product))
+        select(Order).where(Order.id == order.id).options(*_order_opts())
     )
     order = result.scalar_one()
     return _order_to_out(order)
 
 
+def _order_opts():
+    return (
+        selectinload(Order.items).selectinload(OrderItem.product),
+        selectinload(Order.user),
+        selectinload(Order.courier),
+    )
+
+
 @router.get("/{order_id}", response_model=OrderOut)
 async def get_order(order_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Order).where(Order.id == order_id).options(selectinload(Order.items).selectinload(OrderItem.product))
+        select(Order).where(Order.id == order_id).options(*_order_opts())
     )
     order = result.scalar_one_or_none()
     if not order:
@@ -107,7 +115,7 @@ async def get_order(order_id: int, db: AsyncSession = Depends(get_db)):
 async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Order).where(Order.user_id == user_id)
-        .options(selectinload(Order.items).selectinload(OrderItem.product))
+        .options(*_order_opts())
         .order_by(Order.created_at.desc())
     )
     orders = result.scalars().all()
@@ -116,7 +124,7 @@ async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/", response_model=list[OrderOut])
 async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(get_db)):
-    query = select(Order).options(selectinload(Order.items).selectinload(OrderItem.product))
+    query = select(Order).options(*_order_opts())
     if status:
         query = query.where(Order.status == status)
     query = query.order_by(Order.created_at.desc())
@@ -182,11 +190,16 @@ async def start_delivery(order_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+class DeliveredBody(BaseModel):
+    cash_collected: bool = False
+
+
 @router.patch("/{order_id}/delivered")
-async def mark_delivered(order_id: int, db: AsyncSession = Depends(get_db)):
+async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.DELIVERED
     order.delivered_at = datetime.utcnow()
+    order.cash_collected = body.cash_collected
 
     result = await db.execute(select(User).where(User.id == order.user_id))
     user = result.scalar_one_or_none()
@@ -202,6 +215,31 @@ async def mark_delivered(order_id: int, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     return {"ok": True}
+
+
+@router.patch("/{order_id}/courier_accept")
+async def courier_accept(order_id: int, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    if order.status == OrderStatus.ASSIGNED_TO_COURIER:
+        order.status = OrderStatus.IN_DELIVERY
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/courier/{telegram_id}", response_model=list[OrderOut])
+async def get_courier_orders(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    courier_q = await db.execute(select(Courier).where(Courier.telegram_id == telegram_id))
+    courier = courier_q.scalar_one_or_none()
+    if not courier:
+        return []
+    result = await db.execute(
+        select(Order)
+        .where(Order.courier_id == courier.id)
+        .options(*_order_opts())
+        .order_by(Order.created_at.desc())
+    )
+    orders = result.scalars().all()
+    return [_order_to_out(o) for o in orders]
 
 
 @router.post("/reviews/")
@@ -269,4 +307,8 @@ def _order_to_out(order: Order) -> OrderOut:
         payment_confirmed=order.payment_confirmed,
         created_at=order.created_at,
         items=items,
+        client_name=order.user.name if order.user else None,
+        client_telegram_id=order.user.telegram_id if order.user else None,
+        courier_name=order.courier.name if order.courier else None,
+        courier_phone=order.courier.phone if order.courier else None,
     )

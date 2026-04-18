@@ -78,6 +78,17 @@ async def get_all_orders(status: str = None):
     return await _get("/orders/", params)
 
 
+async def get_courier_orders(telegram_id: int):
+    try:
+        return await _get(f"/orders/courier/{telegram_id}")
+    except Exception:
+        return []
+
+
+async def courier_accept_order(order_id: int):
+    return await _patch(f"/orders/{order_id}/courier_accept")
+
+
 async def payment_confirmed(order_id: int):
     return await _patch(f"/orders/{order_id}/payment_confirmed")
 

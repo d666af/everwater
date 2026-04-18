@@ -14,22 +14,16 @@ async def courier_panel(message: Message):
 
 @router.message(F.text == "📋 Мои заказы")
 async def courier_orders(message: Message):
-    couriers = await api.get_couriers()
-    courier = next((c for c in couriers if c["telegram_id"] == message.from_user.id), None)
-    if not courier:
-        await message.answer("Вы не зарегистрированы как курьер.")
-        return
+    orders = await api.get_courier_orders(message.from_user.id)
+    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
 
-    orders = await api.get_all_orders()
-    my_orders = [o for o in orders if o.get("courier_id") == courier["id"]
-                 and o["status"] not in ("delivered", "rejected")]
-
-    if not my_orders:
+    if not active:
         await message.answer("У вас нет активных заказов.")
         return
 
-    for o in my_orders:
+    for o in active:
         items_text = "\n".join(f"  • {i['product_name']} x{i['quantity']}" for i in o.get("items", []))
+        total_str = f"{int(o['total']):,}".replace(",", " ")
         text = (
             f"📦 Заказ #{o['id']}\n"
             f"Статус: {o['status']}\n"
@@ -37,7 +31,7 @@ async def courier_orders(message: Message):
             f"Телефон: {o['recipient_phone']}\n"
             f"Время: {o.get('delivery_time', '—')}\n"
             f"Товары:\n{items_text}\n"
-            f"Сумма: {o['total']}₽"
+            f"Сумма: {total_str} сум"
         )
         await message.answer(text, reply_markup=courier_order_kb(o["id"]))
 
@@ -58,7 +52,11 @@ async def courier_report(message: Message):
 @router.callback_query(F.data.startswith("courier:accept:"))
 async def courier_accept(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
-    await call.message.answer(f"✅ Вы приняли заказ #{order_id}. Хорошей доставки!")
+    await api.courier_accept_order(order_id)
+    await call.message.edit_text(
+        f"✅ Вы приняли заказ #{order_id}. Хорошей доставки!",
+        reply_markup=courier_order_kb(order_id),
+    )
     await call.answer()
 
 
