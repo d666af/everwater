@@ -17,6 +17,14 @@ def fmt(amount):
     return f"{int(amount):,}".replace(",", " ") + " сум"
 
 
+def _short_name(p: dict) -> str:
+    """Возвращает короткое название: '0.5л Вода' или '0.5л Газ. вода'."""
+    vol = p.get("volume")
+    is_carb = p.get("type") == "carbonated"
+    vol_str = f"{vol}л " if vol else ""
+    return f"{vol_str}{'Газ. вода' if is_carb else 'Вода'}"
+
+
 # ─── FSM States ───────────────────────────────────────────────────────────────
 
 class SurveyState(StatesGroup):
@@ -31,6 +39,7 @@ class CheckoutState(StatesGroup):
     waiting_location  = State()
     choosing_date     = State()
     choosing_time     = State()
+    waiting_custom_time = State()
     waiting_phone     = State()
     asking_return     = State()
     asking_bonus      = State()
@@ -118,21 +127,18 @@ def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboar
         pid = str(p["id"])
         qty = cart.get(pid, {}).get("qty", 0)
         emoji = "🫧" if p.get("type") == "carbonated" else "💧"
-        vol = f"{p['volume']}л " if p.get("volume") else ""
+        sname = _short_name(p)
         price_str = fmt(p["price"])
 
         if qty == 0:
-            # Одна широкая кнопка — нажать = добавить 1 шт.
             buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {vol}{p['name']} — {price_str}  ➕",
+                text=f"{emoji} {sname} — {price_str}  ➕",
                 callback_data=f"ca:{pid}",
             )])
         else:
-            # Три кнопки: ➖  ×qty Название  ➕
-            label = f"×{qty}  {vol.strip() or p['name']}"
             buttons.append([
                 InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"),
-                InlineKeyboardButton(text=label, callback_data="noop"),
+                InlineKeyboardButton(text=f"×{qty}  {sname}", callback_data="noop"),
                 InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"),
             ])
 
@@ -167,13 +173,11 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     if still:
         lines.append("💧 <b>Без газа:</b>")
         for p in still:
-            vol = f"{p['volume']}л  " if p.get("volume") else ""
-            lines.append(f"  {vol}{p['name']} — {fmt(p['price'])}")
+            lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
     if carb:
         lines.append("\n🫧 <b>Газированная:</b>")
         for p in carb:
-            vol = f"{p['volume']}л  " if p.get("volume") else ""
-            lines.append(f"  {vol}{p['name']} — {fmt(p['price'])}")
+            lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
     lines.append("\n<i>Нажмите на товар чтобы добавить в корзину</i>")
     text = "\n".join(lines)
 
@@ -207,7 +211,7 @@ async def cart_add(call: CallbackQuery, state: FSMContext):
         await call.answer("Товар не найден")
         return
     if pid not in cart:
-        cart[pid] = {"name": p["name"], "price": p["price"],
+        cart[pid] = {"name": _short_name(p), "price": p["price"],
                      "qty": 0, "volume": p.get("volume", 0), "product_id": p["id"]}
     cart[pid]["qty"] += 1
     await state.update_data(cart=cart)
@@ -366,9 +370,10 @@ def _date_kb() -> InlineKeyboardMarkup:
 def _time_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌅 Утро 9:00–13:00",   callback_data="cotime:morning"),
-            InlineKeyboardButton(text="☀️ День 13:00–18:00",  callback_data="cotime:afternoon"),
+            InlineKeyboardButton(text="🌅 Утро 9:00–13:00",  callback_data="cotime:morning"),
+            InlineKeyboardButton(text="☀️ День 13:00–18:00", callback_data="cotime:afternoon"),
         ],
+        [InlineKeyboardButton(text="✏️ Своё время", callback_data="cotime:custom")],
     ])
 
 
@@ -455,13 +460,31 @@ async def co_date(call: CallbackQuery, state: FSMContext):
 @router.callback_query(CheckoutState.choosing_time, F.data.startswith("cotime:"))
 async def co_time(call: CallbackQuery, state: FSMContext):
     slot = call.data.split(":")[1]
-    slot_label = "9:00–13:00" if slot == "morning" else "13:00–18:00"
     data = await state.get_data()
-    delivery_time = f"{data.get('co_date', '')} {slot_label}".strip()
+    date_str = data.get("co_date", "")
+    if slot == "custom":
+        await state.set_state(CheckoutState.waiting_custom_time)
+        await call.message.edit_text(
+            f"📅 Дата: {date_str}\n\n"
+            "Введите удобное время доставки (например: 15:00, 17:00–19:00):"
+        )
+        await call.answer()
+        return
+    slot_label = "9:00–13:00" if slot == "morning" else "13:00–18:00"
+    delivery_time = f"{date_str} {slot_label}".strip()
     await state.update_data(co_time=delivery_time)
     await call.message.edit_text(f"✅ Время доставки: {delivery_time}")
     await _ask_phone(call.message, state)
     await call.answer()
+
+
+@router.message(CheckoutState.waiting_custom_time)
+async def co_custom_time(message: Message, state: FSMContext):
+    data = await state.get_data()
+    delivery_time = f"{data.get('co_date', '')} {message.text.strip()}".strip()
+    await state.update_data(co_time=delivery_time)
+    await message.answer(f"✅ Время доставки: {delivery_time}")
+    await _ask_phone(message, state)
 
 
 # ── Телефон ───────────────────────────────────────────────────────────────────
@@ -487,14 +510,17 @@ async def co_phone(message: Message, state: FSMContext):
     count = bottles.get("count", 0)
     await state.update_data(bottles_owed=count)
 
-    if count > 0:
+    cart = data.get("cart", {})
+    has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
+
+    if count > 0 and has_20l:
         await state.set_state(CheckoutState.asking_return)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=f"Да, верну {count} шт.", callback_data=f"rb:{count}"),
             InlineKeyboardButton(text="Нет", callback_data="rb:0"),
         ]])
         await message.answer(
-            f"У вас числится {count} бутылок к возврату. Вернёте при этой доставке?",
+            f"У вас числится {count} бутылок 20л к возврату. Вернёте при этой доставке?",
             reply_markup=kb,
         )
     else:
@@ -789,6 +815,33 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
+
+
+# ─── Support Chat ─────────────────────────────────────────────────────────────
+
+@router.message(F.text == "💬 Поддержка")
+async def support_menu(message: Message):
+    await message.answer(
+        "💬 <b>Поддержка</b>\n\n"
+        "Напишите ваш вопрос — оператор ответит в ближайшее время.\n"
+        "Ответы придут вам прямо в этот чат.",
+        parse_mode="HTML",
+    )
+
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def forward_to_support(message: Message, state: FSMContext):
+    """Catch-all: forward unhandled text messages to support chat."""
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    tg_id = message.from_user.id
+    name = message.from_user.full_name or str(tg_id)
+    try:
+        await api.send_user_support_message(tg_id, name, message.text)
+        await message.answer("✉️ Сообщение отправлено в поддержку. Ожидайте ответа.")
+    except Exception:
+        await message.answer("Не удалось отправить сообщение. Попробуйте позже.")
 
 
 # ─── Balance Topup ────────────────────────────────────────────────────────────

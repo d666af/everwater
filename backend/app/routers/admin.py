@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.order import Order, OrderStatus
 from app.models.user import User
 from app.models.courier import Courier
+from app.models.support import SupportChat, SupportMessage
 from app.schemas.order import CourierCreate, CourierOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -247,22 +248,43 @@ async def mark_all_read():
     return {"ok": True}
 
 
-# ─── Support Chats (in-memory stub; real impl needs Chat/Message models) ──────
+# ─── Support Chats (DB-backed) ───────────────────────────────────────────────
 
-_chats: list[dict] = []
+def _chat_out(chat: SupportChat) -> dict:
+    return {
+        "id": chat.id,
+        "name": chat.user_name or str(chat.id),
+        "last_message": chat.last_message,
+        "last_time": chat.last_time.isoformat() if chat.last_time else None,
+        "unread": chat.unread_count,
+    }
+
+
+def _msg_out(msg: SupportMessage) -> dict:
+    return {
+        "id": msg.id,
+        "from": "support" if msg.from_admin else "user",
+        "text": msg.text,
+        "time": msg.created_at.isoformat() if msg.created_at else None,
+    }
 
 
 @router.get("/support/chats")
-async def get_support_chats():
-    return _chats
+async def get_support_chats(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SupportChat).order_by(SupportChat.last_time.desc())
+    )
+    return [_chat_out(c) for c in result.scalars().all()]
 
 
 @router.get("/support/chats/{chat_id}/messages")
-async def get_chat_messages(chat_id: int):
-    chat = next((c for c in _chats if c["id"] == chat_id), None)
-    if not chat:
-        return []
-    return chat.get("messages", [])
+async def get_chat_messages(chat_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SupportMessage)
+        .where(SupportMessage.chat_id == chat_id)
+        .order_by(SupportMessage.created_at)
+    )
+    return [_msg_out(m) for m in result.scalars().all()]
 
 
 class MessageData(BaseModel):
@@ -270,24 +292,93 @@ class MessageData(BaseModel):
 
 
 @router.post("/support/chats/{chat_id}/messages")
-async def send_message(chat_id: int, data: MessageData):
-    global _chats
-    msg = {"id": int(datetime.utcnow().timestamp() * 1000), "from": "support",
-           "text": data.text, "time": datetime.utcnow().isoformat()}
-    _chats = [
-        {**c, "messages": c.get("messages", []) + [msg],
-         "last_message": data.text, "last_time": datetime.utcnow().isoformat(), "unread": 0}
-        if c["id"] == chat_id else c
-        for c in _chats
-    ]
-    return msg
+async def send_admin_message(chat_id: int, data: MessageData, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SupportChat).where(SupportChat.id == chat_id))
+    chat = result.scalar_one_or_none()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    now = datetime.utcnow()
+    msg = SupportMessage(
+        chat_id=chat_id,
+        text=data.text,
+        from_admin=True,
+        delivered=False,
+        created_at=now,
+    )
+    db.add(msg)
+    chat.last_message = data.text
+    chat.last_time = now
+    await db.commit()
+    await db.refresh(msg)
+    return _msg_out(msg)
 
 
 @router.patch("/support/chats/{chat_id}/read")
-async def mark_chat_read(chat_id: int):
-    global _chats
-    _chats = [
-        {**c, "unread": 0} if c["id"] == chat_id else c
-        for c in _chats
-    ]
+async def mark_chat_read(chat_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SupportChat).where(SupportChat.id == chat_id))
+    chat = result.scalar_one_or_none()
+    if chat:
+        chat.unread_count = 0
+        await db.commit()
+    return {"ok": True}
+
+
+# Endpoint used by bot to post incoming user messages
+class UserMessageData(BaseModel):
+    telegram_id: int
+    user_name: str = ""
+    text: str
+
+
+@router.post("/support/user_message")
+async def receive_user_message(data: UserMessageData, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SupportChat).where(SupportChat.id == data.telegram_id))
+    chat = result.scalar_one_or_none()
+    now = datetime.utcnow()
+    if not chat:
+        chat = SupportChat(
+            id=data.telegram_id,
+            user_name=data.user_name,
+            unread_count=0,
+            last_message="",
+            last_time=now,
+        )
+        db.add(chat)
+        await db.flush()
+    chat.unread_count = (chat.unread_count or 0) + 1
+    chat.last_message = data.text
+    chat.last_time = now
+    if data.user_name:
+        chat.user_name = data.user_name
+    msg = SupportMessage(
+        chat_id=data.telegram_id,
+        text=data.text,
+        from_admin=False,
+        delivered=True,
+        created_at=now,
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+    return _msg_out(msg)
+
+
+# Endpoint used by bot scheduler to fetch undelivered admin messages
+@router.get("/support/undelivered")
+async def get_undelivered_messages(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SupportMessage)
+        .where(SupportMessage.from_admin == True, SupportMessage.delivered == False)
+        .order_by(SupportMessage.created_at)
+    )
+    return [_msg_out(m) | {"chat_id": m.chat_id} for m in result.scalars().all()]
+
+
+@router.patch("/support/messages/{msg_id}/delivered")
+async def mark_message_delivered(msg_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SupportMessage).where(SupportMessage.id == msg_id))
+    msg = result.scalar_one_or_none()
+    if msg:
+        msg.delivered = True
+        await db.commit()
     return {"ok": True}

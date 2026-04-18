@@ -137,7 +137,7 @@ async def admin_set_courier(call: CallbackQuery):
                 f"Телефон клиента: {order['recipient_phone']}\n"
                 f"Время: {order.get('delivery_time', '—')}\n"
                 f"Товары:\n{items_text}\n"
-                f"Сумма: {order['total']}₽\n"
+                f"Сумма: {int(order['total']):,} сум\n".replace(",", " ")
                 f"Возврат бутылок: {order['return_bottles_count']} шт.\n"
                 f"Геолокация: {order.get('latitude', '—')}, {order.get('longitude', '—')}",
                 reply_markup=__import__('keyboards.courier', fromlist=['courier_order_kb']).courier_order_kb(order_id),
@@ -148,6 +148,24 @@ async def admin_set_courier(call: CallbackQuery):
     await call.message.edit_text(
         f"✅ Курьер назначен на заказ #{order_id}."
     )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin_topup_confirm:"))
+async def admin_topup_confirm(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    user_id = int(parts[1])
+    amount  = int(parts[2])
+    try:
+        await api.topup_user(user_id, amount)
+        amount_str = f"{amount:,}".replace(",", " ")
+        await call.message.edit_text(
+            f"✅ Баланс пользователя (ID {user_id}) пополнен на {amount_str} сум."
+        )
+    except Exception:
+        await call.message.edit_text("❌ Ошибка при пополнении баланса.")
     await call.answer()
 
 

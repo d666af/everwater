@@ -161,3 +161,28 @@ async def get_couriers():
 
 async def get_stats(period: str = "month"):
     return await _get("/admin/stats", {"period": period})
+
+
+async def topup_user(user_id: int, amount: int):
+    return await _post(f"/admin/users/{user_id}/topup", {"amount": amount})
+
+
+# Support chat
+async def send_user_support_message(telegram_id: int, user_name: str, text: str):
+    return await _post("/admin/support/user_message", {
+        "telegram_id": telegram_id, "user_name": user_name, "text": text
+    })
+
+
+async def get_undelivered_support_messages():
+    try:
+        return await _get("/admin/support/undelivered")
+    except Exception:
+        return []
+
+
+async def mark_support_message_delivered(msg_id: int):
+    try:
+        return await _patch(f"/admin/support/messages/{msg_id}/delivered")
+    except Exception:
+        return {}
