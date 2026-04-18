@@ -25,6 +25,13 @@ async def _patch(path: str, data: dict = None, params: dict = None):
             return await r.json()
 
 
+async def _delete(path: str):
+    async with aiohttp.ClientSession() as s:
+        async with s.delete(f"{BASE}{path}") as r:
+            r.raise_for_status()
+            return await r.json()
+
+
 # Users
 async def create_or_get_user(telegram_id: int, name: str = None, phone: str = None):
     return await _post("/users/", {"telegram_id": telegram_id, "name": name, "phone": phone})
@@ -54,6 +61,10 @@ async def get_products():
 
 
 # Orders
+async def create_order(data: dict):
+    return await _post("/orders/", data)
+
+
 async def get_user_orders(user_id: int):
     return await _get(f"/orders/user/{user_id}")
 
@@ -76,11 +87,11 @@ async def confirm_order(order_id: int):
 
 
 async def reject_order(order_id: int, reason: str = ""):
-    return await _patch(f"/orders/{order_id}/reject", params={"reason": reason})
+    return await _patch(f"/orders/{order_id}/reject", {"reason": reason})
 
 
 async def assign_courier(order_id: int, courier_id: int):
-    return await _patch(f"/orders/{order_id}/assign_courier", params={"courier_id": courier_id})
+    return await _patch(f"/orders/{order_id}/assign_courier", {"courier_id": courier_id})
 
 
 async def start_delivery(order_id: int):
@@ -95,6 +106,52 @@ async def create_review(user_id: int, order_id: int, rating: int, comment: str =
     return await _post("/orders/reviews/", {
         "user_id": user_id, "order_id": order_id, "rating": rating, "comment": comment
     })
+
+
+# Settings
+async def get_settings():
+    try:
+        return await _get("/admin/settings")
+    except Exception:
+        return {}
+
+
+# Client data
+async def get_addresses(user_id: int):
+    try:
+        return await _get(f"/client/{user_id}/addresses")
+    except Exception:
+        return []
+
+
+async def save_address(user_id: int, data: dict):
+    return await _post(f"/client/{user_id}/addresses", data)
+
+
+async def get_subscriptions(user_id: int):
+    try:
+        return await _get(f"/client/{user_id}/subscriptions")
+    except Exception:
+        return []
+
+
+async def create_subscription(user_id: int, data: dict):
+    return await _post(f"/client/{user_id}/subscriptions", data)
+
+
+async def cancel_subscription(user_id: int, sub_id: int):
+    return await _delete(f"/client/{user_id}/subscriptions/{sub_id}")
+
+
+async def get_bottles_owed(user_id: int):
+    try:
+        return await _get(f"/client/{user_id}/bottles_owed")
+    except Exception:
+        return {"count": 0}
+
+
+async def change_bottles_owed(user_id: int, delta: int):
+    return await _post(f"/client/{user_id}/bottles_owed", {"delta": delta})
 
 
 # Admin
