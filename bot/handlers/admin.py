@@ -129,6 +129,7 @@ async def admin_set_courier(call: CallbackQuery):
     if courier:
         bot = call.bot
         items_text = "\n".join(f"  • {i['product_name']} x{i['quantity']}" for i in order.get("items", []))
+        total_str = f"{int(order['total']):,}".replace(",", " ")
         try:
             await bot.send_message(
                 courier["telegram_id"],
@@ -137,7 +138,7 @@ async def admin_set_courier(call: CallbackQuery):
                 f"Телефон клиента: {order['recipient_phone']}\n"
                 f"Время: {order.get('delivery_time', '—')}\n"
                 f"Товары:\n{items_text}\n"
-                f"Сумма: {int(order['total']):,} сум\n".replace(",", " ")
+                f"Сумма: {total_str} сум\n"
                 f"Возврат бутылок: {order['return_bottles_count']} шт.\n"
                 f"Геолокация: {order.get('latitude', '—')}, {order.get('longitude', '—')}",
                 reply_markup=__import__('keyboards.courier', fromlist=['courier_order_kb']).courier_order_kb(order_id),

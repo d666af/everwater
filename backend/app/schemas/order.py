@@ -59,6 +59,11 @@ class OrderOut(BaseModel):
     payment_confirmed: bool
     created_at: datetime
     items: list[OrderItemOut] = []
+    # Denormalized convenience fields
+    client_name: str | None = None
+    client_telegram_id: int | None = None
+    courier_name: str | None = None
+    courier_phone: str | None = None
 
     model_config = {"from_attributes": True}
 
