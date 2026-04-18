@@ -137,7 +137,7 @@ async def admin_set_courier(call: CallbackQuery):
                 f"Телефон клиента: {order['recipient_phone']}\n"
                 f"Время: {order.get('delivery_time', '—')}\n"
                 f"Товары:\n{items_text}\n"
-                f"Сумма: {order['total']}₽\n"
+                f"Сумма: {int(order['total']):,} сум\n".replace(",", " ")
                 f"Возврат бутылок: {order['return_bottles_count']} шт.\n"
                 f"Геолокация: {order.get('latitude', '—')}, {order.get('longitude', '—')}",
                 reply_markup=__import__('keyboards.courier', fromlist=['courier_order_kb']).courier_order_kb(order_id),

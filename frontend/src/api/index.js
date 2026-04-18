@@ -136,7 +136,7 @@ export const getOrder = (orderId) =>
 export const getUserOrders = (userId) =>
   safeCall(
     () => http.get(`/orders/user/${userId}`).then(r => r.data),
-    () => mockOrdersStore
+    () => mockOrdersStore.filter(o => !o.user_id || o.user_id === userId)
   )
 
 export const getOrders = (params = {}) =>
