@@ -7,19 +7,26 @@ from config import settings
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
     url = settings.MINI_APP_URL
-    catalog_btn = (
-        KeyboardButton(text="🛒 Открыть каталог", web_app=WebAppInfo(url=url))
-        if url.startswith("https")
-        else KeyboardButton(text="🛒 Открыть каталог")
-    )
     return ReplyKeyboardMarkup(
         keyboard=[
-            [catalog_btn],
+            [KeyboardButton(text="🛒 Каталог")],
             [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
+            [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💰 Пополнить")],
             [KeyboardButton(text="🆘 Поддержка")],
         ],
         resize_keyboard=True,
     )
+
+
+def miniapp_inline_kb() -> InlineKeyboardMarkup:
+    url = settings.MINI_APP_URL
+    if url.startswith("https"):
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Открыть мини-приложение", web_app=WebAppInfo(url=url))],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📱 Открыть мини-приложение", url=url)],
+    ])
 
 
 def request_phone_kb() -> ReplyKeyboardMarkup:
@@ -59,9 +66,10 @@ def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
             "rejected": "❌",
         }
         emoji = status_map.get(o["status"], "📦")
+        total = f'{int(o["total"]):,}'.replace(",", " ")
         buttons.append([
             InlineKeyboardButton(
-                text=f"{emoji} Заказ #{o['id']} — {o['total']}₽",
+                text=f'{emoji} Заказ #{o["id"]} — {total} сум',
                 callback_data=f"order_detail:{o['id']}"
             )
         ])
