@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
 import { useOrdersStore } from '../store/orders'
+import { useAuthStore } from '../store/auth'
+import { getUserByTelegram, getUserOrders } from '../api'
 import ReviewModal from '../components/ReviewModal'
 
 const C = '#8DC63F'
@@ -57,9 +59,36 @@ export default function OrderHistory() {
   const [reviewOrder, setReviewOrder] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
   const [dismissedIds, setDismissedIds] = useState(new Set())
+  const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
-  const orders = useOrdersStore(s => s.orders)
+  const { orders, setOrders, loaded } = useOrdersStore()
+  const { user: authUser } = useAuthStore()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        let userId = null
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user
+        if (tgUser?.id) {
+          const u = await getUserByTelegram(tgUser.id)
+          userId = u?.id
+        } else if (authUser?.id) {
+          userId = authUser.id
+        }
+        if (userId) {
+          const data = await getUserOrders(userId)
+          if (Array.isArray(data)) setOrders(data)
+        }
+      } catch {
+        // keep whatever is in the store
+      } finally {
+        setFetchDone(true)
+      }
+    }
+    if (!loaded) load()
+    else setFetchDone(true)
+  }, []) // eslint-disable-line
 
   const repeatOrder = (order) => {
     if (!order.items?.length) return
@@ -83,6 +112,12 @@ export default function OrderHistory() {
     o.status === 'delivered' && !reviewedIds.has(o.id) && !dismissedIds.has(o.id) && !o.review_id
   )
   const showAutoReview = autoReviewOrder && !reviewOrder
+
+  if (!fetchDone) return (
+    <div style={{ ...s.page, alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: '#8e8e93', fontSize: 15 }}>Загружаем заказы…</div>
+    </div>
+  )
 
   if (!orders.length) return (
     <div style={s.page}>

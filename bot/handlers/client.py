@@ -1,5 +1,9 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message, CallbackQuery,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
@@ -24,7 +28,9 @@ class SurveyState(StatesGroup):
 class CheckoutState(StatesGroup):
     choosing_address  = State()
     waiting_address   = State()
-    waiting_time      = State()
+    waiting_location  = State()
+    choosing_date     = State()
+    choosing_time     = State()
     waiting_phone     = State()
     asking_return     = State()
     asking_bonus      = State()
@@ -101,18 +107,9 @@ async def survey_count(message: Message, state: FSMContext):
 
 def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboardMarkup:
     buttons = [[
-        InlineKeyboardButton(
-            text=("✅ " if ftype == "all" else "") + "Все",
-            callback_data="cf:all",
-        ),
-        InlineKeyboardButton(
-            text=("✅ " if ftype == "still" else "") + "Без газа",
-            callback_data="cf:still",
-        ),
-        InlineKeyboardButton(
-            text=("✅ " if ftype == "carbonated" else "") + "Газ.",
-            callback_data="cf:carbonated",
-        ),
+        InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="cf:all"),
+        InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"),
+        InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"),
     ]]
 
     for p in products:
@@ -120,17 +117,24 @@ def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboar
             continue
         pid = str(p["id"])
         qty = cart.get(pid, {}).get("qty", 0)
-        vol = f" {p['volume']}л" if p.get("volume") else ""
-        buttons.append([InlineKeyboardButton(
-            text=f"{p['name']}{vol} — {fmt(p['price'])}",
-            callback_data="noop",
-        )])
-        row = []
-        if qty > 0:
-            row.append(InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"))
-            row.append(InlineKeyboardButton(text=str(qty), callback_data="noop"))
-        row.append(InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"))
-        buttons.append(row)
+        emoji = "🫧" if p.get("type") == "carbonated" else "💧"
+        vol = f"{p['volume']}л " if p.get("volume") else ""
+        price_str = fmt(p["price"])
+
+        if qty == 0:
+            # Одна широкая кнопка — нажать = добавить 1 шт.
+            buttons.append([InlineKeyboardButton(
+                text=f"{emoji} {vol}{p['name']} — {price_str}  ➕",
+                callback_data=f"ca:{pid}",
+            )])
+        else:
+            # Три кнопки: ➖  ×qty Название  ➕
+            label = f"×{qty}  {vol.strip() or p['name']}"
+            buttons.append([
+                InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"),
+                InlineKeyboardButton(text=label, callback_data="noop"),
+                InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"),
+            ])
 
     if cart:
         total_qty = sum(v["qty"] for v in cart.values())
@@ -154,7 +158,25 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
                              volume=p.get("volume", 0), product_id=p["id"])
     await state.update_data(products=products, cf=ftype, cart=cart)
     kb = _catalog_kb(products, cart, ftype)
-    text = "🛒 <b>Каталог</b>\n\nВыберите товары:"
+
+    # Текст: список всех товаров с ценами
+    lines = ["🛒 <b>Каталог воды Ever Water</b>\n"]
+    shown = [p for p in products if ftype == "all" or p.get("type") == ftype]
+    still = [p for p in shown if p.get("type") != "carbonated"]
+    carb  = [p for p in shown if p.get("type") == "carbonated"]
+    if still:
+        lines.append("💧 <b>Без газа:</b>")
+        for p in still:
+            vol = f"{p['volume']}л  " if p.get("volume") else ""
+            lines.append(f"  {vol}{p['name']} — {fmt(p['price'])}")
+    if carb:
+        lines.append("\n🫧 <b>Газированная:</b>")
+        for p in carb:
+            vol = f"{p['volume']}л  " if p.get("volume") else ""
+            lines.append(f"  {vol}{p['name']} — {fmt(p['price'])}")
+    lines.append("\n<i>Нажмите на товар чтобы добавить в корзину</i>")
+    text = "\n".join(lines)
+
     if edit:
         msg = target.message if isinstance(target, CallbackQuery) else target
         await msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -320,18 +342,59 @@ async def checkout_start(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+def _location_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+            [KeyboardButton(text="⏩ Пропустить")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def _date_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data="codate:Сегодня"),
+            InlineKeyboardButton(text="📅 Завтра",  callback_data="codate:Завтра"),
+        ],
+        [InlineKeyboardButton(text="⏩ Как можно скорее", callback_data="codate:asap")],
+    ])
+
+
+def _time_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🌅 Утро 9:00–13:00",   callback_data="cotime:morning"),
+            InlineKeyboardButton(text="☀️ День 13:00–18:00",  callback_data="cotime:afternoon"),
+        ],
+    ])
+
+
+async def _ask_location(message: Message, state: FSMContext, addr: str):
+    await state.set_state(CheckoutState.waiting_location)
+    await message.answer(
+        f"📍 Адрес: <b>{addr}</b>\n\n"
+        "Отправьте геолокацию, чтобы курьер точно нашёл вас, или пропустите:",
+        reply_markup=_location_kb(),
+        parse_mode="HTML",
+    )
+
+
 @router.callback_query(CheckoutState.choosing_address, F.data.startswith("ua:"))
 async def use_saved_addr(call: CallbackQuery, state: FSMContext):
     idx = int(call.data.split(":")[1])
     data = await state.get_data()
     addr = data["saved_addrs"][idx]
-    await state.update_data(co_address=addr["address"])
-    await state.set_state(CheckoutState.waiting_time)
-    await call.message.edit_text(
-        f"Адрес: {addr['address']}\n\n"
-        "Укажите желаемое время доставки (например: 14:00–16:00, «как можно скорее»):"
-    )
+    await state.update_data(co_address=addr["address"],
+                            co_lat=addr.get("lat"), co_lng=addr.get("lng"))
     await call.answer()
+    # Если у сохранённого адреса уже есть координаты — пропускаем шаг локации
+    if addr.get("lat"):
+        await _ask_date(call.message, state)
+    else:
+        await _ask_location(call.message, state, addr["address"])
 
 
 @router.callback_query(CheckoutState.choosing_address, F.data == "new_addr")
@@ -343,20 +406,74 @@ async def new_addr(call: CallbackQuery, state: FSMContext):
 
 @router.message(CheckoutState.waiting_address)
 async def co_address(message: Message, state: FSMContext):
-    await state.update_data(co_address=message.text.strip())
-    await state.set_state(CheckoutState.waiting_time)
-    await message.answer("Укажите желаемое время доставки (например: 14:00–16:00, «как можно скорее»):")
+    await state.update_data(co_address=message.text.strip(), co_lat=None, co_lng=None)
+    await _ask_location(message, state, message.text.strip())
 
 
-@router.message(CheckoutState.waiting_time)
-async def co_time(message: Message, state: FSMContext):
-    await state.update_data(co_time=message.text.strip())
+# ── Локация ──────────────────────────────────────────────────────────────────
+
+@router.message(CheckoutState.waiting_location, F.location)
+async def co_location(message: Message, state: FSMContext):
+    await state.update_data(co_lat=message.location.latitude,
+                            co_lng=message.location.longitude)
+    await message.answer("✅ Геолокация сохранена!", reply_markup=ReplyKeyboardRemove())
+    await _ask_date(message, state)
+
+
+@router.message(CheckoutState.waiting_location, F.text == "⏩ Пропустить")
+async def co_location_skip(message: Message, state: FSMContext):
+    await message.answer("Хорошо, пропускаем.", reply_markup=ReplyKeyboardRemove())
+    await _ask_date(message, state)
+
+
+# ── Дата ─────────────────────────────────────────────────────────────────────
+
+async def _ask_date(message: Message, state: FSMContext):
+    await state.set_state(CheckoutState.choosing_date)
+    await message.answer("Выберите дату доставки:", reply_markup=_date_kb())
+
+
+@router.callback_query(CheckoutState.choosing_date, F.data.startswith("codate:"))
+async def co_date(call: CallbackQuery, state: FSMContext):
+    val = call.data.split(":", 1)[1]
+    if val == "asap":
+        await state.update_data(co_time="Как можно скорее")
+        await call.message.edit_text("✅ Дата: как можно скорее")
+        await _ask_phone(call.message, state)
+    else:
+        await state.update_data(co_date=val)
+        await state.set_state(CheckoutState.choosing_time)
+        await call.message.edit_text(
+            f"📅 Дата: {val}\n\nВыберите время доставки:",
+            reply_markup=_time_kb(),
+        )
+    await call.answer()
+
+
+# ── Время ─────────────────────────────────────────────────────────────────────
+
+@router.callback_query(CheckoutState.choosing_time, F.data.startswith("cotime:"))
+async def co_time(call: CallbackQuery, state: FSMContext):
+    slot = call.data.split(":")[1]
+    slot_label = "9:00–13:00" if slot == "morning" else "13:00–18:00"
+    data = await state.get_data()
+    delivery_time = f"{data.get('co_date', '')} {slot_label}".strip()
+    await state.update_data(co_time=delivery_time)
+    await call.message.edit_text(f"✅ Время доставки: {delivery_time}")
+    await _ask_phone(call.message, state)
+    await call.answer()
+
+
+# ── Телефон ───────────────────────────────────────────────────────────────────
+
+async def _ask_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     phone = data.get("co_user", {}).get("phone", "")
     await state.set_state(CheckoutState.waiting_phone)
     await message.answer(
-        f"Телефон получателя (ваш текущий: {phone}).\n"
-        "Введите номер или «-» чтобы оставить текущий:"
+        f"Телефон получателя (ваш текущий: <b>{phone}</b>).\n"
+        "Введите номер или «-» чтобы оставить текущий:",
+        parse_mode="HTML",
     )
 
 
@@ -448,9 +565,11 @@ async def _show_summary(message: Message, state: FSMContext):
         s = item["price"] * item["qty"]
         total += s
         lines.append(f"  • {item['name']} × {item['qty']} — {fmt(s)}")
+    geo = "✅ указана" if data.get("co_lat") else "—"
     lines += [
         f"\nСумма: {fmt(total)}",
         f"Адрес: {data.get('co_address', '—')}",
+        f"Геолокация: {geo}",
         f"Время: {data.get('co_time', '—')}",
         f"Телефон: {data.get('co_phone', '—')}",
         f"Оплата: {pay_labels.get(data.get('co_pay', ''), '—')}",
@@ -480,6 +599,8 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         "items": items,
         "address": data.get("co_address", ""),
         "delivery_time": data.get("co_time"),
+        "latitude": data.get("co_lat"),
+        "longitude": data.get("co_lng"),
         "recipient_phone": data.get("co_phone", user.get("phone", "")),
         "return_bottles_count": data.get("co_return", 0),
         "bonus_used": data.get("co_bonus", 0),
