@@ -81,6 +81,26 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
 
 # ─── Couriers ─────────────────────────────────────────────────────────────────
 
+@router.get("/couriers/by_telegram/{telegram_id}")
+async def get_courier_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Courier).where(Courier.telegram_id == telegram_id, Courier.is_active == True))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    return {"id": courier.id, "telegram_id": courier.telegram_id, "name": courier.name,
+            "phone": courier.phone, "is_active": courier.is_active, "total_deliveries": courier.total_deliveries}
+
+
+@router.get("/managers/by_telegram/{telegram_id}")
+async def get_manager_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True))
+    mgr = result.scalar_one_or_none()
+    if not mgr:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    return {"id": mgr.id, "telegram_id": mgr.telegram_id, "name": mgr.name,
+            "phone": mgr.phone, "is_active": mgr.is_active}
+
+
 @router.get("/couriers", response_model=list[CourierOut])
 async def get_couriers(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Courier))
