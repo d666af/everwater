@@ -6,13 +6,12 @@ from config import settings
 
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
-    url = settings.MINI_APP_URL
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🛒 Каталог")],
             [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
             [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💰 Пополнить")],
-            [KeyboardButton(text="🆘 Поддержка")],
+            [KeyboardButton(text="🆘 Поддержка"), KeyboardButton(text="🔄 Роль")],
         ],
         resize_keyboard=True,
     )

@@ -15,6 +15,31 @@ from app.services.settings_service import get_all_settings
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
+async def _tg(chat_id: int, text: str):
+    """Send Telegram message (fire-and-forget) so website actions also notify users."""
+    from app.config import settings as cfg
+    import aiohttp
+    if not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+    try:
+        async with aiohttp.ClientSession() as s:
+            await s.post(url, json={"chat_id": chat_id, "text": text},
+                         timeout=aiohttp.ClientTimeout(total=5))
+    except Exception:
+        pass
+
+
+async def _notify_admins(db: AsyncSession, text: str):
+    from app.config import settings as cfg
+    for aid in cfg.ADMIN_IDS:
+        await _tg(aid, text)
+    from app.models.manager import Manager
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    for m in mgrs:
+        await _tg(m.telegram_id, text)
+
+
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
     if count <= 0:
         return 0.0
@@ -134,11 +159,14 @@ async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(g
 
 
 @router.patch("/{order_id}/confirm")
-async def confirm_order(order_id: int, db: AsyncSession = Depends(get_db)):
+async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.CONFIRMED
     order.confirmed_at = datetime.utcnow()
+    client_tg = order.user.telegram_id if order.user else None
     await db.commit()
+    if not from_bot:
+        await _tg(client_tg, f"✅ Ваш заказ #{order_id} подтверждён! Скоро назначим курьера.")
     return {"ok": True, "status": order.status}
 
 
@@ -147,11 +175,16 @@ class RejectBody(BaseModel):
 
 
 @router.patch("/{order_id}/reject")
-async def reject_order(order_id: int, body: RejectBody = RejectBody(), db: AsyncSession = Depends(get_db)):
+async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot: bool = False,
+                       db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
+    client_tg = order.user.telegram_id if order.user else None
     await db.commit()
+    if not from_bot:
+        reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
+        await _tg(client_tg, f"❌ Ваш заказ #{order_id} отклонён.{reason_txt}")
     return {"ok": True}
 
 
@@ -169,7 +202,8 @@ class AssignBody(BaseModel):
 
 
 @router.patch("/{order_id}/assign_courier")
-async def assign_courier(order_id: int, body: AssignBody, db: AsyncSession = Depends(get_db)):
+async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False,
+                         db: AsyncSession = Depends(get_db)):
     courier_id = body.courier_id
     order = await _get_order(order_id, db)
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
@@ -178,18 +212,31 @@ async def assign_courier(order_id: int, body: AssignBody, db: AsyncSession = Dep
         raise HTTPException(status_code=404, detail="Courier not found")
     order.courier_id = courier_id
     order.status = OrderStatus.ASSIGNED_TO_COURIER
-    # Set expected delivery time: default 2h window from now (refined if delivery_time is set)
     if not order.delivery_expected_at:
         order.delivery_expected_at = datetime.utcnow() + timedelta(hours=2)
+    client_tg = order.user.telegram_id if order.user else None
     await db.commit()
+    if not from_bot:
+        items_text = "\n".join(f"  • {i.product.name} x{i.quantity}" for i in order.items) if order.items else ""
+        await _tg(courier.telegram_id,
+                  f"🚴 Вам назначен заказ #{order_id}!\n\n"
+                  f"Адрес: {order.address}\nТелефон: {order.recipient_phone}\n"
+                  f"Время: {order.delivery_time or '—'}\nТовары:\n{items_text}\n"
+                  f"Сумма: {int(order.total):,} сум")
+        await _tg(client_tg,
+                  f"🚴 Курьер {courier.name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.")
     return {"ok": True}
 
 
 @router.patch("/{order_id}/in_delivery")
-async def start_delivery(order_id: int, db: AsyncSession = Depends(get_db)):
+async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.IN_DELIVERY
+    client_tg = order.user.telegram_id if order.user else None
     await db.commit()
+    if not from_bot:
+        await _tg(client_tg, f"🚴 Ваш заказ #{order_id} в пути! Курьер уже едет к вам.")
+        await _notify_admins(db, f"🚴 Курьер начал доставку заказа #{order_id}")
     return {"ok": True}
 
 
@@ -198,14 +245,17 @@ class DeliveredBody(BaseModel):
 
 
 @router.patch("/{order_id}/delivered")
-async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), db: AsyncSession = Depends(get_db)):
+async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), from_bot: bool = False,
+                         db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.DELIVERED
     order.delivered_at = datetime.utcnow()
     order.cash_collected = body.cash_collected
 
+    client_tg = order.user.telegram_id if order.user else None
     result = await db.execute(select(User).where(User.id == order.user_id))
     user = result.scalar_one_or_none()
+    bonus = 0.0
     if user:
         cfg = await get_all_settings(db)
         cashback_pct = float(cfg.get("cashback_percent") or 5)
@@ -219,6 +269,12 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), d
             courier.total_deliveries += 1
 
     await db.commit()
+    if not from_bot:
+        bonus_txt = f"\n🎁 Начислено {int(bonus):,} бонусных баллов!" if bonus > 0 else ""
+        await _tg(client_tg,
+                  f"✔️ Ваш заказ #{order_id} доставлен!{bonus_txt}\n\n"
+                  "Пожалуйста, оцените качество доставки в боте: /start")
+        await _notify_admins(db, f"✔️ Заказ #{order_id} доставлен!")
     return {"ok": True}
 
 
