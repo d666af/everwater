@@ -616,6 +616,14 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user = data["co_user"]
     cart = data.get("cart", {})
+    pay_method = data.get("co_pay", "cash")
+
+    # Calculate balance_used when payment method is balance
+    balance_used = 0
+    if pay_method == "balance":
+        subtotal = sum(v["price"] * v["qty"] for v in cart.values())
+        balance_used = min(float(user.get("balance", 0)), subtotal)
+
     items = [
         {"product_id": v["product_id"], "quantity": v["qty"], "price": v["price"]}
         for v in cart.values()
@@ -630,7 +638,8 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         "recipient_phone": data.get("co_phone", user.get("phone", "")),
         "return_bottles_count": data.get("co_return", 0),
         "bonus_used": data.get("co_bonus", 0),
-        "payment_method": data.get("co_pay", "cash"),
+        "balance_used": balance_used,
+        "payment_method": pay_method,
     })
     if not order or "id" not in order:
         await call.message.answer("Ошибка при создании заказа. Попробуйте ещё раз.")
@@ -638,10 +647,25 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         return
 
     order_id = order["id"]
+
+    # Save address if it was typed manually (not from saved addresses)
+    addr = data.get("co_address", "")
+    saved_addrs = data.get("saved_addrs", [])
+    is_new_address = addr and not any(a.get("address") == addr for a in saved_addrs)
+    if is_new_address:
+        try:
+            await api.save_address(user["id"], {
+                "address": addr,
+                "latitude": data.get("co_lat"),
+                "longitude": data.get("co_lng"),
+            })
+        except Exception:
+            pass
+
     await state.update_data(cart={})
     await state.clear()
 
-    if data.get("co_pay") == "card":
+    if pay_method == "card":
         await call.message.edit_text(
             f"✅ Заказ #{order_id} создан!\n\n"
             f"Переведите <b>{fmt(order.get('total', 0))}</b> на карту:\n\n"
@@ -880,7 +904,14 @@ async def topup_paid(call: CallbackQuery):
     amount = int(parts[1])
     user_id = parts[2] if len(parts) > 2 else "?"
     from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     bot: Bot = call.bot
+    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=f"✅ Подтвердить {fmt(amount)}",
+            callback_data=f"admin_topup_confirm:{user_id}:{amount}:{call.from_user.id}",
+        )
+    ]])
     for admin_id in settings.ADMIN_IDS:
         try:
             await bot.send_message(
@@ -889,6 +920,7 @@ async def topup_paid(call: CallbackQuery):
                 f"Пользователь: {call.from_user.full_name} (tg: {call.from_user.id})\n"
                 f"ID в системе: {user_id}\n"
                 f"Сумма: {fmt(amount)}",
+                reply_markup=confirm_kb,
             )
         except Exception:
             pass

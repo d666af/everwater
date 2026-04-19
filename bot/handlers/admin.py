@@ -9,6 +9,16 @@ from config import settings
 
 router = Router()
 
+STATUS_RU = {
+    "new": "🆕 Новый",
+    "awaiting_confirmation": "⏳ Ожидает подтверждения",
+    "confirmed": "✅ Подтверждён",
+    "assigned_to_courier": "🚚 Передан курьеру",
+    "in_delivery": "🚴 В доставке",
+    "delivered": "✔️ Доставлен",
+    "rejected": "❌ Отклонён",
+}
+
 
 def is_admin(user_id: int) -> bool:
     return user_id in settings.ADMIN_IDS
@@ -17,6 +27,16 @@ def is_admin(user_id: int) -> bool:
 class AdminReject(StatesGroup):
     waiting_reason = State()
     order_id = None
+
+
+async def _notify_client(bot, order: dict, text: str):
+    """Send a Telegram notification to the client who placed the order."""
+    tg_id = order.get("client_telegram_id")
+    if tg_id:
+        try:
+            await bot.send_message(tg_id, text)
+        except Exception:
+            pass
 
 
 @router.message(Command("admin"))
@@ -36,7 +56,7 @@ async def admin_all_orders(call: CallbackQuery):
         return
     text = "📋 Все заказы:\n\n"
     for o in orders[:20]:
-        text += f"#{o['id']} — {o['status']} — {o['total']}₽ — {o['address'][:30]}\n"
+        text += f"#{o['id']} — {STATUS_RU.get(o['status'], o['status'])} — {int(o['total']):,} сум — {o['address'][:30]}\n"
     await call.message.edit_text(text, reply_markup=admin_menu_kb())
     await call.answer()
 
@@ -54,11 +74,12 @@ async def admin_pending_orders(call: CallbackQuery):
         items_text = "\n".join(f"  • {i['product_name']} x{i['quantity']}" for i in o.get("items", []))
         text = (
             f"📦 Заказ #{o['id']}\n"
+            f"Клиент: {o.get('client_name', '—')}\n"
             f"Адрес: {o['address']}\n"
             f"Телефон: {o['recipient_phone']}\n"
             f"Время: {o.get('delivery_time', '—')}\n"
             f"Товары:\n{items_text}\n"
-            f"Сумма: {o['total']}₽\n"
+            f"Сумма: {int(o['total']):,} сум\n"
             f"Возврат бутылок: {o['return_bottles_count']} шт."
         )
         await call.message.answer(text, reply_markup=order_confirm_kb(o["id"]))
@@ -73,19 +94,17 @@ async def admin_confirm(call: CallbackQuery):
     await api.confirm_order(order_id)
     order = await api.get_order(order_id)
 
-    # Notify user
-    from aiogram import Bot
-    bot: Bot = call.bot
-    try:
-        user_orders = await api.get_user_orders(order["user_id"])
-        # Get user telegram_id from DB via admin users endpoint
-        users = await api.get_all_users() if hasattr(api, 'get_all_users') else []
-    except Exception:
-        pass
+    # Notify client
+    await _notify_client(
+        call.bot, order,
+        f"✅ Ваш заказ #{order_id} подтверждён!\n"
+        f"Время доставки: {order.get('delivery_time', 'уточняется')}.\n"
+        "Скоро назначим курьера."
+    )
 
     couriers = await api.get_couriers()
     await call.message.edit_text(
-        f"✅ Заказ #{order_id} подтвержден!\n\nВыберите курьера:",
+        f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
         reply_markup=courier_select_kb(couriers, order_id),
     )
     await call.answer()
@@ -110,8 +129,18 @@ async def admin_reject_reason(message: Message, state: FSMContext):
     order_id = data["reject_order_id"]
     reason = message.text
     await api.reject_order(order_id, reason)
+    order = await api.get_order(order_id)
     await state.clear()
-    await message.answer(f"❌ Заказ #{order_id} отклонен. Причина: {reason}")
+
+    # Notify client
+    await _notify_client(
+        message.bot, order,
+        f"❌ Ваш заказ #{order_id} отклонён.\n"
+        f"Причина: {reason}\n"
+        "Если у вас есть вопросы, обратитесь в поддержку."
+    )
+
+    await message.answer(f"❌ Заказ #{order_id} отклонён. Причина: {reason}")
 
 
 @router.callback_query(F.data.startswith("admin:set_courier:"))
@@ -146,9 +175,15 @@ async def admin_set_courier(call: CallbackQuery):
         except Exception:
             pass
 
-    await call.message.edit_text(
-        f"✅ Курьер назначен на заказ #{order_id}."
-    )
+        # Notify client that courier is assigned
+        await _notify_client(
+            bot, order,
+            f"🚴 Курьер назначен на ваш заказ #{order_id}!\n"
+            f"Курьер: {courier['name']}\n"
+            f"Ожидайте доставку в указанное время."
+        )
+
+    await call.message.edit_text(f"✅ Курьер назначен на заказ #{order_id}.")
     await call.answer()
 
 
@@ -158,13 +193,26 @@ async def admin_topup_confirm(call: CallbackQuery):
         return
     parts = call.data.split(":")
     user_id = int(parts[1])
-    amount  = int(parts[2])
+    amount = int(parts[2])
+    tg_id = int(parts[3]) if len(parts) > 3 else None
     try:
-        await api.topup_user(user_id, amount)
+        result = await api.topup_user(user_id, amount)
         amount_str = f"{amount:,}".replace(",", " ")
+        new_balance = result.get("new_balance", 0)
         await call.message.edit_text(
-            f"✅ Баланс пользователя (ID {user_id}) пополнен на {amount_str} сум."
+            f"✅ Баланс пользователя (ID {user_id}) пополнен на {amount_str} сум.\n"
+            f"Новый баланс: {int(new_balance):,} сум"
         )
+        # Notify the user
+        if tg_id:
+            try:
+                await call.bot.send_message(
+                    tg_id,
+                    f"✅ Ваш баланс пополнен на {amount_str} сум!\n"
+                    f"Текущий баланс: {int(new_balance):,} сум"
+                )
+            except Exception:
+                pass
     except Exception:
         await call.message.edit_text("❌ Ошибка при пополнении баланса.")
     await call.answer()
@@ -187,12 +235,12 @@ async def admin_stats(call: CallbackQuery):
     period_label = {"day": "день", "week": "неделю", "month": "месяц"}.get(period, period)
     text = (
         f"📊 Статистика за {period_label}:\n\n"
-        f"📦 Заказов: {stats['total_orders']}\n"
-        f"💰 Выручка: {stats['total_revenue']}₽\n"
-        f"🧾 Средний чек: {stats['avg_check']}₽\n"
-        f"🫙 Возвращено бутылок: {stats['total_bottles_returned']}\n"
-        f"❌ Отменено: {stats['cancelled_orders']}\n"
-        f"🔄 Повторных клиентов: {stats['repeat_customers']}\n"
+        f"📦 Заказов: {stats.get('order_count', 0)}\n"
+        f"💰 Выручка: {int(stats.get('revenue', 0)):,} сум\n"
+        f"🧾 Средний чек: {int(stats.get('avg_check', 0)):,} сум\n"
+        f"🫙 Возвращено бутылок: {stats.get('bottles_returned', 0)}\n"
+        f"❌ Отменено: {stats.get('cancelled', 0)}\n"
+        f"🔄 Повторных клиентов: {stats.get('repeat_customers', 0)}\n"
     )
     await call.message.edit_text(text, reply_markup=admin_menu_kb())
     await call.answer()

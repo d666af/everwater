@@ -1,4 +1,4 @@
-"""Client-specific endpoints: saved addresses, subscriptions, bottle debts."""
+"""Client-specific endpoints: saved addresses, subscriptions, bottle debts, support."""
 from datetime import datetime
 from typing import Annotated
 
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.client_data import BottleDebt, SavedAddress, Subscription
+from app.models.support import SupportChat, SupportMessage
 
 router = APIRouter(prefix="/client", tags=["client"])
 
@@ -140,3 +141,64 @@ async def change_debt(user_id: int, body: BottleDeltaBody, db: AsyncSession = De
         row.count = max(0, row.count + body.delta)
     await db.commit()
     return {"count": row.count}
+
+
+# ─── Client support chat ──────────────────────────────────────────────────────
+
+class ClientMessageBody(BaseModel):
+    telegram_id: int
+    user_name: str = ""
+    text: str
+
+
+@router.post("/support/send")
+async def client_send_support(body: ClientMessageBody, db: AsyncSession = Depends(get_db)):
+    """Client sends a support message (same as bot's user_message, called from Mini App)."""
+    result = await db.execute(select(SupportChat).where(SupportChat.id == body.telegram_id))
+    chat = result.scalar_one_or_none()
+    now = datetime.utcnow()
+    if not chat:
+        chat = SupportChat(
+            id=body.telegram_id,
+            user_name=body.user_name,
+            unread_count=0,
+            last_message="",
+            last_time=now,
+        )
+        db.add(chat)
+        await db.flush()
+    chat.unread_count = (chat.unread_count or 0) + 1
+    chat.last_message = body.text
+    chat.last_time = now
+    if body.user_name:
+        chat.user_name = body.user_name
+    msg = SupportMessage(
+        chat_id=body.telegram_id,
+        text=body.text,
+        from_admin=False,
+        delivered=True,
+        created_at=now,
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+    return {"ok": True, "id": msg.id}
+
+
+@router.get("/support/messages")
+async def client_get_messages(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    """Returns all messages for the client's support chat."""
+    result = await db.execute(
+        select(SupportMessage)
+        .where(SupportMessage.chat_id == telegram_id)
+        .order_by(SupportMessage.created_at)
+    )
+    return [
+        {
+            "id": m.id,
+            "from": "support" if m.from_admin else "user",
+            "text": m.text,
+            "time": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m in result.scalars().all()
+    ]

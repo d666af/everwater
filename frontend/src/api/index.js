@@ -411,6 +411,19 @@ export const markChatRead = (chatId) =>
     }
   )
 
+// ─── Client Support Chat ──────────────────────────────────────────────────────
+export const clientSendSupport = (telegramId, userName, text) =>
+  safeCall(
+    () => http.post('/client/support/send', { telegram_id: telegramId, user_name: userName, text }).then(r => r.data),
+    () => ({ ok: true, id: Date.now() })
+  )
+
+export const clientGetSupportMessages = (telegramId) =>
+  safeCall(
+    () => http.get('/client/support/messages', { params: { telegram_id: telegramId } }).then(r => r.data),
+    () => []
+  )
+
 // ─── Manager management ───────────────────────────────────────────────────────
 const MOCK_MANAGERS = []
 export const getAdminManagers = () =>

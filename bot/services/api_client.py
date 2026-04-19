@@ -174,6 +174,13 @@ async def get_stats(period: str = "month"):
     return await _get("/admin/stats", {"period": period})
 
 
+async def get_courier_stats(telegram_id: int):
+    try:
+        return await _get(f"/couriers/{telegram_id}/stats")
+    except Exception:
+        return {}
+
+
 async def topup_user(user_id: int, amount: int):
     return await _post(f"/admin/users/{user_id}/topup", {"amount": amount})
 

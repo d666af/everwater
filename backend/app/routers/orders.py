@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.database import get_db
 from app.models.order import Order, OrderItem, OrderStatus, Review
 from app.models.product import Product
@@ -178,6 +178,9 @@ async def assign_courier(order_id: int, body: AssignBody, db: AsyncSession = Dep
         raise HTTPException(status_code=404, detail="Courier not found")
     order.courier_id = courier_id
     order.status = OrderStatus.ASSIGNED_TO_COURIER
+    # Set expected delivery time: default 2h window from now (refined if delivery_time is set)
+    if not order.delivery_expected_at:
+        order.delivery_expected_at = datetime.utcnow() + timedelta(hours=2)
     await db.commit()
     return {"ok": True}
 
@@ -204,7 +207,9 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), d
     result = await db.execute(select(User).where(User.id == order.user_id))
     user = result.scalar_one_or_none()
     if user:
-        bonus = order.total * 0.05  # 5% кэшбек бонусами
+        cfg = await get_all_settings(db)
+        cashback_pct = float(cfg.get("cashback_percent") or 5)
+        bonus = order.total * cashback_pct / 100.0
         user.bonus_points += bonus
 
     if order.courier_id:
