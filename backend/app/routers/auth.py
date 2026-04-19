@@ -9,9 +9,13 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.models.courier import Courier
+from app.models.manager import Manager
 from app.schemas.user import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Phone prefixes reserved for warehouse staff (configurable via env)
+WAREHOUSE_PHONES: list[str] = []
 
 
 class InitDataBody(BaseModel):
@@ -48,6 +52,48 @@ class PhoneLoginBody(BaseModel):
 @router.post("/login")
 async def login_by_phone(body: PhoneLoginBody, db: AsyncSession = Depends(get_db)):
     normalized = body.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+
+    # Check couriers first (they have their own Courier table with phone)
+    courier_q = await db.execute(select(Courier).where(
+        Courier.phone.contains(normalized[-9:])
+    ))
+    courier = courier_q.scalar_one_or_none()
+    if courier:
+        # Find or create a matching User record for the courier
+        user_q = await db.execute(select(User).where(User.telegram_id == courier.telegram_id))
+        user = user_q.scalar_one_or_none()
+        return {
+            "id": user.id if user else courier.id,
+            "telegram_id": courier.telegram_id,
+            "name": courier.name,
+            "phone": courier.phone,
+            "role": "courier",
+            "balance": 0.0,
+            "bonus_points": 0.0,
+            "is_registered": True,
+        }
+
+    # Check managers (DB-backed)
+    mgr_q = await db.execute(select(Manager).where(
+        Manager.phone.contains(normalized[-9:]),
+        Manager.is_active == True,
+    ))
+    manager = mgr_q.scalar_one_or_none()
+    if manager:
+        user_q = await db.execute(select(User).where(User.telegram_id == manager.telegram_id))
+        user = user_q.scalar_one_or_none()
+        return {
+            "id": user.id if user else manager.id,
+            "telegram_id": manager.telegram_id,
+            "name": manager.name,
+            "phone": manager.phone,
+            "role": "manager",
+            "balance": 0.0,
+            "bonus_points": 0.0,
+            "is_registered": True,
+        }
+
+    # Regular users
     result = await db.execute(select(User).where(User.phone == normalized))
     user = result.scalar_one_or_none()
     if not user:
@@ -59,10 +105,6 @@ async def login_by_phone(body: PhoneLoginBody, db: AsyncSession = Depends(get_db
     role = "client"
     if user.telegram_id in settings.ADMIN_IDS:
         role = "admin"
-    else:
-        courier_q = await db.execute(select(Courier).where(Courier.telegram_id == user.telegram_id))
-        if courier_q.scalar_one_or_none():
-            role = "courier"
 
     return {
         "id": user.id,

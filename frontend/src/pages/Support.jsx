@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
+import { clientSendSupport, clientGetSupportMessages } from '../api'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -12,53 +13,92 @@ const QUICK_REPLIES = [
   'Не работает приложение',
 ]
 
-const AUTO_RESPONSES = {
-  'Где мой заказ?': 'Проверьте раздел «Заказы» — там отображается статус и этапы доставки в реальном времени. Если заказ задерживается, напишите номер заказа и мы уточним у курьера.',
-  'Хочу отменить заказ': 'Для отмены заказа сообщите нам его номер. Отмена возможна до момента передачи курьеру. Мы обработаем запрос в ближайшие 5–10 минут.',
-  'Как пополнить баланс?': 'Перейдите в Профиль → Баланс → нажмите «+ Пополнить». Выберите или введите сумму и подтвердите. Мы проверим перевод вручную и зачислим средства.',
-  'Не работает приложение': 'Попробуйте перезапустить Telegram и снова открыть бот. Если проблема остаётся — опишите её подробнее, и наш технический специалист поможет.',
-}
-
-const DEFAULT_RESPONSE = 'Спасибо за обращение! Мы получили ваше сообщение и ответим в ближайшее время. Среднее время ответа — 5–10 минут.'
-
-function formatTime(date) {
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+function formatTime(dateStr) {
+  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
+  if (isNaN(d)) return ''
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function Support() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
-  const [messages, setMessages] = useState([
-    {
-      id: 1, from: 'support',
-      text: `Привет${user?.name ? ', ' + user.name.split(' ')[0] : ''}!\n\nЯ — служба поддержки Everwater. Как могу помочь?`,
-      time: new Date(Date.now() - 60000),
-    }
-  ])
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-  const [typing, setTyping] = useState(false)
+  const [sending, setSending] = useState(false)
   const listRef = useRef(null)
+  const pollRef = useRef(null)
 
+  const telegramId = user?.telegram_id
+  const userName = user?.name || ''
+
+  const loadMessages = useCallback(async () => {
+    if (!telegramId) return
+    try {
+      const msgs = await clientGetSupportMessages(telegramId)
+      setMessages(msgs)
+    } catch {
+      // keep current messages on error
+    }
+  }, [telegramId])
+
+  // Initial load + greeting if empty
+  useEffect(() => {
+    if (!telegramId) {
+      setMessages([{
+        id: 1, from: 'support',
+        text: `Привет${userName ? ', ' + userName.split(' ')[0] : ''}!\n\nЯ — служба поддержки Everwater. Как могу помочь?`,
+        time: new Date().toISOString(),
+      }])
+      return
+    }
+
+    loadMessages().then((msgs) => {
+      // If no history, show greeting
+      setMessages(prev => {
+        if (prev.length === 0) {
+          return [{
+            id: 0, from: 'support',
+            text: `Привет${userName ? ', ' + userName.split(' ')[0] : ''}!\n\nЯ — служба поддержки Everwater. Как могу помочь?`,
+            time: new Date().toISOString(),
+          }]
+        }
+        return prev
+      })
+    })
+
+    // Poll for new messages every 5s
+    pollRef.current = setInterval(loadMessages, 5000)
+    return () => clearInterval(pollRef.current)
+  }, [telegramId, loadMessages, userName])
+
+  // Scroll to bottom when messages change
   useEffect(() => {
     setTimeout(() => {
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
     }, 50)
-  }, [messages, typing])
+  }, [messages])
 
-  const send = (text) => {
-    const msg = text?.trim() || input.trim()
-    if (!msg) return
+  const send = async (text) => {
+    const msg = (text || input).trim()
+    if (!msg || sending) return
     setInput('')
-    setMessages(prev => [...prev, { id: Date.now(), from: 'user', text: msg, time: new Date() }])
-    setTyping(true)
-    setTimeout(() => {
-      setTyping(false)
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1, from: 'support',
-        text: AUTO_RESPONSES[msg] || DEFAULT_RESPONSE,
-        time: new Date(),
-      }])
-    }, 1000 + Math.random() * 1500)
+    setSending(true)
+
+    // Optimistic update
+    const optimistic = { id: Date.now(), from: 'user', text: msg, time: new Date().toISOString() }
+    setMessages(prev => [...prev, optimistic])
+
+    try {
+      if (telegramId) {
+        await clientSendSupport(telegramId, userName, msg)
+        // Reload to get server-confirmed message
+        await loadMessages()
+      }
+    } catch {
+      // keep optimistic message on error
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -84,8 +124,8 @@ export default function Support() {
 
       {/* Messages */}
       <div style={s.messageList} ref={listRef}>
-        {messages.map(msg => (
-          <div key={msg.id} style={{ ...s.msgRow, justifyContent: msg.from === 'user' ? 'flex-end' : 'flex-start' }}>
+        {messages.map((msg, i) => (
+          <div key={msg.id || i} style={{ ...s.msgRow, justifyContent: msg.from === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={msg.from === 'user' ? { ...s.bubble, ...s.bubbleUser } : { ...s.bubble, ...s.bubbleSupport }}>
               <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{msg.text}</div>
               <div style={{ fontSize: 11, color: msg.from === 'user' ? 'rgba(255,255,255,0.55)' : '#c7c7cc', textAlign: 'right', marginTop: 4 }}>
@@ -94,13 +134,13 @@ export default function Support() {
             </div>
           </div>
         ))}
-        {typing && (
-          <div style={{ ...s.msgRow, justifyContent: 'flex-start' }}>
-            <div style={{ ...s.bubble, ...s.bubbleSupport, padding: '12px 16px' }}>
+        {sending && (
+          <div style={{ ...s.msgRow, justifyContent: 'flex-end' }}>
+            <div style={{ ...s.bubble, ...s.bubbleUser, opacity: 0.6 }}>
               <div style={s.dots}>
-                <span style={{ ...s.dot, animationDelay: '0ms' }} />
-                <span style={{ ...s.dot, animationDelay: '150ms' }} />
-                <span style={{ ...s.dot, animationDelay: '300ms' }} />
+                <span style={{ ...s.dot, background: 'rgba(255,255,255,0.7)', animationDelay: '0ms' }} />
+                <span style={{ ...s.dot, background: 'rgba(255,255,255,0.7)', animationDelay: '150ms' }} />
+                <span style={{ ...s.dot, background: 'rgba(255,255,255,0.7)', animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -108,7 +148,7 @@ export default function Support() {
       </div>
 
       {/* Quick replies */}
-      {messages.length <= 2 && (
+      {messages.length <= 1 && (
         <div style={s.quickWrap}>
           {QUICK_REPLIES.map(q => (
             <button key={q} style={s.quickBtn} onClick={() => send(q)}>{q}</button>
@@ -123,10 +163,13 @@ export default function Support() {
           placeholder="Напишите сообщение..."
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') send() }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
         />
-        <button style={{ ...s.sendBtn, ...(input.trim() ? s.sendBtnActive : {}) }}
-          onClick={() => send()} disabled={!input.trim()}>
+        <button
+          style={{ ...s.sendBtn, ...(input.trim() && !sending ? s.sendBtnActive : {}) }}
+          onClick={() => send()}
+          disabled={!input.trim() || sending}
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -202,6 +245,7 @@ const s = {
     width: 40, height: 40, borderRadius: 14, border: 'none',
     background: '#f0f0f2', color: '#c7c7cc', cursor: 'not-allowed',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    transition: 'all 0.15s',
   },
   sendBtnActive: { background: GRAD, color: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(100,160,30,0.25)' },
 }

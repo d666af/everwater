@@ -5,8 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_tables, AsyncSessionLocal
 from app.routers import products, orders, users, admin, auth, client
+from app.routers import warehouse, couriers
 from app.services.seed import seed_products
 from app.services.settings_service import seed_defaults
+
+# Import all models so SQLAlchemy knows about them before create_tables
+from app.models import user, order, product, courier as courier_model  # noqa: F401
+from app.models import client_data, support, settings as settings_model  # noqa: F401
+from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa: F401
 
 
 @asynccontextmanager
@@ -34,6 +40,8 @@ app.include_router(orders.router)
 app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(client.router)
+app.include_router(couriers.router)
+app.include_router(warehouse.router)
 
 
 @app.get("/health")
