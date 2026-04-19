@@ -17,8 +17,8 @@ async def main():
     )
     dp = Dispatcher()
 
-    dp.include_router(client.router)
     dp.include_router(start.router)
+    dp.include_router(client.router)
     dp.include_router(admin.router)
     dp.include_router(courier.router)
 
