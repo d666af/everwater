@@ -490,9 +490,10 @@ async def admin_cash_debts(call: CallbackQuery):
     courier_map = {c["id"]: c for c in couriers}
     for d in debts[:10]:
         c = courier_map.get(d.get("courier_id"), {})
+        courier_name = c.get("name") or f"ID {d.get('courier_id')}"
         text = (
             f"💸 <b>Долг курьера</b>\n"
-            f"Курьер: {c.get('name', f'ID {d.get(\"courier_id\")}')}\n"
+            f"Курьер: {courier_name}\n"
             f"Сумма: {fmt(d['amount'])}\n"
             f"Заказ: #{d.get('order_id') or '—'}\n"
             f"Заметка: {d.get('note') or '—'}"
