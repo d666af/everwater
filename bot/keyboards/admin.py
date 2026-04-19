@@ -13,6 +13,7 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📦 Склад", callback_data="admin:warehouse")],
         [InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin:settings")],
         [InlineKeyboardButton(text="📣 Рассылка", callback_data="admin:broadcast")],
+        [InlineKeyboardButton(text="🔄 Сменить роль", callback_data="role:switch")],
     ])
 
 

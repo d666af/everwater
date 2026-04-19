@@ -665,6 +665,29 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     await state.update_data(cart={})
     await state.clear()
 
+    # Notify admins + managers about new order (cash/balance — no payment step)
+    if pay_method != "card":
+        from keyboards.admin import order_confirm_kb
+        notification_text = (
+            f"🆕 Новый заказ #{order_id}!\n"
+            f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
+            f"Адрес: {addr}\nВремя: {data.get('co_time') or '—'}\n"
+            f"Сумма: {fmt(order.get('total', 0))}\nОплата: {pay_method}"
+        )
+        for admin_id in settings.ADMIN_IDS:
+            try:
+                await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
+            except Exception:
+                pass
+        managers = await api.get_managers()
+        for mgr in managers:
+            if mgr.get("is_active") and mgr.get("telegram_id"):
+                try:
+                    await call.bot.send_message(mgr["telegram_id"], notification_text,
+                                                 reply_markup=order_confirm_kb(order_id))
+                except Exception:
+                    pass
+
     if pay_method == "card":
         await call.message.edit_text(
             f"✅ Заказ #{order_id} создан!\n\n"

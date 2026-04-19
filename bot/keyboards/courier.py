@@ -7,6 +7,7 @@ def courier_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📋 Мои заказы"), KeyboardButton(text="📊 Мои отчеты")],
             [KeyboardButton(text="💧 Мой склад"), KeyboardButton(text="💸 Мои долги")],
             [KeyboardButton(text="⭐ Мои отзывы"), KeyboardButton(text="📝 Создать заказ")],
+            [KeyboardButton(text="🔄 Роль")],
         ],
         resize_keyboard=True,
     )
