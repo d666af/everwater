@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from config import settings
 
 
@@ -6,22 +6,15 @@ def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-def manager_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📋 Заказы", callback_data="mgr:orders"),
-            InlineKeyboardButton(text="⏳ Новые заказы", callback_data="mgr:new_orders"),
+def manager_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
+            [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="📊 Статистика")],
+            [KeyboardButton(text="💸 Долги курьеров"), KeyboardButton(text="💬 Поддержка")],
         ],
-        [
-            InlineKeyboardButton(text="👥 Клиенты", callback_data="mgr:clients"),
-            InlineKeyboardButton(text="📊 Статистика", callback_data="mgr:stats_menu"),
-        ],
-        [
-            InlineKeyboardButton(text="💸 Долги курьеров", callback_data="mgr:debts"),
-            InlineKeyboardButton(text="💬 Чат поддержки", callback_data="mgr:support"),
-        ],
-        [InlineKeyboardButton(text="🌐 Открыть на сайте", url=_site("/manager"))],
-    ])
+        resize_keyboard=True,
+    )
 
 
 def mgr_order_kb(order_id: int) -> InlineKeyboardMarkup:

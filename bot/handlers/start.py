@@ -66,7 +66,11 @@ async def show_role_menu(target, role: str):
 
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
+        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]
+        ]))
 
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
