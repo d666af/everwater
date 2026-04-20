@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { useAuthStore } from '../store/auth'
+import { useAdminRoleStore } from '../store/adminRole'
 
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
@@ -33,6 +35,9 @@ const NAV = [
 export default function BottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuthStore()
+  const { clearRole } = useAdminRoleStore()
+  const isAdmin = user?.role === 'admin'
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
@@ -66,6 +71,15 @@ export default function BottomNav() {
 
   return (
     <>
+      {isAdmin && (
+        <button style={st.switchFab} onClick={() => { clearRole(); navigate('/admin') }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Роль
+        </button>
+      )}
       <div style={{ height: 90 }} />
       <nav style={st.nav}>
         <div style={st.inner} ref={navRef}>
@@ -143,5 +157,14 @@ const st = {
   label: {
     fontSize: 10, letterSpacing: 0.1, marginTop: 1,
     transition: 'color 0.3s ease',
+  },
+  switchFab: {
+    position: 'fixed', top: 16, right: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: GRAD, color: '#fff',
+    border: 'none', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
 }
