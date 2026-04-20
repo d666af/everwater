@@ -55,10 +55,20 @@ def roles_inline_kb(roles: list[str]) -> InlineKeyboardMarkup:
 async def show_role_menu(target, role: str):
     is_message = isinstance(target, Message)
     send = target.answer if is_message else target.message.answer
+    tg_id = target.from_user.id
+
+    # Role-switch inline button — only for admins acting in non-admin flows
+    switch_kb = None
+    if tg_id in settings.ADMIN_IDS and role != "admin":
+        switch_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Сменить роль", callback_data="role:switch")]
+        ])
 
     if role == "client":
         await send("👤 Режим клиента:", reply_markup=main_menu_kb())
         await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
+        if switch_kb:
+            await send("Административный доступ:", reply_markup=switch_kb)
 
     elif role == "admin":
         from keyboards.admin import admin_menu_kb
@@ -66,33 +76,27 @@ async def show_role_menu(target, role: str):
 
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
-        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]
-        ]))
+        site_rows = [[InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]]
+        if switch_kb:
+            site_rows.append(switch_kb.inline_keyboard[0])
+        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
 
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🚴 Панель курьера:", reply_markup=courier_menu_kb())
-        await send(
-            "Сайт:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 Открыть курьер на сайте", url=_site("/courier"))]
-            ])
-        )
+        site_rows = [[InlineKeyboardButton(text="🌐 Открыть курьер на сайте", url=_site("/courier"))]]
+        if switch_kb:
+            site_rows.append(switch_kb.inline_keyboard[0])
+        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
 
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🏭 Панель склада:", reply_markup=warehouse_menu_kb())
-        await send(
-            "Сайт:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 Открыть склад на сайте", url=_site("/warehouse"))]
-            ])
-        )
+        site_rows = [[InlineKeyboardButton(text="🌐 Открыть склад на сайте", url=_site("/warehouse"))]]
+        if switch_kb:
+            site_rows.append(switch_kb.inline_keyboard[0])
+        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
@@ -236,61 +240,94 @@ async def order_detail(call: CallbackQuery):
         await call.answer("Заказ не найден")
         return
 
-    items_text = "\n".join(
-        f"  • {i['product_name']} × {i['quantity']} — {fmt(i['price'] * i['quantity'])}"
-        for i in order.get("items", [])
-    )
-    lines = [
-        f"<b>📦 Заказ #{order['id']}</b>",
-        f"Статус: {STATUS_MAP.get(order['status'], order['status'])}",
-        "",
-        f"<b>Товары:</b>\n{items_text}",
-        "",
-        f"📍 Адрес: {order.get('address', '—')}",
-    ]
-    if order.get("extra_info"):
-        lines.append(f"   ({order['extra_info']})")
-    lines.append(f"🕐 Время: {order.get('delivery_time') or 'не указано'}")
-    lines.append(f"📱 Телефон: {order.get('recipient_phone', '—')}")
+    status = order["status"]
+    status_label = STATUS_MAP.get(status, status)
+    pay_label = PAY_MAP.get(order.get("payment_method", ""), "—")
 
-    # Courier info when assigned
-    if order.get("courier_name"):
-        lines.append(f"\n🚴 Курьер: {order['courier_name']}")
-    if order.get("courier_phone"):
-        lines.append(f"📞 Тел. курьера: {order['courier_phone']}")
+    # Progress indicator (text-based, matches website's 4-step progress)
+    STEP = {
+        "new": 0, "awaiting_confirmation": 0, "confirmed": 0,
+        "assigned_to_courier": 1, "in_delivery": 2, "delivered": 3,
+    }
+    step = STEP.get(status)
+    ACTIVE = {"new", "awaiting_confirmation", "confirmed", "assigned_to_courier", "in_delivery"}
+    if step is not None and status in ACTIVE:
+        steps = ["⏳ Ожидание", "👤 Курьер", "🚚 В пути", "✅ Доставлен"]
+        progress = "  ".join(
+            f"<b>{s}</b>" if i == step else f"<i>{s}</i>"
+            for i, s in enumerate(steps)
+        )
+    else:
+        progress = None
 
+    lines = [f"<b>📦 Заказ #{order['id']}</b>", f"Статус: {status_label}"]
+    if progress:
+        lines += ["", progress]
+
+    # Address
     lines.append("")
-    lines.append(f"Сумма: {fmt(order.get('subtotal', order.get('total', 0)))}")
+    lines.append(f"📍 {order.get('address', '—')}")
+    if order.get("extra_info"):
+        lines.append(f"   └ {order['extra_info']}")
+
+    # Courier block
+    if status in ("assigned_to_courier", "in_delivery") and order.get("courier_name"):
+        lines.append("")
+        lines.append(f"🚴 Курьер: <b>{order['courier_name']}</b>")
+        if order.get("courier_phone"):
+            lines.append(f"📞 {order['courier_phone']}")
+
+    # Items
+    items = order.get("items", [])
+    if items:
+        lines.append("")
+        lines.append("<b>Состав заказа:</b>")
+        for i in items:
+            line_total = fmt(i["price"] * i["quantity"])
+            lines.append(f"  • {i['product_name']} × {i['quantity']} — {line_total}")
+
+    # Totals
+    lines.append("")
+    subtotal = order.get("subtotal", order.get("total", 0))
+    lines.append(f"Сумма: {fmt(subtotal)}")
     if order.get("bottle_discount", 0) > 0:
         lines.append(f"Скидка за бутылки: −{fmt(order['bottle_discount'])}")
     if order.get("bonus_used", 0) > 0:
         lines.append(f"Бонусы: −{fmt(order['bonus_used'])}")
     if order.get("balance_used", 0) > 0:
         lines.append(f"Баланс: −{fmt(order['balance_used'])}")
-    lines.append(f"<b>Итого: {fmt(order.get('total', 0))}</b>")
-    lines.append(f"Оплата: {PAY_MAP.get(order.get('payment_method', ''), '—')}")
+    lines.append(f"<b>К оплате: {fmt(order.get('total', 0))}</b>")
+    lines.append(f"Оплата: {pay_label}")
+    lines.append(f"📱 {order.get('recipient_phone', '—')}")
 
+    # Rejection / manager comment
     if order.get("rejection_reason"):
-        lines.append(f"\n❌ Причина: {order['rejection_reason']}")
+        lines += ["", f"❌ Причина отклонения: {order['rejection_reason']}"]
     if order.get("manager_comment"):
-        lines.append(f"\n💬 Комментарий менеджера: {order['manager_comment']}")
+        lines += ["", f"💬 Комментарий: {order['manager_comment']}"]
 
+    # Buttons
     buttons = []
-    status = order["status"]
     if status == "delivered" and not order.get("review_id"):
         buttons.append([InlineKeyboardButton(text="⭐ Оценить доставку", callback_data=f"review:{order_id}:0")])
-    if status not in ("delivered", "rejected", "cancelled", "rejected_by_manager"):
-        buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
+    buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
     if status in ("new", "awaiting_confirmation"):
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data=f"cancel_order:{order_id}")])
-    buttons.append([InlineKeyboardButton(text="💬 Написать в поддержку", url=_site("/support"))])
+        buttons.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_order:{order_id}")])
+    buttons.append([InlineKeyboardButton(text="💬 Связаться с поддержкой", url=_site("/support"))])
     buttons.append([InlineKeyboardButton(text="← Назад к заказам", callback_data="my_orders")])
 
-    await call.message.edit_text(
-        "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
-    )
+    try:
+        await call.message.edit_text(
+            "\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode="HTML"
+        )
+    except Exception:
+        await call.message.answer(
+            "\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode="HTML"
+        )
     await call.answer()
 
 

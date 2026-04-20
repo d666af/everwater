@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
+import { useAdminRoleStore } from '../../store/adminRole'
 import { useState, useRef, useLayoutEffect } from 'react'
 
 const C = '#8DC63F'
@@ -49,6 +50,10 @@ const NAV = [
 export default function WarehouseLayout({ children, title }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuthStore()
+  const { clearRole } = useAdminRoleStore()
+  const switchRole = () => { clearRole(); navigate('/admin') }
+  const isAdmin = user?.role === 'admin'
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
@@ -79,6 +84,17 @@ export default function WarehouseLayout({ children, title }) {
       <div style={{ flex: 1, padding: 16, paddingBottom: 100, overflowY: 'auto' }}>
         {children}
       </div>
+
+      {/* Admin role switch FAB */}
+      {isAdmin && (
+        <button style={s.switchFab} onClick={switchRole}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Роль
+        </button>
+      )}
 
       {/* Bottom nav */}
       <div style={{ height: 90 }} />
@@ -145,5 +161,14 @@ const s = {
     padding: '4px 0 0', gap: 0, cursor: 'pointer',
     position: 'relative', zIndex: 1,
     WebkitTapHighlightColor: 'transparent',
+  },
+  switchFab: {
+    position: 'fixed', top: 16, right: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: GRAD, color: '#fff',
+    border: 'none', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
 }

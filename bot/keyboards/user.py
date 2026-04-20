@@ -65,22 +65,26 @@ def review_kb(order_id: int) -> InlineKeyboardMarkup:
 
 
 def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
+    status_map = {
+        "new": "⏱️",
+        "awaiting_confirmation": "⏱️",
+        "confirmed": "✅",
+        "assigned_to_courier": "👤",
+        "in_delivery": "🚚",
+        "delivered": "✅",
+        "rejected": "❌",
+        "cancelled": "🚫",
+        "rejected_by_manager": "❌",
+    }
     buttons = []
     for o in orders[:10]:
-        status_map = {
-            "new": "🆕",
-            "awaiting_confirmation": "⏳",
-            "confirmed": "✅",
-            "assigned_to_courier": "🚚",
-            "in_delivery": "🚴",
-            "delivered": "✔️",
-            "rejected": "❌",
-        }
         emoji = status_map.get(o["status"], "📦")
         total = f'{int(o["total"]):,}'.replace(",", " ")
+        qty = sum(i.get("quantity", 1) for i in o.get("items", []))
+        qty_part = f" · {qty} шт." if qty else ""
         buttons.append([
             InlineKeyboardButton(
-                text=f'{emoji} Заказ #{o["id"]} — {total} сум',
+                text=f'{emoji} #{o["id"]}{qty_part} · {total} сум',
                 callback_data=f"order_detail:{o['id']}"
             )
         ])
