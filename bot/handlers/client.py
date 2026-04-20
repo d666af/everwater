@@ -193,6 +193,7 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
 
 @router.message(F.text == "🛒 Заказать")
 async def catalog(message: Message, state: FSMContext):
+    await state.clear()
     await _render_catalog(message, state)
 
 
@@ -668,6 +669,7 @@ async def co_cancel(call: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "📋 Подписки")
 async def subscriptions(message: Message, state: FSMContext):
+    await state.clear()
     user = await api.get_user(message.from_user.id)
     if not user:
         return
@@ -914,6 +916,7 @@ def _topup_presets_kb() -> InlineKeyboardMarkup:
 
 @router.message(F.text == "💰 Пополнить")
 async def topup_start(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "Выберите сумму пополнения или введите свою:",
         reply_markup=_topup_presets_kb(),
