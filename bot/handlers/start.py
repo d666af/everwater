@@ -260,7 +260,7 @@ async def order_detail(call: CallbackQuery):
     else:
         progress = None
 
-    lines = [f"<b>📦 Заказ #{order['id']}</b>", f"Статус: {status_label}"]
+    lines = [f"<b>📦 Заказ</b>", f"Статус: {status_label}"]
     if progress:
         lines += ["", progress]
 
@@ -351,7 +351,7 @@ async def cancel_order_cb(call: CallbackQuery):
     order_id = int(call.data.split(":")[1])
     result = await api.cancel_order(order_id)
     if result:
-        await call.message.edit_text(f"🚫 Заказ #{order_id} отменён.")
+        await call.message.edit_text("🚫 Заказ отменён.")
     else:
         await call.answer("Не удалось отменить заказ. Обратитесь в поддержку.", show_alert=True)
     await call.answer()
@@ -491,7 +491,7 @@ async def user_paid(call: CallbackQuery):
                 pass
 
     await call.message.edit_text(
-        f"✅ Заказ #{order_id} передан на подтверждение.\n"
+        "✅ Заказ передан на подтверждение.\n"
         "Мы уведомим вас когда подтвердят."
     )
     await call.answer()

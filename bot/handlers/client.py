@@ -639,7 +639,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
 
     if pay_method == "card":
         await call.message.edit_text(
-            f"✅ Заказ #{order_id} создан!\n\n"
+            f"✅ Заказ создан!\n\n"
             f"Переведите <b>{fmt(order.get('total', 0))}</b> на карту:\n\n"
             f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
             f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
@@ -649,7 +649,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         )
     else:
         await call.message.edit_text(
-            f"✅ Заказ #{order_id} создан!\n"
+            "✅ Заказ создан!\n"
             "Ожидайте звонка оператора для подтверждения."
         )
         await call.message.answer("Главное меню:", reply_markup=main_menu_kb())

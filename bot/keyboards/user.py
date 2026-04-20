@@ -81,10 +81,10 @@ def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
         emoji = status_map.get(o["status"], "📦")
         total = f'{int(o["total"]):,}'.replace(",", " ")
         qty = sum(i.get("quantity", 1) for i in o.get("items", []))
-        qty_part = f" · {qty} шт." if qty else ""
+        qty_part = f"{qty} шт. · " if qty else ""
         buttons.append([
             InlineKeyboardButton(
-                text=f'{emoji} #{o["id"]}{qty_part} · {total} сум',
+                text=f'{emoji} {qty_part}{total} сум',
                 callback_data=f"order_detail:{o['id']}"
             )
         ])
