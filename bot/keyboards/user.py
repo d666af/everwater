@@ -13,7 +13,7 @@ def _site(path: str = "") -> str:
 def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🛒 Каталог")],
+            [KeyboardButton(text="🛒 Заказать")],
             [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
             [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💰 Пополнить")],
             [KeyboardButton(text="💬 Поддержка")],

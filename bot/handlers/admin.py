@@ -67,6 +67,15 @@ class AdminMsgUser(StatesGroup):
 class AdminManualTopup(StatesGroup):
     waiting_amount = State()
 
+class AdminWarehouseStaff(StatesGroup):
+    waiting_tg_id = State()
+    waiting_name  = State()
+
+class AdminWarehouseProd(StatesGroup):
+    choosing_product = State()
+    waiting_quantity = State()
+    waiting_note     = State()
+
 class AdminProductCreate(StatesGroup):
     waiting_name   = State()
     waiting_volume = State()
@@ -151,23 +160,33 @@ async def admin_confirm(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.confirm_order(order_id, from_bot=True)
+    try:
+        await api.confirm_order(order_id, from_bot=True)
+    except Exception:
+        await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
+        return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
             await call.bot.send_message(
                 client_tg,
-                f"✅ Ваш заказ #{order_id} подтверждён!\n"
-                f"Время доставки: {order.get('delivery_time') or 'уточняется'}.\nСкоро назначим курьера."
+                f"✅ Ваш заказ #{order_id} подтверждён!\nСкоро назначим курьера."
             )
         except Exception:
             pass
     couriers = await api.get_couriers()
-    await call.message.edit_text(
-        f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
-        reply_markup=courier_select_kb(couriers, order_id),
-    )
+    kb = courier_select_kb(couriers, order_id)
+    try:
+        await call.message.edit_text(
+            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
+            reply_markup=kb,
+        )
+    except Exception:
+        await call.message.answer(
+            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
+            reply_markup=kb,
+        )
     await call.answer()
 
 
@@ -210,24 +229,30 @@ async def admin_set_courier(call: CallbackQuery):
         return
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
-    await api.assign_courier(order_id, courier_id, from_bot=True)
+    try:
+        await api.assign_courier(order_id, courier_id, from_bot=True)
+    except Exception:
+        await call.answer("❌ Не удалось назначить курьера. Попробуйте ещё раз.", show_alert=True)
+        return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
     if courier:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", []))
-        try:
-            from keyboards.courier import courier_order_kb
-            await call.bot.send_message(
-                courier["telegram_id"],
-                f"🚴 Вам назначен заказ #{order_id}!\n\n"
-                f"Адрес: {order['address']}\nТелефон: {order['recipient_phone']}\n"
-                f"Время: {order.get('delivery_time') or '—'}\nТовары:\n{items_text}\n"
-                f"Сумма: {fmt(order['total'])}\nВозврат бутылок: {order.get('return_bottles_count', 0)} шт.",
-                reply_markup=courier_order_kb(order_id),
-            )
-        except Exception:
-            pass
+        if courier.get("telegram_id"):
+            try:
+                from keyboards.courier import courier_order_kb
+                await call.bot.send_message(
+                    courier["telegram_id"],
+                    f"🚴 Вам назначен заказ #{order_id}!\n\n"
+                    f"Адрес: {order.get('address','—')}\nТелефон: {order.get('recipient_phone','—')}\n"
+                    f"Товары:\n{items_text}\n"
+                    f"Сумма: {fmt(order.get('total',0))}\n"
+                    f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт.",
+                    reply_markup=courier_order_kb(order_id),
+                )
+            except Exception:
+                pass
         client_tg = order.get("client_telegram_id")
         if client_tg:
             try:
@@ -237,7 +262,11 @@ async def admin_set_courier(call: CallbackQuery):
                 )
             except Exception:
                 pass
-    await call.message.edit_text(f"✅ Курьер назначен на заказ #{order_id}.")
+    result_text = f"✅ Курьер {'«' + courier['name'] + '»' if courier else ''} назначен на заказ #{order_id}."
+    try:
+        await call.message.edit_text(result_text)
+    except Exception:
+        await call.message.answer(result_text)
     await call.answer()
 
 
@@ -590,22 +619,156 @@ async def admin_debt_decide(call: CallbackQuery):
 async def admin_warehouse(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    stock = await api.get_warehouse_stock()
-    if not stock:
-        await call.message.edit_text("Нет данных по складу.", reply_markup=admin_menu_kb())
-        await call.answer()
-        return
-    lines = ["📦 <b>Остатки на складе:</b>\n"]
-    for item in stock:
-        qty = item.get("quantity", 0)
-        warn = " ⚠️" if qty < 10 else ""
-        lines.append(f"• {item['product_name']} ({item.get('volume', '')}л) — {qty} шт.{warn}")
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    stock = await api.get_warehouse_stock()
+    lines = ["📦 <b>Склад:</b>\n"]
+    if stock:
+        for item in stock:
+            qty = item.get("quantity", 0)
+            warn = " ⚠️" if qty < 10 else ""
+            lines.append(f"• {item['product_name']} ({item.get('volume','')}л) — <b>{qty}</b> шт.{warn}")
+    else:
+        lines.append("Нет данных.")
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Записать производство", callback_data="admin:wh:prod")],
+        [InlineKeyboardButton(text="👤 Добавить завсклада", callback_data="admin:wh:add_staff")],
+        [InlineKeyboardButton(text="👥 Список завсклада", callback_data="admin:wh:list_staff")],
+        [InlineKeyboardButton(text="🌐 Склад на сайте", url=_site("/admin/warehouse"))],
         [InlineKeyboardButton(text="← Назад", callback_data="admin:back")],
     ])
     await call.message.edit_text("\n".join(lines), reply_markup=kb, parse_mode="HTML")
     await call.answer()
+
+
+def _site(path: str = "") -> str:
+    return settings.MINI_APP_URL.rstrip("/") + path
+
+
+# ─── Warehouse staff management ───────────────────────────────────────────────
+
+@router.callback_query(F.data == "admin:wh:add_staff")
+async def admin_wh_add_staff_start(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    await state.set_state(AdminWarehouseStaff.waiting_tg_id)
+    await call.message.answer("Введите Telegram ID нового завсклада:")
+    await call.answer()
+
+
+@router.message(AdminWarehouseStaff.waiting_tg_id)
+async def admin_wh_staff_tg(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    text = message.text.strip().lstrip("-")
+    if not text.isdigit():
+        await message.answer("Введите числовой Telegram ID.")
+        return
+    await state.update_data(wh_staff_tg=int(message.text.strip()))
+    await state.set_state(AdminWarehouseStaff.waiting_name)
+    await message.answer("Введите имя завсклада:")
+
+
+@router.message(AdminWarehouseStaff.waiting_name)
+async def admin_wh_staff_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    tg_id = data["wh_staff_tg"]
+    name = message.text.strip()
+    await state.clear()
+    from services.roles import add_warehouse_staff
+    add_warehouse_staff(tg_id)
+    await message.answer(
+        f"✅ Завсклада добавлен!\nИмя: {name}\nTelegram ID: {tg_id}\n\n"
+        "⚠️ Доступ активен до перезапуска бота. Для постоянного доступа добавьте ID в WAREHOUSE_IDS в .env"
+    )
+    try:
+        await message.bot.send_message(
+            tg_id,
+            "🏭 Вы добавлены как завсклада Ever Water!\n"
+            "Используйте /warehouse для доступа к панели склада."
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "admin:wh:list_staff")
+async def admin_wh_list_staff(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    from services.roles import get_all_warehouse_ids
+    ids = get_all_warehouse_ids()
+    if not ids:
+        await call.answer("Список завсклада пуст.", show_alert=True)
+        return
+    lines = ["🏭 <b>Завсклада:</b>\n"] + [f"• {tid}" for tid in ids]
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await call.answer()
+
+
+# ─── Warehouse production from admin ─────────────────────────────────────────
+
+@router.callback_query(F.data == "admin:wh:prod")
+async def admin_wh_prod_start(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    stock = await api.get_warehouse_stock()
+    if not stock:
+        await call.answer("Нет продуктов на складе.", show_alert=True)
+        return
+    await state.update_data(wh_products=stock)
+    await state.set_state(AdminWarehouseProd.choosing_product)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{p['product_name']} ({p.get('volume','')}л) — {p.get('quantity',0)} шт.",
+            callback_data=f"awh:prod:{p['product_id']}"
+        )] for p in stock
+    ])
+    await call.message.answer("Выберите продукт для записи производства:", reply_markup=kb)
+    await call.answer()
+
+
+@router.callback_query(AdminWarehouseProd.choosing_product, F.data.startswith("awh:prod:"))
+async def admin_wh_prod_product(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    product_id = int(call.data.split(":")[2])
+    await state.update_data(awh_product_id=product_id)
+    await state.set_state(AdminWarehouseProd.waiting_quantity)
+    await call.message.edit_text("Введите количество произведённых бутылок:")
+    await call.answer()
+
+
+@router.message(AdminWarehouseProd.waiting_quantity)
+async def admin_wh_prod_quantity(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    if not text.isdigit() or int(text) <= 0:
+        await message.answer("Введите корректное число.")
+        return
+    await state.update_data(awh_quantity=int(text))
+    await state.set_state(AdminWarehouseProd.waiting_note)
+    await message.answer("Заметка (или «-» чтобы пропустить):")
+
+
+@router.message(AdminWarehouseProd.waiting_note)
+async def admin_wh_prod_note(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    note = None if message.text.strip() == "-" else message.text.strip()
+    data = await state.get_data()
+    await state.clear()
+    result = await api.warehouse_production(data["awh_product_id"], data["awh_quantity"], note)
+    products = data.get("wh_products", [])
+    prod = next((p for p in products if p["product_id"] == data["awh_product_id"]), {})
+    await message.answer(
+        f"✅ Производство записано!\n"
+        f"Продукт: {prod.get('product_name', data['awh_product_id'])}\n"
+        f"Количество: +{data['awh_quantity']} шт.\n"
+        f"Новый остаток: {result.get('new_stock', '—')} шт."
+    )
 
 
 # ─── Settings ─────────────────────────────────────────────────────────────────

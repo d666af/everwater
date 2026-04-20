@@ -16,13 +16,28 @@ ROLE_LABELS = {
 # Priority order for non-admin users (highest wins)
 _PRIORITY = ["admin", "warehouse", "manager", "courier", "client"]
 
+# Runtime-added warehouse IDs (added by admin via bot, survive until restart)
+_runtime_warehouse_ids: set[int] = set()
+
+
+def add_warehouse_staff(telegram_id: int) -> None:
+    _runtime_warehouse_ids.add(telegram_id)
+
+
+def remove_warehouse_staff(telegram_id: int) -> None:
+    _runtime_warehouse_ids.discard(telegram_id)
+
+
+def get_all_warehouse_ids() -> set[int]:
+    return set(settings.WAREHOUSE_IDS) | _runtime_warehouse_ids
+
 
 async def get_user_roles(telegram_id: int) -> list[str]:
     """Return all roles a telegram user holds."""
     roles = ["client"]
     if telegram_id in settings.ADMIN_IDS:
         roles.append("admin")
-    if telegram_id in settings.WAREHOUSE_IDS:
+    if telegram_id in get_all_warehouse_ids():
         roles.append("warehouse")
     mgr = await api.get_manager_by_telegram(telegram_id)
     if mgr:

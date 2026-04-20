@@ -6,7 +6,6 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from datetime import date, timedelta
 import services.api_client as api
 from keyboards.user import main_menu_kb, order_actions_kb, _site
 from config import settings
@@ -43,9 +42,6 @@ class CheckoutState(StatesGroup):
     waiting_address   = State()
     waiting_location  = State()
     waiting_landmark  = State()
-    choosing_date     = State()
-    choosing_time     = State()
-    waiting_custom_time = State()
     waiting_phone     = State()
     asking_return     = State()
     asking_bonus      = State()
@@ -195,7 +191,7 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
         await msg.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-@router.message(F.text == "🛒 Каталог")
+@router.message(F.text == "🛒 Заказать")
 async def catalog(message: Message, state: FSMContext):
     await _render_catalog(message, state)
 
@@ -363,34 +359,6 @@ def _location_kb() -> ReplyKeyboardMarkup:
     )
 
 
-def _date_kb() -> InlineKeyboardMarkup:
-    today = date.today()
-    rows = []
-    row = []
-    for i in range(7):
-        d = today + timedelta(days=i)
-        label = ("Сегодня" if i == 0 else "Завтра" if i == 1
-                 else f"{_RU_DAYS[d.weekday()]} {d.day} {_RU_MONTHS[d.month - 1]}")
-        val = d.isoformat()
-        row.append(InlineKeyboardButton(text=label, callback_data=f"codate:{val}"))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
-    rows.append([InlineKeyboardButton(text="⏩ Как можно скорее", callback_data="codate:asap")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def _time_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🌅 Утро 9:00–13:00",  callback_data="cotime:morning"),
-            InlineKeyboardButton(text="☀️ День 13:00–18:00", callback_data="cotime:afternoon"),
-        ],
-        [InlineKeyboardButton(text="✏️ Своё время", callback_data="cotime:custom")],
-    ])
-
 
 async def _ask_location(message: Message, state: FSMContext, addr: str):
     await state.set_state(CheckoutState.waiting_location)
@@ -410,9 +378,8 @@ async def use_saved_addr(call: CallbackQuery, state: FSMContext):
     await state.update_data(co_address=addr["address"],
                             co_lat=addr.get("lat"), co_lng=addr.get("lng"))
     await call.answer()
-    # Если у сохранённого адреса уже есть координаты — пропускаем шаг локации
     if addr.get("lat"):
-        await _ask_date(call.message, state)
+        await _ask_landmark(call.message, state)
     else:
         await _ask_location(call.message, state, addr["address"])
 
@@ -463,68 +430,6 @@ async def co_landmark(message: Message, state: FSMContext):
     val = message.text.strip()
     await state.update_data(co_extra=None if val == "—" else val)
     await message.answer("Принято!", reply_markup=ReplyKeyboardRemove())
-    await _ask_date(message, state)
-
-
-# ── Дата ─────────────────────────────────────────────────────────────────────
-
-async def _ask_date(message: Message, state: FSMContext):
-    await state.set_state(CheckoutState.choosing_date)
-    await message.answer("Выберите дату доставки:", reply_markup=_date_kb())
-
-
-@router.callback_query(CheckoutState.choosing_date, F.data.startswith("codate:"))
-async def co_date(call: CallbackQuery, state: FSMContext):
-    val = call.data.split(":", 1)[1]
-    if val == "asap":
-        await state.update_data(co_date="asap", co_time="Как можно скорее")
-        await call.message.edit_text("✅ Дата: как можно скорее")
-        await _ask_phone(call.message, state)
-    else:
-        try:
-            d = date.fromisoformat(val)
-            label = f"{d.day} {_RU_MONTHS[d.month - 1]} ({_RU_DAYS[d.weekday()]})"
-        except Exception:
-            label = val
-        await state.update_data(co_date=val, co_date_label=label)
-        await state.set_state(CheckoutState.choosing_time)
-        await call.message.edit_text(
-            f"📅 Дата: {label}\n\nВыберите время доставки:",
-            reply_markup=_time_kb(),
-        )
-    await call.answer()
-
-
-# ── Время ─────────────────────────────────────────────────────────────────────
-
-@router.callback_query(CheckoutState.choosing_time, F.data.startswith("cotime:"))
-async def co_time(call: CallbackQuery, state: FSMContext):
-    slot = call.data.split(":")[1]
-    data = await state.get_data()
-    date_label = data.get("co_date_label", data.get("co_date", ""))
-    if slot == "custom":
-        await state.set_state(CheckoutState.waiting_custom_time)
-        await call.message.edit_text(
-            f"📅 Дата: {date_label}\n\n"
-            "Введите удобное время доставки (например: 15:00, 17:00–19:00):"
-        )
-        await call.answer()
-        return
-    slot_label = "9:00–13:00" if slot == "morning" else "13:00–18:00"
-    delivery_time = f"{date_label} {slot_label}".strip()
-    await state.update_data(co_time=delivery_time)
-    await call.message.edit_text(f"✅ Время доставки: {delivery_time}")
-    await _ask_phone(call.message, state)
-    await call.answer()
-
-
-@router.message(CheckoutState.waiting_custom_time)
-async def co_custom_time(message: Message, state: FSMContext):
-    data = await state.get_data()
-    date_label = data.get("co_date_label", data.get("co_date", ""))
-    delivery_time = f"{date_label} {message.text.strip()}".strip()
-    await state.update_data(co_time=delivery_time)
-    await message.answer(f"✅ Время доставки: {delivery_time}")
     await _ask_phone(message, state)
 
 
@@ -641,7 +546,6 @@ async def _show_summary(message: Message, state: FSMContext):
         lines.append(f"Ориентир: {data['co_extra']}")
     lines += [
         f"Геолокация: {geo}",
-        f"Время: {data.get('co_time', '—')}",
         f"Телефон: {data.get('co_phone', '—')}",
         f"Оплата: {pay_labels.get(data.get('co_pay', ''), '—')}",
     ]
@@ -678,7 +582,6 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         "items": items,
         "address": data.get("co_address", ""),
         "extra_info": data.get("co_extra"),
-        "delivery_time": data.get("co_time"),
         "latitude": data.get("co_lat"),
         "longitude": data.get("co_lng"),
         "recipient_phone": data.get("co_phone", user.get("phone", "")),
@@ -717,7 +620,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         notification_text = (
             f"🆕 Новый заказ #{order_id}!\n"
             f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
-            f"Адрес: {addr}\nВремя: {data.get('co_time') or '—'}\n"
+            f"Адрес: {addr}\n"
             f"Сумма: {fmt(order.get('total', 0))}\nОплата: {pay_method}"
         )
         for admin_id in settings.ADMIN_IDS:
@@ -970,17 +873,27 @@ async def support_quick(call: CallbackQuery):
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def forward_to_support(message: Message, state: FSMContext):
-    """Catch-all: forward unhandled text messages to support chat."""
+    """Catch-all: forward unhandled text directly to admin and support chat."""
     current_state = await state.get_state()
     if current_state is not None:
         return
     tg_id = message.from_user.id
     name = message.from_user.full_name or str(tg_id)
+
+    # Forward directly to all admins
+    admin_text = f"📩 Сообщение от {name} (ID: {tg_id}):\n\n{message.text}"
+    for admin_id in settings.ADMIN_IDS:
+        if admin_id != tg_id:
+            try:
+                await message.bot.send_message(admin_id, admin_text)
+            except Exception:
+                pass
+
     try:
         await api.send_user_support_message(tg_id, name, message.text)
-        await message.answer("✉️ Сообщение отправлено в поддержку. Ожидайте ответа.")
+        await message.answer("✉️ Сообщение отправлено. Оператор ответит в ближайшее время.")
     except Exception:
-        await message.answer("Не удалось отправить сообщение. Попробуйте позже.")
+        await message.answer("✉️ Сообщение переслано администратору.")
 
 
 # ─── Balance Topup ────────────────────────────────────────────────────────────

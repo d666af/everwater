@@ -4,8 +4,8 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
-from services.roles import get_user_roles, ROLE_LABELS
-from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb
+from services.roles import get_user_roles, get_primary_role, ROLE_LABELS
+from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, _site
 from config import settings
 
 router = Router()
@@ -23,6 +23,8 @@ STATUS_MAP = {
     "in_delivery": "🚴 В доставке",
     "delivered": "✔️ Доставлен",
     "rejected": "❌ Отклонён",
+    "cancelled": "🚫 Отменён",
+    "rejected_by_manager": "❌ Отклонён менеджером",
 }
 
 PAY_MAP = {
@@ -51,13 +53,12 @@ def roles_inline_kb(roles: list[str]) -> InlineKeyboardMarkup:
 
 
 async def show_role_menu(target, role: str):
-    """Send the menu keyboard for the given role."""
     is_message = isinstance(target, Message)
     send = target.answer if is_message else target.message.answer
 
     if role == "client":
         await send("👤 Режим клиента:", reply_markup=main_menu_kb())
-        await send("Мини-приложение:", reply_markup=miniapp_inline_kb())
+        await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
 
     elif role == "admin":
         from keyboards.admin import admin_menu_kb
@@ -69,11 +70,25 @@ async def show_role_menu(target, role: str):
 
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🚴 Панель курьера:", reply_markup=courier_menu_kb())
+        await send(
+            "Сайт:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Открыть курьер на сайте", url=_site("/courier"))]
+            ])
+        )
 
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         await send("🏭 Панель склада:", reply_markup=warehouse_menu_kb())
+        await send(
+            "Сайт:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Открыть склад на сайте", url=_site("/warehouse"))]
+            ])
+        )
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
@@ -90,68 +105,60 @@ async def cmd_start(message: Message, state: FSMContext):
     if not user.get("is_registered"):
         await state.set_state(Registration.waiting_name)
         await message.answer(
-            "👋 Добро пожаловать в сервис доставки воды Ever Water!\n\n"
-            "Для оформления заказов нам нужно несколько данных.\n\n"
-            "Как вас зовут? Введите имя:"
+            "👋 Добро пожаловать в Ever Water!\n\n"
+            "Для заказов нам нужно несколько данных.\n\nКак вас зовут?"
         )
         return
 
-    roles = await get_user_roles(tg_id)
-
-    if len(roles) == 1:
-        # Client only
-        await message.answer(
-            f"👋 С возвращением, {user['name']}!\n\nВыберите действие:",
-            reply_markup=main_menu_kb(),
-        )
-        await message.answer("Или откройте мини-приложение:", reply_markup=miniapp_inline_kb())
+    # Only admins get a role picker — everyone else goes directly to their flow
+    if tg_id in settings.ADMIN_IDS:
+        roles = await get_user_roles(tg_id)
+        if len(roles) > 1:
+            labels = " | ".join(ROLE_LABELS[r] for r in roles)
+            await message.answer(
+                f"👋 С возвращением, {user['name']}!\n\nВаши роли: {labels}\n\nВыберите режим:",
+                reply_markup=roles_inline_kb(roles),
+            )
+        else:
+            await message.answer(f"👋 С возвращением, {user['name']}!")
+            await show_role_menu(message, "admin")
     else:
-        # Multi-role: show picker
-        labels = " | ".join(ROLE_LABELS[r] for r in roles)
-        await message.answer(
-            f"👋 С возвращением, {user['name']}!\n\n"
-            f"Ваши роли: {labels}\n\n"
-            "Выберите, в каком режиме работать:",
-            reply_markup=roles_inline_kb(roles),
-        )
+        role = await get_primary_role(tg_id)
+        await message.answer(f"👋 С возвращением, {user['name']}!")
+        await show_role_menu(message, role)
 
 
-# ─── Role selection callback ──────────────────────────────────────────────────
+# ─── Role selection callback (admin only) ────────────────────────────────────
 
 @router.callback_query(F.data.startswith("role:select:"))
 async def role_selected(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id not in settings.ADMIN_IDS:
+        await call.answer("Недоступно", show_alert=True)
+        return
     role = call.data.split(":")[2]
-    await call.answer(f"Переключаюсь на: {ROLE_LABELS.get(role, role)}")
+    await call.answer(f"Переключаюсь: {ROLE_LABELS.get(role, role)}")
     await show_role_menu(call, role)
 
 
-# ─── /role command (manual switch) ───────────────────────────────────────────
+# ─── /role command (admin only) ──────────────────────────────────────────────
 
 @router.message(Command("role"))
 async def cmd_role(message: Message):
-    roles = await get_user_roles(message.from_user.id)
-    if len(roles) == 1:
-        await message.answer("У вас только одна роль: Клиент.")
+    if message.from_user.id not in settings.ADMIN_IDS:
         return
+    roles = await get_user_roles(message.from_user.id)
     labels = " | ".join(ROLE_LABELS[r] for r in roles)
-    await message.answer(
-        f"Ваши роли: {labels}\n\nВыберите режим:",
-        reply_markup=roles_inline_kb(roles),
-    )
+    await message.answer(f"Ваши роли: {labels}\n\nВыберите режим:", reply_markup=roles_inline_kb(roles))
 
 
-# ─── "Switch role" text button (from any reply keyboard) ─────────────────────
+# ─── "Switch role" button (admin only) ───────────────────────────────────────
 
 @router.message(F.text == "🔄 Роль")
 async def switch_role_btn(message: Message):
-    roles = await get_user_roles(message.from_user.id)
-    if len(roles) == 1:
-        await message.answer("У вас только одна роль: 👤 Клиент.")
+    if message.from_user.id not in settings.ADMIN_IDS:
         return
-    await message.answer(
-        "Выберите режим:",
-        reply_markup=roles_inline_kb(roles),
-    )
+    roles = await get_user_roles(message.from_user.id)
+    await message.answer("Выберите режим:", reply_markup=roles_inline_kb(roles))
 
 
 # ─── Registration ─────────────────────────────────────────────────────────────
@@ -160,13 +167,12 @@ async def switch_role_btn(message: Message):
 async def process_name(message: Message, state: FSMContext):
     name = message.text.strip()
     if len(name) < 2:
-        await message.answer("Пожалуйста, введите корректное имя (минимум 2 символа).")
+        await message.answer("Введите корректное имя (минимум 2 символа).")
         return
     await state.update_data(name=name)
     await state.set_state(Registration.waiting_phone)
     await message.answer(
-        f"Приятно познакомиться, {name}!\n\n"
-        "Теперь введите ваш номер телефона или нажмите кнопку ниже:",
+        f"Приятно познакомиться, {name}!\n\nВведите номер телефона или нажмите кнопку:",
         reply_markup=request_phone_kb(),
     )
 
@@ -188,13 +194,13 @@ async def process_phone_text(message: Message, state: FSMContext):
 async def _finish_registration(message: Message, state: FSMContext, phone: str):
     data = await state.get_data()
     name = data["name"]
-    await api.update_user(message.from_user.id, name=name, phone=phone)
+    await api.update_user(message.from_user.id, name=name, phone=phone, is_registered=True)
     await state.clear()
     await message.answer(
-        f"🎉 Отлично, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
+        f"🎉 Готово, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
         reply_markup=main_menu_kb(),
     )
-    await message.answer("Откройте мини-приложение или используйте бот:", reply_markup=miniapp_inline_kb())
+    await message.answer("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
     from handlers.client import start_survey
     await start_survey(message, state)
 
@@ -208,7 +214,12 @@ async def my_orders(message: Message):
         return
     orders = await api.get_user_orders(user["id"])
     if not orders:
-        await message.answer("У вас пока нет заказов.\n\nОткройте каталог чтобы сделать первый заказ! 🛒")
+        await message.answer(
+            "У вас пока нет заказов.\n\nОткройте каталог чтобы сделать первый заказ! 🛒",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛒 Каталог на сайте", url=_site("/"))]
+            ])
+        )
         return
     await message.answer("Ваши заказы:", reply_markup=orders_list_kb(orders))
 
@@ -217,6 +228,9 @@ async def my_orders(message: Message):
 async def order_detail(call: CallbackQuery):
     order_id = int(call.data.split(":")[1])
     order = await api.get_order(order_id)
+    if not order:
+        await call.answer("Заказ не найден")
+        return
 
     items_text = "\n".join(
         f"  • {i['product_name']} × {i['quantity']} — {fmt(i['price'] * i['quantity'])}"
@@ -231,30 +245,48 @@ async def order_detail(call: CallbackQuery):
         f"📍 Адрес: {order.get('address', '—')}",
     ]
     if order.get("extra_info"):
-        lines.append(f"   {order['extra_info']}")
+        lines.append(f"   ({order['extra_info']})")
     lines.append(f"🕐 Время: {order.get('delivery_time') or 'не указано'}")
     lines.append(f"📱 Телефон: {order.get('recipient_phone', '—')}")
+
+    # Courier info when assigned
+    if order.get("courier_name"):
+        lines.append(f"\n🚴 Курьер: {order['courier_name']}")
+    if order.get("courier_phone"):
+        lines.append(f"📞 Тел. курьера: {order['courier_phone']}")
+
     lines.append("")
-    lines.append(f"Сумма: {fmt(order['subtotal'])}")
+    lines.append(f"Сумма: {fmt(order.get('subtotal', order.get('total', 0)))}")
     if order.get("bottle_discount", 0) > 0:
         lines.append(f"Скидка за бутылки: −{fmt(order['bottle_discount'])}")
     if order.get("bonus_used", 0) > 0:
         lines.append(f"Бонусы: −{fmt(order['bonus_used'])}")
     if order.get("balance_used", 0) > 0:
         lines.append(f"Баланс: −{fmt(order['balance_used'])}")
-    lines.append(f"<b>Итого: {fmt(order['total'])}</b>")
-    lines.append(f"Оплата: {PAY_MAP.get(order.get('payment_method', ''), order.get('payment_method', '—'))}")
+    lines.append(f"<b>Итого: {fmt(order.get('total', 0))}</b>")
+    lines.append(f"Оплата: {PAY_MAP.get(order.get('payment_method', ''), '—')}")
+
     if order.get("rejection_reason"):
-        lines.append(f"\n❌ Причина отклонения: {order['rejection_reason']}")
+        lines.append(f"\n❌ Причина: {order['rejection_reason']}")
+    if order.get("manager_comment"):
+        lines.append(f"\n💬 Комментарий менеджера: {order['manager_comment']}")
 
     buttons = []
-    if order["status"] == "delivered":
-        buttons.append([InlineKeyboardButton(text="⭐ Оценить", callback_data=f"review:{order_id}:0")])
-    buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
+    status = order["status"]
+    if status == "delivered" and not order.get("review_id"):
+        buttons.append([InlineKeyboardButton(text="⭐ Оценить доставку", callback_data=f"review:{order_id}:0")])
+    if status not in ("delivered", "rejected", "cancelled", "rejected_by_manager"):
+        buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
+    if status in ("new", "awaiting_confirmation"):
+        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data=f"cancel_order:{order_id}")])
+    buttons.append([InlineKeyboardButton(text="💬 Написать в поддержку", url=_site("/support"))])
     buttons.append([InlineKeyboardButton(text="← Назад к заказам", callback_data="my_orders")])
 
-    await call.message.edit_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-                                  parse_mode="HTML")
+    await call.message.edit_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML"
+    )
     await call.answer()
 
 
@@ -270,6 +302,17 @@ async def inline_my_orders(call: CallbackQuery):
         await call.answer()
         return
     await call.message.edit_text("Ваши заказы:", reply_markup=orders_list_kb(orders))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_order:"))
+async def cancel_order_cb(call: CallbackQuery):
+    order_id = int(call.data.split(":")[1])
+    result = await api.cancel_order(order_id)
+    if result:
+        await call.message.edit_text(f"🚫 Заказ #{order_id} отменён.")
+    else:
+        await call.answer("Не удалось отменить заказ. Обратитесь в поддержку.", show_alert=True)
     await call.answer()
 
 
@@ -302,33 +345,77 @@ async def profile(message: Message):
         return
     bottles = await api.get_bottles_owed(user["id"])
     bottle_count = bottles.get("count", 0)
-
-    roles = await get_user_roles(message.from_user.id)
-    roles_str = " | ".join(ROLE_LABELS[r] for r in roles)
+    subs = await api.get_subscriptions(user["id"])
+    active_subs = [s for s in subs if s.get("status") == "active"]
 
     text = (
         f"<b>👤 Профиль</b>\n\n"
         f"Имя: {user.get('name', '—')}\n"
-        f"Телефон: {user.get('phone', '—')}\n"
-        f"Баланс: <b>{fmt(user.get('balance', 0))}</b>\n"
-        f"Бонусы: <b>{fmt(user.get('bonus_points', 0))}</b>\n"
-        f"Роли: {roles_str}\n"
+        f"Телефон: {user.get('phone', '—')}\n\n"
+        f"💰 Баланс: <b>{fmt(user.get('balance', 0))}</b>\n"
+        f"⭐ Бонусы: <b>{fmt(user.get('bonus_points', 0))}</b>\n"
     )
     if bottle_count > 0:
-        text += f"Бутылки к возврату: {bottle_count} шт.\n"
+        text += f"🫙 Бутылок к возврату: <b>{bottle_count} шт.</b>\n"
+    if active_subs:
+        text += f"📋 Активных подписок: <b>{len(active_subs)}</b>\n"
 
-    await message.answer(text, parse_mode="HTML")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="profile:topup")],
+        [InlineKeyboardButton(text="📋 Мои подписки", callback_data="profile:subs")],
+        [InlineKeyboardButton(text="🌐 Профиль на сайте", url=_site("/profile"))],
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "profile:topup")
+async def profile_topup(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    from handlers.client import topup_start
+    await topup_start(call.message, state)
+
+
+@router.callback_query(F.data == "profile:subs")
+async def profile_subs(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    # Reuse the subscriptions message handler
+    user = await api.get_user(call.from_user.id)
+    if not user:
+        return
+    subs = await api.get_subscriptions(user["id"]) or []
+    active = [s for s in subs if s.get("status") == "active"]
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    if active:
+        lines = ["<b>📋 Активные подписки:</b>\n"]
+        for s in active:
+            plan = plan_label.get(s.get("plan", ""), s.get("plan", ""))
+            lines.append(f"• {plan} | {s.get('water_summary', '')} | День: {s.get('day', '—')}")
+        rows = [[InlineKeyboardButton(text="➕ Новая подписка", callback_data="sub_new")]]
+        for s in active:
+            rows.append([InlineKeyboardButton(text=f"❌ Отменить #{s['id']}", callback_data=f"sub_del:{s['id']}")])
+        rows.append([InlineKeyboardButton(text="🌐 Подписки на сайте", url=_site("/subscription"))])
+        await call.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                                   parse_mode="HTML")
+    else:
+        await call.message.answer(
+            "У вас нет активных подписок.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="➕ Оформить подписку", callback_data="sub_new")],
+                [InlineKeyboardButton(text="🌐 Подписки на сайте", url=_site("/subscription"))],
+            ])
+        )
 
 
 # ─── Support (client) ─────────────────────────────────────────────────────────
 
 @router.message(F.text == "🆘 Поддержка")
-async def support(message: Message):
+async def support_start(message: Message):
     await message.answer(
-        "🆘 <b>Поддержка</b>\n\n"
-        "Напишите ваш вопрос прямо сюда в чат, и мы ответим в ближайшее время.\n\n"
-        "Или откройте мини-приложение → раздел Поддержка:",
-        reply_markup=miniapp_inline_kb(),
+        "💬 <b>Поддержка</b>\n\n"
+        "Напишите вопрос прямо сюда или откройте чат на сайте:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💬 Открыть чат поддержки", url=_site("/support"))]
+        ]),
         parse_mode="HTML",
     )
 
@@ -345,16 +432,14 @@ async def user_paid(call: CallbackQuery):
     notification_text = (
         f"💰 Заказ #{order_id} ожидает подтверждения!\n"
         f"Клиент: {order.get('recipient_phone', '—')}\n"
-        f"Сумма: {fmt(order['total'])}\n"
-        f"Адрес: {order['address']}"
+        f"Сумма: {fmt(order.get('total', 0))}\n"
+        f"Адрес: {order.get('address', '—')}"
     )
-    # Notify admins
     for admin_id in settings.ADMIN_IDS:
         try:
             await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
         except Exception:
             pass
-    # Notify managers
     managers = await api.get_managers()
     for mgr in managers:
         if mgr.get("is_active") and mgr.get("telegram_id"):
@@ -365,8 +450,8 @@ async def user_paid(call: CallbackQuery):
                 pass
 
     await call.message.edit_text(
-        f"✅ Спасибо! Заказ #{order_id} передан на подтверждение.\n"
-        "Мы уведомим вас когда заказ будет подтверждён."
+        f"✅ Заказ #{order_id} передан на подтверждение.\n"
+        "Мы уведомим вас когда подтвердят."
     )
     await call.answer()
 
@@ -386,7 +471,7 @@ async def process_review_rating(call: CallbackQuery, state: FSMContext):
 
     await state.update_data(review_order_id=order_id, review_rating=rating)
     await state.set_state(ReviewState.waiting_comment)
-    await call.message.answer(f"Вы поставили {rating}⭐. Хотите добавить комментарий? (или напишите «нет»)")
+    await call.message.answer(f"Вы поставили {rating}⭐. Добавьте комментарий (или напишите «нет»):")
     await call.answer()
 
 
@@ -402,4 +487,4 @@ async def process_review_comment(message: Message, state: FSMContext):
         comment=comment,
     )
     await state.clear()
-    await message.answer("Спасибо за ваш отзыв! 🙏")
+    await message.answer("Спасибо за отзыв! 🙏")

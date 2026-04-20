@@ -24,8 +24,9 @@ def fmt(amount):
     return f"{int(amount):,}".replace(",", " ") + " сум"
 
 
-def is_warehouse(user_id: int) -> bool:
-    return user_id in settings.WAREHOUSE_IDS or user_id in settings.ADMIN_IDS
+async def is_warehouse(user_id: int) -> bool:
+    from services.roles import get_all_warehouse_ids
+    return user_id in get_all_warehouse_ids() or user_id in settings.ADMIN_IDS
 
 
 # ─── FSM ──────────────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ class AdjustState(StatesGroup):
 
 @router.message(Command("warehouse"))
 async def warehouse_panel(message: Message):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     await message.answer("🏭 Панель склада:", reply_markup=warehouse_menu_kb())
 
@@ -67,7 +68,7 @@ async def warehouse_panel(message: Message):
 
 @router.message(F.text == "📦 Остатки")
 async def wh_stock(message: Message):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     stock = await api.get_warehouse_stock()
     if not stock:
@@ -87,7 +88,7 @@ async def wh_stock(message: Message):
 
 @router.message(F.text == "➕ Производство")
 async def wh_production_start(message: Message, state: FSMContext):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     stock = await api.get_warehouse_stock()
     if not stock:
@@ -148,7 +149,7 @@ async def wh_prod_note(message: Message, state: FSMContext):
 
 @router.message(F.text == "📤 Выдать курьеру")
 async def wh_issue_start(message: Message, state: FSMContext):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     couriers = await api.get_couriers()
     active = [c for c in couriers if c.get("is_active", True)]
@@ -214,7 +215,7 @@ async def wh_issue_quantity(message: Message, state: FSMContext):
 
 @router.message(F.text == "📥 Принять возврат")
 async def wh_return_start(message: Message, state: FSMContext):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     couriers = await api.get_couriers()
     active = [c for c in couriers if c.get("is_active", True)]
@@ -272,7 +273,7 @@ async def wh_return_quantity(message: Message, state: FSMContext):
 
 @router.message(F.text == "🚴 Склад курьеров")
 async def wh_couriers_water(message: Message):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     data = await api.get_warehouse_couriers()
     if not data:
@@ -295,7 +296,7 @@ async def wh_couriers_water(message: Message):
 
 @router.message(F.text == "📜 История")
 async def wh_history_menu(message: Message):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     await message.answer("Выберите тип операции:", reply_markup=wh_history_filter_kb())
 
@@ -325,7 +326,7 @@ async def wh_history(call: CallbackQuery):
 
 @router.message(F.text == "🔧 Корректировка")
 async def wh_adjust_start(message: Message, state: FSMContext):
-    if not is_warehouse(message.from_user.id):
+    if not await is_warehouse(message.from_user.id):
         return
     stock = await api.get_warehouse_stock()
     if not stock:
@@ -381,7 +382,7 @@ async def wh_adjust_note(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "wh:quick:prod")
 async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
-    if not is_warehouse(call.from_user.id):
+    if not await is_warehouse(call.from_user.id):
         return
     stock = await api.get_warehouse_stock()
     await state.update_data(wh_products=stock)
@@ -393,7 +394,7 @@ async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "wh:quick:issue")
 async def wh_quick_issue(call: CallbackQuery, state: FSMContext):
-    if not is_warehouse(call.from_user.id):
+    if not await is_warehouse(call.from_user.id):
         return
     couriers = await api.get_couriers()
     active = [c for c in couriers if c.get("is_active", True)]
@@ -406,7 +407,7 @@ async def wh_quick_issue(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "wh:quick:adjust")
 async def wh_quick_adjust(call: CallbackQuery, state: FSMContext):
-    if not is_warehouse(call.from_user.id):
+    if not await is_warehouse(call.from_user.id):
         return
     stock = await api.get_warehouse_stock()
     await state.update_data(wh_products=stock)
