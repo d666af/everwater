@@ -71,41 +71,30 @@ async def manager_panel(message: Message):
     await message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
 
 
-@router.callback_query(F.data == "mgr:menu")
-async def mgr_menu_cb(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    await call.message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
-    await call.answer()
-
-
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "mgr:orders")
-async def mgr_all_orders(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text == "📋 Заказы")
+async def mgr_all_orders(message: Message):
+    if not await is_manager(message.from_user.id):
         return
     orders = await api.get_all_orders()
     if not orders:
-        await call.message.answer("Заказов нет.")
-        await call.answer()
+        await message.answer("Заказов нет.")
         return
     lines = ["📋 <b>Последние заказы:</b>\n"]
     for o in orders[:20]:
         status = STATUS_RU.get(o["status"], o["status"])
         lines.append(f"#{o['id']} {status} — {fmt(o['total'])} — {o['address'][:25]}")
-    await call.message.answer("\n".join(lines), parse_mode="HTML")
-    await call.answer()
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-@router.callback_query(F.data == "mgr:new_orders")
-async def mgr_pending_orders(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text == "⏳ Новые заказы")
+async def mgr_pending_orders(message: Message):
+    if not await is_manager(message.from_user.id):
         return
     orders = await api.get_all_orders(status="awaiting_confirmation")
     if not orders:
-        await call.message.answer("Нет заказов, ожидающих подтверждения.")
-        await call.answer()
+        await message.answer("Нет заказов, ожидающих подтверждения.")
         return
     for o in orders[:5]:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
@@ -119,8 +108,7 @@ async def mgr_pending_orders(call: CallbackQuery):
             f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
             f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
         )
-        await call.message.answer(text, reply_markup=mgr_order_kb(o["id"]), parse_mode="HTML")
-    await call.answer()
+        await message.answer(text, reply_markup=mgr_order_kb(o["id"]), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
@@ -293,13 +281,12 @@ async def mgr_set_courier(call: CallbackQuery):
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "mgr:clients")
-async def mgr_clients(call: CallbackQuery, state: FSMContext):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text == "👥 Клиенты")
+async def mgr_clients(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
         return
     await state.set_state(MgrClientSearch.waiting_phone)
-    await call.message.answer("Введите номер телефона или имя клиента для поиска:")
-    await call.answer()
+    await message.answer("Введите номер телефона или имя клиента для поиска:")
 
 
 @router.message(MgrClientSearch.waiting_phone)
@@ -410,12 +397,11 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "mgr:stats_menu")
-async def mgr_stats_menu(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text == "📊 Статистика")
+async def mgr_stats_menu(message: Message):
+    if not await is_manager(message.from_user.id):
         return
-    await call.message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
-    await call.answer()
+    await message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
 
 
 @router.callback_query(F.data.startswith("mgr:stats:"))
@@ -440,14 +426,13 @@ async def mgr_stats(call: CallbackQuery):
 
 # ─── Cash debts ───────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "mgr:debts")
-async def mgr_cash_debts(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text == "💸 Долги курьеров")
+async def mgr_cash_debts(message: Message):
+    if not await is_manager(message.from_user.id):
         return
     debts = await api.get_cash_debts_admin(status="requested")
     if not debts:
-        await call.message.answer("Нет запросов на погашение долгов.")
-        await call.answer()
+        await message.answer("Нет запросов на погашение долгов.")
         return
     couriers = await api.get_couriers()
     courier_map = {c["id"]: c["name"] for c in couriers}
@@ -459,8 +444,7 @@ async def mgr_cash_debts(call: CallbackQuery):
             f"Заказ: #{d.get('order_id') or '—'}\n"
             f"Заметка: {d.get('note') or '—'}"
         )
-        await call.message.answer(text, reply_markup=mgr_debt_kb(d["id"]), parse_mode="HTML")
-    await call.answer()
+        await message.answer(text, reply_markup=mgr_debt_kb(d["id"]), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:debt:"))
@@ -551,9 +535,9 @@ async def mgr_client_bottles(call: CallbackQuery):
 
 # ─── Support chat ──────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "mgr:support")
-async def mgr_support(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
+@router.message(F.text.in_({"💬 Поддержка", "💬 Чат поддержки", "🆘 Поддержка"}))
+async def mgr_support(message: Message):
+    if not await is_manager(message.from_user.id):
         return
     try:
         chats = await api.get_manager_support_chats()
@@ -562,26 +546,24 @@ async def mgr_support(call: CallbackQuery):
 
     if not chats:
         from keyboards.user import site_link_kb
-        await call.message.answer(
+        await message.answer(
             "💬 <b>Поддержка</b>\n\nНет активных обращений.\nИли откройте веб-панель:",
             reply_markup=site_link_kb("🌐 Открыть на сайте", "/manager/support"),
             parse_mode="HTML",
         )
-        await call.answer()
         return
 
     lines = [f"💬 <b>Обращения в поддержку ({len(chats)}):</b>\n"]
     for c in chats[:10]:
         unread = f" 🔴{c['unread']}" if c.get("unread") else ""
         lines.append(f"• {c.get('client_name', '—')}: {(c.get('last_message') or '')[:40]}{unread}")
-    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await message.answer("\n".join(lines), parse_mode="HTML")
     for c in chats[:5]:
-        await call.message.answer(
+        await message.answer(
             f"👤 <b>{c.get('client_name', '—')}</b>\n{c.get('last_message', '')[:80]}",
             reply_markup=mgr_support_quick_kb(c["id"]),
             parse_mode="HTML",
         )
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:sup_reply:"))

@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from config import settings
 
 
@@ -6,22 +6,18 @@ def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-def admin_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Все заказы", callback_data="admin:orders:all")],
-        [InlineKeyboardButton(text="⏳ Ожидают подтверждения", callback_data="admin:orders:awaiting_confirmation")],
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin:stats")],
-        [InlineKeyboardButton(text="🚴 Курьеры", callback_data="admin:couriers")],
-        [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin:users")],
-        [InlineKeyboardButton(text="🧑‍💼 Менеджеры", callback_data="admin:managers")],
-        [InlineKeyboardButton(text="📦 Товары", callback_data="admin:products")],
-        [InlineKeyboardButton(text="💸 Долги курьеров", callback_data="admin:cash_debts")],
-        [InlineKeyboardButton(text="🏭 Склад", callback_data="admin:warehouse")],
-        [InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin:settings")],
-        [InlineKeyboardButton(text="📣 Рассылка", callback_data="admin:broadcast")],
-        [InlineKeyboardButton(text="🌐 Открыть панель на сайте", url=_site("/admin"))],
-        [InlineKeyboardButton(text="🔄 Сменить роль", callback_data="role:switch")],
-    ])
+def admin_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
+            [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
+            [KeyboardButton(text="📦 Товары"), KeyboardButton(text="💸 Долги")],
+            [KeyboardButton(text="🧑‍💼 Менеджеры"), KeyboardButton(text="⚙️ Настройки")],
+            [KeyboardButton(text="📣 Рассылка"), KeyboardButton(text="🔄 Роль")],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def order_confirm_kb(order_id: int) -> InlineKeyboardMarkup:

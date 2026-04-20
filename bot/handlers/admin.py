@@ -95,6 +95,188 @@ async def admin_panel(message: Message):
     await message.answer("🔧 Панель администратора:", reply_markup=admin_menu_kb())
 
 
+# ─── ReplyKeyboard text handlers (admin main menu) ────────────────────────────
+
+@router.message(F.text == "📋 Заказы")
+async def admin_text_orders(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    orders = await api.get_all_orders()
+    if not orders:
+        await message.answer("Заказов нет.")
+        return
+    lines = ["📋 <b>Все заказы (последние 20):</b>\n"]
+    for o in orders[:20]:
+        st = STATUS_RU.get(o["status"], o["status"])
+        lines.append(f"#{o['id']} {st} — {fmt(o['total'])} — {o['address'][:25]}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(F.text == "⏳ Новые заказы")
+async def admin_text_pending(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    orders = await api.get_all_orders(status="awaiting_confirmation")
+    if not orders:
+        await message.answer("Нет заказов, ожидающих подтверждения.")
+        return
+    for o in orders[:5]:
+        items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+        text = (
+            f"📦 <b>Заказ #{o['id']}</b>\n"
+            f"Клиент: {o.get('client_name', '—')}\n"
+            f"Телефон: {o.get('recipient_phone', '—')}\n"
+            f"Адрес: {o['address']}\n"
+            f"Товары:\n{items_text}\n"
+            f"Сумма: {fmt(o['total'])}\n"
+            f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
+            f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
+        )
+        await message.answer(text, reply_markup=order_confirm_kb(o["id"]), parse_mode="HTML")
+
+
+@router.message(F.text == "📊 Статистика")
+async def admin_text_stats(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("Выберите период:", reply_markup=stats_period_kb())
+
+
+@router.message(F.text == "🚴 Курьеры")
+async def admin_text_couriers(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    couriers = await api.get_couriers()
+    if not couriers:
+        await message.answer("Нет курьеров.")
+        return
+    lines = ["🚴 <b>Курьеры:</b>\n"]
+    for c in couriers:
+        active = "✅" if c.get("is_active") else "❌"
+        lines.append(f"{active} {c['name']} | tg: {c['telegram_id']} | {c.get('total_deliveries', 0)} доставок")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить курьера", callback_data="admin:courier_create")],
+    ])
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(F.text == "👥 Клиенты")
+async def admin_text_users(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    users = await api.get_all_users()
+    registered = [u for u in users if u.get("is_registered")]
+    lines = [f"👥 <b>Клиенты: {len(registered)} зарегистрировано</b>\n"]
+    for u in registered[:15]:
+        lines.append(f"• {u.get('name', '—')} | {u.get('phone', '—')} | {fmt(u.get('balance', 0))}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(F.text == "🏭 Склад")
+async def admin_text_warehouse(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    stock = await api.get_warehouse_stock()
+    lines = ["📦 <b>Склад:</b>\n"]
+    if stock:
+        for item in stock:
+            qty = item.get("quantity", 0)
+            warn = " ⚠️" if qty < 10 else ""
+            lines.append(f"• {item['product_name']} ({item.get('volume', '')}л) — <b>{qty}</b> шт.{warn}")
+    else:
+        lines.append("Нет данных.")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Записать производство", callback_data="admin:wh:prod")],
+        [InlineKeyboardButton(text="👤 Добавить завсклада", callback_data="admin:wh:add_staff")],
+        [InlineKeyboardButton(text="👥 Список завсклада", callback_data="admin:wh:list_staff")],
+        [InlineKeyboardButton(text="🌐 Склад на сайте", url=_site("/admin/warehouse"))],
+    ])
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(F.text == "📦 Товары")
+async def admin_text_products(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    products = await api.get_products()
+    if not products:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить товар", callback_data="ap:new")],
+        ])
+        await message.answer("Товаров нет.", reply_markup=kb)
+        return
+    await message.answer("📦 <b>Товары:</b>", reply_markup=product_list_kb(products), parse_mode="HTML")
+
+
+@router.message(F.text == "💸 Долги")
+async def admin_text_debts(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    debts = await api.get_cash_debts_admin(status="requested")
+    if not debts:
+        await message.answer("Нет запросов на погашение долгов.")
+        return
+    couriers = await api.get_couriers()
+    courier_map = {c["id"]: c for c in couriers}
+    for d in debts[:10]:
+        c = courier_map.get(d.get("courier_id"), {})
+        courier_name = c.get("name") or f"ID {d.get('courier_id')}"
+        text = (
+            f"💸 <b>Долг курьера</b>\n"
+            f"Курьер: {courier_name}\n"
+            f"Сумма: {fmt(d['amount'])}\n"
+            f"Заказ: #{d.get('order_id') or '—'}\n"
+            f"Заметка: {d.get('note') or '—'}"
+        )
+        await message.answer(text, reply_markup=admin_debt_kb(d["id"]), parse_mode="HTML")
+
+
+@router.message(F.text == "🧑‍💼 Менеджеры")
+async def admin_text_managers(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    managers = await api.get_managers()
+    lines = ["🧑‍💼 <b>Менеджеры:</b>\n"]
+    for m in managers:
+        active = "✅" if m.get("is_active") else "❌"
+        lines.append(f"{active} {m['name']} | tg: {m['telegram_id']} | {m.get('phone', '—')}")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="admin:mgr_create")],
+    ])
+    await message.answer(
+        "\n".join(lines) if managers else "Менеджеров нет.",
+        reply_markup=kb, parse_mode="HTML",
+    )
+
+
+@router.message(F.text == "⚙️ Настройки")
+async def admin_text_settings(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cfg = await api.get_settings()
+    lines = ["⚙️ <b>Настройки:</b>\n"]
+    for key, label in SETTINGS_LABELS.items():
+        lines.append(f"• {label}: <b>{cfg.get(key, '—')}</b>")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"✏️ {SETTINGS_LABELS[k]}", callback_data=f"admin:set:{k}")]
+        for k in SETTINGS_LABELS
+    ])
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(F.text == "📣 Рассылка")
+async def admin_text_broadcast(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminBroadcast.waiting_text)
+    await message.answer("Введите текст рассылки:")
+
+
 # ─── Role switch from inline admin menu ───────────────────────────────────────
 
 @router.callback_query(F.data == "role:switch")
@@ -118,14 +300,14 @@ async def admin_all_orders(call: CallbackQuery):
         return
     orders = await api.get_all_orders()
     if not orders:
-        await call.message.edit_text("Заказов нет.", reply_markup=admin_menu_kb())
+        await call.message.answer("Заказов нет.")
         await call.answer()
         return
     lines = ["📋 <b>Все заказы (последние 20):</b>\n"]
     for o in orders[:20]:
         st = STATUS_RU.get(o["status"], o["status"])
         lines.append(f"#{o['id']} {st} — {fmt(o['total'])} — {o['address'][:25]}")
-    await call.message.edit_text("\n".join(lines), reply_markup=admin_menu_kb(), parse_mode="HTML")
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
     await call.answer()
 
 
@@ -135,7 +317,7 @@ async def admin_pending_orders(call: CallbackQuery):
         return
     orders = await api.get_all_orders(status="awaiting_confirmation")
     if not orders:
-        await call.message.edit_text("Нет заказов, ожидающих подтверждения.", reply_markup=admin_menu_kb())
+        await call.message.answer("Нет заказов, ожидающих подтверждения.")
         await call.answer()
         return
     for o in orders[:5]:
@@ -342,7 +524,7 @@ async def admin_stats(call: CallbackQuery):
         f"❌ Отменено: {stats.get('cancelled', 0)}\n"
         f"🔄 Повторных клиентов: {stats.get('repeat_customers', 0)}"
     )
-    await call.message.edit_text(text, reply_markup=admin_menu_kb(), parse_mode="HTML")
+    await call.message.edit_text(text, parse_mode="HTML")
     await call.answer()
 
 
@@ -354,7 +536,7 @@ async def admin_couriers(call: CallbackQuery):
         return
     couriers = await api.get_couriers()
     if not couriers:
-        await call.message.edit_text("Нет курьеров.", reply_markup=admin_menu_kb())
+        await call.message.answer("Нет курьеров.")
         await call.answer()
         return
     lines = ["🚴 <b>Курьеры:</b>\n"]
@@ -568,7 +750,7 @@ async def admin_cash_debts(call: CallbackQuery):
         return
     debts = await api.get_cash_debts_admin(status="requested")
     if not debts:
-        await call.message.edit_text("Нет запросов на погашение долгов.", reply_markup=admin_menu_kb())
+        await call.message.answer("Нет запросов на погашение долгов.")
         await call.answer()
         return
     couriers = await api.get_couriers()
@@ -1042,5 +1224,8 @@ async def admin_product_edit_value(message: Message, state: FSMContext):
 async def admin_back(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    await call.message.edit_text("🔧 Панель администратора:", reply_markup=admin_menu_kb())
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
     await call.answer()
