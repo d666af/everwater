@@ -216,7 +216,8 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
 # ─── My orders (client) ───────────────────────────────────────────────────────
 
 @router.message(F.text == "📦 Мои заказы")
-async def my_orders(message: Message):
+async def my_orders(message: Message, state: FSMContext):
+    await state.clear()
     user = await api.get_user(message.from_user.id)
     if not user:
         return
@@ -380,7 +381,8 @@ async def reorder(call: CallbackQuery, state: FSMContext):
 # ─── Profile ──────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "👤 Профиль")
-async def profile(message: Message):
+async def profile(message: Message, state: FSMContext):
+    await state.clear()
     user = await api.get_user(message.from_user.id)
     if not user:
         return
@@ -450,7 +452,8 @@ async def profile_subs(call: CallbackQuery, state: FSMContext):
 # ─── Support (client) ─────────────────────────────────────────────────────────
 
 @router.message(F.text == "🆘 Поддержка")
-async def support_start(message: Message):
+async def support_start(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "💬 <b>Поддержка</b>\n\n"
         "Напишите вопрос прямо сюда или откройте чат на сайте:",

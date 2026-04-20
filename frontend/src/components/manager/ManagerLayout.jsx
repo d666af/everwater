@@ -60,7 +60,7 @@ const NAV = [
 export default function ManagerLayout({ children, title, noPadding = false }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
   const { clearRole } = useAdminRoleStore()
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const itemRefs = useRef({})
@@ -74,7 +74,6 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const doLogout = () => { logout(); navigate('/login') }
   const switchRole = () => { clearRole(); navigate('/admin') }
   const isAdmin = user?.role === 'admin'
 
@@ -149,13 +148,6 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
               Сменить роль
             </button>
           )}
-          <button style={s.logoutBtn} onClick={doLogout}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Выйти
-          </button>
         </aside>
       )}
 

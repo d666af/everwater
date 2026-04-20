@@ -145,13 +145,6 @@ export default function AdminLayout({ children, title, noPadding = false }) {
             </svg>
             Сменить роль
           </button>
-          <button style={s.logoutBtn} onClick={doLogout}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Выйти
-          </button>
         </aside>
       )}
 
