@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
+import { useAdminRoleStore } from '../../store/adminRole'
 import { EverLogoMark } from '../EverLogo'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
@@ -40,6 +41,7 @@ export default function CourierLayout({ children, title, noPadding = false }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
+  const { clearRole } = useAdminRoleStore()
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const itemRefs = useRef({})
   const navRef = useRef(null)
@@ -53,6 +55,8 @@ export default function CourierLayout({ children, title, noPadding = false }) {
   }, [])
 
   const doLogout = () => { logout(); navigate('/login') }
+  const switchRole = () => { clearRole(); navigate('/admin') }
+  const isAdmin = user?.role === 'admin'
 
   const isActive = (nav) =>
     nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
@@ -120,6 +124,15 @@ export default function CourierLayout({ children, title, noPadding = false }) {
               })}
             </nav>
           </div>
+          {isAdmin && (
+            <button style={{ ...s.logoutBtn, color: 'rgba(255,255,255,0.5)' }} onClick={switchRole}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              Сменить роль
+            </button>
+          )}
           <button style={s.logoutBtn} onClick={doLogout}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
@@ -147,6 +160,17 @@ export default function CourierLayout({ children, title, noPadding = false }) {
           {children}
         </div>
       </div>
+
+      {/* Admin role switch FAB (mobile only) */}
+      {isMobile && isAdmin && (
+        <button style={s.switchFab} onClick={switchRole}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Роль
+        </button>
+      )}
 
       {/* Mobile bottom nav — green gradient with animated pill */}
       {isMobile && (
@@ -273,5 +297,14 @@ const s = {
     padding: '4px 0 0', gap: 0, cursor: 'pointer',
     position: 'relative', zIndex: 1,
     WebkitTapHighlightColor: 'transparent',
+  },
+  switchFab: {
+    position: 'fixed', top: 16, right: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: GRAD, color: '#fff',
+    border: 'none', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
 }
