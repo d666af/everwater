@@ -6,6 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.warehouse import (
     warehouse_menu_kb, wh_product_select_kb, wh_courier_select_kb, wh_history_filter_kb,
+    wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
 )
 from config import settings
 
@@ -317,4 +318,122 @@ async def wh_history(call: CallbackQuery):
         dt = tx.get("created_at", "")[:10]
         lines.append(f"• {dt} {kind}: {name} {qty} шт.{note}")
     await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+    await call.answer()
+
+
+# ─── Adjustment ───────────────────────────────────────────────────────────────
+
+@router.message(F.text == "🔧 Корректировка")
+async def wh_adjust_start(message: Message, state: FSMContext):
+    if not is_warehouse(message.from_user.id):
+        return
+    stock = await api.get_warehouse_stock()
+    if not stock:
+        await message.answer("Нет продуктов на складе.")
+        return
+    await state.update_data(wh_products=stock)
+    await state.set_state(AdjustState.choosing_product)
+    await message.answer("Выберите продукт для корректировки:",
+                         reply_markup=wh_product_select_kb(stock, "adj"))
+
+
+@router.callback_query(AdjustState.choosing_product, F.data.startswith("wh:adj:"))
+async def wh_adjust_product(call: CallbackQuery, state: FSMContext):
+    product_id = int(call.data.split(":")[2])
+    await state.update_data(adj_product_id=product_id)
+    await state.set_state(AdjustState.waiting_quantity)
+    await call.message.edit_text(
+        "Введите новое количество (или разницу со знаком, например: +10 или -5):"
+    )
+    await call.answer()
+
+
+@router.message(AdjustState.waiting_quantity)
+async def wh_adjust_quantity(message: Message, state: FSMContext):
+    text = message.text.strip()
+    try:
+        qty = int(text)
+    except ValueError:
+        await message.answer("Введите число (например: 50, +10, -5).")
+        return
+    await state.update_data(adj_quantity=qty)
+    await state.set_state(AdjustState.waiting_note)
+    await message.answer("Добавьте причину корректировки (или «-» чтобы пропустить):")
+
+
+@router.message(AdjustState.waiting_note)
+async def wh_adjust_note(message: Message, state: FSMContext):
+    note = None if message.text.strip() == "-" else message.text.strip()
+    data = await state.get_data()
+    await state.clear()
+    result = await api.warehouse_adjust(data["adj_product_id"], data["adj_quantity"], note)
+    products = data.get("wh_products", [])
+    prod = next((p for p in products if p["product_id"] == data["adj_product_id"]), {})
+    await message.answer(
+        f"🔧 Корректировка записана!\n"
+        f"Продукт: {prod.get('product_name', data['adj_product_id'])}\n"
+        f"Изменение: {data['adj_quantity']:+d} шт.\n"
+        f"Новый остаток: {result.get('new_stock', '—')} шт."
+    )
+
+
+# ─── Stock overview with quick actions ────────────────────────────────────────
+
+@router.callback_query(F.data == "wh:quick:prod")
+async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
+    if not is_warehouse(call.from_user.id):
+        return
+    stock = await api.get_warehouse_stock()
+    await state.update_data(wh_products=stock)
+    await state.set_state(ProductionState.choosing_product)
+    await call.message.answer("Выберите продукт для записи производства:",
+                               reply_markup=wh_product_select_kb(stock, "prod"))
+    await call.answer()
+
+
+@router.callback_query(F.data == "wh:quick:issue")
+async def wh_quick_issue(call: CallbackQuery, state: FSMContext):
+    if not is_warehouse(call.from_user.id):
+        return
+    couriers = await api.get_couriers()
+    active = [c for c in couriers if c.get("is_active", True)]
+    await state.update_data(wh_couriers=active)
+    await state.set_state(IssueState.choosing_courier)
+    await call.message.answer("Выберите курьера для выдачи:",
+                               reply_markup=wh_courier_select_kb(active, "issue"))
+    await call.answer()
+
+
+@router.callback_query(F.data == "wh:quick:adjust")
+async def wh_quick_adjust(call: CallbackQuery, state: FSMContext):
+    if not is_warehouse(call.from_user.id):
+        return
+    stock = await api.get_warehouse_stock()
+    await state.update_data(wh_products=stock)
+    await state.set_state(AdjustState.choosing_product)
+    await call.message.answer("Выберите продукт для корректировки:",
+                               reply_markup=wh_product_select_kb(stock, "adj"))
+    await call.answer()
+
+
+# ─── Period/overview ──────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("wh:period:"))
+async def wh_period(call: CallbackQuery):
+    period = call.data.split(":")[2]
+    overview = await api.get_warehouse_overview(period)
+    label = {"day": "день", "week": "неделю", "month": "месяц"}.get(period, period)
+    stock = overview.get("stock", [])
+    lines = [f"📊 <b>Сводка склада за {label}:</b>\n"]
+    lines.append(f"Произведено: {overview.get('produced', 0)} шт.")
+    lines.append(f"Выдано: {overview.get('issued', 0)} шт.")
+    lines.append(f"Возвращено: {overview.get('returned', 0)} шт.")
+    lines.append(f"Доставлено заказов: {overview.get('orders_delivered', 0)}")
+    if stock:
+        lines.append("\n<b>Текущие остатки:</b>")
+        for item in stock:
+            qty = item.get("quantity", 0)
+            warn = " ⚠️" if qty < 10 else ""
+            lines.append(f"• {item.get('product_name', '—')}: {qty} шт.{warn}")
+    await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=wh_period_kb())
     await call.answer()

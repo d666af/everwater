@@ -7,6 +7,7 @@ import services.api_client as api
 from keyboards.admin import (
     admin_menu_kb, order_confirm_kb, courier_select_kb,
     stats_period_kb, admin_user_kb, admin_debt_kb, broadcast_target_kb,
+    product_list_kb, product_edit_kb,
 )
 from config import settings
 
@@ -65,6 +66,15 @@ class AdminMsgUser(StatesGroup):
 
 class AdminManualTopup(StatesGroup):
     waiting_amount = State()
+
+class AdminProductCreate(StatesGroup):
+    waiting_name   = State()
+    waiting_volume = State()
+    waiting_price  = State()
+    waiting_type   = State()
+
+class AdminProductEdit(StatesGroup):
+    waiting_value = State()
 
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
@@ -229,6 +239,52 @@ async def admin_set_courier(call: CallbackQuery):
                 pass
     await call.message.edit_text(f"✅ Курьер назначен на заказ #{order_id}.")
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin:assign:"))
+async def admin_assign(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    couriers = await api.get_couriers()
+    await call.message.edit_text(
+        f"Выберите курьера для заказа #{order_id}:",
+        reply_markup=courier_select_kb(couriers, order_id),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin:contact:"))
+async def admin_contact_client(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    order = await api.get_order(order_id)
+    tg_id = order.get("client_telegram_id")
+    if not tg_id:
+        await call.answer("Нет Telegram ID клиента", show_alert=True)
+        return
+    await state.update_data(msg_client_tg=tg_id)
+    await state.set_state(AdminMsgUser.waiting_text)
+    await call.message.answer(f"Введите сообщение клиенту (заказ #{order_id}):")
+    await call.answer()
+
+
+@router.message(AdminMsgUser.waiting_text)
+async def admin_msg_user_send(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    tg_id = data.get("msg_client_tg")
+    await state.clear()
+    if not tg_id:
+        await message.answer("Не найден получатель.")
+        return
+    try:
+        await message.bot.send_message(tg_id, f"📩 Сообщение от администратора:\n\n{message.text}")
+        await message.answer("✅ Сообщение отправлено.")
+    except Exception:
+        await message.answer("❌ Не удалось отправить.")
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
@@ -638,6 +694,183 @@ async def admin_broadcast_send(call: CallbackQuery, state: FSMContext):
         f"📣 Рассылка выполнена!\nОтправлено: {result.get('sent', 0)}\nОшибок: {result.get('failed', 0)}"
     )
     await call.answer()
+
+
+# ─── Products ─────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "admin:products")
+async def admin_products(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    products = await api.get_products()
+    if not products:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить товар", callback_data="ap:new")],
+            [InlineKeyboardButton(text="← Назад", callback_data="admin:back")],
+        ])
+        await call.message.edit_text("Товаров нет.", reply_markup=kb)
+        await call.answer()
+        return
+    await call.message.edit_text("📦 <b>Товары:</b>", reply_markup=product_list_kb(products), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ap:edit:"))
+async def admin_product_edit_menu(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    pid = int(call.data.split(":")[2])
+    products = await api.get_products()
+    p = next((x for x in products if x["id"] == pid), None)
+    if not p:
+        await call.answer("Товар не найден")
+        return
+    active = "✅ Активен" if p.get("is_active", True) else "❌ Неактивен"
+    await call.message.edit_text(
+        f"<b>{p.get('name', '—')}</b>\n"
+        f"Объём: {p.get('volume', '—')} л | Цена: {fmt(p.get('price', 0))}\n"
+        f"Тип: {p.get('type', '—')} | {active}",
+        reply_markup=product_edit_kb(pid),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ap:del:"))
+async def admin_product_toggle(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    pid = int(call.data.split(":")[2])
+    products = await api.get_products()
+    p = next((x for x in products if x["id"] == pid), None)
+    if not p:
+        await call.answer("Товар не найден")
+        return
+    new_active = not p.get("is_active", True)
+    await api.update_product(pid, {"is_active": new_active})
+    action = "деактивирован" if not new_active else "активирован"
+    await call.answer(f"Товар {action}")
+    products = await api.get_products()
+    await call.message.edit_text("📦 <b>Товары:</b>", reply_markup=product_list_kb(products), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "ap:new")
+async def admin_product_new(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    await state.set_state(AdminProductCreate.waiting_name)
+    await call.message.answer("Введите название нового товара:")
+    await call.answer()
+
+
+@router.message(AdminProductCreate.waiting_name)
+async def admin_product_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.update_data(new_prod_name=message.text.strip())
+    await state.set_state(AdminProductCreate.waiting_volume)
+    await message.answer("Введите объём (в литрах, например: 19 или 1.5):")
+
+
+@router.message(AdminProductCreate.waiting_volume)
+async def admin_product_volume(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    try:
+        vol = float(message.text.strip().replace(",", "."))
+    except ValueError:
+        await message.answer("Введите число (например: 19 или 1.5).")
+        return
+    await state.update_data(new_prod_volume=vol)
+    await state.set_state(AdminProductCreate.waiting_price)
+    await message.answer("Введите цену (в сум):")
+
+
+@router.message(AdminProductCreate.waiting_price)
+async def admin_product_price(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    text = message.text.strip().replace(" ", "")
+    if not text.isdigit():
+        await message.answer("Введите числовую цену.")
+        return
+    await state.update_data(new_prod_price=int(text))
+    await state.set_state(AdminProductCreate.waiting_type)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💧 Без газа", callback_data="apc:still"),
+         InlineKeyboardButton(text="🫧 Газированная", callback_data="apc:carbonated")],
+    ])
+    await message.answer("Выберите тип воды:", reply_markup=kb)
+
+
+@router.callback_query(AdminProductCreate.waiting_type, F.data.startswith("apc:"))
+async def admin_product_type(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    wtype = call.data.split(":")[1]
+    data = await state.get_data()
+    await state.clear()
+    result = await api.create_product({
+        "name": data["new_prod_name"],
+        "volume": data["new_prod_volume"],
+        "price": data["new_prod_price"],
+        "type": wtype,
+        "is_active": True,
+    })
+    await call.message.edit_text(
+        f"✅ Товар создан!\n"
+        f"Название: {result.get('name')}\n"
+        f"Объём: {result.get('volume')} л | Цена: {fmt(result.get('price', 0))}"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ape:"))
+async def admin_product_edit_field(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    field, pid = parts[1], int(parts[2])
+    if field == "toggle":
+        products = await api.get_products()
+        p = next((x for x in products if x["id"] == pid), None)
+        if p:
+            new_val = not p.get("is_active", True)
+            await api.update_product(pid, {"is_active": new_val})
+            action = "активирован" if new_val else "деактивирован"
+            await call.answer(f"Товар {action}")
+            await call.message.edit_text(
+                f"Товар {'активен ✅' if new_val else 'неактивен ❌'}",
+                reply_markup=product_edit_kb(pid),
+            )
+        return
+    prompts = {"name": "Введите новое название:", "volume": "Введите новый объём (литры):",
+               "price": "Введите новую цену (сум):"}
+    await state.update_data(edit_product_id=pid, edit_product_field=field)
+    await state.set_state(AdminProductEdit.waiting_value)
+    await call.message.answer(prompts.get(field, "Введите значение:"))
+    await call.answer()
+
+
+@router.message(AdminProductEdit.waiting_value)
+async def admin_product_edit_value(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    pid = data["edit_product_id"]
+    field = data["edit_product_field"]
+    raw = message.text.strip()
+    if field == "price":
+        val = int(raw.replace(" ", ""))
+    elif field == "volume":
+        val = float(raw.replace(",", "."))
+    else:
+        val = raw
+    await api.update_product(pid, {field: val})
+    await state.clear()
+    await message.answer(f"✅ Товар обновлён: {field} = {val}")
 
 
 # ─── Back ─────────────────────────────────────────────────────────────────────

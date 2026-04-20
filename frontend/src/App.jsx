@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useTelegramAuth } from './hooks/useTelegramAuth'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminRolePicker from './components/AdminRolePicker'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import CartWidget from './components/CartWidget'
@@ -50,8 +52,10 @@ import WarehouseHistory from './pages/warehouse/WarehouseHistory'
 import WarehouseProfile from './pages/warehouse/WarehouseProfile'
 
 export default function App() {
+  useTelegramAuth()  // Auto-login from Telegram WebApp context on every load
   return (
     <>
+      <AdminRolePicker />
       <Header />
       <Routes>
         {/* Public */}
