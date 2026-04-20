@@ -7,6 +7,7 @@ import services.api_client as api
 from keyboards.manager import (
     manager_menu_kb, mgr_order_kb, mgr_courier_select_kb,
     mgr_stats_period_kb, mgr_client_kb, mgr_debt_kb,
+    mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from config import settings
 
@@ -54,6 +55,12 @@ class MgrBroadcast(StatesGroup):
 class MgrMsgClient(StatesGroup):
     waiting_text = State()
 
+class MgrSupportReply(StatesGroup):
+    waiting_text = State()
+
+class MgrRejectCustom(StatesGroup):
+    waiting_reason = State()
+
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
@@ -64,30 +71,41 @@ async def manager_panel(message: Message):
     await message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
 
 
+@router.callback_query(F.data == "mgr:menu")
+async def mgr_menu_cb(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    await call.message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
+    await call.answer()
+
+
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📋 Заказы")
-async def mgr_all_orders(message: Message):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data == "mgr:orders")
+async def mgr_all_orders(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
     orders = await api.get_all_orders()
     if not orders:
-        await message.answer("Заказов нет.")
+        await call.message.answer("Заказов нет.")
+        await call.answer()
         return
     lines = ["📋 <b>Последние заказы:</b>\n"]
     for o in orders[:20]:
         status = STATUS_RU.get(o["status"], o["status"])
         lines.append(f"#{o['id']} {status} — {fmt(o['total'])} — {o['address'][:25]}")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await call.answer()
 
 
-@router.message(F.text == "⏳ Новые заказы")
-async def mgr_pending_orders(message: Message):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data == "mgr:new_orders")
+async def mgr_pending_orders(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
     orders = await api.get_all_orders(status="awaiting_confirmation")
     if not orders:
-        await message.answer("Нет заказов, ожидающих подтверждения.")
+        await call.message.answer("Нет заказов, ожидающих подтверждения.")
+        await call.answer()
         return
     for o in orders[:5]:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
@@ -96,13 +114,13 @@ async def mgr_pending_orders(message: Message):
             f"Клиент: {o.get('client_name', '—')}\n"
             f"Телефон: {o.get('recipient_phone', '—')}\n"
             f"Адрес: {o['address']}\n"
-            f"Время: {o.get('delivery_time') or '—'}\n"
             f"Товары:\n{items_text}\n"
             f"Сумма: {fmt(o['total'])}\n"
             f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
             f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
         )
-        await message.answer(text, reply_markup=mgr_order_kb(o["id"]), parse_mode="HTML")
+        await call.message.answer(text, reply_markup=mgr_order_kb(o["id"]), parse_mode="HTML")
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
@@ -110,35 +128,99 @@ async def mgr_confirm(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.confirm_order(order_id, from_bot=True)
+    try:
+        await api.confirm_order(order_id, from_bot=True)
+    except Exception:
+        await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
+        return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
             await call.bot.send_message(
                 client_tg,
-                f"✅ Ваш заказ #{order_id} подтверждён!\n"
-                f"Время доставки: {order.get('delivery_time') or 'уточняется'}.\nСкоро назначим курьера."
+                f"✅ Ваш заказ #{order_id} подтверждён!\nСкоро назначим курьера."
             )
         except Exception:
             pass
     couriers = await api.get_couriers()
-    await call.message.edit_text(
-        f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
-        reply_markup=mgr_courier_select_kb(couriers, order_id),
-    )
+    kb = mgr_courier_select_kb(couriers, order_id)
+    try:
+        await call.message.edit_text(
+            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
+        )
+    except Exception:
+        await call.message.answer(
+            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
+        )
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:reject:"))
-async def mgr_reject(call: CallbackQuery, state: FSMContext):
+async def mgr_reject(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await state.update_data(reject_order_id=order_id)
-    await state.set_state(MgrReject.waiting_reason)
-    await call.message.answer(f"Укажите причину отклонения заказа #{order_id}:")
+    await call.message.answer(
+        f"Выберите причину отклонения заказа #{order_id}:",
+        reply_markup=mgr_order_reject_kb(order_id),
+    )
     await call.answer()
+
+
+_REJECT_REASONS = {
+    "stock": "Товар временно закончился",
+    "addr": "Адрес недоступен для доставки",
+    "time": "Выбранное время недоступно",
+}
+
+
+@router.callback_query(F.data.startswith("mgr:rj_r:"))
+async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    order_id, reason_key = int(parts[2]), parts[3]
+    if reason_key == "custom":
+        await state.update_data(reject_order_id=order_id)
+        await state.set_state(MgrRejectCustom.waiting_reason)
+        await call.message.answer(f"Введите причину отклонения заказа #{order_id}:")
+        await call.answer()
+        return
+    reason = _REJECT_REASONS.get(reason_key, reason_key)
+    await _do_reject(call, order_id, reason)
+
+
+async def _do_reject(target, order_id: int, reason: str):
+    await api.reject_order(order_id, reason, from_bot=True)
+    order = await api.get_order(order_id)
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            send = target.bot.send_message if isinstance(target, CallbackQuery) else target.bot.send_message
+            await send(
+                client_tg,
+                f"❌ Ваш заказ #{order_id} отклонён.\nПричина: {reason}\n"
+                "Если есть вопросы — обратитесь в поддержку."
+            )
+        except Exception:
+            pass
+    reply_text = f"❌ Заказ #{order_id} отклонён.\nПричина: {reason}"
+    if isinstance(target, CallbackQuery):
+        await target.message.edit_text(reply_text)
+        await target.answer()
+    else:
+        await target.answer(reply_text)
+
+
+@router.message(MgrRejectCustom.waiting_reason)
+async def mgr_reject_custom_reason(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    data = await state.get_data()
+    order_id = data["reject_order_id"]
+    await state.clear()
+    await _do_reject(message, order_id, message.text.strip())
 
 
 @router.message(MgrReject.waiting_reason)
@@ -147,21 +229,8 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
         return
     data = await state.get_data()
     order_id = data["reject_order_id"]
-    reason = message.text.strip()
-    await api.reject_order(order_id, reason, from_bot=True)
-    order = await api.get_order(order_id)
     await state.clear()
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            await message.bot.send_message(
-                client_tg,
-                f"❌ Ваш заказ #{order_id} отклонён.\nПричина: {reason}\n"
-                "Если есть вопросы — обратитесь в поддержку."
-            )
-        except Exception:
-            pass
-    await message.answer(f"❌ Заказ #{order_id} отклонён.")
+    await _do_reject(message, order_id, message.text.strip())
 
 
 @router.callback_query(F.data.startswith("mgr:assign:"))
@@ -183,46 +252,54 @@ async def mgr_set_courier(call: CallbackQuery):
         return
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
-    await api.assign_courier(order_id, courier_id, from_bot=True)
+    try:
+        await api.assign_courier(order_id, courier_id, from_bot=True)
+    except Exception:
+        await call.answer("❌ Не удалось назначить курьера.", show_alert=True)
+        return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
-    if courier:
+    if courier and courier.get("telegram_id"):
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", []))
         try:
             from keyboards.courier import courier_order_kb
             await call.bot.send_message(
                 courier["telegram_id"],
                 f"🚴 Вам назначен заказ #{order_id}!\n\n"
-                f"Адрес: {order['address']}\nТелефон: {order['recipient_phone']}\n"
-                f"Время: {order.get('delivery_time') or '—'}\n"
-                f"Товары:\n{items_text}\nСумма: {fmt(order['total'])}\n"
+                f"Адрес: {order.get('address','—')}\nТелефон: {order.get('recipient_phone','—')}\n"
+                f"Товары:\n{items_text}\nСумма: {fmt(order.get('total',0))}\n"
                 f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт.",
                 reply_markup=courier_order_kb(order_id),
             )
         except Exception:
             pass
-        client_tg = order.get("client_telegram_id")
-        if client_tg:
-            try:
-                await call.bot.send_message(
-                    client_tg,
-                    f"🚴 Курьер {courier['name']} назначен на ваш заказ #{order_id}!\nОжидайте доставку."
-                )
-            except Exception:
-                pass
-    await call.message.edit_text(f"✅ Курьер назначен на заказ #{order_id}.")
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            cname = courier["name"] if courier else "Курьер"
+            await call.bot.send_message(
+                client_tg, f"🚴 {cname} назначен на ваш заказ #{order_id}!\nОжидайте доставку."
+            )
+        except Exception:
+            pass
+    result_text = f"✅ Курьер назначен на заказ #{order_id}."
+    try:
+        await call.message.edit_text(result_text)
+    except Exception:
+        await call.message.answer(result_text)
     await call.answer()
 
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "👥 Клиенты")
-async def mgr_clients(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data == "mgr:clients")
+async def mgr_clients(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
         return
     await state.set_state(MgrClientSearch.waiting_phone)
-    await message.answer("Введите номер телефона или имя клиента для поиска:")
+    await call.message.answer("Введите номер телефона или имя клиента для поиска:")
+    await call.answer()
 
 
 @router.message(MgrClientSearch.waiting_phone)
@@ -251,6 +328,33 @@ async def mgr_client_search(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("mgr:topup:"))
 async def mgr_topup_start(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    user_id = int(call.data.split(":")[2])
+    await state.update_data(topup_user_id=user_id)
+    await call.message.answer(
+        f"Выберите сумму пополнения для клиента ID {user_id}:",
+        reply_markup=mgr_topup_presets_kb(user_id),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:tp_p:"))
+async def mgr_topup_preset(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    user_id, amount = int(parts[2]), int(parts[3])
+    result = await api.topup_user(user_id, amount)
+    new_balance = result.get("new_balance", 0)
+    await call.message.edit_text(
+        f"✅ Баланс пополнен на {fmt(amount)}.\nНовый баланс: {fmt(new_balance)}"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:topup_manual:"))
+async def mgr_topup_manual(call: CallbackQuery, state: FSMContext):
     if not await is_manager(call.from_user.id):
         return
     user_id = int(call.data.split(":")[2])
@@ -306,11 +410,12 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📊 Статистика")
-async def mgr_stats_menu(message: Message):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data == "mgr:stats_menu")
+async def mgr_stats_menu(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
-    await message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
+    await call.message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:stats:"))
@@ -335,13 +440,14 @@ async def mgr_stats(call: CallbackQuery):
 
 # ─── Cash debts ───────────────────────────────────────────────────────────────
 
-@router.message(F.text == "💸 Долги курьеров")
-async def mgr_cash_debts(message: Message):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data == "mgr:debts")
+async def mgr_cash_debts(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
     debts = await api.get_cash_debts_admin(status="requested")
     if not debts:
-        await message.answer("Нет запросов на погашение долгов.")
+        await call.message.answer("Нет запросов на погашение долгов.")
+        await call.answer()
         return
     couriers = await api.get_couriers()
     courier_map = {c["id"]: c["name"] for c in couriers}
@@ -353,7 +459,8 @@ async def mgr_cash_debts(message: Message):
             f"Заказ: #{d.get('order_id') or '—'}\n"
             f"Заметка: {d.get('note') or '—'}"
         )
-        await message.answer(text, reply_markup=mgr_debt_kb(d["id"]), parse_mode="HTML")
+        await call.message.answer(text, reply_markup=mgr_debt_kb(d["id"]), parse_mode="HTML")
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:debt:"))
@@ -369,16 +476,175 @@ async def mgr_debt_decide(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Support ──────────────────────────────────────────────────────────────────
+# ─── Client detail tabs ───────────────────────────────────────────────────────
 
-@router.message(F.text == "🆘 Поддержка")
-async def mgr_support(message: Message):
-    if not await is_manager(message.from_user.id):
+@router.callback_query(F.data.startswith("mgr:client_orders:"))
+async def mgr_client_orders(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
-    from config import settings
-    from keyboards.user import miniapp_inline_kb
-    await message.answer(
-        "🆘 <b>Поддержка</b>\n\nОткройте веб-панель для работы с обращениями клиентов:",
-        reply_markup=miniapp_inline_kb(),
+    user_id = int(call.data.split(":")[2])
+    orders = await api.get_user_orders(user_id)
+    if not orders:
+        await call.answer("У клиента нет заказов.")
+        return
+    STATUS_SHORT = {"new": "🆕", "awaiting_confirmation": "⏳", "confirmed": "✅",
+                    "assigned_to_courier": "🚚", "in_delivery": "🚴", "delivered": "✔️", "rejected": "❌"}
+    lines = [f"📦 <b>Заказы клиента (последние {min(len(orders), 10)}):</b>\n"]
+    for o in orders[:10]:
+        icon = STATUS_SHORT.get(o["status"], "•")
+        lines.append(f"{icon} #{o['id']} — {fmt(o['total'])} — {o.get('delivery_time', '—')[:10]}")
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:client_tx:"))
+async def mgr_client_tx(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    user_id = int(call.data.split(":")[2])
+    txs = await api.get_user_transactions(user_id)
+    if not txs:
+        await call.answer("Транзакций нет.")
+        return
+    lines = [f"💳 <b>Транзакции клиента (последние {min(len(txs), 10)}):</b>\n"]
+    for t in txs[:10]:
+        sign = "+" if t.get("amount", 0) > 0 else ""
+        lines.append(f"• {t.get('created_at', '')[:10]} {sign}{fmt(t.get('amount', 0))} — {t.get('type', '—')}")
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:client_subs:"))
+async def mgr_client_subs(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    user_id = int(call.data.split(":")[2])
+    subs = await api.get_subscriptions(user_id)
+    active = [s for s in subs if s.get("status") == "active"]
+    if not active:
+        await call.answer("Активных подписок нет.")
+        return
+    lines = [f"📋 <b>Подписки клиента ({len(active)} активных):</b>\n"]
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    for s in active:
+        lines.append(
+            f"• {plan_label.get(s.get('plan', ''), s.get('plan', ''))} — "
+            f"{s.get('water_summary', '')} | День: {s.get('day', '—')}"
+        )
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:client_bottles:"))
+async def mgr_client_bottles(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    user_id = int(call.data.split(":")[2])
+    bottles = await api.get_bottles_owed(user_id)
+    count = bottles.get("count", 0)
+    await call.answer()
+    await call.message.answer(
+        f"🫙 <b>Бутылки клиента</b>\n\nК возврату: <b>{count} шт.</b>",
         parse_mode="HTML",
     )
+
+
+# ─── Support chat ──────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "mgr:support")
+async def mgr_support(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    try:
+        chats = await api.get_manager_support_chats()
+    except Exception:
+        chats = []
+
+    if not chats:
+        from keyboards.user import site_link_kb
+        await call.message.answer(
+            "💬 <b>Поддержка</b>\n\nНет активных обращений.\nИли откройте веб-панель:",
+            reply_markup=site_link_kb("🌐 Открыть на сайте", "/manager/support"),
+            parse_mode="HTML",
+        )
+        await call.answer()
+        return
+
+    lines = [f"💬 <b>Обращения в поддержку ({len(chats)}):</b>\n"]
+    for c in chats[:10]:
+        unread = f" 🔴{c['unread']}" if c.get("unread") else ""
+        lines.append(f"• {c.get('client_name', '—')}: {(c.get('last_message') or '')[:40]}{unread}")
+    await call.message.answer("\n".join(lines), parse_mode="HTML")
+    for c in chats[:5]:
+        await call.message.answer(
+            f"👤 <b>{c.get('client_name', '—')}</b>\n{c.get('last_message', '')[:80]}",
+            reply_markup=mgr_support_quick_kb(c["id"]),
+            parse_mode="HTML",
+        )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:sup_reply:"))
+async def mgr_support_reply_start(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    chat_id = int(call.data.split(":")[2])
+    await state.update_data(sup_chat_id=chat_id)
+    await state.set_state(MgrSupportReply.waiting_text)
+    await call.message.answer("Введите ответ клиенту:")
+    await call.answer()
+
+
+@router.message(MgrSupportReply.waiting_text)
+async def mgr_support_reply_send(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    data = await state.get_data()
+    chat_id = data["sup_chat_id"]
+    await state.clear()
+    try:
+        result = await api.send_manager_support_reply(chat_id, message.text.strip())
+        client_tg = result.get("client_telegram_id")
+        if client_tg:
+            try:
+                await message.bot.send_message(
+                    client_tg,
+                    f"💬 Ответ от поддержки:\n\n{message.text.strip()}"
+                )
+            except Exception:
+                pass
+        await message.answer("✅ Ответ отправлен.")
+    except Exception:
+        await message.answer("❌ Не удалось отправить ответ.")
+
+
+_QUICK_REPLIES = {
+    "1": "✅ Ваш заказ обрабатывается. Ожидайте.",
+    "2": "🚴 Курьер уже в пути к вам!",
+    "3": "📞 Ожидайте звонка от нашего оператора.",
+    "4": "🙏 Спасибо за обращение! Рады помочь.",
+}
+
+
+@router.callback_query(F.data.startswith("mgr:sup_q:"))
+async def mgr_support_quick_reply(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    chat_id, reply_key = int(parts[2]), parts[3]
+    reply_text = _QUICK_REPLIES.get(reply_key, "")
+    if not reply_text:
+        await call.answer("Неизвестный ответ")
+        return
+    try:
+        result = await api.send_manager_support_reply(chat_id, reply_text)
+        client_tg = result.get("client_telegram_id")
+        if client_tg:
+            try:
+                await call.bot.send_message(client_tg, f"💬 Ответ от поддержки:\n\n{reply_text}")
+            except Exception:
+                pass
+        await call.message.edit_text(f"✅ Отправлено: {reply_text}")
+    except Exception:
+        await call.answer("Не удалось отправить", show_alert=True)
+    await call.answer()

@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
-from keyboards.courier import courier_menu_kb, courier_order_kb, courier_debt_kb
+from keyboards.courier import courier_menu_kb, courier_order_kb, courier_debt_kb, courier_cash_confirm_kb, courier_orders_filter_kb
 from config import settings
 
 router = Router()
@@ -51,21 +51,43 @@ async def courier_panel(message: Message):
 
 # ─── My orders ────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📋 Мои заказы")
-async def courier_orders(message: Message):
-    courier = await _get_courier(message.from_user.id)
-    if not courier:
+def _filter_orders(orders: list, tab: str) -> list:
+    if tab == "waiting":
+        return [o for o in orders if o.get("status") in ("assigned_to_courier",)]
+    if tab == "enroute":
+        return [o for o in orders if o.get("status") == "in_delivery"]
+    if tab == "done":
+        return [o for o in orders if o.get("status") == "delivered"]
+    return orders  # "all"
+
+
+async def _send_courier_orders(target, orders: list, tab: str = "waiting"):
+    filtered = _filter_orders(orders, tab)
+    header = await (target.answer if isinstance(target, Message) else target.message.answer)(
+        f"Заказы ({len(filtered)}):", reply_markup=courier_orders_filter_kb(tab)
+    )
+    if not filtered:
         return
-    orders = await api.get_courier_orders(message.from_user.id)
-    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
-    if not active:
-        await message.answer("У вас нет активных заказов.")
-        return
-    for o in active:
+    for o in filtered[:8]:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
         status = STATUS_RU.get(o["status"], o["status"])
+        from datetime import datetime
+        now = datetime.utcnow()
+        urgency = ""
+        if o.get("delivery_time") and o["status"] not in ("delivered", "rejected"):
+            try:
+                dt = datetime.fromisoformat(o["delivery_time"].replace("Z", "+00:00"))
+                mins_left = (dt.replace(tzinfo=None) - now).total_seconds() / 60
+                if mins_left < 0:
+                    urgency = " 🔴 ПРОСРОЧЕН"
+                elif mins_left < 30:
+                    urgency = " 🟠 срочно"
+                elif mins_left < 60:
+                    urgency = " 🟡 скоро"
+            except Exception:
+                pass
         text = (
-            f"📦 <b>Заказ #{o['id']}</b> — {status}\n"
+            f"📦 <b>Заказ #{o['id']}</b> — {status}{urgency}\n"
             f"Адрес: {o['address']}\n"
             f"Телефон: {o['recipient_phone']}\n"
             f"Время: {o.get('delivery_time') or '—'}\n"
@@ -73,7 +95,39 @@ async def courier_orders(message: Message):
             f"Сумма: {fmt(o['total'])}\n"
             f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
         )
-        await message.answer(text, reply_markup=courier_order_kb(o["id"], o["status"]), parse_mode="HTML")
+        send = target.answer if isinstance(target, Message) else target.message.answer
+        await send(text, reply_markup=courier_order_kb(o["id"], o["status"]), parse_mode="HTML")
+
+
+@router.message(F.text == "📋 Мои заказы")
+async def courier_orders(message: Message, state: FSMContext):
+    courier = await _get_courier(message.from_user.id)
+    if not courier:
+        return
+    orders = await api.get_courier_orders(message.from_user.id)
+    await state.update_data(courier_orders=orders)
+    await _send_courier_orders(message, orders, "waiting")
+
+
+@router.callback_query(F.data.startswith("cor:tab:"))
+async def courier_orders_tab(call: CallbackQuery, state: FSMContext):
+    tab = call.data.split(":")[2]
+    data = await state.get_data()
+    orders = data.get("courier_orders")
+    if orders is None:
+        courier = await _get_courier(call.from_user.id)
+        if not courier:
+            await call.answer()
+            return
+        orders = await api.get_courier_orders(call.from_user.id)
+        await state.update_data(courier_orders=orders)
+    await call.message.edit_reply_markup(reply_markup=courier_orders_filter_kb(tab))
+    filtered = _filter_orders(orders, tab)
+    if not filtered:
+        await call.answer(f"Заказов в этой вкладке нет")
+    else:
+        await call.answer(f"{len(filtered)} заказ(ов)")
+    await _send_courier_orders(call, orders, tab)
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
@@ -383,5 +437,35 @@ async def courier_done(call: CallbackQuery):
             except Exception:
                 pass
 
-    await call.message.edit_text(f"✔️ Заказ #{order_id} помечен как доставленный!")
+    if order.get("payment_method") == "cash":
+        await call.message.answer(
+            f"💵 Вы получили наличные за заказ #{order_id}?",
+            reply_markup=courier_cash_confirm_kb(order_id),
+        )
+    else:
+        await call.message.edit_text(f"✔️ Заказ #{order_id} помечен как доставленный!")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:cash_ok:"))
+async def courier_cash_received(call: CallbackQuery):
+    order_id = int(call.data.split(":")[2])
+    try:
+        await api.update_order_cash_received(order_id)
+    except Exception:
+        pass
+    await call.message.edit_text(
+        f"✅ Наличные за заказ #{order_id} зафиксированы.\n"
+        f"✔️ Заказ помечен как доставленный!"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:cash_skip:"))
+async def courier_cash_skip(call: CallbackQuery):
+    order_id = int(call.data.split(":")[2])
+    await call.message.edit_text(
+        f"✔️ Заказ #{order_id} помечен как доставленный!\n"
+        "Безналичная оплата зафиксирована."
+    )
     await call.answer()
