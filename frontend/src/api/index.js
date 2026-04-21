@@ -586,9 +586,9 @@ export const getWarehouseStock = () =>
     })
   )
 
-export const addProduction = (productName, quantity, note) =>
+export const addProduction = (productId, quantity, note) =>
   safeCall(
-    () => http.post('/warehouse/production', { product_name: productName, quantity, note }).then(r => r.data),
+    () => http.post('/warehouse/production', { product_id: productId, quantity, note }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)
       if (item) item.quantity += quantity
