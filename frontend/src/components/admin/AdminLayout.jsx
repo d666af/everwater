@@ -1,8 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { useAdminRoleStore } from '../../store/adminRole'
-import { EverLogoMark } from '../EverLogo'
-import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -57,31 +56,23 @@ const NAV = [
   },
 ]
 
-export default function AdminLayout({ children, title, noPadding = false }) {
+export default function AdminLayout({ children, noPadding = false }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
   const { clearRole } = useAdminRoleStore()
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
   const [ready, setReady] = useState(false)
 
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  const doLogout = () => { logout(); navigate('/login') }
-  const switchRole = () => { clearRole(); navigate('/admin') }
+  const hasMultipleRoles = user?.roles?.length > 1
+  const switchRole = () => clearRole()
 
   const isActive = (nav) =>
     nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
 
   useLayoutEffect(() => {
-    if (!isMobile) return
     const activeNav = NAV.find(n => isActive(n))
     if (!activeNav) return
     const activeEl = itemRefs.current[activeNav.path]
@@ -96,174 +87,71 @@ export default function AdminLayout({ children, title, noPadding = false }) {
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
-  }, [location.pathname, isMobile]) // eslint-disable-line
+  }, [location.pathname]) // eslint-disable-line
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>
-
-      {/* Desktop sidebar */}
-      {!isMobile && (
-        <aside style={s.sidebar}>
-          <div style={s.sidebarTop}>
-            <div style={s.logo} onClick={() => navigate('/admin')}>
-              <EverLogoMark width={34} />
-              <div>
-                <div style={s.logoName}>ever</div>
-                <div style={s.logoBadge}>Администратор</div>
-              </div>
-            </div>
-            {user && (
-              <div style={s.userCard}>
-                <div style={s.userAvatar}>{(user.name || 'A')[0].toUpperCase()}</div>
-                <div>
-                  <div style={s.userName}>{user.name}</div>
-                  <div style={s.userRole}>Админ</div>
-                </div>
-              </div>
-            )}
-            <nav style={s.nav}>
-              {NAV.map(nav => {
-                const active = isActive(nav)
-                return (
-                  <button key={nav.path}
-                    style={{ ...s.navItem, ...(active ? s.navItemActive : {}) }}
-                    onClick={() => navigate(nav.path)}>
-                    <span style={{ color: active ? C : 'rgba(255,255,255,0.5)', flexShrink: 0 }}>
-                      {nav.icon}
-                    </span>
-                    <span style={{ flex: 1 }}>{nav.label}</span>
-                    {active && <span style={s.navDot} />}
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-          <button style={{ ...s.logoutBtn, color: 'rgba(255,255,255,0.5)' }} onClick={switchRole}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            Сменить роль
-          </button>
-        </aside>
-      )}
-
-      {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {!isMobile && (
-          <header style={s.desktopHeader}>
-            <h1 style={s.desktopTitle}>{title}</h1>
-            <div style={s.headerBadge}>Панель администратора</div>
-          </header>
-        )}
-
         <div style={{
           ...s.content,
-          paddingBottom: isMobile ? 100 : 24,
+          paddingBottom: 100,
           ...(noPadding ? { padding: 0, paddingBottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}),
         }}>
           {children}
         </div>
       </div>
 
-      {/* Mobile bottom navigation */}
-      {isMobile && (
-        <>
-          {!noPadding && <div style={{ height: 90 }} />}
-          <nav style={s.mobileNav}>
-            <div style={s.mobileNavInner} ref={navRef}>
-              <div style={{
-                ...s.pill,
-                left: pillStyle.left ?? 0,
-                width: pillStyle.width ?? 50,
-                opacity: pillStyle.width ? 1 : 0,
-                transition: ready
-                  ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
-                  : 'none',
-              }} />
-              {NAV.map(nav => {
-                const active = isActive(nav)
-                return (
-                  <button key={nav.path}
-                    ref={el => { itemRefs.current[nav.path] = el }}
-                    style={s.mobileItem}
-                    onClick={() => navigate(nav.path)}>
-                    <div style={{ color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {nav.icon}
-                    </div>
-                    <span style={{
-                      fontSize: 9, fontWeight: active ? 700 : 500,
-                      color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
-                      lineHeight: 1, whiteSpace: 'nowrap',
-                    }}>
-                      {nav.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </nav>
-        </>
+      {hasMultipleRoles && (
+        <button style={s.switchFab} onClick={switchRole}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Роль
+        </button>
       )}
+
+      <>
+        {!noPadding && <div style={{ height: 90 }} />}
+        <nav style={s.mobileNav}>
+          <div style={s.mobileNavInner} ref={navRef}>
+            <div style={{
+              ...s.pill,
+              left: pillStyle.left ?? 0,
+              width: pillStyle.width ?? 50,
+              opacity: pillStyle.width ? 1 : 0,
+              transition: ready
+                ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
+                : 'none',
+            }} />
+            {NAV.map(nav => {
+              const active = isActive(nav)
+              return (
+                <button key={nav.path}
+                  ref={el => { itemRefs.current[nav.path] = el }}
+                  style={s.mobileItem}
+                  onClick={() => navigate(nav.path)}>
+                  <div style={{ color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {nav.icon}
+                  </div>
+                  <span style={{
+                    fontSize: 9, fontWeight: active ? 700 : 500,
+                    color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
+                    lineHeight: 1, whiteSpace: 'nowrap',
+                  }}>
+                    {nav.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+      </>
     </div>
   )
 }
 
 const s = {
-  sidebar: {
-    width: 220, background: '#111827', flexShrink: 0,
-    display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-    position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
-  },
-  sidebarTop: { display: 'flex', flexDirection: 'column' },
-  logo: {
-    padding: '16px 14px', display: 'flex', alignItems: 'center', gap: 10,
-    borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer',
-  },
-  logoName: { color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: -0.5 },
-  logoBadge: { fontSize: 9, color: C, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: 700 },
-  userCard: {
-    margin: '10px 10px 0',
-    background: 'rgba(255,255,255,0.05)', borderRadius: 10,
-    padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8,
-    border: '1px solid rgba(255,255,255,0.07)',
-  },
-  userAvatar: {
-    width: 30, height: 30, borderRadius: '50%',
-    background: GRAD, color: '#fff',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontWeight: 800, fontSize: 12, flexShrink: 0,
-  },
-  userName: { color: '#fff', fontWeight: 600, fontSize: 12, lineHeight: 1.2 },
-  userRole: { color: C, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
-  nav: { padding: '6px 0', display: 'flex', flexDirection: 'column' },
-  navItem: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '10px 14px', background: 'none', border: 'none',
-    color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: 500,
-    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-  },
-  navItemActive: { background: 'rgba(141,198,63,0.1)', color: '#fff', borderLeft: `3px solid ${C}` },
-  navDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
-  logoutBtn: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    background: 'none', border: 'none',
-    color: 'rgba(255,255,255,0.3)', padding: '14px 16px',
-    cursor: 'pointer', fontSize: 12, fontWeight: 500,
-    borderTop: '1px solid rgba(255,255,255,0.06)',
-  },
-  desktopHeader: {
-    background: '#fff', padding: '14px 22px',
-    borderBottom: '1px solid #EBEBEB',
-    position: 'sticky', top: 0, zIndex: 10,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  },
-  desktopTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: '#1A1A1A' },
-  headerBadge: {
-    background: `${C}20`, color: '#6CA32F',
-    border: `1px solid ${C}40`, borderRadius: 8,
-    padding: '4px 10px', fontSize: 11, fontWeight: 700,
-  },
   content: { padding: 16, flex: 1, overflowY: 'auto' },
   mobileNav: {
     position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
@@ -290,5 +178,14 @@ const s = {
     padding: '4px 0 0', gap: 0, cursor: 'pointer',
     position: 'relative', zIndex: 1,
     WebkitTapHighlightColor: 'transparent',
+  },
+  switchFab: {
+    position: 'fixed', top: 16, right: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: GRAD, color: '#fff',
+    border: 'none', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
 }

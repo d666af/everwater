@@ -31,10 +31,8 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (!user) return <Navigate to="/login" replace />
 
-  // Admin can act as any role via the session role picker.
-  // All other roles are strictly locked — no cross-flow access.
-  const effectiveRole = user.role === 'admin'
-    ? (activeRole || 'admin')
+  const effectiveRole = (user.roles?.length > 1 && activeRole)
+    ? activeRole
     : user.role
 
   if (allowedRoles && !allowedRoles.includes(effectiveRole)) {

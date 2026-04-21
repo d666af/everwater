@@ -57,9 +57,9 @@ async def show_role_menu(target, role: str):
     send = target.answer if is_message else target.message.answer
     tg_id = target.from_user.id
 
-    # Role-switch inline button — only for admins acting in non-admin flows
+    roles = await get_user_roles(tg_id)
     switch_kb = None
-    if tg_id in settings.ADMIN_IDS and role != "admin":
+    if len(roles) > 1:
         switch_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сменить роль", callback_data="role:switch")]
         ])
@@ -118,54 +118,62 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    # Only admins get a role picker — everyone else goes directly to their flow
-    if tg_id in settings.ADMIN_IDS:
-        roles = await get_user_roles(tg_id)
-        if len(roles) > 1:
-            labels = " | ".join(ROLE_LABELS[r] for r in roles)
-            await message.answer(
-                f"👋 С возвращением, {user['name']}!\n\nВаши роли: {labels}\n\nВыберите режим:",
-                reply_markup=roles_inline_kb(roles),
-            )
-        else:
-            await message.answer(f"👋 С возвращением, {user['name']}!")
-            await show_role_menu(message, "admin")
+    roles = await get_user_roles(tg_id)
+    if len(roles) > 1:
+        labels = " | ".join(ROLE_LABELS[r] for r in roles)
+        await message.answer(
+            f"👋 С возвращением, {user['name']}!\n\nВаши роли: {labels}\n\nВыберите режим:",
+            reply_markup=roles_inline_kb(roles),
+        )
     else:
-        role = await get_primary_role(tg_id)
+        role = roles[0] if roles else "client"
         await message.answer(f"👋 С возвращением, {user['name']}!")
         await show_role_menu(message, role)
 
 
-# ─── Role selection callback (admin only) ────────────────────────────────────
+# ─── Role selection callback ──────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("role:select:"))
 async def role_selected(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in settings.ADMIN_IDS:
+    role = call.data.split(":")[2]
+    roles = await get_user_roles(call.from_user.id)
+    if role not in roles:
         await call.answer("Недоступно", show_alert=True)
         return
-    role = call.data.split(":")[2]
     await call.answer(f"Переключаюсь: {ROLE_LABELS.get(role, role)}")
     await show_role_menu(call, role)
 
 
-# ─── /role command (admin only) ──────────────────────────────────────────────
+# ─── "Switch role" inline callback ───────────────────────────────────────────
+
+@router.callback_query(F.data == "role:switch")
+async def switch_role_cb(call: CallbackQuery, state: FSMContext):
+    roles = await get_user_roles(call.from_user.id)
+    if len(roles) <= 1:
+        await call.answer("У вас только одна роль", show_alert=True)
+        return
+    await call.answer()
+    await call.message.answer("Выберите режим:", reply_markup=roles_inline_kb(roles))
+
+
+# ─── /role command ────────────────────────────────────────────────────────────
 
 @router.message(Command("role"))
 async def cmd_role(message: Message):
-    if message.from_user.id not in settings.ADMIN_IDS:
-        return
     roles = await get_user_roles(message.from_user.id)
+    if len(roles) <= 1:
+        return
     labels = " | ".join(ROLE_LABELS[r] for r in roles)
     await message.answer(f"Ваши роли: {labels}\n\nВыберите режим:", reply_markup=roles_inline_kb(roles))
 
 
-# ─── "Switch role" button (admin only) ───────────────────────────────────────
+# ─── "Switch role" reply button ───────────────────────────────────────────────
 
 @router.message(F.text == "🔄 Роль")
 async def switch_role_btn(message: Message):
-    if message.from_user.id not in settings.ADMIN_IDS:
-        return
     roles = await get_user_roles(message.from_user.id)
+    if len(roles) <= 1:
+        return
     await message.answer("Выберите режим:", reply_markup=roles_inline_kb(roles))
 
 

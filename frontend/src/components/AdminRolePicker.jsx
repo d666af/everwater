@@ -15,8 +15,9 @@ export default function AdminRolePicker() {
   const { activeRole, setActiveRole } = useAdminRoleStore()
   const navigate = useNavigate()
 
-  // Only show for admins who haven't picked a role this session
-  if (user?.role !== 'admin' || activeRole) return null
+  if (!user?.roles || user.roles.length <= 1 || activeRole) return null
+
+  const userRoles = ROLES.filter(r => user.roles.includes(r.id))
 
   const pick = (role) => {
     setActiveRole(role.id)
@@ -41,17 +42,17 @@ export default function AdminRolePicker() {
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
       }}>
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔧</div>
+          <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔄</div>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#111' }}>
             Выберите режим
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#666' }}>
-            Вы вошли как администратор.<br />Как работать в этой сессии?
+            У вас несколько ролей.<br />Как работать в этой сессии?
           </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {ROLES.map((r) => (
+          {userRoles.map((r) => (
             <button
               key={r.id}
               onClick={() => pick(r)}

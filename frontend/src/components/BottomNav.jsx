@@ -37,7 +37,7 @@ export default function BottomNav() {
   const location = useLocation()
   const { user } = useAuthStore()
   const { clearRole } = useAdminRoleStore()
-  const isAdmin = user?.role === 'admin'
+  const hasMultipleRoles = user?.roles?.length > 1
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
@@ -71,8 +71,8 @@ export default function BottomNav() {
 
   return (
     <>
-      {isAdmin && (
-        <button style={st.switchFab} onClick={() => { clearRole(); navigate('/admin') }}>
+      {hasMultipleRoles && (
+        <button style={st.switchFab} onClick={() => clearRole()}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>

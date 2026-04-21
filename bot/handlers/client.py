@@ -964,6 +964,26 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
             f"Ориентир: {data.get('sub_landmark', '—')}\n"
             f"Оплата: {pay_label.get(method, method)}"
         )
+        notification = (
+            f"📋 Новая подписка!\n"
+            f"Клиент: {user.get('name', '—')} | {data.get('sub_phone', '—')}\n"
+            f"Вода: {water_summary}\n"
+            f"Адрес: {data.get('sub_address', '—')}\n"
+            f"Ориентир: {data.get('sub_landmark', '—')}\n"
+            f"Оплата: {pay_label.get(method, method)}"
+        )
+        for admin_id in settings.ADMIN_IDS:
+            try:
+                await call.bot.send_message(admin_id, notification)
+            except Exception:
+                pass
+        managers = await api.get_managers()
+        for mgr in managers:
+            if mgr.get("is_active") and mgr.get("telegram_id"):
+                try:
+                    await call.bot.send_message(mgr["telegram_id"], notification)
+                except Exception:
+                    pass
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
@@ -1030,27 +1050,18 @@ async def support_quick(call: CallbackQuery):
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def forward_to_support(message: Message, state: FSMContext):
-    """Catch-all: forward unhandled text directly to admin and support chat."""
+    """Catch-all: forward unhandled text to support chat."""
     current_state = await state.get_state()
     if current_state is not None:
         return
     tg_id = message.from_user.id
     name = message.from_user.full_name or str(tg_id)
 
-    # Forward directly to all admins
-    admin_text = f"📩 Сообщение от {name} (ID: {tg_id}):\n\n{message.text}"
-    for admin_id in settings.ADMIN_IDS:
-        if admin_id != tg_id:
-            try:
-                await message.bot.send_message(admin_id, admin_text)
-            except Exception:
-                pass
-
     try:
         await api.send_user_support_message(tg_id, name, message.text)
         await message.answer("✉️ Сообщение отправлено. Оператор ответит в ближайшее время.")
     except Exception:
-        await message.answer("✉️ Сообщение переслано администратору.")
+        await message.answer("✉️ Не удалось отправить сообщение. Попробуйте позже.")
 
 
 # ─── Balance Topup ────────────────────────────────────────────────────────────
