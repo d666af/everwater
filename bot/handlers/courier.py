@@ -24,6 +24,14 @@ def fmt(v):
     return f"{int(v):,}".replace(",", " ") + " сум"
 
 
+def _order_brief(order: dict) -> str:
+    items = order.get("items", [])
+    parts = [f"{i.get('product_name', '?')} ×{i.get('quantity', 1)}" for i in items[:3]]
+    extra = f" +{len(items) - 3} ещё" if len(items) > 3 else ""
+    total = fmt(order.get("total", 0))
+    return f"{', '.join(parts)}{extra} · {total}" if parts else total
+
+
 async def _get_courier(telegram_id: int):
     return await api.get_courier_by_telegram(telegram_id)
 
@@ -209,7 +217,7 @@ async def courier_debts(message: Message):
     for d in debts[:10]:
         status_map = {"pending": "⏳", "requested": "📤", "approved": "✅", "rejected": "❌"}
         icon = status_map.get(d["status"], "•")
-        lines.append(f"{icon} #{d['id']} — {fmt(d['amount'])} (заказ #{d.get('order_id') or '—'}) [{d['status']}]")
+        lines.append(f"{icon} {fmt(d['amount'])} [{d['status']}]")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
     # Show request buttons for pending debts
@@ -332,7 +340,7 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
             "payment_method": "cash",
         })
         await state.clear()
-        await call.message.edit_text(f"✅ Заказ #{order.get('id')} создан для клиента {data['co_phone']}!")
+        await call.message.edit_text(f"✅ Заказ создан для клиента {data['co_phone']}!")
     except Exception as e:
         await call.message.edit_text(f"❌ Ошибка: клиент с телефоном {data['co_phone']} не найден в системе.")
         await state.clear()
@@ -360,11 +368,12 @@ async def courier_accept(call: CallbackQuery):
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            await call.bot.send_message(client_tg, f"🚴 Курьер принял ваш заказ #{order_id} и скоро выедет!")
+            await call.bot.send_message(client_tg, f"🚴 Курьер принял ваш заказ и скоро выедет!")
         except Exception:
             pass
+    brief = _order_brief(order)
     await call.message.edit_text(
-        f"✅ Вы приняли заказ #{order_id}.",
+        f"✅ Вы приняли заказ.\n{brief}",
         reply_markup=courier_order_kb(order_id, "in_delivery"),
     )
     await call.answer()
@@ -378,16 +387,17 @@ async def courier_in_delivery(call: CallbackQuery):
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            await call.bot.send_message(client_tg, f"🚴 Ваш заказ #{order_id} в пути! Курьер уже едет к вам.")
+            await call.bot.send_message(client_tg, "🚴 Ваш заказ в пути! Курьер уже едет к вам.")
         except Exception:
             pass
+    brief = _order_brief(order)
     for admin_id in settings.ADMIN_IDS:
         try:
-            await call.bot.send_message(admin_id, f"🚴 Курьер начал доставку заказа #{order_id}")
+            await call.bot.send_message(admin_id, f"🚴 Курьер начал доставку\n{brief}")
         except Exception:
             pass
     await call.message.edit_text(
-        f"🚴 Заказ #{order_id} — в доставке.",
+        f"🚴 В доставке: {brief}",
         reply_markup=courier_order_kb(order_id, "in_delivery"),
     )
     await call.answer()
@@ -400,18 +410,18 @@ async def courier_done(call: CallbackQuery):
     order = await api.get_order(order_id)
 
     from keyboards.user import review_kb
+    brief = _order_brief(order)
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
             await call.bot.send_message(
                 client_tg,
-                f"✔️ Ваш заказ #{order_id} доставлен!\nПожалуйста, оцените качество доставки:",
+                "✔️ Ваш заказ доставлен!\nПожалуйста, оцените качество доставки:",
                 reply_markup=review_kb(order_id),
             )
         except Exception:
             pass
 
-    # Bonus info for client
     bonus = order.get("bonus_earned", 0)
     if bonus and bonus > 0 and client_tg:
         try:
@@ -423,27 +433,26 @@ async def courier_done(call: CallbackQuery):
         try:
             await call.bot.send_message(
                 admin_id,
-                f"✔️ Заказ #{order_id} доставлен!\nКурьер: {call.from_user.full_name}\nСумма: {fmt(order['total'])}"
+                f"✔️ Доставлено!\nКурьер: {call.from_user.full_name}\n{brief}"
             )
         except Exception:
             pass
 
-    # Notify managers too
     managers = await api.get_managers()
     for mgr in managers:
         if mgr.get("is_active") and mgr.get("telegram_id") and mgr["telegram_id"] not in settings.ADMIN_IDS:
             try:
-                await call.bot.send_message(mgr["telegram_id"], f"✔️ Заказ #{order_id} доставлен!")
+                await call.bot.send_message(mgr["telegram_id"], f"✔️ Доставлено: {brief}")
             except Exception:
                 pass
 
     if order.get("payment_method") == "cash":
         await call.message.answer(
-            f"💵 Вы получили наличные за заказ #{order_id}?",
+            f"💵 Вы получили наличные?\n{brief}",
             reply_markup=courier_cash_confirm_kb(order_id),
         )
     else:
-        await call.message.edit_text(f"✔️ Заказ #{order_id} помечен как доставленный!")
+        await call.message.edit_text(f"✔️ Доставлено: {brief}")
     await call.answer()
 
 
@@ -454,18 +463,12 @@ async def courier_cash_received(call: CallbackQuery):
         await api.update_order_cash_received(order_id)
     except Exception:
         pass
-    await call.message.edit_text(
-        f"✅ Наличные за заказ #{order_id} зафиксированы.\n"
-        f"✔️ Заказ помечен как доставленный!"
-    )
+    await call.message.edit_text("✅ Наличные зафиксированы. Заказ помечен как доставленный!")
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("courier:cash_skip:"))
 async def courier_cash_skip(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
-    await call.message.edit_text(
-        f"✔️ Заказ #{order_id} помечен как доставленный!\n"
-        "Безналичная оплата зафиксирована."
-    )
+    await call.message.edit_text("✔️ Заказ помечен как доставленный! Безналичная оплата зафиксирована.")
     await call.answer()

@@ -108,7 +108,7 @@ async def admin_text_orders(message: Message):
     lines = ["📋 <b>Все заказы (последние 20):</b>\n"]
     for o in orders[:20]:
         st = STATUS_RU.get(o["status"], o["status"])
-        lines.append(f"#{o['id']} {st} — {fmt(o['total'])} — {o['address'][:25]}")
+        lines.append(f"{st} — {fmt(o['total'])} — {o['address'][:25]}")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
@@ -123,7 +123,7 @@ async def admin_text_pending(message: Message):
     for o in orders[:5]:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
         text = (
-            f"📦 <b>Заказ #{o['id']}</b>\n"
+            f"📦 <b>Новый заказ</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
             f"Телефон: {o.get('recipient_phone', '—')}\n"
             f"Адрес: {o['address']}\n"
@@ -306,7 +306,7 @@ async def admin_all_orders(call: CallbackQuery):
     lines = ["📋 <b>Все заказы (последние 20):</b>\n"]
     for o in orders[:20]:
         st = STATUS_RU.get(o["status"], o["status"])
-        lines.append(f"#{o['id']} {st} — {fmt(o['total'])} — {o['address'][:25]}")
+        lines.append(f"{st} — {fmt(o['total'])} — {o['address'][:25]}")
     await call.message.answer("\n".join(lines), parse_mode="HTML")
     await call.answer()
 
@@ -323,7 +323,7 @@ async def admin_pending_orders(call: CallbackQuery):
     for o in orders[:5]:
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
         text = (
-            f"📦 <b>Заказ #{o['id']}</b>\n"
+            f"📦 <b>Новый заказ</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
             f"Телефон: {o.get('recipient_phone', '—')}\n"
             f"Адрес: {o['address']}\n"

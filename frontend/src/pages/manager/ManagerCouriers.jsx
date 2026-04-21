@@ -15,13 +15,13 @@ function AddCourierModal({ onClose, onSave }) {
   const [tgId, setTgId] = useState('')
   const [loading, setLoading] = useState(false)
   const handle = async () => {
-    if (!name.trim() || !tgId.trim()) return
+    if (!name.trim() || !phone.trim() || !tgId.trim()) return
     setLoading(true)
     try { await onSave({ name: name.trim(), phone: phone.trim(), telegram_id: Number(tgId) }); onClose() }
     catch { alert('Ошибка при создании') }
     finally { setLoading(false) }
   }
-  const dis = !name.trim() || !tgId.trim()
+  const dis = !name.trim() || !phone.trim() || !tgId.trim()
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.sheet}>
@@ -32,7 +32,7 @@ function AddCourierModal({ onClose, onSave }) {
           <input style={st.input} placeholder="Имя курьера" value={name} onChange={e => setName(e.target.value)} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={st.label}>Телефон</div>
+          <div style={st.label}>Телефон *</div>
           <input style={st.input} placeholder="+998 90 000-00-00" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -211,9 +211,12 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
 
   const load = () => {
     setLoading(true)
-    Promise.all([getAdminCouriers(), getOrders(), getAllCashDebts()])
-      .then(([c, o, d]) => { setCouriers(c); setAllOrders(o); setDebts(d) })
-      .catch(console.error)
+    Promise.allSettled([getAdminCouriers(), getOrders(), getAllCashDebts()])
+      .then(([c, o, d]) => {
+        if (c.status === 'fulfilled') setCouriers(c.value || [])
+        if (o.status === 'fulfilled') setAllOrders(o.value || [])
+        if (d.status === 'fulfilled') setDebts(d.value || [])
+      })
       .finally(() => setLoading(false))
   }
 

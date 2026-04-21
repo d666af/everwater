@@ -504,10 +504,12 @@ async def user_paid(call: CallbackQuery):
     order = await api.get_order(order_id)
 
     from keyboards.admin import order_confirm_kb
+    items = order.get("items", [])
+    items_str = ", ".join(f"{i.get('product_name','?')} ×{i.get('quantity',1)}" for i in items[:3])
     notification_text = (
-        f"💰 Заказ #{order_id} ожидает подтверждения!\n"
+        f"💰 Оплата получена!\n"
         f"Клиент: {order.get('recipient_phone', '—')}\n"
-        f"Сумма: {fmt(order.get('total', 0))}\n"
+        f"Заказ: {items_str or '—'} · {fmt(order.get('total', 0))}\n"
         f"Адрес: {order.get('address', '—')}"
     )
     for admin_id in settings.ADMIN_IDS:

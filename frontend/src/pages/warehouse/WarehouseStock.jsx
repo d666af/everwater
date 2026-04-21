@@ -81,7 +81,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   return (
     <Layout title={title}>
-      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (name, qty, note) => { await addProduction(name, qty, note); load() }} />}
+      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (productId, qty, note) => { await addProduction(productId, qty, note); load() }} />}
       {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note); load() }} />}
       {pickerOpen && (
@@ -351,15 +351,15 @@ function Row({ label, value, color }) {
 
 function AddProductionModal({ onClose, onSave }) {
   const catalog = getCatalogProducts()
-  const [name, setName] = useState(catalog[0]?.short_name || '')
+  const [selectedId, setSelectedId] = useState(catalog[0]?.id || null)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handle = async () => {
-    if (!qty || Number(qty) <= 0) return
+    if (!qty || Number(qty) <= 0 || !selectedId) return
     setLoading(true)
-    try { await onSave(name, Number(qty), note.trim()); onClose() }
+    try { await onSave(selectedId, Number(qty), note.trim()); onClose() }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }
@@ -373,11 +373,11 @@ function AddProductionModal({ onClose, onSave }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {catalog.map(p => (
-              <button key={p.id} onClick={() => setName(p.short_name)} style={{
+              <button key={p.id} onClick={() => setSelectedId(p.id)} style={{
                 padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: name === p.short_name ? GRAD : '#F8F9FA',
-                color: name === p.short_name ? '#fff' : TEXT,
-                border: name === p.short_name ? 'none' : `1px solid ${BORDER}`,
+                background: selectedId === p.id ? GRAD : '#F8F9FA',
+                color: selectedId === p.id ? '#fff' : TEXT,
+                border: selectedId === p.id ? 'none' : `1px solid ${BORDER}`,
               }}>{p.short_name}</button>
             ))}
           </div>

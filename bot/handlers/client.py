@@ -21,6 +21,13 @@ def fmt(amount):
     return f"{int(amount):,}".replace(",", " ") + " сум"
 
 
+def _cart_summary(cart: dict) -> str:
+    parts = [f"{v['name']} ×{v['qty']}" for v in list(cart.values())[:3]]
+    extra = f" +ещё {len(cart) - 3}" if len(cart) > 3 else ""
+    total = sum(v["price"] * v["qty"] for v in cart.values())
+    return f"{', '.join(parts)}{extra} · {fmt(total)}"
+
+
 def _short_name(p: dict) -> str:
     """Возвращает короткое название: '0.5л Вода' или '0.5л Газ. вода'."""
     vol = p.get("volume")
@@ -31,8 +38,12 @@ def _short_name(p: dict) -> str:
 
 # ─── FSM States ───────────────────────────────────────────────────────────────
 
+ALL_BOTTLE_COMPANIES = ['Grand Water', 'Fresco', 'Hamd', 'Hydrolife', 'Zam-Zam', 'Kavsar', 'Montella']
+
+
 class SurveyState(StatesGroup):
-    asking_bottles = State()
+    asking_source  = State()
+    asking_company = State()
     asking_count   = State()
 
 
@@ -46,6 +57,7 @@ class CheckoutState(StatesGroup):
     asking_bonus      = State()
     choosing_payment  = State()
     confirming        = State()
+    asking_save_addr  = State()
 
 
 class SubscriptionState(StatesGroup):
@@ -66,35 +78,82 @@ class TopupState(StatesGroup):
 # ─── Survey after registration ────────────────────────────────────────────────
 
 async def start_survey(message: Message, state: FSMContext):
-    await state.set_state(SurveyState.asking_bottles)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Да", callback_data="survey:yes"),
-        InlineKeyboardButton(text="Нет", callback_data="survey:no"),
-    ]])
+    await state.set_state(SurveyState.asking_source)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Наши бутылки", callback_data="survey_src:our")],
+        [InlineKeyboardButton(text="🔄 Другой бренд", callback_data="survey_src:other")],
+        [InlineKeyboardButton(text="❌ Нет бутылок", callback_data="survey_src:no")],
+    ])
     await message.answer("У вас есть пустые 19-литровые бутылки для возврата?", reply_markup=kb)
 
 
-@router.callback_query(SurveyState.asking_bottles, F.data.startswith("survey:"))
-async def survey_answer(call: CallbackQuery, state: FSMContext):
-    if call.data == "survey:no":
+@router.callback_query(SurveyState.asking_source, F.data.startswith("survey_src:"))
+async def survey_source(call: CallbackQuery, state: FSMContext):
+    src = call.data.split(":")[1]
+    if src == "no":
         await state.clear()
-        try:
-            await call.message.edit_text("Отлично! Вы можете сделать заказ через каталог 🛒")
-        except Exception:
-            pass
+        await call.message.edit_text("Хорошо! Вы можете сделать заказ через каталог 🛒")
         await call.answer()
         return
+    if src == "our":
+        await state.update_data(survey_company="our", survey_accepted=True)
+        await _survey_ask_count(call, state)
+        await call.answer()
+        return
+    # other: fetch accepted companies from settings
+    try:
+        settings_data = await api.get_settings()
+        accepted = settings_data.get("accepted_bottle_companies", []) if settings_data else []
+    except Exception:
+        accepted = []
+    await state.update_data(survey_accepted_companies=accepted)
+    await state.set_state(SurveyState.asking_company)
+    rows = []
+    for company in ALL_BOTTLE_COMPANIES:
+        badge = " ✓" if company in accepted else ""
+        rows.append([InlineKeyboardButton(text=f"{company}{badge}", callback_data=f"survey_co:{company}")])
+    try:
+        await call.message.edit_text(
+            "Выберите бренд ваших бутылок:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    except Exception:
+        await call.message.answer(
+            "Выберите бренд ваших бутылок:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    await call.answer()
+
+
+@router.callback_query(SurveyState.asking_company, F.data.startswith("survey_co:"))
+async def survey_company(call: CallbackQuery, state: FSMContext):
+    company = call.data[len("survey_co:"):]
+    data = await state.get_data()
+    accepted = data.get("survey_accepted_companies", [])
+    is_accepted = company in accepted
+    await state.update_data(survey_company=company, survey_accepted=is_accepted)
+    await _survey_ask_count(call, state)
+    await call.answer()
+
+
+async def _survey_ask_count(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    is_accepted = data.get("survey_accepted", True)
     await state.set_state(SurveyState.asking_count)
     counts = [1, 2, 3, 4, 5, 6, 10]
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=str(c), callback_data=f"survey_cnt:{c}") for c in counts],
         [InlineKeyboardButton(text="Другое число", callback_data="survey_cnt:other")],
     ])
+    warning = (
+        "\n\n⚠️ Мы не принимаем бутылки этого бренда — укажите количество для справки."
+        if not is_accepted else ""
+    )
+    msg = f"Сколько 19-литровых бутылок вернёте?{warning}"
     try:
-        await call.message.edit_text("Сколько 19-литровых бутылок вернёте?", reply_markup=kb)
+        await call.message.edit_text(msg, reply_markup=kb)
     except Exception:
-        await call.message.answer("Сколько 19-литровых бутылок вернёте?", reply_markup=kb)
-    await call.answer()
+        await call.message.answer(msg, reply_markup=kb)
 
 
 @router.callback_query(SurveyState.asking_count, F.data.startswith("survey_cnt:"))
@@ -105,14 +164,18 @@ async def survey_count_cb(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
     count = int(val)
+    data = await state.get_data()
+    is_accepted = data.get("survey_accepted", True)
+    actual_count = count if is_accepted else 0
     user = await api.get_user(call.from_user.id)
     if user:
-        await api.change_bottles_owed(user["id"], count)
+        await api.change_bottles_owed(user["id"], actual_count)
     await state.clear()
-    try:
-        await call.message.edit_text(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
-    except Exception:
-        pass
+    if is_accepted:
+        msg = f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа."
+    else:
+        msg = "Понято. Бутылки этого бренда не принимаются, поэтому при заказе они не учитываются."
+    await call.message.edit_text(msg)
     await call.answer()
 
 
@@ -123,11 +186,17 @@ async def survey_count_text(message: Message, state: FSMContext):
         await message.answer("Введите корректное число бутылок.")
         return
     count = int(text)
+    data = await state.get_data()
+    is_accepted = data.get("survey_accepted", True)
+    actual_count = count if is_accepted else 0
     user = await api.get_user(message.from_user.id)
     if user:
-        await api.change_bottles_owed(user["id"], count)
+        await api.change_bottles_owed(user["id"], actual_count)
     await state.clear()
-    await message.answer(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
+    if is_accepted:
+        await message.answer(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
+    else:
+        await message.answer("Понято. Бутылки этого бренда не принимаются.")
 
 
 # ─── Catalog ─────────────────────────────────────────────────────────────────
@@ -449,13 +518,16 @@ async def use_saved_addr(call: CallbackQuery, state: FSMContext):
     idx = int(call.data.split(":")[1])
     data = await state.get_data()
     addr = data["saved_addrs"][idx]
-    await state.update_data(co_address=addr["address"],
-                            co_lat=addr.get("lat"), co_lng=addr.get("lng"))
+    await state.update_data(
+        co_address=addr["address"],
+        co_lat=addr.get("lat") or addr.get("latitude"),
+        co_lng=addr.get("lng") or addr.get("longitude"),
+        co_extra=addr.get("extra_info"),
+    )
     await call.answer()
-    if addr.get("lat"):
-        await _ask_landmark(call.message, state)
-    else:
-        await _ask_location(call.message, state, addr["address"])
+    # Saved addresses already have location + landmark — skip straight to phone
+    await call.message.edit_text(f"📍 Адрес: <b>{addr['address']}</b>", parse_mode="HTML")
+    await _ask_phone(call.message, state)
 
 
 @router.callback_query(CheckoutState.choosing_address, F.data == "new_addr")
@@ -559,7 +631,10 @@ async def co_phone(message: Message, state: FSMContext):
 
 @router.callback_query(CheckoutState.asking_return, F.data.startswith("rb:"))
 async def co_return(call: CallbackQuery, state: FSMContext):
-    await state.update_data(co_return=int(call.data.split(":")[1]))
+    val = int(call.data.split(":")[1])
+    await state.update_data(co_return=val)
+    label = f"Верну {val} шт." if val > 0 else "Не возвращаю"
+    await call.message.edit_text(f"Бутылки к возврату: {label}")
     await _ask_bonus(call.message, state)
     await call.answer()
 
@@ -584,7 +659,10 @@ async def _ask_bonus(message: Message, state: FSMContext):
 
 @router.callback_query(CheckoutState.asking_bonus, F.data.startswith("ub:"))
 async def co_bonus(call: CallbackQuery, state: FSMContext):
-    await state.update_data(co_bonus=int(call.data.split(":")[1]))
+    val = int(call.data.split(":")[1])
+    await state.update_data(co_bonus=val)
+    label = f"Использую {fmt(val)}" if val > 0 else "Не использую"
+    await call.message.edit_text(f"Бонусы: {label}")
     await _ask_payment(call.message, state)
     await call.answer()
 
@@ -604,7 +682,10 @@ async def _ask_payment(message: Message, state: FSMContext):
 
 @router.callback_query(CheckoutState.choosing_payment, F.data.startswith("pm:"))
 async def co_payment(call: CallbackQuery, state: FSMContext):
-    await state.update_data(co_pay=call.data.split(":")[1])
+    pay = call.data.split(":")[1]
+    await state.update_data(co_pay=pay)
+    pay_labels = {"cash": "💵 Наличными курьеру", "card": "💳 Картой", "balance": "💰 С баланса"}
+    await call.message.edit_text(f"Оплата: {pay_labels.get(pay, pay)}")
     await state.set_state(CheckoutState.confirming)
     await _show_summary(call.message, state)
     await call.answer()
@@ -694,18 +775,17 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         except Exception:
             pass
 
-    await state.update_data(cart={})
-    await state.clear()
-
-    PAY_LABELS = {"cash": "Наличными курьеру", "card": "Карта", "balance": "Баланс"}
-    # Notify admins + managers about new order (cash/balance — no payment step)
+    PAY_LABELS = {"cash": "Наличными курьеру", "card": "Картой", "balance": "С баланса"}
+    # Notify admins + managers (cash/balance — no payment step needed)
     if pay_method != "card":
         from keyboards.admin import order_confirm_kb
+        cart_info = _cart_summary(cart)
         notification_text = (
-            f"🆕 Новый заказ #{order_id}!\n"
+            f"🆕 Новый заказ!\n"
             f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
             f"Адрес: {addr}\n"
-            f"Сумма: {fmt(order.get('total', 0))}\nОплата: {PAY_LABELS.get(pay_method, pay_method)}"
+            f"Заказ: {cart_info}\n"
+            f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}"
         )
         for admin_id in settings.ADMIN_IDS:
             try:
@@ -717,7 +797,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             if mgr.get("is_active") and mgr.get("telegram_id"):
                 try:
                     await call.bot.send_message(mgr["telegram_id"], notification_text,
-                                                 reply_markup=order_confirm_kb(order_id))
+                                                reply_markup=order_confirm_kb(order_id))
                 except Exception:
                     pass
 
@@ -736,7 +816,48 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             "✅ Заказ создан!\n"
             "Ожидайте звонка оператора для подтверждения."
         )
+
+    # Ask to save address if it's new
+    saved_addrs = data.get("saved_addrs", [])
+    is_new_address = addr and not any(a.get("address") == addr for a in saved_addrs)
+    if is_new_address:
+        await state.set_state(CheckoutState.asking_save_addr)
+        await state.update_data(
+            save_user_id=user["id"],
+            save_address=addr,
+            save_lat=data.get("co_lat"),
+            save_lng=data.get("co_lng"),
+            save_extra=data.get("co_extra"),
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="💾 Сохранить", callback_data="save_addr:yes"),
+            InlineKeyboardButton(text="Нет", callback_data="save_addr:no"),
+        ]])
+        await call.message.answer("Сохранить этот адрес для следующих заказов?", reply_markup=kb)
+    else:
+        await state.clear()
         await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+@router.callback_query(CheckoutState.asking_save_addr, F.data.startswith("save_addr:"))
+async def save_addr_cb(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if call.data == "save_addr:yes":
+        try:
+            await api.save_address(data["save_user_id"], {
+                "address": data.get("save_address", ""),
+                "latitude": data.get("save_lat"),
+                "longitude": data.get("save_lng"),
+                "extra_info": data.get("save_extra"),
+            })
+            await call.message.edit_text("✅ Адрес сохранён!")
+        except Exception:
+            await call.message.edit_text("Не удалось сохранить адрес.")
+    else:
+        await call.message.edit_text("Хорошо, адрес не сохранён.")
+    await state.clear()
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -938,7 +1059,10 @@ async def _sub_ask_bonus(message: Message, state: FSMContext):
 
 @router.callback_query(SubscriptionState.asking_bonus, F.data.startswith("sub_ub:"))
 async def sub_bonus(call: CallbackQuery, state: FSMContext):
-    await state.update_data(sub_bonus=int(call.data.split(":")[1]))
+    val = int(call.data.split(":")[1])
+    await state.update_data(sub_bonus=val)
+    label = f"Использую {fmt(val)}" if val > 0 else "Не использую"
+    await call.message.edit_text(f"Бонусы: {label}")
     await _sub_ask_payment(call.message, state)
     await call.answer()
 
@@ -960,6 +1084,8 @@ async def _sub_ask_payment(message: Message, state: FSMContext):
 @router.callback_query(SubscriptionState.choosing_payment, F.data.startswith("subpm:"))
 async def sub_payment(call: CallbackQuery, state: FSMContext):
     method = call.data.split(":")[1]
+    pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
+    await call.message.edit_text(f"Оплата: {pay_labels.get(method, method)}")
     data = await state.get_data()
     user = data.get("sub_user") or await api.get_user(call.from_user.id)
     if not user:
