@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
-import { useAdminRoleStore } from '../store/adminRole'
 import { getUserByTelegram } from '../api'
 
 const tg = window.Telegram?.WebApp
@@ -11,16 +10,13 @@ const ROLE_HOME = {
 }
 
 /**
- * On every app load, if running inside Telegram WebApp:
- *  1. Read telegram_id from initDataUnsafe
- *  2. Fetch user from backend
- *  3. Auto-login and navigate to their role's page
- *
- * This means every user always lands on their correct flow — no manual login needed.
+ * On every app load inside Telegram WebApp, always fetches fresh user data
+ * from the backend to pick up role changes. If there's a cached user we
+ * show it immediately (no loader flash), then update roles in the background.
+ * ProtectedRoute handles redirecting away from invalid routes automatically.
  */
 export function useTelegramAuth() {
   const { user, login } = useAuthStore()
-  const { activeRole } = useAdminRoleStore()
   const navigate = useNavigate()
   const location = useLocation()
   const ran = useRef(false)
@@ -30,33 +26,24 @@ export function useTelegramAuth() {
     ran.current = true
 
     const tgUser = tg?.initDataUnsafe?.user
-    if (!tgUser) return  // Not in Telegram WebApp context
+    if (!tgUser) return
 
-    const tgId = tgUser.id
+    const isFirstLogin = !user
 
-    // If already logged in as the correct user, just verify we're on the right route
-    if (user) {
-      const correctHome = user.role === 'admin'
-        ? (activeRole ? ROLE_HOME[activeRole] : '/admin')
-        : ROLE_HOME[user.role] || '/'
-      // Only redirect if we're on login page
-      if (location.pathname === '/login') {
-        navigate(correctHome, { replace: true })
-      }
-      return
-    }
-
-    // Auto-login via Telegram ID
-    getUserByTelegram(tgId)
+    // Always fetch — this refreshes roles even when already cached in localStorage
+    getUserByTelegram(tgUser.id)
       .then((userData) => {
-        if (userData?.id) {
-          login(userData)
-          const home = ROLE_HOME[userData.role] || '/'
-          navigate(home, { replace: true })
+        if (!userData?.id) return
+        login(userData)
+
+        // Only navigate on first login or when explicitly on the login page.
+        // If already browsing, ProtectedRoute redirects away from invalid routes.
+        if (isFirstLogin || location.pathname === '/login') {
+          navigate(ROLE_HOME[userData.role] || '/', { replace: true })
         }
       })
       .catch(() => {
-        // User not found in DB — redirect to login (they'll register via bot)
+        // Network error — if no cached user, nothing we can do
       })
   }, []) // eslint-disable-line
 }
