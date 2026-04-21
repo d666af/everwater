@@ -10,16 +10,16 @@ def _site(path: str = "") -> str:
     return f"{base}{path}"
 
 
-def main_menu_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🛒 Заказать")],
-            [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
-            [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💰 Пополнить")],
-            [KeyboardButton(text="💬 Поддержка")],
-        ],
-        resize_keyboard=True,
-    )
+def main_menu_kb(show_role_switch: bool = False) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text="🛒 Заказать")],
+        [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💰 Пополнить")],
+        [KeyboardButton(text="💬 Поддержка")],
+    ]
+    if show_role_switch:
+        keyboard.append([KeyboardButton(text="🔄 Роль")])
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
 def miniapp_inline_kb(path: str = "") -> InlineKeyboardMarkup:

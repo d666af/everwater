@@ -33,7 +33,6 @@ def _short_name(p: dict) -> str:
 
 class SurveyState(StatesGroup):
     asking_bottles = State()
-    asking_company = State()
     asking_count   = State()
 
 
@@ -72,48 +71,63 @@ async def start_survey(message: Message, state: FSMContext):
         InlineKeyboardButton(text="Да", callback_data="survey:yes"),
         InlineKeyboardButton(text="Нет", callback_data="survey:no"),
     ]])
-    await message.answer(
-        "У вас есть пустые 19-литровые бутылки для возврата?",
-        reply_markup=kb,
-    )
+    await message.answer("У вас есть пустые 19-литровые бутылки для возврата?", reply_markup=kb)
 
 
 @router.callback_query(SurveyState.asking_bottles, F.data.startswith("survey:"))
 async def survey_answer(call: CallbackQuery, state: FSMContext):
     if call.data == "survey:no":
         await state.clear()
-        await call.message.edit_text("Отлично! Вы можете сделать заказ через каталог 🛒")
+        try:
+            await call.message.edit_text("Отлично! Вы можете сделать заказ через каталог 🛒")
+        except Exception:
+            pass
         await call.answer()
         return
-    await state.set_state(SurveyState.asking_company)
-    await call.message.edit_text("Укажите компанию (производителя воды на бутылке):")
+    await state.set_state(SurveyState.asking_count)
+    counts = [1, 2, 3, 4, 5, 6, 10]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=str(c), callback_data=f"survey_cnt:{c}") for c in counts],
+        [InlineKeyboardButton(text="Другое число", callback_data="survey_cnt:other")],
+    ])
+    try:
+        await call.message.edit_text("Сколько 19-литровых бутылок вернёте?", reply_markup=kb)
+    except Exception:
+        await call.message.answer("Сколько 19-литровых бутылок вернёте?", reply_markup=kb)
     await call.answer()
 
 
-@router.message(SurveyState.asking_company)
-async def survey_company(message: Message, state: FSMContext):
-    await state.update_data(return_company=message.text.strip())
-    await state.set_state(SurveyState.asking_count)
-    await message.answer("Сколько бутылок хотите вернуть?")
+@router.callback_query(SurveyState.asking_count, F.data.startswith("survey_cnt:"))
+async def survey_count_cb(call: CallbackQuery, state: FSMContext):
+    val = call.data.split(":")[1]
+    if val == "other":
+        await call.message.edit_text("Введите количество бутылок:")
+        await call.answer()
+        return
+    count = int(val)
+    user = await api.get_user(call.from_user.id)
+    if user:
+        await api.change_bottles_owed(user["id"], count)
+    await state.clear()
+    try:
+        await call.message.edit_text(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.message(SurveyState.asking_count)
-async def survey_count(message: Message, state: FSMContext):
+async def survey_count_text(message: Message, state: FSMContext):
     text = message.text.strip()
     if not text.isdigit() or int(text) <= 0:
         await message.answer("Введите корректное число бутылок.")
         return
     count = int(text)
-    data = await state.get_data()
     user = await api.get_user(message.from_user.id)
     if user:
         await api.change_bottles_owed(user["id"], count)
     await state.clear()
-    await message.answer(
-        f"Записали: {count} бутылок ({data.get('return_company', '')}) к возврату. "
-        "Это учтётся при оформлении заказа.",
-        reply_markup=main_menu_kb(),
-    )
+    await message.answer(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
 
 
 # ─── Catalog ─────────────────────────────────────────────────────────────────

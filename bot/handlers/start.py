@@ -67,13 +67,11 @@ async def show_role_menu(target, role: str):
         ])
 
     if role == "client":
-        await send("👤 Режим клиента:", reply_markup=main_menu_kb())
+        await send("👤 Режим клиента:", reply_markup=main_menu_kb(show_role_switch=bool(switch_kb)))
         try:
             await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
         except Exception:
             pass
-        if switch_kb:
-            await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "admin":
         from keyboards.admin import admin_menu_kb
