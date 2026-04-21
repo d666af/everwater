@@ -30,6 +30,8 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
+  // Track pending coords — only applied on confirm
+  const pendingRef = useRef({ lat: lat || DEFAULT_LAT, lng: lng || DEFAULT_LNG })
 
   const initLat = lat || DEFAULT_LAT
   const initLng = lng || DEFAULT_LNG
@@ -45,10 +47,10 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
           attribution: '', maxZoom: 19,
         }).addTo(map)
 
-        // Update coordinates from map center on every move
+        // Track map center but do NOT call onChange yet
         map.on('moveend', () => {
           const center = map.getCenter()
-          onChange(center.lat, center.lng)
+          pendingRef.current = { lat: center.lat, lng: center.lng }
         })
 
         mapInstanceRef.current = map
@@ -98,6 +100,12 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
       const { latitude: lt, longitude: ln } = pos.coords
       mapInstanceRef.current?.setView([lt, ln], 16)
     })
+  }
+
+  // Only save coordinates when user explicitly confirms
+  const handleConfirm = () => {
+    onChange(pendingRef.current.lat, pendingRef.current.lng)
+    onClose()
   }
 
   return (
@@ -160,7 +168,7 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
             </svg>
             Моё место
           </button>
-          <button style={s.confirmBtn} onClick={onClose}>Подтвердить</button>
+          <button style={s.confirmBtn} onClick={handleConfirm}>Подтвердить</button>
         </div>
       </div>
     </div>

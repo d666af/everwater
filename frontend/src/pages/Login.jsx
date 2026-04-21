@@ -9,13 +9,17 @@ const ROLE_ROUTES = {
   admin: '/admin',
   manager: '/manager',
   courier: '/courier',
+  warehouse: '/warehouse',
 }
 
 export default function Login() {
+  const [step, setStep] = useState('phone') // 'phone' | 'password'
   const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [focused, setFocused] = useState(false)
+  const [focusedPhone, setFocusedPhone] = useState(false)
+  const [focusedPass, setFocusedPass] = useState(false)
   const { login } = useAuthStore()
   const navigate = useNavigate()
 
@@ -36,23 +40,39 @@ export default function Login() {
     return '+' + d
   }
 
-  const handlePhone = (e) => {
-    setError('')
-    setPhone(formatPhone(e.target.value))
-  }
+  const handlePhone = (e) => { setError(''); setPhone(formatPhone(e.target.value)) }
+  const handlePassword = (e) => { setError(''); setPassword(e.target.value) }
 
   const submit = async () => {
-    const raw = phone.replace(/\D/g, '')
-    if (raw.length < 12) { setError('Введите корректный номер: +998 XX XXX-XX-XX'); return }
-    setLoading(true); setError('')
-    try {
-      const userData = await loginByPhone(phone)
-      login(userData)
-      navigate(ROLE_ROUTES[userData.role] || '/')
-    } catch (err) {
-      setError(err.message || 'Пользователь не найден')
-    } finally {
-      setLoading(false)
+    if (step === 'phone') {
+      const raw = phone.replace(/\D/g, '')
+      if (raw.length < 12) { setError('Введите корректный номер: +998 XX XXX-XX-XX'); return }
+      setLoading(true); setError('')
+      try {
+        const result = await loginByPhone(phone)
+        if (result?.needs_password) {
+          setStep('password')
+        } else {
+          login(result)
+          navigate(ROLE_ROUTES[result.role] || '/')
+        }
+      } catch (err) {
+        setError(err.response?.data?.detail || err.message || 'Пользователь не найден')
+      } finally {
+        setLoading(false)
+      }
+    } else {
+      if (!password.trim()) { setError('Введите пароль'); return }
+      setLoading(true); setError('')
+      try {
+        const userData = await loginByPhone(phone, password)
+        login(userData)
+        navigate(ROLE_ROUTES[userData.role] || '/')
+      } catch (err) {
+        setError(err.response?.data?.detail || err.message || 'Неверный пароль')
+      } finally {
+        setLoading(false)
+      }
     }
   }
 
@@ -66,24 +86,54 @@ export default function Login() {
         </div>
 
         <div style={s.form}>
-          <label style={s.label}>Номер телефона</label>
-          <div style={{
-            ...s.inputWrap,
-            ...(focused ? s.inputFocused : {}),
-            ...(error ? s.inputError : {}),
-          }}>
-            <input
-              style={s.input}
-              type="tel"
-              placeholder="+998 90 123-45-67"
-              value={phone}
-              onChange={handlePhone}
-              onKeyDown={handleKey}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              autoFocus
-            />
-          </div>
+          {step === 'phone' ? (
+            <>
+              <label style={s.label}>Номер телефона</label>
+              <div style={{
+                ...s.inputWrap,
+                ...(focusedPhone ? s.inputFocused : {}),
+                ...(error ? s.inputError : {}),
+              }}>
+                <input
+                  style={s.input}
+                  type="tel"
+                  placeholder="+998 90 123-45-67"
+                  value={phone}
+                  onChange={handlePhone}
+                  onKeyDown={handleKey}
+                  onFocus={() => setFocusedPhone(true)}
+                  onBlur={() => setFocusedPhone(false)}
+                  autoFocus
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <button style={s.backBtn} onClick={() => { setStep('phone'); setError(''); setPassword('') }}>
+                ← {phone}
+              </button>
+              <label style={s.label}>Пароль</label>
+              <div style={{
+                ...s.inputWrap,
+                ...(focusedPass ? s.inputFocused : {}),
+                ...(error ? s.inputError : {}),
+              }}>
+                <input
+                  style={s.input}
+                  type="text"
+                  placeholder="Ваш пароль из бота"
+                  value={password}
+                  onChange={handlePassword}
+                  onKeyDown={handleKey}
+                  onFocus={() => setFocusedPass(true)}
+                  onBlur={() => setFocusedPass(false)}
+                  autoFocus
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                />
+              </div>
+            </>
+          )}
           {error && <div style={s.errorMsg}>{error}</div>}
 
           <button
@@ -91,7 +141,7 @@ export default function Login() {
             onClick={submit}
             disabled={loading}
           >
-            {loading ? <span style={s.spinner} /> : 'Войти'}
+            {loading ? <span style={s.spinner} /> : (step === 'phone' ? 'Далее' : 'Войти')}
           </button>
         </div>
 
@@ -104,8 +154,9 @@ export default function Login() {
                 { phone: '+998 90 000-00-02', role: 'Админ' },
                 { phone: '+998 90 000-00-03', role: 'Менеджер' },
                 { phone: '+998 90 000-00-04', role: 'Курьер' },
+                { phone: '+998 90 000-00-05', role: 'Завсклад' },
               ].map(d => (
-                <button key={d.phone} style={s.demoBtn} onClick={() => setPhone(d.phone)}>
+                <button key={d.phone} style={s.demoBtn} onClick={() => { setPhone(d.phone); setStep('phone') }}>
                   <span style={s.demoRole}>{d.role}</span>
                   <span style={s.demoPhone}>{d.phone}</span>
                 </button>
@@ -249,5 +300,15 @@ const s = {
     fontSize: 11,
     color: '#888',
     fontFamily: 'monospace',
+  },
+  backBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#8DC63F',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    padding: '0 0 4px',
+    textAlign: 'left',
   },
 }

@@ -13,6 +13,7 @@ class UserUpdate(BaseModel):
     phone: str | None = None
     balance: float | None = None
     bonus_points: float | None = None
+    site_password: str | None = None
 
 
 class UserOut(BaseModel):

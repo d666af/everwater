@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const tg = window.Telegram?.WebApp
@@ -9,198 +9,168 @@ const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BORDER = 'rgba(60,60,67,0.12)'
+const BORDER = 'rgba(60,60,67,0.08)'
 
-const STATUS = {
-  confirmed:           { label: 'Назначен',      bg: '#EBFBEE', color: '#2B8A3E' },
-  assigned_to_courier: { label: 'Ожидает старта', bg: '#F3F0FF', color: '#6741D9' },
-  in_delivery:         { label: 'В доставке',    bg: '#E8F4FD', color: '#1971C2' },
-  delivered:           { label: 'Доставлен',     bg: '#EBFBEE', color: C },
+const MANAGER_PHONE = '+998900000003'
+
+const STATUS_CFG = {
+  confirmed:           { label: 'Новый',    bg: '#FFF3BF', color: '#E67700' },
+  assigned_to_courier: { label: 'Назначен', bg: `${C}15`,  color: CD },
+  in_delivery:         { label: 'В пути',   bg: '#E7F5FF', color: '#1971C2' },
+  delivered:           { label: 'Доставлен', bg: '#EBFBEE', color: '#2B8A3E' },
 }
 
-// ── Parse delivery_time string → Date (today) ──────────────────────────────
-function parseDeliveryEnd(delivery_time) {
-  if (!delivery_time) return null
-  // Formats: "Сегодня 14:00–15:00", "14:00-15:00", "14:30", "Завтра 09:00–12:00"
-  if (/завтра/i.test(delivery_time)) return null  // future → not overdue
-  const ranges = delivery_time.match(/(\d{1,2}):(\d{2})[\s–\-]+(\d{1,2}):(\d{2})/)
-  const single = delivery_time.match(/(\d{1,2}):(\d{2})/)
+const FILTERS = [
+  { key: 'waiting', label: 'Ожидают' },
+  { key: 'enroute', label: 'В пути' },
+  { key: 'done',    label: 'Доставлено' },
+  { key: 'all',     label: 'Все' },
+]
+
+/* ── Urgency: parse delivery_period end time, check if today & approaching ── */
+function parseEndHour(period) {
+  if (!period) return null
+  const m = period.match(/(\d{1,2}):(\d{2})\s*[–\-]\s*(\d{1,2}):(\d{2})/)
+  if (!m) return null
+  return { h: parseInt(m[3]), m: parseInt(m[4]) }
+}
+
+function getUrgency(order) {
+  // Only for orders not yet in delivery
+  if (order.status === 'in_delivery' || order.status === 'delivered') return 'none'
+  if (!order.delivery_date || !/сегодня/i.test(order.delivery_date)) return 'none'
+  const end = parseEndHour(order.delivery_period)
+  if (!end) return 'none'
   const now = new Date()
-  const d = new Date(now)
-  if (ranges) {
-    d.setHours(parseInt(ranges[3]), parseInt(ranges[4]), 0, 0)
-  } else if (single) {
-    d.setHours(parseInt(single[1]), parseInt(single[2]), 0, 0)
-  } else {
-    return null
-  }
-  return d
+  const endMin = end.h * 60 + end.m
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const diff = endMin - nowMin
+  if (diff <= 0) return 'overdue'    // past deadline
+  if (diff <= 60) return 'urgent'    // less than 1 hour
+  if (diff <= 120) return 'warning'  // less than 2 hours
+  return 'none'
 }
 
-function isOverdue(order) {
-  if (order.status !== 'in_delivery') return false
-  const end = parseDeliveryEnd(order.delivery_time)
-  if (!end) return false
-  return new Date() > end
-}
+/* ── Phone icon SVG ── */
+const PhoneIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+)
 
-function minutesPastDue(order) {
-  const end = parseDeliveryEnd(order.delivery_time)
-  if (!end) return 0
-  return Math.floor((Date.now() - end.getTime()) / 60000)
-}
-
-// ── OrderCard ─────────────────────────────────────────────────────────────────
-function OrderCard({ order, onAction, actionLoading }) {
+/* ── OrderCard ───────────────────────────────────────────────────────────────── */
+function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
   const [open, setOpen] = useState(false)
-  const st = STATUS[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
+  const [cashConfirm, setCashConfirm] = useState(false)
+  const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
-  const overdue = isOverdue(order)
-  const minsLate = overdue ? minutesPastDue(order) : 0
+  const deliveryInfo = [order.delivery_date, order.delivery_period].filter(Boolean).join(' · ')
+  const urgency = getUrgency(order)
+  const isCash = order.payment_method === 'cash'
+
+  const urgencyBorder = urgency === 'overdue'
+    ? '2px solid #E03131'
+    : urgency === 'urgent'
+      ? '2px solid #E67700'
+      : urgency === 'warning'
+        ? '2px solid #FFD43B'
+        : 'none'
+
+  const urgencyShadow = urgency === 'overdue'
+    ? '0 0 0 3px rgba(224,49,49,0.15), 0 2px 12px rgba(224,49,49,0.2)'
+    : urgency === 'urgent'
+      ? '0 0 0 3px rgba(230,119,0,0.12), 0 2px 12px rgba(230,119,0,0.15)'
+      : '0 1px 4px rgba(0,0,0,0.04)'
 
   return (
     <div style={{
-      ...s.card,
-      opacity: order.status === 'delivered' ? 0.75 : 1,
-      border: overdue
-        ? '1.5px solid rgba(224,49,49,0.4)'
-        : order.status === 'in_delivery'
-          ? `1.5px solid rgba(25,113,194,0.25)`
-          : `1px solid ${BORDER}`,
-      boxShadow: overdue ? '0 2px 16px rgba(224,49,49,0.12)' : '0 1px 3px rgba(0,0,0,0.04)',
+      background: '#fff', borderRadius: 18, overflow: 'hidden',
+      border: urgencyBorder,
+      boxShadow: urgencyShadow,
+      opacity: order.status === 'delivered' ? 0.7 : 1,
+      borderLeft: urgency !== 'none' ? undefined
+        : order.status === 'in_delivery' ? '3px solid #1971C2'
+        : order.status === 'assigned_to_courier' ? `3px solid ${C}`
+        : 'none',
+      animation: urgency === 'overdue' ? 'urgencyPulse 1.5s ease-in-out infinite' : urgency === 'urgent' ? 'urgencyPulse 2.5s ease-in-out infinite' : 'none',
     }}>
 
-      {/* Overdue strip */}
-      {overdue && (
-        <div style={s.overdueStrip}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-            <path d="M12 8v4M12 16h.01" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" fill="none" stroke="#fff" strokeWidth="1.6"/>
-          </svg>
-          Время доставки прошло {minsLate > 0 ? `${minsLate} мин назад` : ''}— подтвердите доставку!
+      {/* Urgency strip */}
+      {urgency !== 'none' && (
+        <div style={{
+          padding: '7px 14px', fontSize: 12, fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: urgency === 'overdue' ? 'linear-gradient(90deg, #E03131, #C92A2A)' : urgency === 'urgent' ? 'linear-gradient(90deg, #E67700, #D9480F)' : '#FFF3BF',
+          color: urgency === 'warning' ? '#E67700' : '#fff',
+        }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: urgency === 'warning' ? '#E67700' : '#fff',
+            boxShadow: `0 0 0 3px ${urgency === 'warning' ? 'rgba(230,119,0,0.3)' : 'rgba(255,255,255,0.3)'}`,
+            animation: 'pulse 1.5s infinite',
+          }} />
+          {urgency === 'overdue' ? 'Время доставки вышло!' : urgency === 'urgent' ? 'Срочно — менее 1 часа!' : 'Скоро истечёт время доставки'}
         </div>
       )}
 
-      {/* Card header */}
-      <div style={s.cardTop} onClick={() => setOpen(o => !o)}>
-        <div style={s.cardLeft}>
-          <div style={s.orderBadge}>#{order.id}</div>
-          <div style={s.cardInfo}>
-            <div style={s.cardAddr}>{order.address}</div>
-            {order.delivery_time && (
-              <div style={{ ...s.cardTime, color: overdue ? '#E03131' : TEXT2 }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                {order.delivery_time}
+      {/* Header */}
+      <div style={{ padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setOpen(o => !o)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>#{order.id}</span>
+              <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: st.bg, color: st.color }}>{st.label}</span>
+            </div>
+            {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
+            {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.address}</div>}
+            {deliveryInfo && (
+              <div style={{ fontSize: 12, marginTop: 2, color: urgency === 'overdue' ? '#E03131' : urgency === 'urgent' ? '#E67700' : TEXT2, fontWeight: urgency !== 'none' ? 700 : 400 }}>
+                {deliveryInfo}
               </div>
             )}
           </div>
-        </div>
-        <div style={s.cardRight}>
-          <div style={{ ...s.cardTotal, color: overdue ? '#E03131' : C }}>{Number(order.total || 0).toLocaleString()} сум</div>
-          <span style={{ ...s.statusBadge, background: st.bg, color: st.color }}>{st.label}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-            style={{ marginTop: 4, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
-            <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginTop: 6, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
         </div>
       </div>
 
       {/* Expanded details */}
       {open && (
-        <div style={s.details}>
+        <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* Client contacts */}
-          <div style={s.infoBlock}>
-            {order.recipient_phone && (
-              <a href={`tel:${order.recipient_phone}`} style={s.contactRow}>
-                <div style={{ ...s.contactIcon, background: '#EDF3FF' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4l1.9-1.9c.2-.2.5-.3.8-.1 1 .4 2.1.6 3.1.6.4 0 .8.3.8.8V19c0 .4-.4.8-.8.8C9.1 19.8 4.2 14.9 4.2 8.8c0-.5.4-.8.8-.8H8c.5 0 .8.4.8.8 0 1.1.2 2.1.6 3.1.1.3 0 .6-.1.8l-1.9 1.9-.6-3.8z" fill="#3B5BDB"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={s.contactLabel}>Позвонить клиенту</div>
-                  <div style={{ ...s.contactVal, color: '#3B5BDB' }}>{order.recipient_phone}</div>
-                </div>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 18l6-6-6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </a>
-            )}
-
-            {order.client_telegram_id && (
-              <a href={`tg://user?id=${order.client_telegram_id}`} style={s.contactRow}>
-                <div style={{ ...s.contactIcon, background: '#E8F4FD' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M21.6 12.3C21.6 17.4 17.4 21.6 12 21.6C9.8 21.6 7.7 20.9 6 19.7L2.4 20.4 3.1 17C1.9 15.2 1.2 13.1 1.2 10.9 1.2 5.8 5.4 1.6 10.8 1.6" stroke="#1971C2" strokeWidth="1.4" strokeLinecap="round"/>
-                    <path d="M17.5 5.5l-7 4 3 1 1 3 3-4" stroke="#1971C2" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={s.contactLabel}>Написать в Telegram</div>
-                  <div style={{ ...s.contactVal, color: '#1971C2' }}>Открыть чат</div>
-                </div>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 18l6-6-6-6" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </a>
-            )}
-          </div>
-
-          {/* Address + map */}
-          <div style={s.addrBlock}>
-            <div style={{ flex: 1 }}>
-              <div style={s.blockLabel}>Адрес доставки</div>
+          {/* Delivery info */}
+          {order.address && (
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Доставка</div>
               <div style={{ fontSize: 15, fontWeight: 600, color: TEXT, lineHeight: 1.4 }}>{order.address}</div>
-              {order.extra_info && (
-                <div style={{ fontSize: 13, color: TEXT2, marginTop: 4, lineHeight: 1.4 }}>
-                  {order.extra_info}
+              {order.extra_info && <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.3 }}>{order.extra_info}</div>}
+              {deliveryInfo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: urgency !== 'none' ? '#E03131' : CD, fontWeight: 600 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  {deliveryInfo}
                 </div>
               )}
-            </div>
-            {order.latitude && order.longitude && (
-              <a
-                href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
-                target="_blank" rel="noopener noreferrer"
-                style={s.mapBtn}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7M9 20l6-3M9 20V7m6 13l5.447-2.724A1 1 0 0021 16.382V5.618a1 1 0 00-1.447-.894L15 7m0 13V7M9 7l6-2"
-                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Карта
-              </a>
-            )}
-          </div>
-
-          {/* Delivery time highlight */}
-          {order.delivery_time && (
-            <div style={{ ...s.timeBlock, background: overdue ? '#FFF5F5' : '#F3F0FF', borderColor: overdue ? 'rgba(224,49,49,0.2)' : 'rgba(103,65,217,0.15)' }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke={overdue ? '#E03131' : '#6741D9'} strokeWidth="1.6"/>
-                <path d="M12 7v5l3 3" stroke={overdue ? '#E03131' : '#6741D9'} strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: overdue ? '#E03131' : '#6741D9', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                  {overdue ? 'Время вышло!' : 'Время доставки'}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: overdue ? '#E03131' : '#6741D9' }}>{order.delivery_time}</div>
-              </div>
+              {order.latitude && (
+                <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, background: '#111827', color: '#fff', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/></svg>
+                  Открыть на карте
+                </a>
+              )}
             </div>
           )}
 
-          {/* Items to deliver */}
+          {/* Items */}
           {order.items?.length > 0 && (
-            <div style={s.itemsBlock}>
-              <div style={s.blockLabel}>Доставить</div>
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Доставить</div>
               {order.items.map((item, idx) => (
-                <div key={item.id ?? idx} style={s.itemRow}>
-                  <div style={s.itemDot} />
-                  <span style={{ flex: 1, fontSize: 14, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
-                  <span style={s.itemQty}>× {item.quantity}</span>
+                <div key={item.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                  <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
+                  <span style={{ fontWeight: 700, color: TEXT2 }}>x{item.quantity}</span>
                 </div>
               ))}
             </div>
@@ -208,94 +178,75 @@ function OrderCard({ order, onAction, actionLoading }) {
 
           {/* Return bottles */}
           {order.return_bottles_count > 0 && (
-            <div style={s.bottleBlock}>
-              <div style={{ ...s.bottleIcon }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/>
-                  <path d="M3 3v5h5" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#E6FCF5', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(18,184,134,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 3v5h5" stroke="#0A7A5C" strokeWidth="1.8" strokeLinecap="round"/></svg>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0A7A5C' }}>Забрать пустые бутылки</div>
-                <div style={{ fontSize: 13, color: '#12B886' }}>
-                  {order.return_bottles_count} шт.{order.return_bottles_volume ? ` · ${order.return_bottles_volume} л каждая` : ''}
-                </div>
+                <div style={{ fontSize: 13, color: '#12B886' }}>{order.return_bottles_count} шт.</div>
               </div>
             </div>
           )}
 
-          {/* Total */}
-          <div style={s.totalRow}>
-            <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
-            <span style={s.totalVal}>{Number(order.total || 0).toLocaleString()} сум</span>
+          {/* Total — only for cash */}
+          {isCash && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
+              <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
+              <span style={{ fontWeight: 900, fontSize: 22, color: C }}>{(order.total || 0).toLocaleString()} сум</span>
+            </div>
+          )}
+
+          {/* Call buttons: client + manager */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {order.recipient_phone && (
+              <a href={`tel:${order.recipient_phone}`} style={s.contactBtn}>
+                <PhoneIcon />
+                Клиенту
+              </a>
+            )}
+            <a href={`tel:${MANAGER_PHONE}`} style={s.contactBtn}>
+              <PhoneIcon />
+              Менеджеру
+            </a>
           </div>
 
           {/* Action buttons */}
           {isActive && (
-            <div style={s.actions}>
-              {/* confirmed: just show "Принял" to acknowledge */}
+            <div style={{ display: 'flex', gap: 8 }}>
               {order.status === 'confirmed' && (
-                <button
-                  style={{ ...s.actionBtn, background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)', flex: 1 }}
-                  disabled={actionLoading}
-                  onClick={() => onAction(courierAccept, order.id)}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                <button style={s.btnAccent} disabled={actionLoading} onClick={() => onAction(courierAccept, order.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Принял заказ
                 </button>
               )}
-
-              {/* assigned_to_courier: Принял + Выехал */}
               {order.status === 'assigned_to_courier' && (
-                <>
-                  <button
-                    style={{ ...s.actionBtn, background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)' }}
-                    disabled={actionLoading}
-                    onClick={() => onAction(courierAccept, order.id)}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Принял
-                  </button>
-                  <button
-                    style={{ ...s.actionBtn, background: '#111827', color: '#fff', border: 'none', flex: 1.5 }}
-                    disabled={actionLoading}
-                    onClick={() => onAction(courierInDelivery, order.id)}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/>
-                      <circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/>
-                      <path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Выехал
-                  </button>
-                </>
-              )}
-
-              {/* in_delivery: Доставлено */}
-              {order.status === 'in_delivery' && (
-                <button
-                  style={{
-                    ...s.actionBtn, border: 'none', flex: 1,
-                    background: overdue
-                      ? 'linear-gradient(135deg, #E03131, #C92A2A)'
-                      : `linear-gradient(135deg, ${C}, ${CD})`,
-                    color: '#fff',
-                    boxShadow: overdue
-                      ? '0 4px 14px rgba(224,49,49,0.35)'
-                      : '0 4px 14px rgba(141,198,63,0.35)',
-                  }}
-                  disabled={actionLoading}
-                  onClick={() => onAction(courierDelivered, order.id)}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  {overdue ? 'Подтвердить доставку!' : 'Доставлено'}
+                <button style={urgency !== 'none' ? s.btnUrgent : s.btnPrimary} disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Выехал
                 </button>
+              )}
+              {order.status === 'in_delivery' && !cashConfirm && (
+                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => {
+                  if (isCash) setCashConfirm(true)
+                  else onAction(courierDelivered, order.id)
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Доставлено
+                </button>
+              )}
+              {cashConfirm && (
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ background: '#FFF8E6', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#E67700', textAlign: 'center' }}>
+                    Вы получили {(order.total || 0).toLocaleString()} сум наличными?
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={s.btnSuccess} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, true); setCashConfirm(false) }}>
+                      Да, получил
+                    </button>
+                    <button style={{ ...s.btnAccent, flex: 1, background: '#FFF5F5', color: '#E03131', border: '1.5px solid rgba(224,49,49,0.2)' }} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, false); setCashConfirm(false) }}>
+                      Нет
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -305,13 +256,188 @@ function OrderCard({ order, onAction, actionLoading }) {
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+/* ── Create Order Modal ──────────────────────────────────────────────────────── */
+const ORDER_WATERS = [
+  { id: 'w20', name: 'Вода 20л', price: 25000 },
+  { id: 'w10', name: 'Вода 10л', price: 14000 },
+  { id: 'w5', name: 'Вода 5л', price: 8000 },
+  { id: 'w1.5', name: 'Вода 1.5л', price: 4500 },
+  { id: 'w1', name: 'Вода 1л', price: 3500 },
+  { id: 'w0.5', name: 'Вода 0.5л', price: 2000 },
+  { id: 'g1.5', name: 'Газ. вода 1.5л', price: 6000 },
+  { id: 'g1', name: 'Газ. вода 1л', price: 5000 },
+  { id: 'g0.5', name: 'Газ. вода 0.5л', price: 3000 },
+]
+
+function CreateOrderModal({ onClose, onSave, courierId }) {
+  const [phone, setPhone] = useState('')
+  const [client, setClient] = useState(null) // found client or null
+  const [lookingUp, setLookingUp] = useState(false)
+  const [looked, setLooked] = useState(false)
+  const [address, setAddress] = useState('')
+  const [selected, setSelected] = useState({}) // { waterId: qty }
+  const [loading, setLoading] = useState(false)
+
+  // Phone lookup with debounce
+  const doLookup = async () => {
+    const raw = phone.replace(/\D/g, '')
+    if (raw.length < 9) { setClient(null); setLooked(false); return }
+    setLookingUp(true)
+    try {
+      const result = await lookupClientByPhone(phone)
+      setClient(result)
+      if (result?.addresses?.[0]?.address) setAddress(result.addresses[0].address)
+    } catch { setClient(null) }
+    finally { setLookingUp(false); setLooked(true) }
+  }
+
+  const toggleWater = (w) => {
+    setSelected(prev => {
+      if (prev[w.id]) { const n = { ...prev }; delete n[w.id]; return n }
+      return { ...prev, [w.id]: 1 }
+    })
+  }
+  const setQty = (id, q) => setSelected(p => ({ ...p, [id]: Math.max(1, q) }))
+
+  const total = Object.entries(selected).reduce((sum, [id, qty]) => {
+    const w = ORDER_WATERS.find(w => w.id === id)
+    return sum + (w ? w.price * qty : 0)
+  }, 0)
+
+  const items = Object.entries(selected).map(([id, qty]) => {
+    const w = ORDER_WATERS.find(w => w.id === id)
+    return w ? { product_name: w.name, quantity: qty, price: w.price } : null
+  }).filter(Boolean)
+
+  const canSave = phone.trim() && address.trim() && items.length > 0
+
+  const handle = async () => {
+    if (!canSave) return
+    setLoading(true)
+    try {
+      await onSave({
+        client_name: client?.name || '',
+        recipient_phone: phone.trim(),
+        address: address.trim(),
+        total,
+        items,
+        courier_id: courierId,
+        user_id: client?.id || null,
+      })
+      onClose()
+    } catch { alert('Ошибка при создании') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...s.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={s.sheetHandle} />
+        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
+
+        {/* Phone lookup */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Телефон клиента</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...s.inp, flex: 1 }} placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
+            <button style={{ padding: '0 16px', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }} onClick={doLookup} disabled={lookingUp}>
+              {lookingUp ? '...' : 'Найти'}
+            </button>
+          </div>
+
+          {/* Client info */}
+          {looked && client && (
+            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>{client.name}</div>
+              {client.bottles_owed > 0 && (
+                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>Долг: {client.bottles_owed} бутылок (20л)</div>
+              )}
+            </div>
+          )}
+          {looked && !client && (
+            <div style={{ fontSize: 12, color: TEXT2, fontStyle: 'italic' }}>Клиент не найден — заказ сохранится по номеру</div>
+          )}
+        </div>
+
+        {/* Address */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Адрес доставки</div>
+          {client?.addresses?.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {client.addresses.map(a => (
+                <button key={a.id} onClick={() => setAddress(a.address)} style={{
+                  padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: address === a.address ? `${C}15` : '#F8F9FA',
+                  color: address === a.address ? CD : TEXT2,
+                  border: address === a.address ? `1px solid ${C}` : `1px solid ${BORDER}`,
+                }}>{a.label || a.address?.split(',')[0] || a.address}</button>
+              ))}
+            </div>
+          )}
+          <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
+        </div>
+
+        {/* Water selection */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав заказа</div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ORDER_WATERS.map(w => {
+              const sel = selected[w.id]
+              return (
+                <div key={w.id} style={{
+                  borderRadius: 12, border: sel ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
+                  background: sel ? `${C}06` : '#fff', padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => toggleWater(w)}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                      background: sel ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+                      border: sel ? 'none' : '2px solid #ddd',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg>}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{w.name}</span>
+                    <span style={{ fontSize: 12, color: TEXT2 }}>{w.price.toLocaleString()} сум</span>
+                  </div>
+                  {sel && (
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
+                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel - 1)}>−</button>
+                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel}</span>
+                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel + 1)}>+</button>
+                      <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>{(w.price * sel).toLocaleString()} сум</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Total + payment info */}
+        {total > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 12, padding: '12px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
+            <span style={{ fontSize: 13, color: TEXT2 }}>Итого (наличные)</span>
+            <span style={{ fontWeight: 800, fontSize: 20, color: C }}>{total.toLocaleString()} сум</span>
+          </div>
+        )}
+
+        <button style={{ ...s.btnSuccess, ...(canSave ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }} disabled={!canSave || loading} onClick={handle}>
+          {loading ? 'Создаю...' : `Создать заказ · ${total.toLocaleString()} сум`}
+        </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main page ───────────────────────────────────────────────────────────────── */
 export default function CourierOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [filter, setFilter] = useState('active')
-  const [now, setNow] = useState(new Date())
+  const [filter, setFilter] = useState('waiting')
+  const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
@@ -327,247 +453,172 @@ export default function CourierOrders() {
 
   useEffect(load, [load])
 
-  // ── Tick every 30s for overdue detection
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30000)
+    const t = setInterval(load, 30000)
     return () => clearInterval(t)
-  }, [])
+  }, [load])
 
   const doAction = async (fn, orderId) => {
     setActionLoading(true)
     try { await fn(orderId); load() }
-    catch (e) { console.error(e) }
+    catch { alert('Ошибка операции') }
     finally { setActionLoading(false) }
   }
 
-  const active = orders.filter(o => ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(o.status))
+  const doDeliverCash = async (orderId, cashCollected) => {
+    setActionLoading(true)
+    try { await courierDelivered(orderId, cashCollected); load() }
+    catch { alert('Ошибка операции') }
+    finally { setActionLoading(false) }
+  }
+
+  const handleCreateOrder = async (data) => {
+    await courierCreateOrder(data)
+    load()
+  }
+
+  const waiting = orders.filter(o => ['confirmed', 'assigned_to_courier'].includes(o.status))
+  const enroute = orders.filter(o => o.status === 'in_delivery')
   const done = orders.filter(o => o.status === 'delivered')
-  const overdueOrders = active.filter(o => isOverdue(o))
-  const shown = filter === 'active' ? active : done
+  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length, all: orders.length }
+
+  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : filter === 'done' ? done : orders
+
+  // Sort: urgent first
+  const sorted = shown.slice().sort((a, b) => {
+    const urgA = getUrgency(a) === 'overdue' ? 0 : getUrgency(a) === 'urgent' ? 1 : getUrgency(a) === 'warning' ? 2 : 3
+    const urgB = getUrgency(b) === 'overdue' ? 0 : getUrgency(b) === 'urgent' ? 1 : getUrgency(b) === 'warning' ? 2 : 3
+    if (urgA !== urgB) return urgA - urgB
+    const pri = { in_delivery: 0, assigned_to_courier: 1, confirmed: 2, delivered: 3 }
+    return (pri[a.status] ?? 9) - (pri[b.status] ?? 9)
+  })
+
+  const urgentWaiting = waiting.filter(o => getUrgency(o) !== 'none').length
+
+  const emptyMsg = {
+    waiting: { title: 'Нет ожидающих заказов', hint: 'Ожидайте назначения от менеджера' },
+    enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "Выехал" чтобы начать доставку' },
+    done:    { title: 'Нет доставленных', hint: 'Выполненные заказы появятся здесь' },
+    all:     { title: 'Нет заказов', hint: 'Создайте заказ или ожидайте назначения' },
+  }[filter]
 
   return (
-    <CourierLayout title="Заказы" activeCount={active.length} onRefresh={load}>
+    <CourierLayout title="Заказы">
+      {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} courierId={courierId} />}
 
-      {/* Overdue alert */}
-      {overdueOrders.length > 0 && (
-        <div style={s.overdueAlert}>
-          <div style={s.overdueAlertLeft}>
-            <div style={s.overdueAlertPulse} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>
-                {overdueOrders.length === 1
-                  ? '⚠️ Просроченная доставка!'
-                  : `⚠️ ${overdueOrders.length} просроченных доставки!`}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-                Нажмите на заказ и подтвердите доставку
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* CSS for urgency pulse animation */}
+      <style>{`
+        @keyframes urgencyPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
+          50% { box-shadow: 0 0 0 6px rgba(224,49,49,0.12); }
+        }
+      `}</style>
 
-      {/* Filter chips */}
-      <div style={s.summaryRow}>
-        <button style={{ ...s.chip, ...(filter === 'active' ? s.chipActive : {}) }} onClick={() => setFilter('active')}>
-          Активные
-          {active.length > 0 && (
-            <span style={{ ...s.chipBadge, background: filter === 'active' ? '#fff' : (overdueOrders.length > 0 ? '#E03131' : '#F2F2F7'), color: filter === 'active' ? C : (overdueOrders.length > 0 ? '#fff' : TEXT2) }}>
-              {active.length}
-            </span>
-          )}
-        </button>
-        <button style={{ ...s.chip, ...(filter === 'done' ? s.chipActive : {}) }} onClick={() => setFilter('done')}>
-          Выполнено сегодня
-          {done.length > 0 && (
-            <span style={{ ...s.chipBadge, background: filter === 'done' ? '#fff' : '#F2F2F7', color: filter === 'done' ? C : TEXT2 }}>
-              {done.length}
-            </span>
-          )}
+      {/* Create order button */}
+      <button style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        width: '100%', padding: '11px 14px', borderRadius: 14, border: 'none',
+        background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700,
+        cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent',
+        marginBottom: 12,
+      }} onClick={() => setShowCreate(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        Создать заказ
+      </button>
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {FILTERS.map(f => {
+          const active = filter === f.key
+          const count = counts[f.key] || 0
+          const hasUrgent = f.key === 'waiting' && urgentWaiting > 0
+          return (
+            <button key={f.key} onClick={() => setFilter(f.key)} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              padding: '10px 4px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: active ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+              color: active ? '#fff' : TEXT2,
+              border: active ? 'none' : `1.5px solid ${C}40`,
+              boxShadow: active ? '0 4px 12px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
+              WebkitTapHighlightColor: 'transparent', position: 'relative',
+            }}>
+              {f.label}
+              {count > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 800, borderRadius: 999,
+                  padding: '1px 5px', minWidth: 16, textAlign: 'center',
+                  background: active ? 'rgba(255,255,255,0.3)' : hasUrgent ? '#E03131' : '#F2F2F7',
+                  color: active ? '#fff' : hasUrgent ? '#fff' : TEXT2,
+                }}>{count}</span>
+              )}
+            </button>
+          )
+        })}
+        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
 
+      {/* Orders list */}
       {loading ? (
-        <div style={s.center}><div style={s.spinner} /></div>
-      ) : shown.length === 0 ? (
-        <div style={s.empty}>
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="4" width="18" height="16" rx="3" stroke={C} strokeWidth="1.2"/>
-            <path d="M7 9h10M7 13h6" stroke={C} strokeWidth="1.4" strokeLinecap="round"/>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      ) : sorted.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 10 }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
+            <rect x="3" y="4" width="18" height="16" rx="3" stroke={TEXT} strokeWidth="1.5"/>
+            <path d="M7 9h10M7 13h6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <div style={s.emptyTitle}>
-            {filter === 'active' ? 'Нет активных заказов' : 'Нет выполненных заказов'}
-          </div>
-          <div style={s.emptyHint}>
-            {filter === 'active' ? 'Ожидайте назначения от менеджера' : 'Выполненные заказы за сегодня появятся здесь'}
-          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: TEXT }}>{emptyMsg.title}</div>
+          <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>{emptyMsg.hint}</div>
         </div>
       ) : (
-        <div style={s.list}>
-          {/* Sort: overdue first, then in_delivery, then rest */}
-          {shown
-            .slice()
-            .sort((a, b) => {
-              if (isOverdue(a) && !isOverdue(b)) return -1
-              if (!isOverdue(a) && isOverdue(b)) return 1
-              if (a.status === 'in_delivery' && b.status !== 'in_delivery') return -1
-              if (a.status !== 'in_delivery' && b.status === 'in_delivery') return 1
-              return 0
-            })
-            .map(order => (
-              <OrderCard key={order.id} order={order} onAction={doAction} actionLoading={actionLoading} />
-            ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {sorted.map(order => (
+            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} actionLoading={actionLoading} />
+          ))}
         </div>
       )}
     </CourierLayout>
   )
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const s = {
-  overdueAlert: {
-    background: 'linear-gradient(135deg, #E03131, #C92A2A)',
-    borderRadius: 14, padding: '14px 16px',
-    color: '#fff', marginBottom: 14,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    boxShadow: '0 4px 16px rgba(224,49,49,0.3)',
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
+  sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
+  sheetHandle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
+  inp: { border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 15, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' },
+  contactBtn: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${BORDER}`,
+    background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent',
   },
-  overdueAlertLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  overdueAlertPulse: {
-    width: 12, height: 12, borderRadius: '50%',
-    background: '#fff', flexShrink: 0,
-    boxShadow: '0 0 0 4px rgba(255,255,255,0.3)',
-    animation: 'pulse 1.5s infinite',
-  },
-
-  summaryRow: { display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  chip: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '8px 16px', borderRadius: 999, border: `1.5px solid rgba(60,60,67,0.12)`,
-    background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent', whiteSpace: 'nowrap',
-  },
-  chipActive: { background: C, color: '#fff', borderColor: 'transparent', boxShadow: '0 4px 12px rgba(141,198,63,0.3)' },
-  chipBadge: {
-    fontSize: 10, fontWeight: 800, borderRadius: 999,
-    padding: '1px 6px', minWidth: 18, textAlign: 'center',
-  },
-
-  center: { display: 'flex', justifyContent: 'center', padding: 60 },
-  spinner: {
-    width: 32, height: 32, borderRadius: '50%',
-    border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`,
-    animation: 'spin 0.8s linear infinite',
-  },
-  empty: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: 10, padding: '60px 20px', textAlign: 'center',
-  },
-  emptyTitle: { fontSize: 17, fontWeight: 700, color: TEXT },
-  emptyHint: { fontSize: 13, color: TEXT2 },
-
-  list: { display: 'flex', flexDirection: 'column', gap: 10 },
-
-  // Card
-  card: {
-    background: '#fff', borderRadius: 16, overflow: 'hidden',
-    transition: 'box-shadow 0.2s',
-  },
-  overdueStrip: {
-    background: 'linear-gradient(90deg, #E03131, #C92A2A)',
-    color: '#fff', padding: '8px 16px',
-    fontSize: 12, fontWeight: 700,
-    display: 'flex', alignItems: 'center', gap: 8,
-  },
-  cardTop: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    padding: '14px 16px', cursor: 'pointer', gap: 12,
-    WebkitTapHighlightColor: 'transparent',
-  },
-  cardLeft: { display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 },
-  orderBadge: {
-    background: '#F2F2F7', borderRadius: 8, padding: '4px 8px',
-    fontSize: 12, fontWeight: 800, color: TEXT2, flexShrink: 0,
-  },
-  cardInfo: { flex: 1, minWidth: 0 },
-  cardAddr: { fontSize: 14, fontWeight: 600, color: TEXT, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  cardTime: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, marginTop: 3 },
-  cardRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 },
-  cardTotal: { fontWeight: 900, fontSize: 16 },
-  statusBadge: { fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700 },
-
-  details: {
-    borderTop: `1px solid ${BORDER}`, padding: '14px 16px',
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
-
-  // Contacts
-  infoBlock: { display: 'flex', flexDirection: 'column', gap: 4 },
-  contactRow: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    padding: '11px 12px', background: '#FAFAFA', borderRadius: 13,
-    textDecoration: 'none', cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent',
-  },
-  contactIcon: {
-    width: 34, height: 34, borderRadius: 9,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  contactLabel: { fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 },
-  contactVal: { fontSize: 14, fontWeight: 700, marginTop: 1 },
-
-  // Address
-  addrBlock: {
-    display: 'flex', alignItems: 'flex-start', gap: 10,
-    background: '#FAFAFA', borderRadius: 13, padding: '12px 14px',
-  },
-  blockLabel: { fontSize: 10, color: TEXT2, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  mapBtn: {
-    display: 'flex', alignItems: 'center', gap: 6, flexDirection: 'column',
-    background: '#111827', color: '#fff', borderRadius: 12,
-    padding: '12px 14px', fontSize: 11, fontWeight: 700, textDecoration: 'none',
-    flexShrink: 0, WebkitTapHighlightColor: 'transparent',
-  },
-
-  // Time
-  timeBlock: {
-    display: 'flex', alignItems: 'center', gap: 10,
-    borderRadius: 12, padding: '11px 14px', border: '1px solid',
-  },
-
-  // Items
-  itemsBlock: {
-    background: '#FAFAFA', borderRadius: 12, padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: 8,
-  },
-  itemRow: { display: 'flex', alignItems: 'center', gap: 8 },
-  itemDot: { width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 },
-  itemQty: { fontSize: 14, fontWeight: 700, color: TEXT2 },
-
-  // Bottles
-  bottleBlock: {
-    display: 'flex', alignItems: 'center', gap: 12,
-    background: '#E6FCF5', borderRadius: 12, padding: '13px 14px',
-    border: '1px solid rgba(18,184,134,0.25)',
-  },
-  bottleIcon: {
-    width: 38, height: 38, borderRadius: 10, background: 'rgba(18,184,134,0.15)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-
-  // Total
-  totalRow: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: '#F0FFF0', borderRadius: 12, padding: '13px 14px',
-    border: `1px solid rgba(141,198,63,0.25)`,
-  },
-  totalVal: { fontWeight: 900, fontSize: 22, color: C },
-
-  // Actions
-  actions: { display: 'flex', gap: 8 },
-  actionBtn: {
+  btnAccent: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
     padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent', transition: 'opacity 0.15s',
+    background: '#F3F0FF', color: '#6741D9', border: '1.5px solid rgba(103,65,217,0.2)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnPrimary: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: '#111827', color: '#fff', border: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnUrgent: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: 'linear-gradient(135deg, #E03131, #C92A2A)', color: '#fff', border: 'none',
+    boxShadow: '0 4px 14px rgba(224,49,49,0.3)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  btnSuccess: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+    padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+    background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', border: 'none',
+    boxShadow: '0 4px 14px rgba(141,198,63,0.35)',
+    WebkitTapHighlightColor: 'transparent',
   },
 }

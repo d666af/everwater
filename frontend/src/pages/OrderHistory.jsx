@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
 import { useOrdersStore } from '../store/orders'
+import { useAuthStore } from '../store/auth'
+import { getUserByTelegram, getUserOrders } from '../api'
 import ReviewModal from '../components/ReviewModal'
 
 const C = '#8DC63F'
@@ -54,11 +56,39 @@ function StatusIcon({ status, size = 16 }) {
 
 export default function OrderHistory() {
   const [expanded, setExpanded] = useState(null)
-  const [reviewOrderId, setReviewOrderId] = useState(null)
+  const [reviewOrder, setReviewOrder] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
+  const [dismissedIds, setDismissedIds] = useState(new Set())
+  const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
-  const orders = useOrdersStore(s => s.orders)
+  const { orders, setOrders, loaded } = useOrdersStore()
+  const { user: authUser } = useAuthStore()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        let userId = null
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user
+        if (tgUser?.id) {
+          const u = await getUserByTelegram(tgUser.id)
+          userId = u?.id
+        } else if (authUser?.id) {
+          userId = authUser.id
+        }
+        if (userId) {
+          const data = await getUserOrders(userId)
+          if (Array.isArray(data)) setOrders(data)
+        }
+      } catch {
+        // keep whatever is in the store
+      } finally {
+        setFetchDone(true)
+      }
+    }
+    if (!loaded) load()
+    else setFetchDone(true)
+  }, []) // eslint-disable-line
 
   const repeatOrder = (order) => {
     if (!order.items?.length) return
@@ -69,8 +99,25 @@ export default function OrderHistory() {
 
   const handleReviewDone = (orderId) => {
     setReviewedIds(s => new Set([...s, orderId]))
-    setReviewOrderId(null)
+    setReviewOrder(null)
   }
+
+  const handleReviewDismiss = (orderId) => {
+    setDismissedIds(s => new Set([...s, orderId]))
+    setReviewOrder(null)
+  }
+
+  // Auto-popup for newly delivered orders
+  const autoReviewOrder = orders.find(o =>
+    o.status === 'delivered' && !reviewedIds.has(o.id) && !dismissedIds.has(o.id) && !o.review_id
+  )
+  const showAutoReview = autoReviewOrder && !reviewOrder
+
+  if (!fetchDone) return (
+    <div style={{ ...s.page, alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: '#8e8e93', fontSize: 15 }}>Загружаем заказы…</div>
+    </div>
+  )
 
   if (!orders.length) return (
     <div style={s.page}>
@@ -99,7 +146,7 @@ export default function OrderHistory() {
 
       {active.map(order => (
         <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-          onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} isActive navigate={navigate} />
+          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} isActive navigate={navigate} />
       ))}
 
       {archived.length > 0 && (
@@ -108,13 +155,15 @@ export default function OrderHistory() {
 
       {archived.map(order => (
         <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-          onRepeat={repeatOrder} onReview={setReviewOrderId} reviewedIds={reviewedIds} navigate={navigate} />
+          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} navigate={navigate} />
       ))}
 
-      {reviewOrderId && (
-        <ReviewModal orderId={reviewOrderId}
-          onClose={() => setReviewOrderId(null)}
-          onDone={() => handleReviewDone(reviewOrderId)} />
+      {(reviewOrder || showAutoReview) && (
+        <ReviewModal
+          order={reviewOrder || autoReviewOrder}
+          autoPopup={!reviewOrder && showAutoReview}
+          onClose={() => reviewOrder ? setReviewOrder(null) : handleReviewDismiss(autoReviewOrder.id)}
+          onDone={() => handleReviewDone((reviewOrder || autoReviewOrder).id)} />
       )}
       <div style={{ height: 100 }} />
     </div>
@@ -250,11 +299,11 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               Повторить
             </button>
             {canReview && (
-              <button style={s.reviewBtn} onClick={() => onReview(order.id)}>
+              <button style={s.reviewBtn} onClick={() => onReview(order)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="#fff" strokeWidth="1.5" fill="none"/>
                 </svg>
-                Оценить
+                Оценить курьера
               </button>
             )}
             {reviewedIds.has(order.id) && (

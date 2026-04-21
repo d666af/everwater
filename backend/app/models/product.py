@@ -15,5 +15,6 @@ class Product(Base):
     stock: Mapped[int] = mapped_column(Integer, default=999)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    type: Mapped[str] = mapped_column(String(16), default="still")  # still | carbonated
 
     order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")  # noqa: F821

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getUserByTelegram, getSettings } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
+import MapPicker from '../components/MapPicker'
 
 const tg = window.Telegram?.WebApp
 const C = '#8DC63F'
@@ -15,17 +16,20 @@ const SUB_PLANS = [
   { key: 'monthly', label: 'Ежемесячная', desc: 'Доставка раз в месяц', days: 30 },
 ]
 const SUB_WATERS = [
-  { name: 'Вода 20л', volume: 20, price: 25000, blockSize: 1 },
-  { name: 'Вода 10л', volume: 10, price: 14000, blockSize: 1 },
-  { name: 'Вода 5л', volume: 5, price: 8000, blockSize: 1 },
-  { name: 'Вода 1.5л', volume: 1.5, price: 4500, blockSize: 6 },
-  { name: 'Вода 1л', volume: 1, price: 3500, blockSize: 12 },
-  { name: 'Вода 0.5л', volume: 0.5, price: 2000, blockSize: 12 },
+  { id: 'w20', name: 'Вода 20л', volume: 20, price: 25000, blockSize: 1 },
+  { id: 'w10', name: 'Вода 10л', volume: 10, price: 14000, blockSize: 1 },
+  { id: 'w5', name: 'Вода 5л', volume: 5, price: 8000, blockSize: 1 },
+  { id: 'w1.5', name: 'Вода 1.5л', volume: 1.5, price: 4500, blockSize: 6 },
+  { id: 'w1', name: 'Вода 1л', volume: 1, price: 3500, blockSize: 12 },
+  { id: 'w0.5', name: 'Вода 0.5л', volume: 0.5, price: 2000, blockSize: 12 },
+  { id: 'g1.5', name: 'Газ. вода 1.5л', volume: 1.5, price: 6000, blockSize: 6 },
+  { id: 'g1', name: 'Газ. вода 1л', volume: 1, price: 5000, blockSize: 12 },
+  { id: 'g0.5', name: 'Газ. вода 0.5л', volume: 0.5, price: 3000, blockSize: 12 },
 ]
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 // ─── Active Subscription Detail ──────────────────────────────────────────────
-function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
+export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
   const [confirming, setConfirming] = useState(false)
   const endDate = new Date(sub.created)
   endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
@@ -98,33 +102,75 @@ function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
 }
 
 // ─── Subscription Modal ──────────────────────────────────────────────────────
-function SubscriptionModal({ onClose, settings, userStore }) {
+export function SubscriptionModal({ onClose, settings, userStore }) {
   const [step, setStep] = useState('plan') // plan | details | payment | done
   const [plan, setPlan] = useState('weekly')
-  const [water, setWater] = useState({ name: 'Вода 20л', volume: 20, price: 25000, qty: 1, blockSize: 1 })
-  const [carbonated, setCarbonated] = useState(false)
-  const [useBlock, setUseBlock] = useState(false)
+  // Multi-select: { [waterId]: { qty } }
+  const [selected, setSelected] = useState({})
+  const [showMap, setShowMap] = useState(false)
   const [addr, setAddr] = useState('')
   const [landmark, setLandmark] = useState('')
   const [phone, setPhone] = useState('')
+  const [lat, setLat] = useState(null)
+  const [lng, setLng] = useState(null)
+  const [selectedAddrId, setSelectedAddrId] = useState(null)
   const [day, setDay] = useState('')
   const [time, setTime] = useState('')
   const [payMethod, setPayMethod] = useState('balance')
+  const [bonusUsed, setBonusUsed] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const displayName = carbonated ? water.name.replace('Вода', 'Газ. вода') : water.name
-  const actualQty = useBlock && water.blockSize > 1 ? water.qty * water.blockSize : water.qty
-  const total = water.price * actualQty
-  const canPayBalance = userStore.balance >= total
+  const savedAddresses = userStore.saved_addresses
+
+  const toggleWater = (w) => {
+    setSelected(prev => {
+      if (prev[w.id]) {
+        const n = { ...prev }; delete n[w.id]; return n
+      }
+      return { ...prev, [w.id]: { qty: 1 } }
+    })
+  }
+  const setQty = (id, q) => setSelected(p => ({ ...p, [id]: { ...p[id], qty: Math.max(1, q) } }))
+
+  const total = Object.entries(selected).reduce((sum, [id, { qty }]) => {
+    const w = SUB_WATERS.find(w => w.id === id)
+    if (!w) return sum
+    return sum + w.price * qty
+  }, 0)
+
+  const selectedItems = Object.entries(selected).map(([id, { qty }]) => {
+    const w = SUB_WATERS.find(w => w.id === id)
+    return { ...w, qty }
+  }).filter(Boolean)
+
+  const itemsSummary = selectedItems.map(i => `${i.name} x${i.qty}`).join(', ')
+
+  const availableBonus = userStore.bonus_points || 0
+  const afterBonus = Math.max(0, total - bonusUsed)
+  const canPayBalance = userStore.balance >= afterBonus
+
+  const selectSavedAddress = (a) => {
+    setSelectedAddrId(a.id); setAddr(a.address); setLandmark(a.extraInfo || '')
+    setLat(a.lat || null); setLng(a.lng || null)
+  }
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      pos => { setLat(pos.coords.latitude); setLng(pos.coords.longitude) },
+      () => {}, { timeout: 10000 }
+    )
+  }
 
   const submit = async () => {
     setLoading(true)
     await new Promise(r => setTimeout(r, 800))
-    if (payMethod === 'balance') userStore.deductBalance(total)
+    if (payMethod === 'balance') userStore.deductBalance(afterBonus)
+    if (bonusUsed > 0) userStore.deductBonus(bonusUsed)
     userStore.addSubscription({
-      plan, water: displayName, qty: actualQty, total,
-      address: addr, landmark, phone, payMethod, day, time,
-      carbonated,
+      plan, water: itemsSummary, qty: selectedItems.reduce((s, i) => s + i.qty, 0),
+      total: afterBonus, address: addr, landmark, phone, payMethod, day, time,
+      lat, lng,
     })
     setLoading(false)
     setStep('done')
@@ -142,60 +188,94 @@ function SubscriptionModal({ onClose, settings, userStore }) {
             </svg>
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Подписка оформлена!</div>
-          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6 }}>
-            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} доставка — {displayName} x{actualQty}
-          </div>
+          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6 }}>{itemsSummary}</div>
         </div>
         <button style={s.primaryBtn} onClick={onClose}>Готово</button>
       </div>
     </div>
   )
 
-  if (step === 'payment') return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.sheet}>
-        <div style={s.handle} />
-        <div style={s.sheetTitle}>Оплата подписки</div>
-        <div style={{ background: '#f8f8fa', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#3c3c43' }}>
-            <span>{displayName} x{actualQty}</span>
-            <span style={{ fontWeight: 700 }}>{total.toLocaleString()} сум</span>
-          </div>
-          <div style={{ fontSize: 12, color: '#8e8e93' }}>
-            {plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'} · {day}, {time === 'morning' ? '9:00–13:00' : '13:00–18:00'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button
-            style={payMethod === 'balance' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
-            onClick={() => canPayBalance && setPayMethod('balance')}
-          >
-            <div style={ss.payDot(payMethod === 'balance')} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Баланс</div>
-              <div style={{ fontSize: 12, color: canPayBalance ? '#8e8e93' : '#ef4444' }}>
-                {canPayBalance ? `${userStore.balance.toLocaleString()} сум` : 'Недостаточно средств'}
+  if (step === 'payment') {
+    const bonusMax = Math.min(availableBonus, total)
+    return (
+      <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+        <div style={s.sheet}>
+          <div style={s.handle} />
+          <div style={s.sheetTitle}>Оплата подписки</div>
+          <div style={{ background: '#f8f8fa', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {selectedItems.map(i => (
+              <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#3c3c43' }}>
+                <span>{i.name} x{i.qty}</span>
+                <span style={{ fontWeight: 700 }}>{(i.price * i.qty).toLocaleString()} сум</span>
               </div>
+            ))}
+            <div style={{ borderTop: '1px solid #e5e5ea', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+              <span style={{ color: '#8e8e93' }}>Итого</span>
+              <span style={{ fontWeight: 800, color: '#1a1a1a' }}>{total.toLocaleString()} сум</span>
             </div>
-          </button>
-          <button
-            style={payMethod === 'card' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
-            onClick={() => setPayMethod('card')}
-          >
-            <div style={ss.payDot(payMethod === 'card')} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Карта</div>
-              <div style={{ fontSize: 12, color: '#8e8e93' }}>Перевод на карту</div>
+          </div>
+
+          {/* Bonus */}
+          {bonusMax > 0 && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: '1.5px solid #e5e5ea', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>Бонусные баллы</div>
+                <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 2 }}>Доступно: {availableBonus.toLocaleString()} сум</div>
+              </div>
+              <button
+                style={bonusUsed > 0 ? { ...ss.useBtn, ...ss.useBtnActive } : ss.useBtn}
+                onClick={() => setBonusUsed(bonusUsed > 0 ? 0 : bonusMax)}>
+                {bonusUsed > 0 ? `−${bonusUsed.toLocaleString()}` : 'Списать'}
+              </button>
             </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button style={payMethod === 'balance' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+              onClick={() => setPayMethod('balance')}>
+              <div style={ss.payDot(payMethod === 'balance')} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Баланс</div>
+                <div style={{ fontSize: 12, color: canPayBalance ? '#8e8e93' : '#ef4444' }}>
+                  {canPayBalance ? `${userStore.balance.toLocaleString()} сум` : 'Недостаточно средств'}
+                </div>
+              </div>
+            </button>
+            <button style={payMethod === 'card' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+              onClick={() => setPayMethod('card')}>
+              <div style={ss.payDot(payMethod === 'card')} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Карта</div>
+                <div style={{ fontSize: 12, color: '#8e8e93' }}>Перевод на карту</div>
+              </div>
+            </button>
+            <button style={payMethod === 'cash' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
+              onClick={() => setPayMethod('cash')}>
+              <div style={ss.payDot(payMethod === 'cash')} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Наличные</div>
+                <div style={{ fontSize: 12, color: '#8e8e93' }}>Оплата курьеру при доставке</div>
+              </div>
+            </button>
+          </div>
+
+          {afterBonus < total && (
+            <div style={{ fontSize: 13, color: C, fontWeight: 600, padding: '0 4px' }}>
+              С бонусов: −{bonusUsed.toLocaleString()} сум
+            </div>
+          )}
+
+          <button style={{ ...s.primaryBtn, ...(payMethod === 'balance' && !canPayBalance ? { opacity: 0.5 } : {}) }}
+            onClick={submit} disabled={loading || (payMethod === 'balance' && !canPayBalance)}>
+            {loading ? <span style={s.spinner} /> :
+              payMethod === 'cash' ? `Оформить · ${afterBonus.toLocaleString()} сум` :
+              `Оплатить ${afterBonus.toLocaleString()} сум`}
           </button>
+          <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
         </div>
-        <button style={s.primaryBtn} onClick={submit} disabled={loading}>
-          {loading ? <span style={s.spinner} /> : `Оплатить ${total.toLocaleString()} сум`}
-        </button>
-        <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
       </div>
-    </div>
-  )
+    )
+  }
 
   if (step === 'details') return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -203,50 +283,95 @@ function SubscriptionModal({ onClose, settings, userStore }) {
         <div style={s.handle} />
         <div style={s.sheetTitle}>Данные доставки</div>
 
-        {/* Day of week */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          День недели
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {WEEKDAYS.map(d => (
-            <button key={d}
-              style={day === d ? { ...ss.dayChip, ...ss.dayChipActive } : ss.dayChip}
-              onClick={() => setDay(d)}>
-              {d}
+        {/* Day + Time combined (checkout style) */}
+        <div style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={ss.secLabel}>День и время доставки</div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4 }}>
+            {WEEKDAYS.map(d => (
+              <button key={d}
+                style={day === d ? { ...ss.dayChip, ...ss.dayChipActive } : ss.dayChip}
+                onClick={() => setDay(d)}>
+                {d}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={time === 'morning' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
+              onClick={() => setTime('morning')}>
+              <div style={{ fontWeight: 700 }}>До обеда</div>
+              <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>9:00 – 13:00</div>
             </button>
-          ))}
+            <button style={time === 'afternoon' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
+              onClick={() => setTime('afternoon')}>
+              <div style={{ fontWeight: 700 }}>После обеда</div>
+              <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>13:00 – 18:00</div>
+            </button>
+          </div>
         </div>
 
-        {/* Time */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          Время
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={time === 'morning' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
-            onClick={() => setTime('morning')}>
-            <div style={{ fontWeight: 700 }}>До обеда</div>
-            <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>9:00 – 13:00</div>
-          </button>
-          <button style={time === 'afternoon' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
-            onClick={() => setTime('afternoon')}>
-            <div style={{ fontWeight: 700 }}>После обеда</div>
-            <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>13:00 – 18:00</div>
-          </button>
+        {/* Address (checkout style) */}
+        <div style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={ss.secLabel}>Доставка</div>
+          {/* Saved addresses */}
+          {savedAddresses.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4 }}>
+              {savedAddresses.map(a => (
+                <button key={a.id}
+                  style={selectedAddrId === a.id ? { ...ss.savedChip, ...ss.savedChipActive } : ss.savedChip}
+                  onClick={() => selectSavedAddress(a)}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="currentColor"/>
+                  </svg>
+                  {a.label || a.address?.split(',')[0]}
+                </button>
+              ))}
+            </div>
+          )}
+          <input style={ss.inp} placeholder="Адрес: улица, дом, квартира" value={addr}
+            onChange={e => { setAddr(e.target.value); setSelectedAddrId(null) }} />
+          <input style={ss.inp} placeholder="Подъезд, этаж, ориентир" value={landmark} onChange={e => setLandmark(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={ss.locBtn} onClick={requestLocation}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              Моё место
+            </button>
+            <button style={ss.locBtnPrimary} onClick={() => setShowMap(true)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="currentColor"/>
+              </svg>
+              На карте
+            </button>
+          </div>
+          {lat && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: C }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+              Точка на карте выбрана
+            </div>
+          )}
         </div>
 
-        {/* Address fields */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input style={ss.inp} placeholder="Адрес доставки" value={addr} onChange={e => setAddr(e.target.value)} />
-          <input style={ss.inp} placeholder="Ориентир" value={landmark} onChange={e => setLandmark(e.target.value)} />
-          <input style={ss.inp} placeholder="Телефон" type="tel" value={phone} onChange={e => setPhone(e.target.value)} />
+        {/* Phone (checkout style) */}
+        <div style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={ss.secLabel}>Телефон для связи</div>
+          <input style={ss.inp} type="tel" placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} />
         </div>
 
-        <button style={{ ...s.primaryBtn, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
+        <button style={{ ...s.primaryBtn, flexShrink: 0, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
           onClick={() => setStep('payment')} disabled={!addr || !phone || !day || !time}>
           К оплате
         </button>
-        <button style={s.ghostBtn} onClick={() => setStep('plan')}>Назад</button>
+        <button style={{ ...s.ghostBtn, flexShrink: 0 }} onClick={() => setStep('plan')}>Назад</button>
       </div>
+      {showMap && (
+        <MapPicker lat={lat} lng={lng}
+          onChange={(la, ln) => { setLat(la); setLng(ln) }}
+          onClose={() => setShowMap(false)} />
+      )}
     </div>
   )
 
@@ -269,80 +394,44 @@ function SubscriptionModal({ onClose, settings, userStore }) {
           ))}
         </div>
 
-        {/* Water selection */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={ss.secLabel}>Вода</div>
-          <button
-            style={{ ...ss.carbToggle, ...(carbonated ? ss.carbToggleActive : {}) }}
-            onClick={() => setCarbonated(!carbonated)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.5"/>
-              <circle cx="8" cy="11" r="1.5" fill="currentColor" opacity="0.5"/>
-              <circle cx="15" cy="13" r="1.5" fill="currentColor" opacity="0.5"/>
-              <circle cx="11" cy="17" r="1" fill="currentColor" opacity="0.5"/>
-            </svg>
-            Газированная
-          </button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {SUB_WATERS.map(w => (
-            <button key={w.name}
-              style={water.name === w.name ? { ...ss.waterOpt, ...ss.waterOptActive } : ss.waterOpt}
-              onClick={() => { setWater({ ...w, qty: water.qty }); if (w.blockSize <= 1) setUseBlock(false) }}>
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  {carbonated ? w.name.replace('Вода', 'Газ. вода') : w.name}
+        {/* Water selection — scrollable */}
+        <div style={ss.secLabel}>Вода</div>
+        <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 4 }}>
+          {SUB_WATERS.map(w => {
+            const sel = selected[w.id]
+            return (
+              <div key={w.id} style={sel ? { ...ss.waterCard, ...ss.waterCardActive } : ss.waterCard}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                  onClick={() => toggleWater(w)}>
+                  <div style={sel ? ss.waterCheck : ss.waterUncheck}>
+                    {sel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round"/>
+                    </svg>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{w.name}</div>
+                    <div style={{ fontSize: 12, color: '#8e8e93' }}>{w.price.toLocaleString()} сум</div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#8e8e93' }}>{w.price.toLocaleString()} сум</div>
+                {sel && (
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty - 1)}>−</button>
+                    <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel.qty}</span>
+                    <button style={ss.qtyBtn} onClick={() => setQty(w.id, sel.qty + 1)}>+</button>
+                  </div>
+                )}
               </div>
-              {water.name === w.name && (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 13l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
-              )}
-            </button>
-          ))}
+            )
+          })}
         </div>
-
-        {/* Block toggle for small bottles */}
-        {water.blockSize > 1 && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              style={!useBlock ? { ...ss.blockBtn, ...ss.blockBtnActive } : ss.blockBtn}
-              onClick={() => setUseBlock(false)}>
-              Штучно
-            </button>
-            <button
-              style={useBlock ? { ...ss.blockBtn, ...ss.blockBtnActive } : ss.blockBtn}
-              onClick={() => setUseBlock(true)}>
-              Блоками ({water.blockSize} шт)
-            </button>
-          </div>
-        )}
-
-        {/* Quantity */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>
-            {useBlock && water.blockSize > 1 ? 'Блоков' : 'Количество'}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: Math.max(1, w.qty - 1) }))}>−</button>
-            <span style={{ fontSize: 18, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{water.qty}</span>
-            <button style={ss.qtyBtn} onClick={() => setWater(w => ({ ...w, qty: w.qty + 1 }))}>+</button>
-          </div>
-        </div>
-        {useBlock && water.blockSize > 1 && (
-          <div style={{ fontSize: 12, color: '#8e8e93', marginTop: -6 }}>
-            = {actualQty} шт ({water.qty} × {water.blockSize})
-          </div>
-        )}
 
         <div style={{ background: '#f8f8fa', borderRadius: 12, padding: '10px 14px', display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 14, color: '#8e8e93' }}>Итого</span>
           <span style={{ fontSize: 16, fontWeight: 800, color: C }}>{total.toLocaleString()} сум</span>
         </div>
 
-        <button style={s.primaryBtn} onClick={() => setStep('details')}>
+        <button style={{ ...s.primaryBtn, ...(Object.keys(selected).length === 0 ? { opacity: 0.5 } : {}) }}
+          onClick={() => setStep('details')} disabled={Object.keys(selected).length === 0}>
           Далее
         </button>
         <button style={s.ghostBtn} onClick={onClose}>Отмена</button>
@@ -352,67 +441,80 @@ function SubscriptionModal({ onClose, settings, userStore }) {
 }
 
 const ss = {
-  secLabel: { fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4 },
+  secLabel: { fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: -4 },
   planChip: {
     flex: 1, padding: '12px 10px', borderRadius: 14,
     border: '1.5px solid #e5e5ea', background: '#fff',
     cursor: 'pointer', textAlign: 'center',
   },
-  planChipActive: {
-    border: `1.5px solid ${C}`, background: GRAD, color: '#fff',
+  planChipActive: { border: `1.5px solid ${C}`, background: GRAD, color: '#fff' },
+  waterCard: {
+    borderRadius: 14, border: '1.5px solid #e5e5ea', background: '#fff',
+    padding: '12px 14px',
   },
-  carbToggle: {
-    display: 'flex', alignItems: 'center', gap: 5,
-    padding: '6px 12px', borderRadius: 10,
+  waterCardActive: { border: `1.5px solid ${C}`, background: `${C}06` },
+  waterCheck: {
+    width: 22, height: 22, borderRadius: 7, background: GRAD, flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  waterUncheck: {
+    width: 22, height: 22, borderRadius: 7, border: '2px solid #ddd', flexShrink: 0,
+    background: '#fff',
+  },
+  miniBtn: {
+    padding: '6px 12px', borderRadius: 8,
     border: '1.5px solid #e5e5ea', background: '#fff',
     fontSize: 12, fontWeight: 600, color: '#8e8e93', cursor: 'pointer',
   },
-  carbToggleActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
-  waterOpt: {
-    display: 'flex', alignItems: 'center', padding: '12px 14px',
-    borderRadius: 14, border: '1.5px solid #e5e5ea', background: '#fff',
-    cursor: 'pointer',
-  },
-  waterOptActive: { border: `1.5px solid ${C}`, background: `${C}08` },
-  blockBtn: {
-    flex: 1, padding: '10px', borderRadius: 12,
-    border: '1.5px solid #e5e5ea', background: '#fff',
-    fontSize: 13, fontWeight: 600, color: '#8e8e93', cursor: 'pointer',
-    textAlign: 'center',
-  },
-  blockBtnActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
+  miniBtnActive: { border: `1.5px solid ${C}`, background: `${C}08`, color: C },
   qtyBtn: {
-    width: 34, height: 34, borderRadius: 10,
+    width: 30, height: 30, borderRadius: 8,
     border: `1.5px solid ${C}`, background: '#fff',
-    fontSize: 18, fontWeight: 700, color: C,
+    fontSize: 16, fontWeight: 700, color: C,
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
+  useBtn: {
+    padding: '8px 14px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 700, color: '#3c3c43', cursor: 'pointer',
+  },
+  useBtnActive: { border: `1.5px solid ${C}`, background: `${C}08`, color: C },
   dayChip: {
-    padding: '10px 14px', borderRadius: 12,
+    padding: '10px 14px', borderRadius: 12, flexShrink: 0,
     border: '1.5px solid #e5e5ea', background: '#fff',
     fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
     minWidth: 42, textAlign: 'center',
   },
-  dayChipActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
+  dayChipActive: { border: `1.5px solid ${C}`, background: `${C}08`, color: C },
   timeBtn: {
     flex: 1, padding: '12px 8px', borderRadius: 14,
     border: '1.5px solid #e5e5ea', background: '#fff',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43',
-    textAlign: 'center',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3c3c43', textAlign: 'center',
   },
-  timeBtnActive: {
-    border: `1.5px solid ${C}`, background: `${C}08`, color: C,
-  },
+  timeBtnActive: { border: `1.5px solid ${C}`, background: `${C}08`, color: C },
   inp: {
-    border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '14px 16px',
-    fontSize: 15, outline: 'none', background: '#fafafa', width: '100%', boxSizing: 'border-box',
-    fontFamily: 'inherit',
+    border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '13px 14px',
+    fontSize: 15, outline: 'none', background: '#f8f8fa', width: '100%', boxSizing: 'border-box',
+    fontFamily: 'inherit', color: '#1a1a1a',
+  },
+  savedChip: {
+    flexShrink: 0, padding: '8px 14px', borderRadius: 12,
+    border: '1.5px solid #e5e5ea', background: '#fff',
+    fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+  },
+  savedChipActive: { border: `1.5px solid ${C}`, background: `${C}08`, color: C },
+  locBtn: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '11px 8px', borderRadius: 14,
+    border: '1.5px solid #e5e5ea', background: '#f8f8fa',
+    fontSize: 13, fontWeight: 600, color: '#3c3c43', cursor: 'pointer',
+  },
+  locBtnPrimary: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '11px 8px', borderRadius: 14,
+    border: `1.5px solid ${C}`, background: `${C}08`,
+    fontSize: 13, fontWeight: 700, color: C, cursor: 'pointer',
   },
   payOpt: {
     display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
@@ -438,7 +540,17 @@ function TopupModal({ onClose, settings }) {
   const finalAmount = useCustom ? (Number(custom) || 0) : amount
 
   const copyCard = () => {
-    navigator.clipboard?.writeText(settings?.payment_card || '')
+    const text = settings?.payment_card || ''
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+    } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
@@ -471,7 +583,10 @@ function TopupModal({ onClose, settings }) {
         <div style={s.sheetTitle}>Оплата пополнения</div>
         <div style={s.payCard}>
           <div style={s.payLabel}>Переведите на карту</div>
-          <div style={s.payNum}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ ...s.payNum, cursor: 'pointer' }} onClick={copyCard}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ fontSize: 11, color: copied ? '#8DC63F' : 'rgba(255,255,255,0.4)', marginTop: 2, textAlign: 'center' }}>
+            {copied ? 'Скопировано!' : 'Нажмите на номер чтобы скопировать'}
+          </div>
           <div style={s.payHolder}>{settings?.payment_holder || '—'}</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
@@ -537,8 +652,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [showTopup, setShowTopup] = useState(false)
-  const [showSub, setShowSub] = useState(false)
-  const [subDetail, setSubDetail] = useState(null)
   const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
@@ -584,19 +697,6 @@ export default function Profile() {
   return (
     <div style={s.page}>
       {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
-      {showSub && <SubscriptionModal onClose={() => setShowSub(false)} settings={settings} userStore={userStore} />}
-      {subDetail && (
-        <SubscriptionDetail
-          sub={subDetail}
-          onClose={() => setSubDetail(null)}
-          onExtend={() => { setSubDetail(null); setShowSub(true) }}
-          onCancel={(id) => {
-            const list = userStore.subscriptions.filter(s => s.id !== id)
-            localStorage.setItem('everwater_subscriptions', JSON.stringify(list))
-            useUserStore.setState({ subscriptions: list })
-          }}
-        />
-      )}
 
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>
@@ -649,61 +749,6 @@ export default function Profile() {
             <div style={s.bonusTitle}>{bonusPoints.toLocaleString()} бонусов</div>
             <div style={s.bonusDesc}>Используйте при оформлении заказа</div>
           </div>
-        </div>
-      )}
-
-      {/* Subscription card */}
-      {userStore.subscriptions.length > 0 ? (
-        <div style={{ margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {userStore.subscriptions.map(sub => {
-            const endDate = new Date(sub.created)
-            endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
-            const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
-            const isExpiring = daysLeft <= 3
-            return (
-              <div key={sub.id} style={s.subCard} onClick={() => setSubDetail(sub)}>
-                <div style={{ ...s.subIcon, background: isExpiring ? 'linear-gradient(135deg, #FF6B6B, #E03131)' : 'linear-gradient(135deg, #4FC3F7, #2196F3)' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-                    <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={s.subTitle}>{sub.water} × {sub.qty}</div>
-                  <div style={s.subDesc}>
-                    {sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}
-                    {isExpiring ? ` · ${daysLeft} дн. осталось` : ` · до ${endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}
-                  </div>
-                </div>
-                {isExpiring && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E03131', flexShrink: 0 }} />}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </div>
-            )
-          })}
-          <button style={s.addSubBtn} onClick={() => setShowSub(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-            Новая подписка
-          </button>
-        </div>
-      ) : (
-        <div style={s.subCard} onClick={() => setShowSub(true)}>
-          <div style={s.subIcon}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M3 3v5h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={s.subTitle}>Подписка на воду</div>
-            <div style={s.subDesc}>Регулярная доставка со скидкой</div>
-          </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
         </div>
       )}
 
@@ -869,8 +914,12 @@ const s = {
   bonusDesc: { fontSize: 12, color: '#B45309', marginTop: 2 },
 
   /* Subscription */
+  subSection: {
+    margin: '0 16px',
+    display: 'flex', flexDirection: 'column', gap: 8,
+  },
   subCard: {
-    background: '#fff', margin: '0 16px',
+    background: '#fff',
     borderRadius: 18, padding: '14px 16px',
     display: 'flex', alignItems: 'center', gap: 12,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
@@ -884,12 +933,6 @@ const s = {
   },
   subTitle: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
   subDesc: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
-  addSubBtn: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    background: '#fff', border: `2px solid ${C}`, borderRadius: 14,
-    padding: '12px 16px', fontSize: 14, fontWeight: 700, color: C,
-    cursor: 'pointer',
-  },
 
   /* Menu */
   menuCard: {

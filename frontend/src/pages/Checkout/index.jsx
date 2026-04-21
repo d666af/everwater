@@ -9,7 +9,6 @@ import { useOrdersStore } from '../../store/orders'
 
 import s, { C, GRAD } from './styles'
 import SavedAddresses from './SavedAddresses'
-import DateTimePicker from './DateTimePicker'
 import BottleReturn from './BottleReturn'
 import SaveAddressPopup from './SaveAddressPopup'
 import CardPayment from './CardPayment'
@@ -57,7 +56,6 @@ export default function Checkout() {
     lat: null, lng: null, geoLoading: false,
     returnCount: 0, bonusUsed: 0,
     paymentMethod: 'balance',
-    deliveryDate: '', deliveryTime: '',
   })
   const [selectedAddrId, setSelectedAddrId] = useState(null)
   const [showMap, setShowMap] = useState(false)
@@ -135,16 +133,8 @@ export default function Checkout() {
     )
   }
 
-  const buildDeliveryTime = () => {
-    if (!form.deliveryDate || !form.deliveryTime) return null
-    const timeLabel = form.deliveryTime === 'morning' ? '9:00–13:00' : '13:00–18:00'
-    return `${form.deliveryDate} ${timeLabel}`
-  }
-
   const submitOrder = async () => {
     if (!form.address.trim()) return setError('Укажите адрес доставки')
-    if (!form.deliveryDate) return setError('Выберите дату доставки')
-    if (!form.deliveryTime) return setError('Выберите время доставки')
     setLoading(true); setError('')
     try {
       const order = await createOrder({
@@ -152,7 +142,7 @@ export default function Checkout() {
         recipient_phone: form.phone || user?.phone,
         address: form.address,
         extra_info: form.extraInfo || null,
-        delivery_time: buildDeliveryTime(),
+        delivery_time: null,
         latitude: form.lat, longitude: form.lng,
         return_bottles_count: Number(form.returnCount),
         return_bottles_volume: has20L ? 20 : 0,
@@ -202,7 +192,7 @@ export default function Checkout() {
         quantity: i.quantity, price: i.product.price, volume: i.product.volume,
       })),
       total: finalTotal, address: form.address,
-      delivery_time: buildDeliveryTime(),
+      delivery_time: null,
       recipient_phone: form.phone || user?.phone, status: 'awaiting_confirmation',
     }
     addOrder(fullOrder)
@@ -274,19 +264,16 @@ export default function Checkout() {
         />
       )}
 
-      {/* Title */}
-      <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
-        <div style={s.pageTitle}>Оформление заказа</div>
-      </div>
-
-      {/* Back */}
-      <div style={{ padding: '8px 16px 0' }}>
+      {/* Header: Back + Title */}
+      <div style={s.pageHeader}>
         <button style={s.backBtn} onClick={() => navigate(-1)}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M15 18l-6-6 6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Назад
         </button>
+        <div style={s.pageTitle}>Оформление заказа</div>
+        <div style={{ width: 70 }} />
       </div>
 
       {/* Order summary */}
@@ -355,14 +342,6 @@ export default function Checkout() {
           )}
         </div>
       </div>
-
-      {/* Date & Time */}
-      <DateTimePicker
-        selectedDate={form.deliveryDate}
-        selectedTime={form.deliveryTime}
-        onDateChange={v => set('deliveryDate', v)}
-        onTimeChange={v => set('deliveryTime', v)}
-      />
 
       {/* Phone */}
       <div style={s.section}>

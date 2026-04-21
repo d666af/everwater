@@ -1,11 +1,11 @@
 import { create } from 'zustand'
-import { MOCK_ORDERS } from '../api/mock'
 
 export const useOrdersStore = create((set, get) => ({
-  orders: [...MOCK_ORDERS],
+  orders: [],
+  loaded: false,
 
+  setOrders: (orders) => set({ orders, loaded: true }),
   addOrder: (order) => set({ orders: [order, ...get().orders] }),
-
   updateStatus: (id, status) =>
     set({ orders: get().orders.map(o => o.id === id ? { ...o, status } : o) }),
 }))

@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { useAuthStore } from '../store/auth'
+import { useAdminRoleStore } from '../store/adminRole'
 
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
@@ -16,6 +18,12 @@ const NAV = [
       <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
     </svg>
   )},
+  { path: '/subscription', label: 'Подписка', icon: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M12 22V12M12 12L3.27 7M12 12l8.73-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )},
   { path: '/profile', label: 'Профиль', icon: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
@@ -27,6 +35,9 @@ const NAV = [
 export default function BottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, logout } = useAuthStore()
+  const { clearRole } = useAdminRoleStore()
+  const hasMultipleRoles = user?.roles?.length > 1
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
@@ -36,6 +47,7 @@ export default function BottomNav() {
     || location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/courier')
     || location.pathname.startsWith('/manager')
+    || location.pathname.startsWith('/warehouse')
     || location.pathname === '/login'
 
   // Calculate pill position — covers the entire button (icon + text)
@@ -46,7 +58,7 @@ export default function BottomNav() {
     if (activeEl && navEl) {
       const navRect = navEl.getBoundingClientRect()
       const itemRect = activeEl.getBoundingClientRect()
-      const pillW = 90
+      const pillW = 74
       setPillStyle({
         left: itemRect.left - navRect.left + (itemRect.width - pillW) / 2,
         width: pillW,
@@ -59,6 +71,23 @@ export default function BottomNav() {
 
   return (
     <>
+      <button style={st.logoutFab} onClick={() => { logout(); navigate('/login') }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+        Выйти
+      </button>
+      {hasMultipleRoles && (
+        <button style={st.switchFab} onClick={() => clearRole()}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Роль
+        </button>
+      )}
       <div style={{ height: 90 }} />
       <nav style={st.nav}>
         <div style={st.inner} ref={navRef}>
@@ -136,5 +165,23 @@ const st = {
   label: {
     fontSize: 10, letterSpacing: 0.1, marginTop: 1,
     transition: 'color 0.3s ease',
+  },
+  switchFab: {
+    position: 'fixed', bottom: 100, right: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: GRAD, color: '#fff',
+    border: 'none', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
+  },
+  logoutFab: {
+    position: 'fixed', bottom: 100, left: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: '#fff', color: '#666',
+    border: '1.5px solid #ddd', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 600,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
   },
 }

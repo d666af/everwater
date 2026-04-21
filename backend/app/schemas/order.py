@@ -20,6 +20,9 @@ class OrderCreate(BaseModel):
     return_bottles_volume: float = 0.0
     items: list[OrderItemCreate]
     bonus_used: float = 0.0
+    balance_used: float = 0.0
+    payment_method: str = "cash"
+    bottle_discount: float | None = None
 
 
 class OrderItemOut(BaseModel):
@@ -49,17 +52,26 @@ class OrderOut(BaseModel):
     subtotal: float
     total: float
     bonus_used: float
+    balance_used: float
+    payment_method: str
+    cash_collected: bool
     rejection_reason: str | None
     payment_confirmed: bool
     created_at: datetime
     items: list[OrderItemOut] = []
+    # Denormalized convenience fields
+    client_name: str | None = None
+    client_telegram_id: int | None = None
+    courier_name: str | None = None
+    courier_phone: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class ReviewCreate(BaseModel):
-    user_id: int
+    user_id: int | None = None
     order_id: int
+    courier_id: int | None = None
     rating: int
     comment: str | None = None
 

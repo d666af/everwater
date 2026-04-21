@@ -5,7 +5,17 @@ export default function CardPayment({ settings, amount, balanceUsed, cardRemaind
   const [copied, setCopied] = useState(false)
 
   const copyCard = () => {
-    navigator.clipboard?.writeText(settings.payment_card || '')
+    const text = settings.payment_card || ''
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+    } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
@@ -27,7 +37,10 @@ export default function CardPayment({ settings, amount, balanceUsed, cardRemaind
         <div style={s.sLabel}>Оплата заказа</div>
         <div style={s.payCard}>
           <div style={s.payCardLabel}>Переведите на карту</div>
-          <div style={s.payCardNum}>{settings.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ ...s.payCardNum, cursor: 'pointer' }} onClick={copyCard}>{settings.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ fontSize: 11, color: copied ? '#8DC63F' : 'rgba(255,255,255,0.4)', marginTop: 2, textAlign: 'center' }}>
+            {copied ? 'Скопировано!' : 'Нажмите на номер чтобы скопировать'}
+          </div>
           <div style={s.payCardHolder}>{settings.payment_holder || '—'}</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
