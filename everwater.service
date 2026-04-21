@@ -16,7 +16,7 @@ ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up -d --build
 ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml down
 
 # Reload: пересобрать и перезапустить без даунтайма БД
-ExecReload=/usr/bin/docker compose -f docker-compose.prod.yml up -d --build --no-deps bot backend frontend
+ExecReload=/usr/bin/docker compose -f docker-compose.prod.yml up -d --build --no-deps bot backend frontend caddy
 
 TimeoutStartSec=300
 TimeoutStopSec=30

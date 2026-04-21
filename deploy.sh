@@ -62,7 +62,8 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
   echo -e "${YELLOW}  Обязательно укажите:${NC}"
   echo -e "${YELLOW}    BOT_TOKEN   — токен вашего Telegram-бота${NC}"
   echo -e "${YELLOW}    ADMIN_IDS   — ваш Telegram ID (узнайте у @userinfobot)${NC}"
-  echo -e "${YELLOW}    MINI_APP_URL — http://ВАШ_IP:3000${NC}"
+  echo -e "${YELLOW}    APP_DOMAIN  — домен или sslip.io-адрес, например 64-226-102-132.sslip.io${NC}"
+  echo -e "${YELLOW}    MINI_APP_URL — https://ВАШ_ДОМЕН${NC}"
   echo -e "${YELLOW}    POSTGRES_PASSWORD — придумайте надёжный пароль${NC}"
   echo -e "${YELLOW}    SECRET_KEY  — openssl rand -hex 32${NC}"
   echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -100,9 +101,8 @@ fi
 
 # ── 7. Открываем порт в firewall (если ufw активен) ──────────────────────────
 if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
-  FRONTEND_PORT=$(grep FRONTEND_PORT "$INSTALL_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')
-  PORT=${FRONTEND_PORT:-3000}
-  ufw allow "$PORT/tcp" 2>/dev/null && info "UFW: порт $PORT открыт" || true
+  ufw allow 80/tcp 2>/dev/null && info "UFW: порт 80 открыт" || true
+  ufw allow 443/tcp 2>/dev/null && info "UFW: порт 443 открыт" || true
 fi
 
 # ── 8. Запуск ─────────────────────────────────────────────────────────────────
@@ -114,10 +114,14 @@ if [[ "$LAUNCH" =~ ^[Yy]$ ]]; then
   sleep 3
   systemctl status "$SERVICE_NAME" --no-pager
   echo ""
-  FRONTEND_PORT=$(grep FRONTEND_PORT "$INSTALL_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')
-  PORT=${FRONTEND_PORT:-3000}
+  APP_DOMAIN=$(grep '^APP_DOMAIN=' "$INSTALL_DIR/.env" | cut -d= -f2- | tr -d '[:space:]')
   SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
-  info "Готово! Открывайте: http://$SERVER_IP:$PORT"
+  if [ -n "$APP_DOMAIN" ]; then
+    info "Готово! Открывайте: https://$APP_DOMAIN"
+  else
+    info "Укажите APP_DOMAIN в .env, чтобы mini app открывался по HTTPS"
+    info "Текущий IP сервера: $SERVER_IP"
+  fi
 fi
 
 echo ""
