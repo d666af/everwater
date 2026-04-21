@@ -218,8 +218,8 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
     await state.clear()
     await message.answer(
         f"🎉 Готово, {name}! Регистрация завершена.\n\n"
-        f"🔑 Ваш пароль для сайта: <b>{password}</b>\n"
-        f"Сохраните его — он нужен для входа на сайт!\n\nТеперь вы можете делать заказы!",
+        f"🔑 Ваш пароль для сайта:\n<code>{password}</code>\n\n"
+        f"Нажмите на пароль чтобы скопировать.\nСохраните его — он нужен для входа!\n\nТеперь вы можете делать заказы!",
         reply_markup=main_menu_kb(),
         parse_mode="HTML",
     )

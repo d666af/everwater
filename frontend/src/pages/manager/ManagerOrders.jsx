@@ -293,35 +293,30 @@ function OrderCard({
 
           {/* ─── PAYMENT STAGE: payment info + actions first ─── */}
           {orderStage === 'payment' && (<>
-            <Section title="Оплата">
-              <Row k="Способ" v={order.payment_method === 'card' ? 'Карта' : 'Баланс'} />
-              {order.payment_method === 'card' && order.payment_details && (<>
-                <Row k="Карта" v={`**** ${order.payment_details.card_last4}`} />
-                <Row k="Время" v={new Date(order.payment_details.paid_at).toLocaleString('ru')} />
-                <Row k="Сумма" v={`${(order.payment_details.amount || 0).toLocaleString()} сум`} />
-                <Row k="Статус" v={order.payment_confirmed ? 'Подтверждена' : 'Ожидает проверки'} accent={order.payment_confirmed ? '#2B8A3E' : CD} />
-              </>)}
-              {order.payment_method === 'balance' && <Row k="Статус" v="Списано с баланса" accent="#2B8A3E" />}
-              {order.bonus_used > 0 && <Row k="Бонусы" v={`-${order.bonus_used} бон.`} />}
-              {order.bottle_discount > 0 && <Row k="Скидка" v={`-${(order.bottle_discount).toLocaleString()} сум`} />}
-              <div style={{ display: 'flex', gap: 10, borderTop: `1px solid ${BORDER}`, marginTop: 6, paddingTop: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, minWidth: 90 }}>Итого</span>
-                <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</span>
-              </div>
-            </Section>
+            <PaymentBlock order={order} />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke={CD} strokeWidth="1.8"/><path d="M2 10h20" stroke={CD} strokeWidth="1.5"/></svg>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Подтвердите оплату</div>
-                  <div style={{ fontSize: 12, color: TEXT2 }}>Проверьте поступление средств</div>
+              {order.payment_method === 'card' ? (
+                <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke={CD} strokeWidth="1.8"/><path d="M2 10h20" stroke={CD} strokeWidth="1.5"/></svg>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Подтвердите оплату</div>
+                    <div style={{ fontSize: 12, color: TEXT2 }}>Проверьте поступление средств</div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke={CD} strokeWidth="1.8"/><path d="M8 12l3 3 5-5" stroke={CD} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Новый заказ</div>
+                    <div style={{ fontSize: 12, color: TEXT2 }}>Примите или отклоните заказ</div>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button style={st.btnPrimary} disabled={actionLoading} onClick={() => act(() => confirmOrder(order.id))}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Оплата получена
+                  {order.payment_method === 'card' ? 'Оплата получена' : 'Принять заказ'}
                 </button>
                 <button style={st.btnDanger} disabled={actionLoading} onClick={() => { setRejectingId(order.id); setRejectReason('') }}>
                   Отклонить
@@ -525,10 +520,12 @@ function DeliveryBlock({ order }) {
   )
 }
 
+const PAY_LABEL = { cash: 'Наличными курьеру', card: 'Карта', balance: 'Баланс' }
+
 function PaymentBlock({ order }) {
   return (
     <Section title="Оплата">
-      <Row k="Способ" v={order.payment_method === 'card' ? 'Карта' : 'Баланс'} />
+      <Row k="Способ" v={PAY_LABEL[order.payment_method] || order.payment_method} />
       {order.payment_method === 'card' && order.payment_details && (<>
         <Row k="Карта" v={`**** ${order.payment_details.card_last4}`} />
         <Row k="Время" v={new Date(order.payment_details.paid_at).toLocaleString('ru')} />

@@ -325,7 +325,11 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
 
 
 async def _get_order(order_id: int, db: AsyncSession) -> Order:
-    result = await db.execute(select(Order).where(Order.id == order_id))
+    result = await db.execute(
+        select(Order)
+        .where(Order.id == order_id)
+        .options(selectinload(Order.user), selectinload(Order.courier))
+    )
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

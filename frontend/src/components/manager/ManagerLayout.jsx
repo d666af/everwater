@@ -161,7 +161,7 @@ export default function ManagerLayout({ children, noPadding = false }) {
 }
 
 const s = {
-  content: { padding: 16, flex: 1, overflowY: 'auto' },
+  content: { padding: 16, paddingTop: 60, flex: 1, overflowY: 'auto' },
   mobileNav: {
     position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
     padding: '0 6px 8px',

@@ -476,10 +476,10 @@ async def co_location_skip(message: Message, state: FSMContext):
 async def _ask_landmark(message: Message, state: FSMContext):
     await state.set_state(CheckoutState.waiting_landmark)
     await message.answer(
-        "Укажите ориентир или дополнительную информацию для курьера (подъезд, этаж, домофон).\n"
-        "Или нажмите «—» чтобы пропустить:",
+        "Укажите ориентир для курьера (подъезд, этаж, домофон).\n"
+        "Или нажмите кнопку чтобы пропустить:",
         reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="—")]],
+            keyboard=[[KeyboardButton(text="⏩ Пропустить")]],
             resize_keyboard=True, one_time_keyboard=True,
         ),
     )
@@ -488,7 +488,7 @@ async def _ask_landmark(message: Message, state: FSMContext):
 @router.message(CheckoutState.waiting_landmark)
 async def co_landmark(message: Message, state: FSMContext):
     val = message.text.strip()
-    await state.update_data(co_extra=None if val == "—" else val)
+    await state.update_data(co_extra=None if val in ("⏩ Пропустить", "—") else val)
     await message.answer("Принято!", reply_markup=ReplyKeyboardRemove())
     await _ask_phone(message, state)
 
@@ -499,17 +499,26 @@ async def _ask_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     phone = data.get("co_user", {}).get("phone", "")
     await state.set_state(CheckoutState.waiting_phone)
+    kb_rows = []
+    if phone:
+        kb_rows.append([KeyboardButton(text=f"✅ {phone}")])
+    kb_rows.append([KeyboardButton(text="📱 Поделиться номером", request_contact=True)])
     await message.answer(
-        f"Телефон получателя (ваш текущий: <b>{phone}</b>).\n"
-        "Введите номер или «-» чтобы оставить текущий:",
-        parse_mode="HTML",
+        "Телефон получателя:\nВыберите или введите номер:",
+        reply_markup=ReplyKeyboardMarkup(keyboard=kb_rows, resize_keyboard=True, one_time_keyboard=True),
     )
 
 
 @router.message(CheckoutState.waiting_phone)
 async def co_phone(message: Message, state: FSMContext):
     data = await state.get_data()
-    phone = data["co_user"].get("phone", "") if message.text.strip() == "-" else message.text.strip()
+    user_phone = data["co_user"].get("phone", "")
+    if message.contact:
+        phone = message.contact.phone_number
+    elif message.text and message.text.startswith("✅ "):
+        phone = user_phone
+    else:
+        phone = message.text.strip() if message.text else user_phone
     await state.update_data(co_phone=phone)
 
     bottles = await api.get_bottles_owed(data["co_user"]["id"])
@@ -674,6 +683,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     await state.update_data(cart={})
     await state.clear()
 
+    PAY_LABELS = {"cash": "Наличными курьеру", "card": "Карта", "balance": "Баланс"}
     # Notify admins + managers about new order (cash/balance — no payment step)
     if pay_method != "card":
         from keyboards.admin import order_confirm_kb
@@ -681,7 +691,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             f"🆕 Новый заказ #{order_id}!\n"
             f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
             f"Адрес: {addr}\n"
-            f"Сумма: {fmt(order.get('total', 0))}\nОплата: {pay_method}"
+            f"Сумма: {fmt(order.get('total', 0))}\nОплата: {PAY_LABELS.get(pay_method, pay_method)}"
         )
         for admin_id in settings.ADMIN_IDS:
             try:

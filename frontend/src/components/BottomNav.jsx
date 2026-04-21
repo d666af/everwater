@@ -167,7 +167,7 @@ const st = {
     transition: 'color 0.3s ease',
   },
   switchFab: {
-    position: 'fixed', top: 16, right: 16, zIndex: 300,
+    position: 'fixed', bottom: 100, right: 16, zIndex: 300,
     display: 'flex', alignItems: 'center', gap: 6,
     background: GRAD, color: '#fff',
     border: 'none', borderRadius: 20,
@@ -176,7 +176,7 @@ const st = {
     boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
   logoutFab: {
-    position: 'fixed', top: 16, left: 16, zIndex: 300,
+    position: 'fixed', bottom: 100, left: 16, zIndex: 300,
     display: 'flex', alignItems: 'center', gap: 6,
     background: '#fff', color: '#666',
     border: '1.5px solid #ddd', borderRadius: 20,
