@@ -670,6 +670,26 @@ async def admin_topup_confirm(call: CallbackQuery):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("admin_topup_reject:"))
+async def admin_topup_reject(call: CallbackQuery):
+    parts = call.data.split(":")
+    user_id, amount = int(parts[1]), int(parts[2])
+    tg_id = int(parts[3]) if len(parts) > 3 else None
+    await call.message.edit_text(
+        f"❌ Запрос на пополнение {fmt(amount)} отклонён."
+    )
+    if tg_id:
+        try:
+            await call.bot.send_message(
+                tg_id,
+                f"❌ Ваш запрос на пополнение баланса {fmt(amount)} отклонён.\n"
+                "Обратитесь в поддержку если это ошибка."
+            )
+        except Exception:
+            pass
+    await call.answer()
+
+
 # ─── Managers ─────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:managers")

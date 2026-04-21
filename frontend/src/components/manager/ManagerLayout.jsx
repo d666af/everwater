@@ -157,7 +157,18 @@ export default function ManagerLayout({ children, title, noPadding = false }) {
         {!isMobile && (
           <header style={s.desktopHeader}>
             <h1 style={s.desktopTitle}>{title}</h1>
-            <div style={s.headerBadge}>Панель менеджера</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {isAdmin && (
+                <button style={s.headerSwitchBtn} onClick={switchRole}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  Сменить роль
+                </button>
+              )}
+              <div style={s.headerBadge}>Панель менеджера</div>
+            </div>
           </header>
         )}
 
@@ -283,6 +294,13 @@ const s = {
     background: `${C}20`, color: '#6CA32F',
     border: `1px solid ${C}40`, borderRadius: 8,
     padding: '4px 10px', fontSize: 11, fontWeight: 700,
+  },
+  headerSwitchBtn: {
+    display: 'flex', alignItems: 'center', gap: 5,
+    background: `${C}20`, color: '#6CA32F',
+    border: `1px solid ${C}40`, borderRadius: 8,
+    padding: '4px 10px', fontSize: 11, fontWeight: 700,
+    cursor: 'pointer',
   },
 
   content: { padding: 16, flex: 1, overflowY: 'auto' },
