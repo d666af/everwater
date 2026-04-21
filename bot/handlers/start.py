@@ -1,3 +1,5 @@
+import secrets
+import string
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
@@ -210,11 +212,16 @@ async def process_phone_text(message: Message, state: FSMContext):
 async def _finish_registration(message: Message, state: FSMContext, phone: str):
     data = await state.get_data()
     name = data["name"]
-    await api.update_user(message.from_user.id, name=name, phone=phone, is_registered=True)
+    alphabet = string.ascii_uppercase + string.digits
+    password = ''.join(secrets.choice(alphabet) for _ in range(8))
+    await api.update_user(message.from_user.id, name=name, phone=phone, is_registered=True, site_password=password)
     await state.clear()
     await message.answer(
-        f"🎉 Готово, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
+        f"🎉 Готово, {name}! Регистрация завершена.\n\n"
+        f"🔑 Ваш пароль для сайта: <b>{password}</b>\n"
+        f"Сохраните его — он нужен для входа на сайт!\n\nТеперь вы можете делать заказы!",
         reply_markup=main_menu_kb(),
+        parse_mode="HTML",
     )
     await message.answer("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
     from handlers.client import start_survey

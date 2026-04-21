@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import create_tables, AsyncSessionLocal
+from sqlalchemy import text
+from app.database import create_tables, AsyncSessionLocal, engine
 from app.routers import products, orders, users, admin, auth, client
 from app.routers import warehouse, couriers
 from app.services.seed import seed_products
@@ -18,6 +19,10 @@ from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS site_password VARCHAR(12)"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)

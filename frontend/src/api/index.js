@@ -46,11 +46,13 @@ async function safeCall(apiFn, mockFn) {
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
-export const loginByPhone = async (phone) => {
+export const loginByPhone = async (phone, password = null) => {
   const normalized = phone.replace(/\D/g, '')
   return safeCall(
     async () => {
-      const res = await http.post('/auth/login', { phone })
+      const body = { phone }
+      if (password !== null) body.password = password
+      const res = await http.post('/auth/login', body)
       return res.data
     },
     () => {
@@ -63,6 +65,15 @@ export const loginByPhone = async (phone) => {
     }
   )
 }
+
+export const getRolesByPhone = async (phone) =>
+  safeCall(
+    async () => {
+      const res = await http.get('/auth/roles', { params: { phone } })
+      return res.data
+    },
+    () => null
+  )
 
 // ─── Products ────────────────────────────────────────────────────────────────
 export const getProducts = (includeInactive = false) =>
