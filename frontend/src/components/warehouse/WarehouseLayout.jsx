@@ -81,7 +81,7 @@ export default function WarehouseLayout({ children, title }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#e4e4e8' }}>
-      <div style={{ flex: 1, padding: 16, paddingBottom: 100, overflowY: 'auto' }}>
+      <div style={{ flex: 1, padding: 16, paddingTop: 60, paddingBottom: 100, overflowY: 'auto' }}>
         {children}
       </div>
 

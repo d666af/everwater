@@ -568,9 +568,34 @@ async def admin_courier_tg(message: Message, state: FSMContext):
     if not message.text.strip().lstrip("-").isdigit():
         await message.answer("Введите числовой Telegram ID.")
         return
-    await state.update_data(new_courier_tg=int(message.text.strip()))
-    await state.set_state(AdminCourierCreate.waiting_name)
-    await message.answer("Введите имя курьера:")
+    tg_id = int(message.text.strip())
+    await state.update_data(new_courier_tg=tg_id)
+    user = await api.get_user(tg_id)
+    if user and user.get("name"):
+        name = user["name"]
+        phone = user.get("phone") or ""
+        await state.update_data(new_courier_name=name)
+        if phone:
+            await state.clear()
+            result = await api.create_courier_api(tg_id, name, phone)
+            await message.answer(
+                f"✅ Курьер создан (данные из аккаунта)!\n"
+                f"Имя: {result.get('name')}\nТелефон: {phone}\nTelegram ID: {tg_id}"
+            )
+            try:
+                await message.bot.send_message(tg_id, "🚴 Вы добавлены как курьер Ever Water!\nИспользуйте /courier для доступа.")
+            except Exception:
+                pass
+            return
+        await state.set_state(AdminCourierCreate.waiting_phone)
+        await message.answer(
+            f"📋 Имя подтянуто из аккаунта: <b>{name}</b>\n"
+            "Введите телефон курьера (или «-» чтобы пропустить):",
+            parse_mode="HTML",
+        )
+    else:
+        await state.set_state(AdminCourierCreate.waiting_name)
+        await message.answer("Введите имя курьера:")
 
 
 @router.message(AdminCourierCreate.waiting_name)
@@ -727,9 +752,34 @@ async def admin_mgr_tg(message: Message, state: FSMContext):
     if not message.text.strip().lstrip("-").isdigit():
         await message.answer("Введите числовой Telegram ID.")
         return
-    await state.update_data(new_mgr_tg=int(message.text.strip()))
-    await state.set_state(AdminManagerCreate.waiting_name)
-    await message.answer("Введите имя менеджера:")
+    tg_id = int(message.text.strip())
+    await state.update_data(new_mgr_tg=tg_id)
+    user = await api.get_user(tg_id)
+    if user and user.get("name"):
+        name = user["name"]
+        phone = user.get("phone") or ""
+        await state.update_data(new_mgr_name=name)
+        if phone:
+            await state.clear()
+            result = await api.create_manager_api(tg_id, name, phone)
+            await message.answer(
+                f"✅ Менеджер создан (данные из аккаунта)!\n"
+                f"Имя: {result.get('name')}\nТелефон: {phone}\nTelegram ID: {tg_id}"
+            )
+            try:
+                await message.bot.send_message(tg_id, "🧑‍💼 Вы добавлены как менеджер Ever Water!\nИспользуйте /manager для доступа.")
+            except Exception:
+                pass
+            return
+        await state.set_state(AdminManagerCreate.waiting_phone)
+        await message.answer(
+            f"📋 Имя подтянуто из аккаунта: <b>{name}</b>\n"
+            "Введите телефон менеджера (или «-» чтобы пропустить):",
+            parse_mode="HTML",
+        )
+    else:
+        await state.set_state(AdminManagerCreate.waiting_name)
+        await message.answer("Введите имя менеджера:")
 
 
 @router.message(AdminManagerCreate.waiting_name)
@@ -865,9 +915,25 @@ async def admin_wh_staff_tg(message: Message, state: FSMContext):
     if not text.isdigit():
         await message.answer("Введите числовой Telegram ID.")
         return
-    await state.update_data(wh_staff_tg=int(message.text.strip()))
-    await state.set_state(AdminWarehouseStaff.waiting_name)
-    await message.answer("Введите имя завсклада:")
+    tg_id = int(message.text.strip())
+    await state.update_data(wh_staff_tg=tg_id)
+    user = await api.get_user(tg_id)
+    if user and user.get("name"):
+        name = user["name"]
+        await state.clear()
+        from services.roles import add_warehouse_staff
+        add_warehouse_staff(tg_id)
+        await message.answer(
+            f"✅ Завсклада добавлен (имя из аккаунта)!\nИмя: {name}\nTelegram ID: {tg_id}\n\n"
+            "⚠️ Доступ активен до перезапуска бота. Для постоянного доступа добавьте ID в WAREHOUSE_IDS в .env"
+        )
+        try:
+            await message.bot.send_message(tg_id, "🏭 Вы добавлены как завсклада Ever Water!\nИспользуйте /warehouse для доступа.")
+        except Exception:
+            pass
+    else:
+        await state.set_state(AdminWarehouseStaff.waiting_name)
+        await message.answer("Введите имя завсклада:")
 
 
 @router.message(AdminWarehouseStaff.waiting_name)

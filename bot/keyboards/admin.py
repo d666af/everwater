@@ -26,7 +26,6 @@ def order_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin:confirm:{order_id}"),
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:reject:{order_id}"),
         ],
-        [InlineKeyboardButton(text="🚴 Назначить курьера", callback_data=f"admin:assign:{order_id}")],
         [InlineKeyboardButton(text="💬 Написать клиенту", callback_data=f"admin:contact:{order_id}")],
         [InlineKeyboardButton(text="🌐 Заказ на сайте", url=_site("/admin/orders"))],
     ])
