@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from '../store/auth'
 import { useAdminRoleStore } from '../store/adminRole'
 
@@ -15,7 +16,14 @@ const ROLE_HOME = {
 
 export default function ProtectedRoute({ children, allowedRoles }) {
   const { user, tgAuthPending } = useAuthStore()
-  const { activeRole } = useAdminRoleStore()
+  const { activeRole, clearRole } = useAdminRoleStore()
+
+  // Clear stale activeRole when it's no longer in the user's current roles
+  useEffect(() => {
+    if (activeRole && user?.roles && !user.roles.includes(activeRole)) {
+      clearRole()
+    }
+  }, [activeRole, user?.roles]) // eslint-disable-line
 
   // While Telegram auto-auth is in progress, show a neutral loader
   if (tgAuthPending) {
@@ -31,8 +39,10 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (!user) return <Navigate to="/login" replace />
 
-  const effectiveRole = (user.roles?.length > 1 && activeRole)
-    ? activeRole
+  // Only trust activeRole if it's actually in the user's current roles
+  const validActiveRole = (activeRole && user.roles?.includes(activeRole)) ? activeRole : null
+  const effectiveRole = (user.roles?.length > 1 && validActiveRole)
+    ? validActiveRole
     : user.role
 
   if (allowedRoles && !allowedRoles.includes(effectiveRole)) {

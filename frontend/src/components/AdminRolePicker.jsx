@@ -15,7 +15,9 @@ export default function AdminRolePicker() {
   const { activeRole, setActiveRole } = useAdminRoleStore()
   const navigate = useNavigate()
 
-  if (!user?.roles || user.roles.length <= 1 || activeRole) return null
+  // Treat stale activeRole (role no longer assigned to user) as null
+  const validActiveRole = (activeRole && user?.roles?.includes(activeRole)) ? activeRole : null
+  if (!user?.roles || user.roles.length <= 1 || validActiveRole) return null
 
   const userRoles = ROLES.filter(r => user.roles.includes(r.id))
 
