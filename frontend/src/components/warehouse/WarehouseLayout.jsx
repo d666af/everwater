@@ -52,8 +52,8 @@ export default function WarehouseLayout({ children, title }) {
   const location = useLocation()
   const { user } = useAuthStore()
   const { clearRole } = useAdminRoleStore()
-  const switchRole = () => { clearRole(); navigate('/admin') }
-  const isAdmin = user?.role === 'admin'
+  const switchRole = () => clearRole()
+  const hasMultipleRoles = user?.roles?.length > 1
   const itemRefs = useRef({})
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
@@ -85,8 +85,8 @@ export default function WarehouseLayout({ children, title }) {
         {children}
       </div>
 
-      {/* Admin role switch FAB */}
-      {isAdmin && (
+      {/* Role switch FAB */}
+      {hasMultipleRoles && (
         <button style={s.switchFab} onClick={switchRole}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

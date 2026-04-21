@@ -14,8 +14,7 @@ from app.schemas.user import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Phone prefixes reserved for warehouse staff (configurable via env)
-WAREHOUSE_PHONES: list[str] = []
+_PRIORITY = ["admin", "manager", "courier", "client"]
 
 
 class InitDataBody(BaseModel):
@@ -52,67 +51,86 @@ class PhoneLoginBody(BaseModel):
 @router.post("/login")
 async def login_by_phone(body: PhoneLoginBody, db: AsyncSession = Depends(get_db)):
     normalized = body.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    suffix = normalized[-9:]
 
-    # Check couriers first (they have their own Courier table with phone)
-    courier_q = await db.execute(select(Courier).where(
-        Courier.phone.contains(normalized[-9:])
-    ))
+    # Check all role tables
+    courier_q = await db.execute(select(Courier).where(Courier.phone.contains(suffix)))
     courier = courier_q.scalar_one_or_none()
-    if courier:
-        # Find or create a matching User record for the courier
-        user_q = await db.execute(select(User).where(User.telegram_id == courier.telegram_id))
-        user = user_q.scalar_one_or_none()
-        return {
-            "id": user.id if user else courier.id,
-            "telegram_id": courier.telegram_id,
-            "name": courier.name,
-            "phone": courier.phone,
-            "role": "courier",
-            "balance": 0.0,
-            "bonus_points": 0.0,
-            "is_registered": True,
-        }
 
-    # Check managers (DB-backed)
     mgr_q = await db.execute(select(Manager).where(
-        Manager.phone.contains(normalized[-9:]),
+        Manager.phone.contains(suffix),
         Manager.is_active == True,
     ))
     manager = mgr_q.scalar_one_or_none()
-    if manager:
-        user_q = await db.execute(select(User).where(User.telegram_id == manager.telegram_id))
-        user = user_q.scalar_one_or_none()
-        return {
-            "id": user.id if user else manager.id,
-            "telegram_id": manager.telegram_id,
-            "name": manager.name,
-            "phone": manager.phone,
-            "role": "manager",
-            "balance": 0.0,
-            "bonus_points": 0.0,
-            "is_registered": True,
-        }
 
-    # Regular users
+    # Find user record by phone
     result = await db.execute(select(User).where(User.phone == normalized))
     user = result.scalar_one_or_none()
     if not user:
-        result = await db.execute(select(User).where(User.phone.contains(normalized[-9:])))
+        result = await db.execute(select(User).where(User.phone.contains(suffix)))
         user = result.scalar_one_or_none()
-    if not user:
+    # Fall back to user linked to courier/manager telegram_id
+    if not user and courier and courier.telegram_id:
+        result = await db.execute(select(User).where(User.telegram_id == courier.telegram_id))
+        user = result.scalar_one_or_none()
+    if not user and manager and manager.telegram_id:
+        result = await db.execute(select(User).where(User.telegram_id == manager.telegram_id))
+        user = result.scalar_one_or_none()
+
+    if not courier and not manager and not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден. Обратитесь к администратору.")
 
-    role = "client"
-    if user.telegram_id in settings.ADMIN_IDS:
-        role = "admin"
+    # Collect telegram_id from whichever record we found
+    tg_id = (
+        (user.telegram_id if user else None)
+        or (courier.telegram_id if courier else None)
+        or (manager.telegram_id if manager else None)
+    )
+
+    # Build all roles for this phone number
+    all_roles: list[str] = []
+    if tg_id and tg_id in settings.ADMIN_IDS:
+        all_roles.append("admin")
+    if manager:
+        all_roles.append("manager")
+    if courier:
+        all_roles.append("courier")
+    if user:
+        all_roles.append("client")
+    if not all_roles:
+        all_roles = ["client"]
+
+    primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
+
+    name = (
+        (user.name if user else None)
+        or (manager.name if manager else None)
+        or (courier.name if courier else None)
+        or ""
+    )
+    phone = (
+        (user.phone if user else None)
+        or (courier.phone if courier else None)
+        or (manager.phone if manager else None)
+        or ""
+    )
+    uid = (
+        (user.id if user else None)
+        or (courier.id if courier else None)
+        or (manager.id if manager else None)
+    )
+    balance = float(user.balance) if user else 0.0
+    bonus = float(user.bonus_points) if user else 0.0
+    is_reg = user.is_registered if user else True
 
     return {
-        "id": user.id,
-        "telegram_id": user.telegram_id,
-        "name": user.name,
-        "phone": user.phone,
-        "role": role,
-        "balance": user.balance,
-        "bonus_points": user.bonus_points,
-        "is_registered": user.is_registered,
+        "id": uid,
+        "telegram_id": tg_id,
+        "name": name,
+        "phone": phone,
+        "role": primary_role,
+        "roles": all_roles,
+        "balance": balance,
+        "bonus_points": bonus,
+        "is_registered": is_reg,
     }
