@@ -1,7 +1,7 @@
 import secrets
 import string
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -68,13 +68,18 @@ async def show_role_menu(target, role: str):
 
     if role == "client":
         await send("👤 Режим клиента:", reply_markup=main_menu_kb())
-        await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
+        try:
+            await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
+        except Exception:
+            pass
         if switch_kb:
-            await send("Административный доступ:", reply_markup=switch_kb)
+            await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "admin":
         from keyboards.admin import admin_menu_kb
         await send("🔧 Панель администратора:", reply_markup=admin_menu_kb())
+        if switch_kb:
+            await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
@@ -82,7 +87,11 @@ async def show_role_menu(target, role: str):
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
-        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        try:
+            await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        except Exception:
+            if switch_kb:
+                await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
@@ -90,7 +99,11 @@ async def show_role_menu(target, role: str):
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть курьер на сайте", url=_site("/courier"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
-        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        try:
+            await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        except Exception:
+            if switch_kb:
+                await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
@@ -98,7 +111,11 @@ async def show_role_menu(target, role: str):
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть склад на сайте", url=_site("/warehouse"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
-        await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        try:
+            await send("Сайт:", reply_markup=InlineKeyboardMarkup(inline_keyboard=site_rows))
+        except Exception:
+            if switch_kb:
+                await send("Переключить роль:", reply_markup=switch_kb)
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
@@ -123,13 +140,14 @@ async def cmd_start(message: Message, state: FSMContext):
     roles = await get_user_roles(tg_id)
     if len(roles) > 1:
         labels = " | ".join(ROLE_LABELS[r] for r in roles)
+        await message.answer(f"👋 С возвращением, {user['name']}!", reply_markup=ReplyKeyboardRemove())
         await message.answer(
-            f"👋 С возвращением, {user['name']}!\n\nВаши роли: {labels}\n\nВыберите режим:",
+            f"Ваши роли: {labels}\n\nВыберите режим:",
             reply_markup=roles_inline_kb(roles),
         )
     else:
         role = roles[0] if roles else "client"
-        await message.answer(f"👋 С возвращением, {user['name']}!")
+        await message.answer(f"👋 С возвращением, {user['name']}!", reply_markup=ReplyKeyboardRemove())
         await show_role_menu(message, role)
 
 
