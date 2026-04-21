@@ -35,7 +35,7 @@ const NAV = [
 export default function BottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const { clearRole } = useAdminRoleStore()
   const hasMultipleRoles = user?.roles?.length > 1
   const itemRefs = useRef({})
@@ -71,6 +71,14 @@ export default function BottomNav() {
 
   return (
     <>
+      <button style={st.logoutFab} onClick={() => { logout(); navigate('/login') }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+        Выйти
+      </button>
       {hasMultipleRoles && (
         <button style={st.switchFab} onClick={() => clearRole()}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -166,5 +174,14 @@ const st = {
     padding: '8px 14px', fontSize: 12, fontWeight: 700,
     cursor: 'pointer',
     boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
+  },
+  logoutFab: {
+    position: 'fixed', top: 16, left: 16, zIndex: 300,
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: '#fff', color: '#666',
+    border: '1.5px solid #ddd', borderRadius: 20,
+    padding: '8px 14px', fontSize: 12, fontWeight: 600,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
   },
 }

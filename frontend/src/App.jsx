@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTelegramAuth } from './hooks/useTelegramAuth'
+import { useRoleRefresh } from './hooks/useRoleRefresh'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRolePicker from './components/AdminRolePicker'
 import Header from './components/Header'
@@ -53,6 +54,7 @@ import WarehouseProfile from './pages/warehouse/WarehouseProfile'
 
 export default function App() {
   useTelegramAuth()  // Auto-login from Telegram WebApp context on every load
+  useRoleRefresh()   // Silently refresh roles for non-Telegram website users
   return (
     <>
       <AdminRolePicker />
