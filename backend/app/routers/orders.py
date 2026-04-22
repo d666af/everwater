@@ -231,12 +231,14 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 @router.patch("/{order_id}/in_delivery")
 async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
+    if order.status == OrderStatus.IN_DELIVERY:
+        return {"ok": True}
     order.status = OrderStatus.IN_DELIVERY
     client_tg = order.user.telegram_id if order.user else None
     await db.commit()
     if not from_bot:
-        await _tg(client_tg, f"🚴 Ваш заказ #{order_id} в пути! Курьер уже едет к вам.")
-        await _notify_admins(db, f"🚴 Курьер начал доставку заказа #{order_id}")
+        await _tg(client_tg, f"🚴 Ваш заказ в пути! Курьер уже едет к вам.")
+        await _notify_admins(db, f"🚴 Курьер начал доставку")
     return {"ok": True}
 
 
@@ -248,34 +250,39 @@ class DeliveredBody(BaseModel):
 async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), from_bot: bool = False,
                          db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
-    order.status = OrderStatus.DELIVERED
-    order.delivered_at = datetime.utcnow()
-    order.cash_collected = body.cash_collected
+    already_delivered = order.status == OrderStatus.DELIVERED
 
     client_tg = order.user.telegram_id if order.user else None
-    result = await db.execute(select(User).where(User.id == order.user_id))
-    user = result.scalar_one_or_none()
     bonus = 0.0
-    if user:
-        cfg = await get_all_settings(db)
-        cashback_pct = float(cfg.get("cashback_percent") or 5)
-        bonus = order.total * cashback_pct / 100.0
-        user.bonus_points += bonus
 
-    if order.courier_id:
-        result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
-        courier = result.scalar_one_or_none()
-        if courier:
-            courier.total_deliveries += 1
+    if not already_delivered:
+        order.status = OrderStatus.DELIVERED
+        order.delivered_at = datetime.utcnow()
+        order.cash_collected = body.cash_collected
 
-    await db.commit()
-    if not from_bot:
+        result = await db.execute(select(User).where(User.id == order.user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            cfg = await get_all_settings(db)
+            cashback_pct = float(cfg.get("cashback_percent") or 5)
+            bonus = order.total * cashback_pct / 100.0
+            user.bonus_points += bonus
+
+        if order.courier_id:
+            result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
+            courier = result.scalar_one_or_none()
+            if courier:
+                courier.total_deliveries += 1
+
+        await db.commit()
+
+    if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} бонусных баллов!" if bonus > 0 else ""
         await _tg(client_tg,
-                  f"✔️ Ваш заказ #{order_id} доставлен!{bonus_txt}\n\n"
+                  f"✔️ Ваш заказ доставлен!{bonus_txt}\n\n"
                   "Пожалуйста, оцените качество доставки в боте: /start")
-        await _notify_admins(db, f"✔️ Заказ #{order_id} доставлен!")
-    return {"ok": True}
+        await _notify_admins(db, f"✔️ Заказ доставлен!")
+    return {"ok": True, "bonus": round(bonus, 2)}
 
 
 @router.patch("/{order_id}/courier_accept")

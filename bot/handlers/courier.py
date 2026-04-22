@@ -138,8 +138,8 @@ def _order_detail_kb(order_id: int, status: str) -> InlineKeyboardMarkup:
     rows = []
     if status == "assigned_to_courier":
         rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"courier:accept:{order_id}")])
-    if status in ("assigned_to_courier", "in_delivery"):
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
+    if status in ("assigned_to_courier", "in_delivery"):
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     if not rows:
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
@@ -541,12 +541,14 @@ async def courier_in_delivery(call: CallbackQuery):
 @router.callback_query(F.data.startswith("courier:done:"))
 async def courier_done(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
-    await api.mark_delivered(order_id, from_bot=True)
+    result = await api.mark_delivered(order_id, from_bot=True)
     order = await api.get_order(order_id)
 
     from keyboards.user import review_kb
     brief = _order_brief(order)
     client_tg = order.get("client_telegram_id")
+    bonus = (result or {}).get("bonus", 0) if isinstance(result, dict) else 0
+
     if client_tg:
         try:
             await call.bot.send_message(
@@ -556,13 +558,11 @@ async def courier_done(call: CallbackQuery):
             )
         except Exception:
             pass
-
-    bonus = order.get("bonus_earned", 0)
-    if bonus and bonus > 0 and client_tg:
-        try:
-            await call.bot.send_message(client_tg, f"🎁 Вам начислено {fmt(bonus)} бонусных баллов!")
-        except Exception:
-            pass
+        if bonus and bonus > 0:
+            try:
+                await call.bot.send_message(client_tg, f"🎁 Вам начислено {fmt(bonus)} бонусных баллов!")
+            except Exception:
+                pass
 
     for admin_id in settings.ADMIN_IDS:
         try:
@@ -581,14 +581,12 @@ async def courier_done(call: CallbackQuery):
             except Exception:
                 pass
 
+    await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
     if order.get("payment_method") == "cash":
         await call.message.answer(
             f"💵 Вы получили наличные?\n{brief}",
             reply_markup=courier_cash_confirm_kb(order_id),
         )
-        await call.message.edit_text(f"✔️ Доставлено: {brief}")
-    else:
-        await call.message.edit_text(f"✔️ Доставлено: {brief}")
     await call.answer()
 
 
