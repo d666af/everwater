@@ -7,7 +7,6 @@ def _site(path: str = "") -> str:
 
 
 def courier_menu_kb() -> ReplyKeyboardMarkup:
-    # No role-switch button — couriers stay in courier flow
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📋 Мои заказы"), KeyboardButton(text="📊 Мои отчеты")],
@@ -27,7 +26,6 @@ def courier_order_kb(order_id: int, status: str = "assigned_to_courier") -> Inli
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     if not rows:
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
-    rows.append([InlineKeyboardButton(text="🌐 Заказы на сайте", url=_site("/courier"))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -43,17 +41,3 @@ def courier_cash_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Да, наличные получены", callback_data=f"courier:cash_ok:{order_id}")],
         [InlineKeyboardButton(text="💳 Безналичная оплата", callback_data=f"courier:cash_skip:{order_id}")],
     ])
-
-
-def courier_orders_filter_kb(active_tab: str = "waiting") -> InlineKeyboardMarkup:
-    tabs = [
-        ("⏳", "waiting"),
-        ("🚴", "enroute"),
-        ("✔️", "done"),
-        ("📋", "all"),
-    ]
-    buttons = []
-    for icon, tab in tabs:
-        marker = "·" if tab == active_tab else ""
-        buttons.append(InlineKeyboardButton(text=f"{marker}{icon}{marker}", callback_data=f"cor:tab:{tab}"))
-    return InlineKeyboardMarkup(inline_keyboard=[buttons])
