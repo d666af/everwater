@@ -24,19 +24,18 @@ export default function CourierStats() {
   const load = () => {
     if (!courierId) { setLoading(false); return }
     setLoading(true)
-    Promise.all([
+    Promise.allSettled([
       getCourierStats(courierId),
       getCourierOrders(courierId),
       getCashDebts(courierId),
       getCourierWater(courierId),
     ])
       .then(([st, orders, d, w]) => {
-        setStats(st)
-        setRecent(orders.filter(o => o.status === 'delivered').slice(0, 8))
-        setDebts(d)
-        setWater(w || {})
+        if (st.status === 'fulfilled') setStats(st.value)
+        if (orders.status === 'fulfilled') setRecent((orders.value || []).filter(o => o.status === 'delivered').slice(0, 8))
+        if (d.status === 'fulfilled') setDebts(d.value?.debts || d.value || [])
+        if (w.status === 'fulfilled') setWater(w.value || {})
       })
-      .catch(console.error)
       .finally(() => setLoading(false))
   }
 

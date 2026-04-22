@@ -110,10 +110,11 @@ async def get_courier_reviews(telegram_id: int, db: AsyncSession = Depends(get_d
 
 # ─── Water inventory ──────────────────────────────────────────────────────────
 
-@router.get("/{courier_id}/water")
-async def get_courier_water(courier_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/{telegram_id}/water")
+async def get_courier_water(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    courier = await _get_courier_by_telegram(telegram_id, db)
     result = await db.execute(
-        select(CourierWater).where(CourierWater.courier_id == courier_id)
+        select(CourierWater).where(CourierWater.courier_id == courier.id)
     )
     items = result.scalars().all()
     return [
@@ -124,10 +125,11 @@ async def get_courier_water(courier_id: int, db: AsyncSession = Depends(get_db))
 
 # ─── Cash debts ───────────────────────────────────────────────────────────────
 
-@router.get("/{courier_id}/cash_debts")
-async def get_cash_debts(courier_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/{telegram_id}/cash_debts")
+async def get_cash_debts(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    courier = await _get_courier_by_telegram(telegram_id, db)
     result = await db.execute(
-        select(CashDebt).where(CashDebt.courier_id == courier_id)
+        select(CashDebt).where(CashDebt.courier_id == courier.id)
         .order_by(CashDebt.created_at.desc())
     )
     debts = result.scalars().all()
