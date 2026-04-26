@@ -335,7 +335,7 @@ async def _get_order(order_id: int, db: AsyncSession) -> Order:
     result = await db.execute(
         select(Order)
         .where(Order.id == order_id)
-        .options(selectinload(Order.user), selectinload(Order.courier))
+        .options(*_order_opts())
     )
     order = result.scalar_one_or_none()
     if not order:
