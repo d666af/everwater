@@ -210,21 +210,34 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     courier = result.scalar_one_or_none()
     if not courier:
         raise HTTPException(status_code=404, detail="Courier not found")
+
+    # Capture everything needed for notifications BEFORE commit
+    # (after commit SQLAlchemy expires all attributes → MissingGreenlet on lazy access)
+    client_tg = order.user.telegram_id if order.user else None
+    items_text = "\n".join(
+        f"  • {i.product.name} x{i.quantity}" for i in order.items
+    ) if order.items else ""
+    order_address = order.address
+    order_phone = order.recipient_phone
+    order_time = order.delivery_time or "—"
+    order_total = int(order.total)
+    courier_tg = courier.telegram_id
+    courier_name = courier.name
+
     order.courier_id = courier_id
     order.status = OrderStatus.ASSIGNED_TO_COURIER
     if not order.delivery_expected_at:
         order.delivery_expected_at = datetime.utcnow() + timedelta(hours=2)
-    client_tg = order.user.telegram_id if order.user else None
     await db.commit()
+
     if not from_bot:
-        items_text = "\n".join(f"  • {i.product.name} x{i.quantity}" for i in order.items) if order.items else ""
-        await _tg(courier.telegram_id,
-                  f"🚴 Вам назначен заказ #{order_id}!\n\n"
-                  f"Адрес: {order.address}\nТелефон: {order.recipient_phone}\n"
-                  f"Время: {order.delivery_time or '—'}\nТовары:\n{items_text}\n"
-                  f"Сумма: {int(order.total):,} сум")
+        await _tg(courier_tg,
+                  f"🚴 Вам назначен заказ!\n\n"
+                  f"Адрес: {order_address}\nТелефон: {order_phone}\n"
+                  f"Время: {order_time}\nТовары:\n{items_text}\n"
+                  f"Сумма: {order_total:,} сум")
         await _tg(client_tg,
-                  f"🚴 Курьер {courier.name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.")
+                  f"🚴 Курьер {courier_name} назначен на ваш заказ!\nОжидайте доставку.")
     return {"ok": True}
 
 
