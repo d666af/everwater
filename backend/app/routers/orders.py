@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -15,8 +16,16 @@ from app.services.settings_service import get_all_settings
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
+def _order_items_text(items) -> str:
+    """Build a human-readable order summary from items, e.g. 'Вода 19л x2, Кулер x1'."""
+    if not items:
+        return "—"
+    parts = [f"{i.product.name} x{i.quantity}" for i in items if i.product]
+    return ", ".join(parts) if parts else "—"
+
+
 async def _tg(chat_id: int, text: str):
-    """Send Telegram message (fire-and-forget) so website actions also notify users."""
+    """Fire-and-forget Telegram message."""
     from app.config import settings as cfg
     import aiohttp
     if not chat_id:
@@ -28,6 +37,50 @@ async def _tg(chat_id: int, text: str):
                          timeout=aiohttp.ClientTimeout(total=5))
     except Exception:
         pass
+
+
+async def _tg_send(chat_id: int, text: str) -> int | None:
+    """Send Telegram message, return message_id on success."""
+    from app.config import settings as cfg
+    import aiohttp
+    if not chat_id:
+        return None
+    url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+    try:
+        async with aiohttp.ClientSession() as s:
+            r = await s.post(url, json={"chat_id": chat_id, "text": text},
+                             timeout=aiohttp.ClientTimeout(total=5))
+            data = await r.json()
+            return data.get("result", {}).get("message_id")
+    except Exception:
+        return None
+
+
+async def _tg_edit_or_send(chat_id: int, text: str, msg_id: int | None) -> int | None:
+    """Edit existing status message if possible, otherwise send new. Returns message_id."""
+    from app.config import settings as cfg
+    import aiohttp
+    if not chat_id:
+        return None
+    if msg_id:
+        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/editMessageText"
+        try:
+            async with aiohttp.ClientSession() as s:
+                r = await s.post(url,
+                                 json={"chat_id": chat_id, "message_id": msg_id, "text": text},
+                                 timeout=aiohttp.ClientTimeout(total=5))
+                data = await r.json()
+                if data.get("ok"):
+                    return msg_id
+        except Exception:
+            pass
+    return await _tg_send(chat_id, text)
+
+
+async def _save_status_msg_id(db: AsyncSession, order_id: int, msg_id: int):
+    """Persist the Telegram message_id used for client status notifications."""
+    await db.execute(sa_update(Order).where(Order.id == order_id).values(client_status_msg_id=msg_id))
+    await db.commit()
 
 
 async def _notify_admins(db: AsyncSession, text: str):
@@ -163,10 +216,20 @@ async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession 
     order = await _get_order(order_id, db)
     order.status = OrderStatus.CONFIRMED
     order.confirmed_at = datetime.utcnow()
+
     client_tg = order.user.telegram_id if order.user else None
+    old_msg_id = order.client_status_msg_id
+    items = _order_items_text(order.items)
+    oid = order.id
+
     await db.commit()
+
     if not from_bot:
-        await _tg(client_tg, f"✅ Ваш заказ #{order_id} подтверждён! Скоро назначим курьера.")
+        text = f"✅ Заказ подтверждён!\n{items}\nСкоро назначим курьера."
+        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
+        if new_msg_id and new_msg_id != old_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+
     return {"ok": True, "status": order.status}
 
 
@@ -180,11 +243,21 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     order = await _get_order(order_id, db)
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
+
     client_tg = order.user.telegram_id if order.user else None
+    old_msg_id = order.client_status_msg_id
+    items = _order_items_text(order.items)
+    oid = order.id
+
     await db.commit()
+
     if not from_bot:
         reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
-        await _tg(client_tg, f"❌ Ваш заказ #{order_id} отклонён.{reason_txt}")
+        text = f"❌ Заказ отклонён.\n{items}{reason_txt}"
+        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
+        if new_msg_id and new_msg_id != old_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+
     return {"ok": True}
 
 
@@ -214,15 +287,15 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     # Capture everything needed for notifications BEFORE commit
     # (after commit SQLAlchemy expires all attributes → MissingGreenlet on lazy access)
     client_tg = order.user.telegram_id if order.user else None
-    items_text = "\n".join(
-        f"  • {i.product.name} x{i.quantity}" for i in order.items
-    ) if order.items else ""
+    old_msg_id = order.client_status_msg_id
+    items = _order_items_text(order.items)
     order_address = order.address
     order_phone = order.recipient_phone
     order_time = order.delivery_time or "—"
     order_total = int(order.total)
     courier_tg = courier.telegram_id
     courier_name = courier.name
+    oid = order.id
 
     order.courier_id = courier_id
     order.status = OrderStatus.ASSIGNED_TO_COURIER
@@ -234,10 +307,13 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         await _tg(courier_tg,
                   f"🚴 Вам назначен заказ!\n\n"
                   f"Адрес: {order_address}\nТелефон: {order_phone}\n"
-                  f"Время: {order_time}\nТовары:\n{items_text}\n"
+                  f"Время: {order_time}\nТовары:\n{items}\n"
                   f"Сумма: {order_total:,} сум")
-        await _tg(client_tg,
-                  f"🚴 Курьер {courier_name} назначен на ваш заказ!\nОжидайте доставку.")
+        text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
+        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
+        if new_msg_id and new_msg_id != old_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+
     return {"ok": True}
 
 
@@ -247,11 +323,20 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     if order.status == OrderStatus.IN_DELIVERY:
         return {"ok": True}
     order.status = OrderStatus.IN_DELIVERY
+
     client_tg = order.user.telegram_id if order.user else None
+    old_msg_id = order.client_status_msg_id
+    items = _order_items_text(order.items)
+    oid = order.id
+
     await db.commit()
+
     if not from_bot:
-        await _tg(client_tg, f"🚴 Ваш заказ в пути! Курьер уже едет к вам.")
-        await _notify_admins(db, f"🚴 Курьер начал доставку")
+        text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер уже едет к вам!"
+        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
+        if new_msg_id and new_msg_id != old_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+
     return {"ok": True}
 
 
@@ -266,6 +351,9 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
     already_delivered = order.status == OrderStatus.DELIVERED
 
     client_tg = order.user.telegram_id if order.user else None
+    old_msg_id = order.client_status_msg_id
+    items = _order_items_text(order.items)
+    oid = order.id
     bonus = 0.0
 
     if not already_delivered:
@@ -291,10 +379,13 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
 
     if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} бонусных баллов!" if bonus > 0 else ""
-        await _tg(client_tg,
-                  f"✔️ Ваш заказ доставлен!{bonus_txt}\n\n"
-                  "Пожалуйста, оцените качество доставки в боте: /start")
-        await _notify_admins(db, f"✔️ Заказ доставлен!")
+        text = (f"✔️ Заказ доставлен!\n{items}{bonus_txt}\n\n"
+                "Пожалуйста, оцените качество доставки в боте: /start")
+        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
+        if new_msg_id and new_msg_id != old_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+        await _notify_admins(db, f"✔️ Заказ доставлен!\n{items}")
+
     return {"ok": True, "bonus": round(bonus, 2)}
 
 
@@ -325,7 +416,6 @@ async def get_courier_orders(telegram_id: int, db: AsyncSession = Depends(get_db
 
 @router.post("/reviews/")
 async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
-    # Look up order to derive user_id and courier_id if not provided
     order = None
     if data.order_id:
         order_q = await db.execute(select(Order).where(Order.id == data.order_id))

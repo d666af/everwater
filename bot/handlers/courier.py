@@ -500,13 +500,13 @@ async def courier_accept(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     await api.courier_accept_order(order_id)
     order = await api.get_order(order_id)
+    brief = _order_brief(order)
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            await call.bot.send_message(client_tg, "🚴 Курьер принял ваш заказ и скоро выедет!")
+            await call.bot.send_message(client_tg, f"🚴 Курьер принял ваш заказ и скоро выедет!\n{brief}")
         except Exception:
             pass
-    brief = _order_brief(order)
     await call.message.edit_text(
         f"✅ Вы приняли заказ.\n{brief}",
         reply_markup=_order_detail_kb(order_id, "in_delivery"),
@@ -519,13 +519,13 @@ async def courier_in_delivery(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     await api.start_delivery(order_id, from_bot=True)
     order = await api.get_order(order_id)
+    brief = _order_brief(order)
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            await call.bot.send_message(client_tg, "🚴 Ваш заказ в пути! Курьер уже едет к вам.")
+            await call.bot.send_message(client_tg, f"🚴 Ваш заказ в пути! Курьер уже едет к вам.\n{brief}")
         except Exception:
             pass
-    brief = _order_brief(order)
     for admin_id in settings.ADMIN_IDS:
         try:
             await call.bot.send_message(admin_id, f"🚴 Курьер начал доставку\n{brief}")
@@ -551,18 +551,14 @@ async def courier_done(call: CallbackQuery):
 
     if client_tg:
         try:
+            bonus_txt = f"\n🎁 Начислено {fmt(bonus)} бонусных баллов!" if bonus and bonus > 0 else ""
             await call.bot.send_message(
                 client_tg,
-                "✔️ Ваш заказ доставлен!\nПожалуйста, оцените качество доставки:",
+                f"✔️ Ваш заказ доставлен!\n{brief}{bonus_txt}\n\nПожалуйста, оцените качество доставки:",
                 reply_markup=review_kb(order_id),
             )
         except Exception:
             pass
-        if bonus and bonus > 0:
-            try:
-                await call.bot.send_message(client_tg, f"🎁 Вам начислено {fmt(bonus)} бонусных баллов!")
-            except Exception:
-                pass
 
     for admin_id in settings.ADMIN_IDS:
         try:

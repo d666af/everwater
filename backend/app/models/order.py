@@ -56,6 +56,9 @@ class Order(Base):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Telegram status message tracking (for edit-in-place notifications)
+    client_status_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
