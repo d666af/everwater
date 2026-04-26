@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const tg = window.Telegram?.WebApp
@@ -257,28 +257,20 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
 }
 
 /* ── Create Order Modal ──────────────────────────────────────────────────────── */
-const ORDER_WATERS = [
-  { id: 'w20', name: 'Вода 20л', price: 25000 },
-  { id: 'w10', name: 'Вода 10л', price: 14000 },
-  { id: 'w5', name: 'Вода 5л', price: 8000 },
-  { id: 'w1.5', name: 'Вода 1.5л', price: 4500 },
-  { id: 'w1', name: 'Вода 1л', price: 3500 },
-  { id: 'w0.5', name: 'Вода 0.5л', price: 2000 },
-  { id: 'g1.5', name: 'Газ. вода 1.5л', price: 6000 },
-  { id: 'g1', name: 'Газ. вода 1л', price: 5000 },
-  { id: 'g0.5', name: 'Газ. вода 0.5л', price: 3000 },
-]
-
 function CreateOrderModal({ onClose, onSave, courierId }) {
   const [phone, setPhone] = useState('')
-  const [client, setClient] = useState(null) // found client or null
+  const [client, setClient] = useState(null)
   const [lookingUp, setLookingUp] = useState(false)
   const [looked, setLooked] = useState(false)
   const [address, setAddress] = useState('')
-  const [selected, setSelected] = useState({}) // { waterId: qty }
+  const [products, setProducts] = useState([])
+  const [selected, setSelected] = useState({}) // { productId: qty }
   const [loading, setLoading] = useState(false)
 
-  // Phone lookup with debounce
+  useEffect(() => {
+    getProducts().then(p => setProducts(p || [])).catch(() => {})
+  }, [])
+
   const doLookup = async () => {
     const raw = phone.replace(/\D/g, '')
     if (raw.length < 9) { setClient(null); setLooked(false); return }
@@ -291,23 +283,24 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
     finally { setLookingUp(false); setLooked(true) }
   }
 
-  const toggleWater = (w) => {
-    setSelected(prev => {
-      if (prev[w.id]) { const n = { ...prev }; delete n[w.id]; return n }
-      return { ...prev, [w.id]: 1 }
-    })
-  }
-  const setQty = (id, q) => setSelected(p => ({ ...p, [id]: Math.max(1, q) }))
+  const add = (id) => setSelected(p => ({ ...p, [id]: (p[id] || 0) + 1 }))
+  const rem = (id) => setSelected(p => {
+    const n = { ...p }
+    if (n[id] > 1) n[id]--; else delete n[id]
+    return n
+  })
 
   const total = Object.entries(selected).reduce((sum, [id, qty]) => {
-    const w = ORDER_WATERS.find(w => w.id === id)
-    return sum + (w ? w.price * qty : 0)
+    const p = products.find(p => p.id === Number(id))
+    return sum + (p ? p.price * qty : 0)
   }, 0)
 
-  const items = Object.entries(selected).map(([id, qty]) => {
-    const w = ORDER_WATERS.find(w => w.id === id)
-    return w ? { product_name: w.name, quantity: qty, price: w.price } : null
-  }).filter(Boolean)
+  const items = Object.entries(selected)
+    .filter(([, qty]) => qty > 0)
+    .map(([id, qty]) => {
+      const p = products.find(p => p.id === Number(id))
+      return p ? { product_id: p.id, quantity: qty, price: p.price } : null
+    }).filter(Boolean)
 
   const canSave = phone.trim() && address.trim() && items.length > 0
 
@@ -316,8 +309,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
     setLoading(true)
     try {
       await onSave({
-        client_name: client?.name || '',
-        recipient_phone: phone.trim(),
+        phone: phone.trim(),
         address: address.trim(),
         total,
         items,
@@ -325,7 +317,9 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         user_id: client?.id || null,
       })
       onClose()
-    } catch { alert('Ошибка при создании') }
+    } catch (e) {
+      alert('Ошибка при создании заказа')
+    }
     finally { setLoading(false) }
   }
 
@@ -377,41 +371,39 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
           <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
         </div>
 
-        {/* Water selection */}
+        {/* Product selection */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав заказа</div>
-          <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {ORDER_WATERS.map(w => {
-              const sel = selected[w.id]
-              return (
-                <div key={w.id} style={{
-                  borderRadius: 12, border: sel ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
-                  background: sel ? `${C}06` : '#fff', padding: '10px 12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => toggleWater(w)}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                      background: sel ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-                      border: sel ? 'none' : '2px solid #ddd',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg>}
+          {products.length === 0 ? (
+            <div style={{ color: TEXT2, fontSize: 13, padding: 8 }}>Загрузка...</div>
+          ) : (
+            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {products.map(p => {
+                const qty = selected[p.id] || 0
+                return (
+                  <div key={p.id} style={{
+                    borderRadius: 12, border: qty ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
+                    background: qty ? `${C}06` : '#fff', padding: '10px 12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}{p.volume ? ` (${p.volume}л)` : ''}</span>
+                      <span style={{ fontSize: 12, color: TEXT2, marginRight: 8 }}>{p.price.toLocaleString()} сум</span>
+                      {qty === 0 ? (
+                        <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: `${C}15`, fontSize: 18, fontWeight: 700, color: CD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => add(p.id)}>+</button>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => rem(p.id)}>−</button>
+                          <span style={{ fontSize: 15, fontWeight: 800, minWidth: 20, textAlign: 'center', color: TEXT }}>{qty}</span>
+                          <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => add(p.id)}>+</button>
+                        </div>
+                      )}
                     </div>
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{w.name}</span>
-                    <span style={{ fontSize: 12, color: TEXT2 }}>{w.price.toLocaleString()} сум</span>
+                    {qty > 0 && <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 4, textAlign: 'right' }}>{(p.price * qty).toLocaleString()} сум</div>}
                   </div>
-                  {sel && (
-                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
-                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel - 1)}>−</button>
-                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{sel}</span>
-                      <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setQty(w.id, sel + 1)}>+</button>
-                      <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>{(w.price * sel).toLocaleString()} сум</span>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Total + payment info */}

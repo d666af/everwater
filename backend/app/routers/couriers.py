@@ -73,11 +73,24 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     )
     active_orders = active_q.scalar() or 0
 
+    today_q = await db.execute(
+        select(func.count(Order.id)).where(
+            and_(Order.courier_id == courier.id,
+                 Order.status == OrderStatus.DELIVERED,
+                 func.date(Order.delivered_at) == func.current_date())
+        )
+    )
+    today_count = today_q.scalar() or 0
+
     return {
         "courier_id": courier.id,
         "name": courier.name,
+        "delivery_count": total_delivered,
         "total_deliveries": total_delivered,
+        "today_count": today_count,
+        "earnings": round(total_revenue, 2),
         "total_revenue": round(total_revenue, 2),
+        "rating": round(float(avg_rating or 0), 2),
         "avg_rating": round(float(avg_rating or 0), 2),
         "review_count": review_count or 0,
         "active_orders": active_orders,
@@ -214,6 +227,7 @@ class CourierOrderCreate(BaseModel):
     payment_method: str = "cash"
     delivery_time: str | None = None
     note: str | None = None
+    total: float | None = None
 
 
 @router.post("/orders")
@@ -225,21 +239,25 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     normalized = body.phone.replace(" ", "").replace("-", "")
     user_q = await db.execute(select(User).where(User.phone.contains(normalized[-9:])))
     user = user_q.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="Client not found by phone")
 
     subtotal = 0.0
     items_data = []
     for item in body.items:
-        prod_q = await db.execute(select(Product).where(Product.id == item["product_id"]))
-        product = prod_q.scalar_one_or_none()
-        if not product:
-            raise HTTPException(status_code=404, detail=f"Product {item['product_id']} not found")
-        subtotal += product.price * item["quantity"]
-        items_data.append((product, item["quantity"]))
+        product = None
+        if item.get("product_id"):
+            prod_q = await db.execute(select(Product).where(Product.id == item["product_id"]))
+            product = prod_q.scalar_one_or_none()
+        if product:
+            subtotal += product.price * item["quantity"]
+            items_data.append((product, item["quantity"]))
+        elif item.get("price"):
+            subtotal += float(item["price"]) * item["quantity"]
+
+    if not subtotal and body.total:
+        subtotal = body.total
 
     order = Order(
-        user_id=user.id,
+        user_id=user.id if user else None,
         recipient_phone=body.phone,
         address=body.address,
         extra_info=body.note,
