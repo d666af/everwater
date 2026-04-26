@@ -288,7 +288,7 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
 @router.patch("/{order_id}/courier_accept")
 async def courier_accept(order_id: int, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
-    if order.status == OrderStatus.ASSIGNED_TO_COURIER:
+    if order.status in (OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.CONFIRMED):
         order.status = OrderStatus.IN_DELIVERY
         await db.commit()
     return {"ok": True}
