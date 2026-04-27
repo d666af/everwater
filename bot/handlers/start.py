@@ -502,29 +502,6 @@ async def user_paid(call: CallbackQuery):
     await api.payment_confirmed(order_id)
     order = await api.get_order(order_id)
 
-    from keyboards.admin import order_confirm_kb
-    items = order.get("items", [])
-    items_str = ", ".join(f"{i.get('product_name','?')} ×{i.get('quantity',1)}" for i in items[:3])
-    notification_text = (
-        f"💰 Оплата получена!\n"
-        f"Клиент: {order.get('recipient_phone', '—')}\n"
-        f"Заказ: {items_str or '—'} · {fmt(order.get('total', 0))}\n"
-        f"Адрес: {order.get('address', '—')}"
-    )
-    for admin_id in settings.ADMIN_IDS:
-        try:
-            await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
-        except Exception:
-            pass
-    managers = await api.get_managers()
-    for mgr in managers:
-        if mgr.get("is_active") and mgr.get("telegram_id"):
-            try:
-                await call.bot.send_message(mgr["telegram_id"], notification_text,
-                                             reply_markup=order_confirm_kb(order_id))
-            except Exception:
-                pass
-
     await call.message.edit_text(
         "✅ Заказ передан на подтверждение.\n"
         "Мы уведомим вас когда подтвердят."

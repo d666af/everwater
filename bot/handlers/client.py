@@ -1176,6 +1176,9 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         return
 
     # For cash/balance — create subscription immediately
+    total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+    bonus = data.get("sub_bonus", 0)
+    to_pay = max(0, total - bonus)
     pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
     await call.message.edit_text(f"Оплата: {pay_labels.get(method, method)}")
     result = await api.create_subscription(user["id"], {
@@ -1185,7 +1188,8 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         "landmark": data.get("sub_landmark", ""),
         "phone": data.get("sub_phone"),
         "payment_method": method,
-        "bonus_used": data.get("sub_bonus", 0),
+        "bonus_used": bonus,
+        "total": to_pay,
     })
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
     pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
@@ -1212,6 +1216,10 @@ async def sub_card_paid(call: CallbackQuery, state: FSMContext):
     if not user:
         await call.answer("Пользователь не найден")
         return
+    cart = data.get("sub_cart", {})
+    total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+    bonus = data.get("sub_bonus", 0)
+    to_pay = max(0, total - bonus)
     result = await api.create_subscription(user["id"], {
         "plan": data.get("sub_plan"),
         "water_summary": data.get("sub_water_summary", ""),
@@ -1219,7 +1227,8 @@ async def sub_card_paid(call: CallbackQuery, state: FSMContext):
         "landmark": data.get("sub_landmark", ""),
         "phone": data.get("sub_phone"),
         "payment_method": "card",
-        "bonus_used": data.get("sub_bonus", 0),
+        "bonus_used": bonus,
+        "total": to_pay,
     })
     if result:
         sub_id = result.get("id", "")
@@ -1294,7 +1303,13 @@ async def support_quick(call: CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text & ~F.text.startswith("/"))
+_MENU_TEXTS = {
+    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль",
+    "📋 Подписки", "💰 Пополнить", "💬 Поддержка", "🔄 Роль",
+}
+
+
+@router.message(F.text & ~F.text.startswith("/") & ~F.text.in_(_MENU_TEXTS))
 async def forward_to_support(message: Message, state: FSMContext):
     """Catch-all: forward unhandled text to support chat."""
     current_state = await state.get_state()
