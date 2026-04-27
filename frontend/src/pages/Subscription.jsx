@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react'
-import { getSettings } from '../api'
+import { getSettings, getUserByTelegram } from '../api'
 import { useUserStore } from '../store/user'
+import { useAuthStore } from '../store/auth'
 import { SubscriptionModal, SubscriptionDetail } from './Profile'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
+const tg = window.Telegram?.WebApp
+
 export default function Subscription() {
   const userStore = useUserStore()
+  const authUser = useAuthStore(s => s.user)
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const [showSub, setShowSub] = useState(false)
   const [subDetail, setSubDetail] = useState(null)
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {})
+    if (!userStore.initialized) {
+      const tgUser = tg?.initDataUnsafe?.user
+      if (tgUser?.id) {
+        getUserByTelegram(tgUser.id).then(u => { if (u) userStore.init(u) }).catch(() => {})
+      } else if (authUser) {
+        userStore.init(authUser)
+      }
+    }
   }, [])
 
   const subs = userStore.subscriptions || []

@@ -117,12 +117,13 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
     client_name = u.name if u else str(user_id)
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
     pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    plan_name = plan_label.get(body.plan, body.plan)
+    total_str = f"\nСумма: {int(body.total):,} сум" if body.total > 0 else ""
     text = (
-        f"📋 Новая подписка #{sub.id}!\n"
+        f"📋 {plan_name} подписка | {body.water_summary}\n"
         f"Клиент: {client_name}\n"
-        f"Вода: {body.water_summary}\n"
         f"Адрес: {body.address}\n"
-        f"Оплата: {pay_label.get(body.payment_method, body.payment_method)}"
+        f"Оплата: {pay_label.get(body.payment_method, body.payment_method)}{total_str}"
     )
     if body.payment_method == "card":
         text += "\n⏳ Ожидает подтверждения оплаты"

@@ -218,6 +218,7 @@ async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(g
 async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.CONFIRMED
+    order.payment_confirmed = True
     order.confirmed_at = datetime.utcnow()
 
     client_tg = order.user.telegram_id if order.user else None
@@ -267,7 +268,6 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 @router.patch("/{order_id}/payment_confirmed")
 async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
-    order.payment_confirmed = True
     order.status = OrderStatus.AWAITING_CONFIRMATION
 
     # Capture for notifications before commit
