@@ -217,6 +217,10 @@ async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(g
 @router.patch("/{order_id}/confirm")
 async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
+    if order.status not in (OrderStatus.AWAITING_CONFIRMATION, OrderStatus.NEW):
+        raise HTTPException(status_code=409, detail="Order already processed")
+
+    msg_ids_json = order.notification_msg_ids
     order.status = OrderStatus.CONFIRMED
     order.payment_confirmed = True
     order.confirmed_at = datetime.utcnow()
@@ -227,6 +231,9 @@ async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession 
     oid = order.id
 
     await db.commit()
+
+    from app.services.tg_notify import edit_all_notifications
+    await edit_all_notifications(msg_ids_json, f"✅ Заказ #{oid} подтверждён")
 
     if not from_bot:
         text = f"✅ Заказ подтверждён!\n{items}\nСкоро назначим курьера."
@@ -245,6 +252,10 @@ class RejectBody(BaseModel):
 async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot: bool = False,
                        db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
+    if order.status == OrderStatus.REJECTED:
+        raise HTTPException(status_code=409, detail="Order already rejected")
+
+    msg_ids_json = order.notification_msg_ids
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
 
@@ -254,6 +265,10 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     oid = order.id
 
     await db.commit()
+
+    from app.services.tg_notify import edit_all_notifications
+    reason_part = f" · {body.reason}" if body.reason else ""
+    await edit_all_notifications(msg_ids_json, f"❌ Заказ #{oid} отклонён{reason_part}")
 
     if not from_bot:
         reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
@@ -270,7 +285,6 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.AWAITING_CONFIRMATION
 
-    # Capture for notifications before commit
     oid = order.id
     client_name = order.user.name if order.user else "—"
     client_phone = order.recipient_phone
@@ -284,6 +298,8 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     from app.config import settings as cfg
+    from app.models.manager import Manager
+    from app.services.tg_notify import notify_all
     site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
     text = (
         f"🆕 Новый заказ!\n"
@@ -298,13 +314,27 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
          {"text": "❌ Отклонить", "callback_data": f"admin:reject:{oid}"}],
         [{"text": "🌐 Заказ на сайте", "url": site_url}],
     ]}
-    for aid in cfg.ADMIN_IDS:
-        await _tg_send(aid, text, kb)
-    from app.models.manager import Manager
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    for m in mgrs:
-        await _tg_send(m.telegram_id, text, kb)
+    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
 
+    await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
+    await db.commit()
+
+    return {"ok": True}
+
+
+class NotificationMsgIdsBody(BaseModel):
+    msg_ids: list[dict]  # [{chat_id, message_id}]
+
+
+@router.patch("/{order_id}/notification_msg_ids")
+async def store_notification_msg_ids(order_id: int, body: NotificationMsgIdsBody, db: AsyncSession = Depends(get_db)):
+    """Store notification message IDs for bot-sent order notifications."""
+    import json
+    await db.execute(sa_update(Order).where(Order.id == order_id).values(
+        notification_msg_ids=json.dumps(body.msg_ids)
+    ))
+    await db.commit()
     return {"ok": True}
 
 

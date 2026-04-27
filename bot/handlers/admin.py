@@ -344,8 +344,12 @@ async def admin_confirm(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     try:
         await api.confirm_order(order_id, from_bot=True)
-    except Exception:
-        await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
+    except Exception as e:
+        msg = str(e)
+        if "409" in msg:
+            await call.answer("Заказ уже обработан другим администратором", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
         return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
@@ -390,7 +394,15 @@ async def admin_reject_reason(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data["reject_order_id"]
     reason = message.text.strip()
-    await api.reject_order(order_id, reason, from_bot=True)
+    try:
+        await api.reject_order(order_id, reason, from_bot=True)
+    except Exception as e:
+        await state.clear()
+        if "409" in str(e):
+            await message.answer("Заказ уже обработан другим администратором.")
+        else:
+            await message.answer("❌ Ошибка при отклонении заказа.")
+        return
     order = await api.get_order(order_id)
     await state.clear()
     client_tg = order.get("client_telegram_id")
@@ -673,46 +685,40 @@ async def admin_topup_manual_amount(message: Message, state: FSMContext):
     await message.answer(f"✅ Баланс пополнен на {fmt(amount)}. Новый: {fmt(result.get('new_balance', 0))}")
 
 
+@router.callback_query(F.data.startswith("admin_topup_req:"))
+async def admin_topup_req(call: CallbackQuery):
+    parts = call.data.split(":")
+    req_id, action = int(parts[1]), parts[2]
+    try:
+        if action == "confirm":
+            result = await api.confirm_topup_req(req_id)
+            new_balance = result.get("new_balance", 0)
+            await call.message.edit_text(
+                f"✅ Пополнение подтверждено. Новый баланс клиента: {fmt(new_balance)}"
+            )
+        else:
+            await api.reject_topup_req(req_id)
+            await call.message.edit_text("❌ Запрос на пополнение отклонён.")
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("Уже обработано другим администратором", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+    await call.answer()
+
+
 @router.callback_query(F.data.startswith("admin_topup_confirm:"))
 async def admin_topup_confirm(call: CallbackQuery):
+    """Legacy handler kept for old-format callback buttons."""
     if not is_admin(call.from_user.id):
         return
-    parts = call.data.split(":")
-    user_id, amount, tg_id = int(parts[1]), int(parts[2]), int(parts[3]) if len(parts) > 3 else None
-    result = await api.topup_user(user_id, amount)
-    new_balance = result.get("new_balance", 0)
-    await call.message.edit_text(
-        f"✅ Баланс пополнен на {fmt(amount)}.\nНовый баланс: {fmt(new_balance)}"
-    )
-    if tg_id:
-        try:
-            await call.bot.send_message(
-                tg_id,
-                f"✅ Ваш баланс пополнен на {fmt(amount)}!\nТекущий баланс: {fmt(new_balance)}"
-            )
-        except Exception:
-            pass
-    await call.answer()
+    await call.answer("Это уведомление устарело. Используйте новые запросы.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("admin_topup_reject:"))
 async def admin_topup_reject(call: CallbackQuery):
-    parts = call.data.split(":")
-    user_id, amount = int(parts[1]), int(parts[2])
-    tg_id = int(parts[3]) if len(parts) > 3 else None
-    await call.message.edit_text(
-        f"❌ Запрос на пополнение {fmt(amount)} отклонён."
-    )
-    if tg_id:
-        try:
-            await call.bot.send_message(
-                tg_id,
-                f"❌ Ваш запрос на пополнение баланса {fmt(amount)} отклонён.\n"
-                "Обратитесь в поддержку если это ошибка."
-            )
-        except Exception:
-            pass
-    await call.answer()
+    """Legacy handler kept for old-format callback buttons."""
+    await call.answer("Это уведомление устарело. Используйте новые запросы.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("admin_sub_confirm:"))
@@ -720,8 +726,14 @@ async def admin_sub_confirm(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     sub_id = int(call.data.split(":")[1])
-    await api.confirm_subscription(sub_id)
-    await call.message.edit_text(f"✅ Подписка #{sub_id} подтверждена!")
+    try:
+        await api.confirm_subscription(sub_id)
+        await call.message.edit_text(f"✅ Подписка #{sub_id} подтверждена!")
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("Подписка уже обработана другим администратором", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
     await call.answer()
 
 
@@ -730,8 +742,14 @@ async def admin_sub_reject(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     sub_id = int(call.data.split(":")[1])
-    await api.reject_subscription(sub_id)
-    await call.message.edit_text(f"❌ Подписка #{sub_id} отклонена.")
+    try:
+        await api.reject_subscription(sub_id)
+        await call.message.edit_text(f"❌ Подписка #{sub_id} отклонена.")
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("Подписка уже обработана другим администратором", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
     await call.answer()
 
 

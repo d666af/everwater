@@ -345,6 +345,22 @@ async def topup_user(user_id: int, amount: int):
     return await _post(f"/admin/users/{user_id}/topup", {"amount": amount})
 
 
+async def create_topup_request(user_id: int, amount: int, telegram_id: int = None):
+    return await _post(f"/admin/users/{user_id}/topup_request", {"amount": amount, "telegram_id": telegram_id})
+
+
+async def confirm_topup_req(req_id: int):
+    return await _post(f"/admin/topup_requests/{req_id}/confirm")
+
+
+async def reject_topup_req(req_id: int):
+    return await _post(f"/admin/topup_requests/{req_id}/reject")
+
+
+async def store_order_notification_msgs(order_id: int, msg_ids: list):
+    return await _patch(f"/orders/{order_id}/notification_msg_ids", {"msg_ids": msg_ids})
+
+
 async def broadcast(message: str, target: str = "all"):
     try:
         return await _post("/admin/broadcast", {"message": message, "target": target})

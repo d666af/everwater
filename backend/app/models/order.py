@@ -58,6 +58,7 @@ class Order(Base):
 
     # Telegram status message tracking (for edit-in-place notifications)
     client_status_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
