@@ -613,20 +613,65 @@ async def co_phone(message: Message, state: FSMContext):
 
     cart = data.get("cart", {})
     has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
+    qty_20l = sum(v.get("qty", 1) for v in cart.values() if v.get("volume", 0) >= 18.9)
 
     if count > 0 and has_20l:
+        try:
+            cfg = await api.get_settings() or {}
+        except Exception:
+            cfg = {}
+        mode = cfg.get("bottle_return_mode", "max")
+        buttons_visible = cfg.get("bottle_return_buttons_visible", True)
+        max_return = min(qty_20l, count) if mode == "equal" else count
+
         await state.set_state(CheckoutState.asking_return)
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=f"Да, верну {count} шт.", callback_data=f"rb:{count}"),
-            InlineKeyboardButton(text="Нет", callback_data="rb:0"),
-        ]])
-        await message.answer(
-            f"У вас числится {count} бутылок 20л к возврату. Вернёте при этой доставке?",
-            reply_markup=kb,
-        )
+
+        if buttons_visible and max_return > 1:
+            await message.answer(
+                f"У вас числится {count} бутылок 20л к возврату.\n"
+                f"Сколько вернёте? (макс. {max_return} шт.)",
+                reply_markup=_bottle_adj_kb(max_return, max_return),
+            )
+        else:
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=f"Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
+                InlineKeyboardButton(text="Нет", callback_data="rb:0"),
+            ]])
+            await message.answer(
+                f"У вас числится {count} бутылок 20л к возврату. "
+                f"Вернёте {max_return} шт.?",
+                reply_markup=kb,
+            )
     else:
         await state.update_data(co_return=0)
         await _ask_bonus(message, state)
+
+
+def _bottle_adj_kb(count: int, max_return: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="−", callback_data=f"rb_adj:{max(0, count - 1)}:{max_return}"),
+            InlineKeyboardButton(text=f"🫙 {count} шт.", callback_data="rb_noop"),
+            InlineKeyboardButton(text="+", callback_data=f"rb_adj:{min(max_return, count + 1)}:{max_return}"),
+        ],
+        [
+            InlineKeyboardButton(text=f"✅ Верну {count} шт.", callback_data=f"rb:{count}"),
+            InlineKeyboardButton(text="❌ Не возвращаю", callback_data="rb:0"),
+        ],
+    ])
+
+
+@router.callback_query(CheckoutState.asking_return, F.data.startswith("rb_adj:"))
+async def co_return_adjust(call: CallbackQuery):
+    parts = call.data.split(":")
+    count, max_return = int(parts[1]), int(parts[2])
+    await call.message.edit_reply_markup(reply_markup=_bottle_adj_kb(count, max_return))
+    await call.answer()
+
+
+@router.callback_query(CheckoutState.asking_return, F.data == "rb_noop")
+async def co_return_noop(call: CallbackQuery):
+    await call.answer()
 
 
 @router.callback_query(CheckoutState.asking_return, F.data.startswith("rb:"))
@@ -634,15 +679,15 @@ async def co_return(call: CallbackQuery, state: FSMContext):
     val = int(call.data.split(":")[1])
     await state.update_data(co_return=val)
     label = f"Верну {val} шт." if val > 0 else "Не возвращаю"
-    await call.message.edit_text(f"Бутылки к возврату: {label}")
+    await call.message.edit_text(f"🫙 Бутылки к возврату: {label}")
     await _ask_bonus(call.message, state)
     await call.answer()
 
 
 async def _ask_bonus(message: Message, state: FSMContext):
     data = await state.get_data()
-    bonus = data.get("co_user", {}).get("bonus_points", 0)
-    if bonus and bonus > 0:
+    bonus = float(data.get("co_user", {}).get("bonus_points") or 0)
+    if bonus >= 1:
         await state.set_state(CheckoutState.asking_bonus)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"ub:{int(bonus)}"),
