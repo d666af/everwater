@@ -1,4 +1,4 @@
-from sqlalchemy import String, Float, Boolean, DateTime, Text, Integer, ForeignKey
+from sqlalchemy import String, Float, Boolean, DateTime, Text, Integer, BigInteger, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from app.database import Base
@@ -32,10 +32,23 @@ class Subscription(Base):
     day: Mapped[str | None] = mapped_column(String(16), nullable=True)  # weekday name
     time_slot: Mapped[str | None] = mapped_column(String(16), nullable=True)  # morning | afternoon
     payment_method: Mapped[str] = mapped_column(String(32), default="balance")
+    payment_confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | expired | cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TopupRequest(Base):
+    """Pending balance top-up requests from the mini app."""
+    __tablename__ = "topup_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | confirmed | rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class BottleDebt(Base):
@@ -44,4 +57,6 @@ class BottleDebt(Base):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, default=0)
+    survey_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    survey_msg_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

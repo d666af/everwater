@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
-from app.models.client_data import SavedAddress, Subscription, BottleDebt
+from app.models.client_data import SavedAddress, Subscription, BottleDebt, TopupRequest
 from app.schemas.order import CourierCreate, CourierOut
 import aiohttp
 
@@ -216,6 +216,227 @@ async def topup_user_balance(user_id: int, data: TopupData, db: AsyncSession = D
     user.balance = (user.balance or 0) + data.amount
     await db.commit()
     return {"ok": True, "new_balance": user.balance}
+
+
+class TopupRequestBody(BaseModel):
+    amount: float
+    telegram_id: int | None = None
+
+
+@router.post("/users/{user_id}/topup_request")
+async def create_topup_request(user_id: int, data: TopupRequestBody, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    user_q = await db.execute(select(User).where(User.id == user_id))
+    user = user_q.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    req = TopupRequest(user_id=user_id, amount=data.amount)
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+
+    tg_id = data.telegram_id or user.telegram_id
+    client_name = user.name or str(tg_id)
+    fmt_amt = f"{int(data.amount):,}".replace(",", " ")
+
+    text = (
+        f"💰 Запрос на пополнение баланса!\n"
+        f"Клиент: {client_name}\n"
+        f"Сумма: {fmt_amt} сум"
+    )
+    kb = {"inline_keyboard": [[
+        {"text": f"✅ Подтвердить {fmt_amt} сум",
+         "callback_data": f"admin_topup_confirm:{user_id}:{int(data.amount)}:{tg_id}"},
+        {"text": "❌ Отклонить",
+         "callback_data": f"admin_topup_reject:{user_id}:{int(data.amount)}:{tg_id}"},
+    ]]}
+
+    async def _tg_send_admin(chat_id, msg_text, reply_markup):
+        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(url, json={"chat_id": chat_id, "text": msg_text, "reply_markup": reply_markup},
+                             timeout=aiohttp.ClientTimeout(total=5))
+        except Exception:
+            pass
+
+    for aid in cfg.ADMIN_IDS:
+        await _tg_send_admin(aid, text, kb)
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    for m in mgrs:
+        await _tg_send_admin(m.telegram_id, text, kb)
+
+    return {"ok": True, "id": req.id}
+
+
+@router.get("/topup_requests")
+async def list_topup_requests(status: str = "pending", db: AsyncSession = Depends(get_db)):
+    q = select(TopupRequest, User).join(User, User.id == TopupRequest.user_id)
+    if status != "all":
+        q = q.where(TopupRequest.status == status)
+    q = q.order_by(TopupRequest.created_at.desc())
+    rows = (await db.execute(q)).all()
+    result = []
+    for req, user in rows:
+        result.append({
+            "id": req.id,
+            "type": "topup",
+            "user_id": req.user_id,
+            "client_name": user.name or "",
+            "amount": req.amount,
+            "total": req.amount,
+            "status": req.status,
+            "payment_confirmed": req.status == "confirmed",
+            "payment_method": "card",
+            "created_at": req.created_at.isoformat(),
+        })
+    return result
+
+
+@router.post("/topup_requests/{req_id}/confirm")
+async def confirm_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
+    req = req_q.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Topup request not found")
+
+    user_q = await db.execute(select(User).where(User.id == req.user_id))
+    user = user_q.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.balance = (user.balance or 0) + req.amount
+    req.status = "confirmed"
+    await db.commit()
+
+    fmt_amt = f"{int(req.amount):,}".replace(",", " ")
+    if user.telegram_id:
+        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(url, json={
+                    "chat_id": user.telegram_id,
+                    "text": f"✅ Ваш баланс пополнен на {fmt_amt} сум!\nТекущий баланс: {int(user.balance):,} сум",
+                }, timeout=aiohttp.ClientTimeout(total=5))
+        except Exception:
+            pass
+
+    return {"ok": True, "new_balance": user.balance}
+
+
+@router.post("/topup_requests/{req_id}/reject")
+async def reject_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
+    req = req_q.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Topup request not found")
+
+    user_q = await db.execute(select(User).where(User.id == req.user_id))
+    user = user_q.scalar_one_or_none()
+
+    req.status = "rejected"
+    await db.commit()
+
+    fmt_amt = f"{int(req.amount):,}".replace(",", " ")
+    if user and user.telegram_id:
+        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(url, json={
+                    "chat_id": user.telegram_id,
+                    "text": f"❌ Ваш запрос на пополнение {fmt_amt} сум отклонён.",
+                }, timeout=aiohttp.ClientTimeout(total=5))
+        except Exception:
+            pass
+
+    return {"ok": True}
+
+
+# ─── Subscriptions (admin view) ───────────────────────────────────────────────
+
+@router.get("/subscriptions")
+async def list_all_subscriptions(status: str = "all", db: AsyncSession = Depends(get_db)):
+    q = select(Subscription, User).join(User, User.id == Subscription.user_id)
+    if status == "pending":
+        q = q.where(Subscription.payment_confirmed == False)
+    elif status != "all":
+        q = q.where(Subscription.status == status)
+    q = q.order_by(Subscription.created_at.desc())
+    rows = (await db.execute(q)).all()
+    result = []
+    for sub, user in rows:
+        result.append({
+            "id": sub.id,
+            "type": "subscription",
+            "user_id": sub.user_id,
+            "client_name": user.name or "",
+            "water_summary": sub.water_summary,
+            "address": sub.address,
+            "payment_method": sub.payment_method,
+            "payment_confirmed": sub.payment_confirmed,
+            "total": sub.total,
+            "status": sub.status,
+            "plan": sub.plan,
+            "created_at": sub.created_at.isoformat(),
+        })
+    return result
+
+
+@router.post("/subscriptions/{sub_id}/confirm")
+async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
+    sub = sub_q.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    sub.payment_confirmed = True
+    sub.status = "active"
+    await db.commit()
+
+    user_q = await db.execute(select(User).where(User.id == sub.user_id))
+    user = user_q.scalar_one_or_none()
+    if user and user.telegram_id:
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(
+                    f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage",
+                    json={"chat_id": user.telegram_id, "text": f"✅ Ваша подписка #{sub_id} подтверждена и активирована!"},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                )
+        except Exception:
+            pass
+
+    return {"ok": True}
+
+
+@router.post("/subscriptions/{sub_id}/reject")
+async def reject_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
+    sub = sub_q.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    sub.status = "cancelled"
+    sub.payment_confirmed = False
+    await db.commit()
+
+    user_q = await db.execute(select(User).where(User.id == sub.user_id))
+    user = user_q.scalar_one_or_none()
+    if user and user.telegram_id:
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(
+                    f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage",
+                    json={"chat_id": user.telegram_id, "text": f"❌ Ваша подписка #{sub_id} отклонена. Обратитесь в поддержку."},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                )
+        except Exception:
+            pass
+
+    return {"ok": True}
 
 
 # ─── Managers (DB-backed) ─────────────────────────────────────────────────────

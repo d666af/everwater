@@ -13,6 +13,7 @@ from app.services.settings_service import seed_defaults
 # Import all models so SQLAlchemy knows about them before create_tables
 from app.models import user, order, product, courier as courier_model  # noqa: F401
 from app.models import client_data, support, settings as settings_model  # noqa: F401
+# TopupRequest is in client_data — imported above
 from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa: F401
 
 
@@ -25,6 +26,15 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_status_msg_id BIGINT"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE bottle_debts ADD COLUMN IF NOT EXISTS survey_done BOOLEAN DEFAULT FALSE"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE bottle_debts ADD COLUMN IF NOT EXISTS survey_msg_id BIGINT"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_confirmed BOOLEAN DEFAULT TRUE"
         ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)

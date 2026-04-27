@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../../store'
-import { createOrder, getUserByTelegram, paymentConfirmed, getSettings } from '../../api'
+import { createOrder, getUserByTelegram, paymentConfirmed, getSettings, getBottlesOwed, answerBottleSurvey } from '../../api'
 import MapPicker from '../../components/MapPicker'
 import { useAuthStore } from '../../store/auth'
 import { useUserStore } from '../../store/user'
@@ -64,17 +64,30 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [surveyDone, setSurveyDone] = useState(true) // default true to avoid flash
+  const [surveyCount, setSurveyCount] = useState(0)  // count selected in inline survey
 
   useEffect(() => {
     const tgUser = tg?.initDataUnsafe?.user
     if (tgUser?.id) {
       getUserByTelegram(tgUser.id)
-        .then(u => { setUser(u); setForm(f => ({ ...f, phone: u.phone || '' })) })
+        .then(u => {
+          setUser(u)
+          setForm(f => ({ ...f, phone: u.phone || '' }))
+          return getBottlesOwed(u.id)
+        })
+        .then(debt => {
+          setSurveyDone(debt.survey_done ?? true)
+          if (debt.count > 0) userStore.addBottlesOwed(0) // sync without adding
+        })
         .catch(console.error)
     } else if (authUser) {
       setUser(authUser)
       setForm(f => ({ ...f, phone: authUser.phone || '' }))
       if (!userStore.initialized) userStore.init(authUser)
+      getBottlesOwed(authUser.id)
+        .then(debt => { setSurveyDone(debt.survey_done ?? true) })
+        .catch(console.error)
     }
     getSettings().then(s => setSettings(prev => ({ ...prev, ...s }))).catch(console.error)
   }, [authUser]) // eslint-disable-line
@@ -91,8 +104,9 @@ export default function Checkout() {
 
   // Calculations
   const subtotal = total()
+  const effectiveReturnCount = surveyDone ? Number(form.returnCount) : surveyCount
   const bottleDiscount = (() => {
-    const c = Number(form.returnCount)
+    const c = effectiveReturnCount
     if (!c) return 0
     if (settings.bottle_discount_type === 'percent')
       return Math.round(subtotal * (settings.bottle_discount_value / 100))
@@ -137,6 +151,11 @@ export default function Checkout() {
     if (!form.address.trim()) return setError('Укажите адрес доставки')
     setLoading(true); setError('')
     try {
+      // Save survey answer if this is the first time
+      if (!surveyDone && has20L && user?.id) {
+        await answerBottleSurvey(user.id, surveyCount)
+        setSurveyDone(true)
+      }
       const order = await createOrder({
         user_id: user?.id,
         recipient_phone: form.phone || user?.phone,
@@ -144,7 +163,7 @@ export default function Checkout() {
         extra_info: form.extraInfo || null,
         delivery_time: null,
         latitude: form.lat, longitude: form.lng,
-        return_bottles_count: Number(form.returnCount),
+        return_bottles_count: surveyDone ? Number(form.returnCount) : surveyCount,
         return_bottles_volume: has20L ? 20 : 0,
         bottle_discount: bottleDiscount,
         bonus_used: Number(form.bonusUsed),
@@ -156,7 +175,7 @@ export default function Checkout() {
 
       // Track bottles: add ordered 20L, subtract returned
       if (qty20L > 0) userStore.addBottlesOwed(qty20L)
-      if (Number(form.returnCount) > 0) userStore.returnBottles(Number(form.returnCount))
+      if (effectiveReturnCount > 0) userStore.returnBottles(effectiveReturnCount)
 
       if (form.paymentMethod === 'cash') {
         await paymentConfirmed(order.id)
@@ -355,8 +374,30 @@ export default function Checkout() {
         />
       </div>
 
-      {/* Bottle return */}
-      {has20L && bottlesOwed > 0 && (
+      {/* Bottle return / initial survey */}
+      {has20L && !surveyDone && (
+        <div style={s.section}>
+          <div style={s.sLabel}>Бутылки 20 л к возврату</div>
+          <div style={s.card}>
+            <div style={{ fontSize: 13, color: '#8e8e93', marginBottom: 10 }}>
+              Укажите, сколько пустых бутылок вернёте при доставке:
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                style={surveyCount <= 0 ? { ...s.stepperBtn, ...s.stepperBtnDisabled } : s.stepperBtn}
+                onClick={() => setSurveyCount(Math.max(0, surveyCount - 1))}
+                disabled={surveyCount <= 0}
+              >−</button>
+              <span style={s.stepperVal}>{surveyCount} шт.</span>
+              <button
+                style={s.stepperBtn}
+                onClick={() => setSurveyCount(surveyCount + 1)}
+              >+</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {has20L && surveyDone && bottlesOwed > 0 && (
         <BottleReturn
           returnCount={Number(form.returnCount)}
           onCountChange={v => set('returnCount', v)}

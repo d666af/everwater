@@ -61,14 +61,15 @@ class CheckoutState(StatesGroup):
 
 
 class SubscriptionState(StatesGroup):
-    choosing_plan    = State()
-    choosing_water   = State()   # now catalog-based, not text
-    waiting_address  = State()
-    waiting_landmark = State()   # NEW
-    waiting_location = State()   # NEW (optional GPS)
-    waiting_phone    = State()
-    asking_bonus     = State()   # NEW
-    choosing_payment = State()
+    choosing_plan        = State()
+    choosing_water       = State()
+    waiting_address      = State()
+    waiting_landmark     = State()
+    waiting_location     = State()
+    waiting_phone        = State()
+    asking_bonus         = State()
+    choosing_payment     = State()
+    waiting_card_payment = State()
 
 
 class TopupState(StatesGroup):
@@ -78,13 +79,26 @@ class TopupState(StatesGroup):
 # ─── Survey after registration ────────────────────────────────────────────────
 
 async def start_survey(message: Message, state: FSMContext):
+    from keyboards.user import _site
+    from aiogram.types import WebAppInfo
+    site_url = _site("/")
+    site_btn = (
+        InlineKeyboardButton(text="📱 Открыть на сайте", web_app=WebAppInfo(url=site_url))
+        if site_url.startswith("https")
+        else InlineKeyboardButton(text="📱 Открыть на сайте", url=site_url)
+    )
     await state.set_state(SurveyState.asking_source)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Наши бутылки", callback_data="survey_src:our")],
         [InlineKeyboardButton(text="🔄 Другой бренд", callback_data="survey_src:other")],
         [InlineKeyboardButton(text="❌ Нет бутылок", callback_data="survey_src:no")],
+        [site_btn],
     ])
-    await message.answer("У вас есть пустые 19-литровые бутылки для возврата?", reply_markup=kb)
+    sent = await message.answer("У вас есть пустые 19-литровые бутылки для возврата?", reply_markup=kb)
+    # Save msg_id so mini app can sync this message
+    user = await api.get_user(message.from_user.id)
+    if user:
+        await api.save_bottle_survey_msg(user["id"], sent.message_id)
 
 
 @router.callback_query(SurveyState.asking_source, F.data.startswith("survey_src:"))
@@ -92,6 +106,9 @@ async def survey_source(call: CallbackQuery, state: FSMContext):
     src = call.data.split(":")[1]
     if src == "no":
         await state.clear()
+        user = await api.get_user(call.from_user.id)
+        if user:
+            await api.mark_bottle_survey_done(user["id"], 0)
         await call.message.edit_text("Хорошо! Вы можете сделать заказ через каталог 🛒")
         await call.answer()
         return
@@ -169,7 +186,7 @@ async def survey_count_cb(call: CallbackQuery, state: FSMContext):
     actual_count = count if is_accepted else 0
     user = await api.get_user(call.from_user.id)
     if user:
-        await api.change_bottles_owed(user["id"], actual_count)
+        await api.mark_bottle_survey_done(user["id"], actual_count)
     await state.clear()
     if is_accepted:
         msg = f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа."
@@ -191,7 +208,7 @@ async def survey_count_text(message: Message, state: FSMContext):
     actual_count = count if is_accepted else 0
     user = await api.get_user(message.from_user.id)
     if user:
-        await api.change_bottles_owed(user["id"], actual_count)
+        await api.mark_bottle_survey_done(user["id"], actual_count)
     await state.clear()
     if is_accepted:
         await message.answer(f"Записали: {count} бутылок к возврату. Это учтётся при оформлении заказа.")
@@ -1129,8 +1146,6 @@ async def _sub_ask_payment(message: Message, state: FSMContext):
 @router.callback_query(SubscriptionState.choosing_payment, F.data.startswith("subpm:"))
 async def sub_payment(call: CallbackQuery, state: FSMContext):
     method = call.data.split(":")[1]
-    pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
-    await call.message.edit_text(f"Оплата: {pay_labels.get(method, method)}")
     data = await state.get_data()
     user = data.get("sub_user") or await api.get_user(call.from_user.id)
     if not user:
@@ -1139,6 +1154,30 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
     cart = data.get("sub_cart", {})
     water_parts = [f"{v['name']} ×{v['qty']}" for v in cart.values() if v.get("qty", 0) > 0]
     water_summary = ", ".join(water_parts)
+    await state.update_data(sub_water_summary=water_summary, sub_payment_method=method)
+
+    if method == "card":
+        # Show card details; create subscription only when user confirms payment
+        total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+        bonus = data.get("sub_bonus", 0)
+        to_pay = max(0, total - bonus)
+        await call.message.edit_text(
+            f"💳 Переведите <b>{fmt(to_pay)}</b> сум на карту:\n\n"
+            f"<b>{settings.PAYMENT_CARD}</b>\n"
+            f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
+            f"После оплаты нажмите кнопку ниже:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Я оплатил", callback_data="sub_card_paid"),
+            ]]),
+            parse_mode="HTML",
+        )
+        await state.set_state(SubscriptionState.waiting_card_payment)
+        await call.answer()
+        return
+
+    # For cash/balance — create subscription immediately
+    pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
+    await call.message.edit_text(f"Оплата: {pay_labels.get(method, method)}")
     result = await api.create_subscription(user["id"], {
         "plan": data.get("sub_plan"),
         "water_summary": water_summary,
@@ -1159,28 +1198,40 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
             f"Ориентир: {data.get('sub_landmark', '—')}\n"
             f"Оплата: {pay_label.get(method, method)}"
         )
-        notification = (
-            f"📋 Новая подписка!\n"
-            f"Клиент: {user.get('name', '—')} | {data.get('sub_phone', '—')}\n"
-            f"Вода: {water_summary}\n"
-            f"Адрес: {data.get('sub_address', '—')}\n"
-            f"Ориентир: {data.get('sub_landmark', '—')}\n"
-            f"Оплата: {pay_label.get(method, method)}"
-        )
-        for admin_id in settings.ADMIN_IDS:
-            try:
-                await call.bot.send_message(admin_id, notification)
-            except Exception:
-                pass
-        managers = await api.get_managers()
-        for mgr in managers:
-            if mgr.get("is_active") and mgr.get("telegram_id"):
-                try:
-                    await call.bot.send_message(mgr["telegram_id"], notification)
-                except Exception:
-                    pass
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
+    await state.clear()
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+@router.callback_query(SubscriptionState.waiting_card_payment, F.data == "sub_card_paid")
+async def sub_card_paid(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    if not user:
+        await call.answer("Пользователь не найден")
+        return
+    result = await api.create_subscription(user["id"], {
+        "plan": data.get("sub_plan"),
+        "water_summary": data.get("sub_water_summary", ""),
+        "address": data.get("sub_address"),
+        "landmark": data.get("sub_landmark", ""),
+        "phone": data.get("sub_phone"),
+        "payment_method": "card",
+        "bonus_used": data.get("sub_bonus", 0),
+    })
+    if result:
+        sub_id = result.get("id", "")
+        await call.message.edit_text(
+            f"⏳ Заявка на подписку #{sub_id} отправлена!\n\n"
+            "Менеджер проверит оплату и активирует подписку."
+        )
+    else:
+        await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
+    await state.clear()
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
+    await call.answer()
     await state.clear()
     await call.answer()
 

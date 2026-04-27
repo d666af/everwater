@@ -715,6 +715,26 @@ async def admin_topup_reject(call: CallbackQuery):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("admin_sub_confirm:"))
+async def admin_sub_confirm(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    sub_id = int(call.data.split(":")[1])
+    await api.confirm_subscription(sub_id)
+    await call.message.edit_text(f"✅ Подписка #{sub_id} подтверждена!")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin_sub_reject:"))
+async def admin_sub_reject(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    sub_id = int(call.data.split(":")[1])
+    await api.reject_subscription(sub_id)
+    await call.message.edit_text(f"❌ Подписка #{sub_id} отклонена.")
+    await call.answer()
+
+
 # ─── Managers ─────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:managers")

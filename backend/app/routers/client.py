@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.client_data import BottleDebt, SavedAddress, Subscription
+from app.models.user import User
 from app.models.support import SupportChat, SupportMessage
 
 router = APIRouter(prefix="/client", tags=["client"])
@@ -84,6 +85,7 @@ class SubscriptionOut(BaseModel):
     day: str | None
     time_slot: str | None
     payment_method: str
+    payment_confirmed: bool
     latitude: float | None
     longitude: float | None
     status: str
@@ -100,10 +102,52 @@ async def list_subs(user_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{user_id}/subscriptions", response_model=SubscriptionOut)
 async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depends(get_db)):
-    sub = Subscription(user_id=user_id, **body.model_dump(by_alias=False))
+    import aiohttp
+    from app.config import settings as cfg
+    from app.models.manager import Manager
+
+    payment_confirmed = body.payment_method != "card"
+    sub = Subscription(user_id=user_id, payment_confirmed=payment_confirmed, **body.model_dump(by_alias=False))
     db.add(sub)
     await db.commit()
     await db.refresh(sub)
+
+    user_q = await db.execute(select(User).where(User.id == user_id))
+    u = user_q.scalar_one_or_none()
+    client_name = u.name if u else str(user_id)
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    text = (
+        f"📋 Новая подписка #{sub.id}!\n"
+        f"Клиент: {client_name}\n"
+        f"Вода: {body.water_summary}\n"
+        f"Адрес: {body.address}\n"
+        f"Оплата: {pay_label.get(body.payment_method, body.payment_method)}"
+    )
+    if body.payment_method == "card":
+        text += "\n⏳ Ожидает подтверждения оплаты"
+    kb = {"inline_keyboard": [[
+        {"text": "✅ Подтвердить", "callback_data": f"admin_sub_confirm:{sub.id}"},
+        {"text": "❌ Отклонить", "callback_data": f"admin_sub_reject:{sub.id}"},
+    ]]} if body.payment_method == "card" else None
+
+    async def _tg_send(chat_id, msg, markup=None):
+        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": msg}
+        if markup:
+            payload["reply_markup"] = markup
+        try:
+            async with aiohttp.ClientSession() as s:
+                await s.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5))
+        except Exception:
+            pass
+
+    for aid in cfg.ADMIN_IDS:
+        await _tg_send(aid, text, kb)
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    for m in mgrs:
+        await _tg_send(m.telegram_id, text, kb)
+
     return sub
 
 
@@ -127,7 +171,7 @@ class BottleDeltaBody(BaseModel):
 async def get_debt(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user_id))
     row = result.scalar_one_or_none()
-    return {"count": row.count if row else 0}
+    return {"count": row.count if row else 0, "survey_done": row.survey_done if row else False}
 
 
 @router.post("/{user_id}/bottles_owed")
@@ -141,6 +185,58 @@ async def change_debt(user_id: int, body: BottleDeltaBody, db: AsyncSession = De
         row.count = max(0, row.count + body.delta)
     await db.commit()
     return {"count": row.count}
+
+
+class BottleSurveyBody(BaseModel):
+    count: int | None = None
+    survey_msg_id: int | None = None
+    survey_done: bool | None = None
+
+
+@router.put("/{user_id}/bottle_survey")
+async def update_bottle_survey(user_id: int, body: BottleSurveyBody, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user_id))
+    row = result.scalar_one_or_none()
+    if not row:
+        row = BottleDebt(user_id=user_id, count=0)
+        db.add(row)
+
+    old_msg_id = row.survey_msg_id
+
+    if body.survey_msg_id is not None:
+        row.survey_msg_id = body.survey_msg_id
+
+    if body.count is not None:
+        row.count = body.count
+        row.survey_done = True
+        row.survey_msg_id = None  # clear after answered
+
+    if body.survey_done is not None and body.count is None:
+        row.survey_done = body.survey_done
+
+    await db.commit()
+
+    # Edit the bot survey message when answered via mini app
+    if body.count is not None and old_msg_id:
+        user_q = await db.execute(select(User).where(User.id == user_id))
+        u = user_q.scalar_one_or_none()
+        if u and u.telegram_id:
+            label = f"{body.count} бут." if body.count > 0 else "нет бутылок"
+            await _edit_tg_msg(u.telegram_id, old_msg_id, f"✅ Бутылки к возврату: {label} (указано в приложении)")
+
+    return {"ok": True, "count": row.count, "survey_done": row.survey_done}
+
+
+async def _edit_tg_msg(telegram_id: int, msg_id: int, text: str):
+    from app.config import settings as cfg
+    import aiohttp
+    url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/editMessageText"
+    try:
+        async with aiohttp.ClientSession() as s:
+            await s.post(url, json={"chat_id": telegram_id, "message_id": msg_id, "text": text},
+                         timeout=aiohttp.ClientTimeout(total=5))
+    except Exception:
+        pass
 
 
 # ─── Client support chat ──────────────────────────────────────────────────────

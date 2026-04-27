@@ -32,6 +32,13 @@ async def _delete(path: str):
             return await r.json()
 
 
+async def _put(path: str, data: dict = None):
+    async with aiohttp.ClientSession() as s:
+        async with s.put(f"{BASE}{path}", json=data) as r:
+            r.raise_for_status()
+            return await r.json()
+
+
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 async def create_or_get_user(telegram_id: int, name: str = None, phone: str = None):
@@ -232,6 +239,20 @@ async def cancel_subscription(user_id: int, sub_id: int):
         return {}
 
 
+async def confirm_subscription(sub_id: int):
+    try:
+        return await _post(f"/admin/subscriptions/{sub_id}/confirm")
+    except Exception:
+        return {}
+
+
+async def reject_subscription(sub_id: int):
+    try:
+        return await _post(f"/admin/subscriptions/{sub_id}/reject")
+    except Exception:
+        return {}
+
+
 async def get_bottles_owed(user_id: int):
     try:
         return await _get(f"/client/{user_id}/bottles_owed")
@@ -242,6 +263,20 @@ async def get_bottles_owed(user_id: int):
 async def change_bottles_owed(user_id: int, delta: int):
     try:
         return await _post(f"/client/{user_id}/bottles_owed", {"delta": delta})
+    except Exception:
+        return {}
+
+
+async def save_bottle_survey_msg(user_id: int, msg_id: int):
+    try:
+        return await _put(f"/client/{user_id}/bottle_survey", {"survey_msg_id": msg_id})
+    except Exception:
+        return {}
+
+
+async def mark_bottle_survey_done(user_id: int, count: int):
+    try:
+        return await _put(f"/client/{user_id}/bottle_survey", {"count": count, "survey_done": True})
     except Exception:
         return {}
 
