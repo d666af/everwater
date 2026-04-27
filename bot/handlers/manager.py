@@ -118,8 +118,11 @@ async def mgr_confirm(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     try:
         await api.confirm_order(order_id, from_bot=True)
-    except Exception:
-        await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("Заказ уже обработан другим администратором", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
         return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
@@ -180,7 +183,13 @@ async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
 
 
 async def _do_reject(target, order_id: int, reason: str):
-    await api.reject_order(order_id, reason, from_bot=True)
+    try:
+        await api.reject_order(order_id, reason, from_bot=True)
+    except Exception as e:
+        if "409" in str(e):
+            if isinstance(target, CallbackQuery):
+                await target.answer("Заказ уже обработан другим администратором", show_alert=True)
+            return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
     if client_tg:

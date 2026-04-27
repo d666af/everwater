@@ -108,7 +108,11 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
   const act = async (fn) => {
     setActionLoading(true)
     try { await fn(); load() }
-    catch { alert('Ошибка операции') }
+    catch (e) {
+      const status = e?.response?.status
+      if (status === 409) alert('Уже обработано другим администратором')
+      else alert('Ошибка операции')
+    }
     finally { setActionLoading(false) }
   }
 

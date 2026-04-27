@@ -132,22 +132,12 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
         {"text": "❌ Отклонить", "callback_data": f"admin_sub_reject:{sub.id}"},
     ]]} if body.payment_method == "card" else None
 
-    async def _tg_send(chat_id, msg, markup=None):
-        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": msg}
-        if markup:
-            payload["reply_markup"] = markup
-        try:
-            async with aiohttp.ClientSession() as s:
-                await s.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5))
-        except Exception:
-            pass
-
-    for aid in cfg.ADMIN_IDS:
-        await _tg_send(aid, text, kb)
+    from app.services.tg_notify import notify_all
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    for m in mgrs:
-        await _tg_send(m.telegram_id, text, kb)
+    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+
+    sub.notification_msg_ids = msg_ids_json
+    await db.commit()
 
     return sub
 

@@ -849,19 +849,27 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             f"Заказ: {cart_info}\n"
             f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}"
         )
+        sent_msgs = []
         for admin_id in settings.ADMIN_IDS:
             try:
-                await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
+                msg = await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
+                sent_msgs.append({"chat_id": admin_id, "message_id": msg.message_id})
             except Exception:
                 pass
         managers = await api.get_managers()
         for mgr in managers:
             if mgr.get("is_active") and mgr.get("telegram_id"):
                 try:
-                    await call.bot.send_message(mgr["telegram_id"], notification_text,
-                                                reply_markup=order_confirm_kb(order_id))
+                    msg = await call.bot.send_message(mgr["telegram_id"], notification_text,
+                                                      reply_markup=order_confirm_kb(order_id))
+                    sent_msgs.append({"chat_id": mgr["telegram_id"], "message_id": msg.message_id})
                 except Exception:
                     pass
+        if sent_msgs:
+            try:
+                await api.store_order_notification_msgs(order_id, sent_msgs)
+            except Exception:
+                pass
 
     if pay_method == "card":
         await call.message.edit_text(
@@ -1400,42 +1408,15 @@ async def topup_amount(message: Message, state: FSMContext):
 async def topup_paid(call: CallbackQuery):
     parts = call.data.split(":")
     amount = int(parts[1])
-    user_id = parts[2] if len(parts) > 2 else "?"
-    from aiogram import Bot
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    bot: Bot = call.bot
-    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=f"✅ Подтвердить {fmt(amount)}",
-            callback_data=f"admin_topup_confirm:{user_id}:{amount}:{call.from_user.id}",
-        ),
-        InlineKeyboardButton(
-            text="❌ Отклонить",
-            callback_data=f"admin_topup_reject:{user_id}:{amount}:{call.from_user.id}",
-        ),
-    ]])
-    notification_text = (
-        f"💰 Запрос на пополнение баланса!\n"
-        f"Пользователь: {call.from_user.full_name} (tg: {call.from_user.id})\n"
-        f"ID в системе: {user_id}\n"
-        f"Сумма: {fmt(amount)}"
-    )
-    for admin_id in settings.ADMIN_IDS:
-        try:
-            await bot.send_message(
-                admin_id,
-                notification_text,
-                reply_markup=confirm_kb,
-            )
-        except Exception:
-            pass
-    managers = await api.get_managers()
-    for mgr in managers:
-        if mgr.get("is_active") and mgr.get("telegram_id"):
-            try:
-                await bot.send_message(mgr["telegram_id"], notification_text, reply_markup=confirm_kb)
-            except Exception:
-                pass
+    user_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+    if not user_id:
+        await call.answer("Ошибка: пользователь не найден", show_alert=True)
+        return
+    try:
+        await api.create_topup_request(user_id, amount, call.from_user.id)
+    except Exception:
+        await call.answer("Не удалось отправить заявку. Попробуйте позже.", show_alert=True)
+        return
     await call.message.edit_text(
         f"✅ Заявка на пополнение {fmt(amount)} отправлена.\n"
         "Баланс будет зачислен после проверки администратором."

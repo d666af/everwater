@@ -37,6 +37,7 @@ class Subscription(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | expired | cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TopupRequest(Base):
@@ -49,6 +50,7 @@ class TopupRequest(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | confirmed | rejected
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BottleDebt(Base):

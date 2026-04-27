@@ -247,25 +247,17 @@ async def create_topup_request(user_id: int, data: TopupRequestBody, db: AsyncSe
     )
     kb = {"inline_keyboard": [[
         {"text": f"✅ Подтвердить {fmt_amt} сум",
-         "callback_data": f"admin_topup_confirm:{user_id}:{int(data.amount)}:{tg_id}"},
+         "callback_data": f"admin_topup_req:{req.id}:confirm"},
         {"text": "❌ Отклонить",
-         "callback_data": f"admin_topup_reject:{user_id}:{int(data.amount)}:{tg_id}"},
+         "callback_data": f"admin_topup_req:{req.id}:reject"},
     ]]}
 
-    async def _tg_send_admin(chat_id, msg_text, reply_markup):
-        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
-        try:
-            async with aiohttp.ClientSession() as s:
-                await s.post(url, json={"chat_id": chat_id, "text": msg_text, "reply_markup": reply_markup},
-                             timeout=aiohttp.ClientTimeout(total=5))
-        except Exception:
-            pass
-
-    for aid in cfg.ADMIN_IDS:
-        await _tg_send_admin(aid, text, kb)
+    from app.services.tg_notify import notify_all
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    for m in mgrs:
-        await _tg_send_admin(m.telegram_id, text, kb)
+    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+
+    req.notification_msg_ids = msg_ids_json
+    await db.commit()
 
     return {"ok": True, "id": req.id}
 
@@ -297,21 +289,26 @@ async def list_topup_requests(status: str = "pending", db: AsyncSession = Depend
 @router.post("/topup_requests/{req_id}/confirm")
 async def confirm_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
+    from app.services.tg_notify import edit_all_notifications
     req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
     req = req_q.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Topup request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="Already processed")
 
     user_q = await db.execute(select(User).where(User.id == req.user_id))
     user = user_q.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    msg_ids_json = req.notification_msg_ids
     user.balance = (user.balance or 0) + req.amount
     req.status = "confirmed"
     await db.commit()
 
     fmt_amt = f"{int(req.amount):,}".replace(",", " ")
+    await edit_all_notifications(msg_ids_json, f"✅ Пополнение {fmt_amt} сум подтверждено")
     if user.telegram_id:
         url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
         try:
@@ -329,18 +326,23 @@ async def confirm_topup_request(req_id: int, db: AsyncSession = Depends(get_db))
 @router.post("/topup_requests/{req_id}/reject")
 async def reject_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
+    from app.services.tg_notify import edit_all_notifications
     req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
     req = req_q.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Topup request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=409, detail="Already processed")
 
     user_q = await db.execute(select(User).where(User.id == req.user_id))
     user = user_q.scalar_one_or_none()
 
+    msg_ids_json = req.notification_msg_ids
     req.status = "rejected"
     await db.commit()
 
     fmt_amt = f"{int(req.amount):,}".replace(",", " ")
+    await edit_all_notifications(msg_ids_json, f"❌ Пополнение {fmt_amt} сум отклонено")
     if user and user.telegram_id:
         url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
         try:
@@ -388,13 +390,21 @@ async def list_all_subscriptions(status: str = "all", db: AsyncSession = Depends
 @router.post("/subscriptions/{sub_id}/confirm")
 async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
+    from app.services.tg_notify import edit_all_notifications
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.payment_confirmed and sub.status == "active":
+        raise HTTPException(status_code=409, detail="Already confirmed")
+
+    msg_ids_json = sub.notification_msg_ids
     sub.payment_confirmed = True
     sub.status = "active"
     await db.commit()
+
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}.get(sub.plan, sub.plan)
+    await edit_all_notifications(msg_ids_json, f"✅ {plan_label} подписка #{sub_id} подтверждена")
 
     user_q = await db.execute(select(User).where(User.id == sub.user_id))
     user = user_q.scalar_one_or_none()
@@ -403,7 +413,7 @@ async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
             async with aiohttp.ClientSession() as s:
                 await s.post(
                     f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage",
-                    json={"chat_id": user.telegram_id, "text": f"✅ Ваша подписка #{sub_id} подтверждена и активирована!"},
+                    json={"chat_id": user.telegram_id, "text": f"✅ Ваша подписка подтверждена и активирована!"},
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
         except Exception:
@@ -415,13 +425,21 @@ async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/subscriptions/{sub_id}/reject")
 async def reject_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
+    from app.services.tg_notify import edit_all_notifications
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.status == "cancelled":
+        raise HTTPException(status_code=409, detail="Already rejected")
+
+    msg_ids_json = sub.notification_msg_ids
     sub.status = "cancelled"
     sub.payment_confirmed = False
     await db.commit()
+
+    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}.get(sub.plan, sub.plan)
+    await edit_all_notifications(msg_ids_json, f"❌ {plan_label} подписка #{sub_id} отклонена")
 
     user_q = await db.execute(select(User).where(User.id == sub.user_id))
     user = user_q.scalar_one_or_none()
@@ -430,7 +448,7 @@ async def reject_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
             async with aiohttp.ClientSession() as s:
                 await s.post(
                     f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage",
-                    json={"chat_id": user.telegram_id, "text": f"❌ Ваша подписка #{sub_id} отклонена. Обратитесь в поддержку."},
+                    json={"chat_id": user.telegram_id, "text": f"❌ Ваша подписка отклонена. Обратитесь в поддержку."},
                     timeout=aiohttp.ClientTimeout(total=5),
                 )
         except Exception:
