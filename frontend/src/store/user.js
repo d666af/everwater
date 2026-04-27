@@ -11,6 +11,8 @@ function loadLS(key, fallback) {
 }
 
 export const useUserStore = create((set, get) => ({
+  id: null,
+  telegram_id: null,
   balance: 0,
   bonus_points: 0,
   order_count: 0,
@@ -32,6 +34,8 @@ export const useUserStore = create((set, get) => ({
   init: (userData) => {
     if (!userData) return
     set({
+      id: userData.id || null,
+      telegram_id: userData.telegram_id || null,
       balance: userData.balance || 0,
       bonus_points: userData.bonus_points || 0,
       order_count: userData.order_count || 0,

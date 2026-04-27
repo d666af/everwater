@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram, getSettings } from '../api'
+import { getUserByTelegram, getSettings, requestTopup, createSubscription } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
 import MapPicker from '../components/MapPicker'
@@ -103,9 +103,8 @@ export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
 
 // ─── Subscription Modal ──────────────────────────────────────────────────────
 export function SubscriptionModal({ onClose, settings, userStore }) {
-  const [step, setStep] = useState('plan') // plan | details | payment | done
+  const [step, setStep] = useState('plan') // plan | details | payment | card_payment | pending | done
   const [plan, setPlan] = useState('weekly')
-  // Multi-select: { [waterId]: { qty } }
   const [selected, setSelected] = useState({})
   const [showMap, setShowMap] = useState(false)
   const [addr, setAddr] = useState('')
@@ -114,11 +113,11 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
   const [lat, setLat] = useState(null)
   const [lng, setLng] = useState(null)
   const [selectedAddrId, setSelectedAddrId] = useState(null)
-  const [day, setDay] = useState('')
-  const [time, setTime] = useState('')
   const [payMethod, setPayMethod] = useState('balance')
   const [bonusUsed, setBonusUsed] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
 
   const savedAddresses = userStore.saved_addresses
 
@@ -162,19 +161,115 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
     )
   }
 
-  const submit = async () => {
-    setLoading(true)
-    await new Promise(r => setTimeout(r, 800))
-    if (payMethod === 'balance') userStore.deductBalance(afterBonus)
-    if (bonusUsed > 0) userStore.deductBonus(bonusUsed)
-    userStore.addSubscription({
-      plan, water: itemsSummary, qty: selectedItems.reduce((s, i) => s + i.qty, 0),
-      total: afterBonus, address: addr, landmark, phone, payMethod, day, time,
-      lat, lng,
-    })
-    setLoading(false)
-    setStep('done')
+  const copyCard = () => {
+    const text = settings?.payment_card || ''
+    try {
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text)
+      else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+    } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
+
+  const submit = async () => {
+    if (payMethod === 'card') {
+      setStep('card_payment')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const userId = userStore.id
+      if (!userId) throw new Error('no user')
+      await createSubscription(userId, {
+        plan, water_summary: itemsSummary, address: addr, landmark, phone,
+        payment_method: payMethod, bonus_used: bonusUsed, latitude: lat, longitude: lng,
+        total: afterBonus, qty: selectedItems.reduce((s, i) => s + i.qty, 0),
+      })
+      if (payMethod === 'balance') userStore.deductBalance(afterBonus)
+      if (bonusUsed > 0) userStore.deductBonus(bonusUsed)
+      setStep('done')
+    } catch {
+      setError('Ошибка при оформлении. Попробуйте ещё раз.')
+    }
+    setLoading(false)
+  }
+
+  const submitCardPayment = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const userId = userStore.id
+      if (!userId) throw new Error('no user')
+      await createSubscription(userId, {
+        plan, water_summary: itemsSummary, address: addr, landmark, phone,
+        payment_method: 'card', bonus_used: bonusUsed, latitude: lat, longitude: lng,
+        total: afterBonus, qty: selectedItems.reduce((s, i) => s + i.qty, 0),
+      })
+      setStep('pending')
+    } catch {
+      setError('Ошибка при оформлении. Попробуйте ещё раз.')
+    }
+    setLoading(false)
+  }
+
+  if (step === 'card_payment') return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={s.sheetTitle}>Оплата подписки</div>
+        <div style={s.payCard}>
+          <div style={s.payLabel}>Переведите на карту</div>
+          <div style={{ ...s.payNum, cursor: 'pointer' }} onClick={copyCard}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
+          <div style={{ fontSize: 11, color: copied ? '#8DC63F' : 'rgba(255,255,255,0.4)', marginTop: 2, textAlign: 'center' }}>
+            {copied ? 'Скопировано!' : 'Нажмите на номер чтобы скопировать'}
+          </div>
+          <div style={s.payHolder}>{settings?.payment_holder || '—'}</div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
+          <div style={s.payAmt}>{afterBonus.toLocaleString()} <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>сум</span></div>
+          <button style={{ ...s.copyBtn, ...(copied ? s.copyDone : {}) }} onClick={copyCard}>
+            {copied ? 'Скопировано' : 'Скопировать номер карты'}
+          </button>
+        </div>
+        <div style={s.helpSteps}>
+          <div style={s.helpStep}><span style={s.helpNum}>1</span> Переведите сумму на карту</div>
+          <div style={s.helpStep}><span style={s.helpNum}>2</span> Нажмите «Я оплатил»</div>
+          <div style={s.helpStep}><span style={s.helpNum}>3</span> Менеджер подтвердит и активирует подписку</div>
+        </div>
+        {error && <div style={{ fontSize: 13, color: '#ef4444', textAlign: 'center' }}>{error}</div>}
+        <button style={s.primaryBtn} onClick={submitCardPayment} disabled={loading}>
+          {loading ? <span style={s.spinner} /> : 'Я оплатил'}
+        </button>
+        <button style={s.ghostBtn} onClick={() => setStep('payment')}>Назад</button>
+      </div>
+    </div>
+  )
+
+  if (step === 'pending') return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.sheet}>
+        <div style={s.handle} />
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <div style={s.pendingIcon}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
+              <path d="M12 7v5l3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Заявка отправлена!</div>
+          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6, lineHeight: 1.5 }}>
+            Менеджер проверит оплату и активирует подписку.
+          </div>
+        </div>
+        <button style={s.primaryBtn} onClick={onClose}>Закрыть</button>
+      </div>
+    </div>
+  )
 
   if (step === 'done') return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -265,10 +360,12 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
             </div>
           )}
 
+          {error && <div style={{ fontSize: 13, color: '#ef4444', textAlign: 'center' }}>{error}</div>}
           <button style={{ ...s.primaryBtn, ...(payMethod === 'balance' && !canPayBalance ? { opacity: 0.5 } : {}) }}
             onClick={submit} disabled={loading || (payMethod === 'balance' && !canPayBalance)}>
             {loading ? <span style={s.spinner} /> :
               payMethod === 'cash' ? `Оформить · ${afterBonus.toLocaleString()} сум` :
+              payMethod === 'card' ? `Далее · ${afterBonus.toLocaleString()} сум` :
               `Оплатить ${afterBonus.toLocaleString()} сум`}
           </button>
           <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
@@ -282,32 +379,6 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
       <div style={s.sheet}>
         <div style={s.handle} />
         <div style={s.sheetTitle}>Данные доставки</div>
-
-        {/* Day + Time combined (checkout style) */}
-        <div style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={ss.secLabel}>День и время доставки</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 4 }}>
-            {WEEKDAYS.map(d => (
-              <button key={d}
-                style={day === d ? { ...ss.dayChip, ...ss.dayChipActive } : ss.dayChip}
-                onClick={() => setDay(d)}>
-                {d}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button style={time === 'morning' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
-              onClick={() => setTime('morning')}>
-              <div style={{ fontWeight: 700 }}>До обеда</div>
-              <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>9:00 – 13:00</div>
-            </button>
-            <button style={time === 'afternoon' ? { ...ss.timeBtn, ...ss.timeBtnActive } : ss.timeBtn}
-              onClick={() => setTime('afternoon')}>
-              <div style={{ fontWeight: 700 }}>После обеда</div>
-              <div style={{ fontSize: 11, marginTop: 2, opacity: 0.7 }}>13:00 – 18:00</div>
-            </button>
-          </div>
-        </div>
 
         {/* Address (checkout style) */}
         <div style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -361,8 +432,8 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
           <input style={ss.inp} type="tel" placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} />
         </div>
 
-        <button style={{ ...s.primaryBtn, flexShrink: 0, ...(!addr || !phone || !day || !time ? { opacity: 0.5 } : {}) }}
-          onClick={() => setStep('payment')} disabled={!addr || !phone || !day || !time}>
+        <button style={{ ...s.primaryBtn, flexShrink: 0, ...(!addr || !phone ? { opacity: 0.5 } : {}) }}
+          onClick={() => setStep('payment')} disabled={!addr || !phone}>
           К оплате
         </button>
         <button style={{ ...s.ghostBtn, flexShrink: 0 }} onClick={() => setStep('plan')}>Назад</button>
@@ -529,7 +600,7 @@ const ss = {
   }),
 }
 
-function TopupModal({ onClose, settings }) {
+function TopupModal({ onClose, settings, user }) {
   const [amount, setAmount] = useState(1000)
   const [custom, setCustom] = useState('')
   const [useCustom, setUseCustom] = useState(false)
@@ -601,7 +672,14 @@ function TopupModal({ onClose, settings }) {
           <div style={s.helpStep}><span style={s.helpNum}>3</span> Менеджер подтвердит зачисление</div>
         </div>
         <button style={s.primaryBtn} onClick={async () => {
-          setLoading(true); await new Promise(r => setTimeout(r, 1000)); setLoading(false); setStep('pending')
+          setLoading(true)
+          try {
+            if (user?.id) {
+              const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || user?.telegram_id || null
+              await requestTopup(user.id, finalAmount, tgId)
+            }
+          } catch {}
+          setLoading(false); setStep('pending')
         }} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Я оплатил'}
         </button>
@@ -696,7 +774,7 @@ export default function Profile() {
 
   return (
     <div style={s.page}>
-      {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} />}
+      {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} user={user} />}
 
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>

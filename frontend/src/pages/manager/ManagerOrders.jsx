@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered } from '../../api'
+import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmTopupRequest, rejectTopupRequest, confirmSubscription, rejectSubscription } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -314,11 +314,20 @@ function OrderCard({
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button style={st.btnPrimary} disabled={actionLoading} onClick={() => act(() => confirmOrder(order.id))}>
+                <button style={st.btnPrimary} disabled={actionLoading} onClick={() =>
+                  act(() => order.type === 'topup'
+                    ? confirmTopupRequest(order.id)
+                    : order.type === 'subscription'
+                      ? confirmSubscription(order.id)
+                      : confirmOrder(order.id))}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  {order.payment_method === 'card' ? 'Оплата получена' : 'Принять заказ'}
+                  {order.payment_method === 'card' ? 'Оплата получена' : 'Принять'}
                 </button>
-                <button style={st.btnDanger} disabled={actionLoading} onClick={() => { setRejectingId(order.id); setRejectReason('') }}>
+                <button style={st.btnDanger} disabled={actionLoading} onClick={() => {
+                  if (order.type === 'topup') { act(() => rejectTopupRequest(order.id)); return }
+                  if (order.type === 'subscription') { act(() => rejectSubscription(order.id)); return }
+                  setRejectingId(order.id); setRejectReason('')
+                }}>
                   Отклонить
                 </button>
               </div>

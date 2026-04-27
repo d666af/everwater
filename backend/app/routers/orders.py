@@ -269,7 +269,42 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.payment_confirmed = True
     order.status = OrderStatus.AWAITING_CONFIRMATION
+
+    # Capture for notifications before commit
+    oid = order.id
+    client_name = order.user.name if order.user else "—"
+    client_phone = order.recipient_phone
+    order_addr = order.address
+    items_text = _order_items_text(order.items)
+    order_total = int(order.total)
+    pay_method = order.payment_method
+    pay_labels = {"cash": "Наличные", "card": "Перевод на карту", "balance": "Баланс", "balance_card": "Баланс + карта"}
+    pay_label = pay_labels.get(pay_method, pay_method)
+
     await db.commit()
+
+    from app.config import settings as cfg
+    site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+    text = (
+        f"🆕 Новый заказ!\n"
+        f"Клиент: {client_name} | {client_phone}\n"
+        f"Адрес: {order_addr}\n"
+        f"Заказ: {items_text}\n"
+        f"Сумма: {order_total:,} сум\n"
+        f"Оплата: {pay_label}"
+    )
+    kb = {"inline_keyboard": [
+        [{"text": "✅ Подтвердить", "callback_data": f"admin:confirm:{oid}"},
+         {"text": "❌ Отклонить", "callback_data": f"admin:reject:{oid}"}],
+        [{"text": "🌐 Заказ на сайте", "url": site_url}],
+    ]}
+    for aid in cfg.ADMIN_IDS:
+        await _tg_send(aid, text, kb)
+    from app.models.manager import Manager
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    for m in mgrs:
+        await _tg_send(m.telegram_id, text, kb)
+
     return {"ok": True}
 
 

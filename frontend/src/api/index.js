@@ -152,12 +152,37 @@ export const getUserOrders = (userId) =>
 
 export const getOrders = (params = {}) =>
   safeCall(
-    () => http.get('/orders/', { params }).then(r => r.data),
+    async () => {
+      const [orders, topups, subs] = await Promise.all([
+        http.get('/orders/', { params }).then(r => r.data),
+        http.get('/admin/topup_requests?status=all').then(r => r.data).catch(() => []),
+        http.get('/admin/subscriptions?status=all').then(r => r.data).catch(() => []),
+      ])
+      return [...orders, ...topups, ...subs]
+    },
     () => {
       let list = [...MOCK_ORDERS]
       if (params.status) list = list.filter(o => o.status === params.status)
       return list
     }
+  )
+
+export const requestTopup = (userId, amount, telegramId = null) =>
+  safeCall(
+    () => http.post(`/admin/users/${userId}/topup_request`, { amount, telegram_id: telegramId }).then(r => r.data),
+    () => ({ ok: true, id: Date.now() })
+  )
+
+export const confirmTopupRequest = (reqId) =>
+  safeCall(
+    () => http.post(`/admin/topup_requests/${reqId}/confirm`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const rejectTopupRequest = (reqId) =>
+  safeCall(
+    () => http.post(`/admin/topup_requests/${reqId}/reject`).then(r => r.data),
+    () => ({ ok: true })
   )
 
 export const paymentConfirmed = (orderId) =>
@@ -496,6 +521,37 @@ export const rejectDebtClearance = (debtId) =>
       mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'rejected' } : d)
       return { ok: true }
     }
+  )
+
+// ─── Bottle debt / survey ────────────────────────────────────────────────────
+export const getBottlesOwed = (userId) =>
+  safeCall(
+    () => http.get(`/client/${userId}/bottles_owed`).then(r => r.data),
+    () => ({ count: 0, survey_done: false })
+  )
+
+export const answerBottleSurvey = (userId, count) =>
+  safeCall(
+    () => http.put(`/client/${userId}/bottle_survey`, { count }).then(r => r.data),
+    () => ({ ok: true, count, survey_done: true })
+  )
+
+export const createSubscription = (userId, data) =>
+  safeCall(
+    () => http.post(`/client/${userId}/subscriptions`, data).then(r => r.data),
+    () => ({ id: Date.now(), status: 'active', payment_confirmed: data.payment_method !== 'card', ...data })
+  )
+
+export const confirmSubscription = (subId) =>
+  safeCall(
+    () => http.post(`/admin/subscriptions/${subId}/confirm`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const rejectSubscription = (subId) =>
+  safeCall(
+    () => http.post(`/admin/subscriptions/${subId}/reject`).then(r => r.data),
+    () => ({ ok: true })
   )
 
 // ─── Client lookup by phone ───────────────────────────────────────────────

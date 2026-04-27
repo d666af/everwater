@@ -239,7 +239,6 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
         reply_markup=main_menu_kb(),
         parse_mode="HTML",
     )
-    await message.answer("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
     from handlers.client import start_survey
     await start_survey(message, state)
 
