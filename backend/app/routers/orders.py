@@ -39,17 +39,19 @@ async def _tg(chat_id: int, text: str):
         pass
 
 
-async def _tg_send(chat_id: int, text: str) -> int | None:
+async def _tg_send(chat_id: int, text: str, reply_markup: dict | None = None) -> int | None:
     """Send Telegram message, return message_id on success."""
     from app.config import settings as cfg
     import aiohttp
     if not chat_id:
         return None
+    payload: dict = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
     try:
         async with aiohttp.ClientSession() as s:
-            r = await s.post(url, json={"chat_id": chat_id, "text": text},
-                             timeout=aiohttp.ClientTimeout(total=5))
+            r = await s.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5))
             data = await r.json()
             return data.get("result", {}).get("message_id")
     except Exception:
@@ -175,6 +177,7 @@ def _order_opts():
         selectinload(Order.items).selectinload(OrderItem.product),
         selectinload(Order.user),
         selectinload(Order.courier),
+        selectinload(Order.review),
     )
 
 
@@ -379,11 +382,15 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
 
     if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} бонусных баллов!" if bonus > 0 else ""
-        text = (f"✔️ Заказ доставлен!\n{items}{bonus_txt}\n\n"
-                "Пожалуйста, оцените качество доставки в боте: /start")
+        text = f"✔️ Заказ доставлен!\n{items}{bonus_txt}"
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
+        # Send separate review prompt with star keyboard (handled by the bot)
+        review_kb = {"inline_keyboard": [[
+            {"text": f"{i}⭐", "callback_data": f"review:{oid}:{i}"} for i in range(1, 6)
+        ]]}
+        await _tg_send(client_tg, "Пожалуйста, оцените качество доставки:", review_kb)
         await _notify_admins(db, f"✔️ Заказ доставлен!\n{items}")
 
     return {"ok": True, "bonus": round(bonus, 2)}
@@ -416,6 +423,16 @@ async def get_courier_orders(telegram_id: int, db: AsyncSession = Depends(get_db
 
 @router.post("/reviews/")
 async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
+    # Idempotent: update existing review if one already exists for this order
+    if data.order_id:
+        existing_q = await db.execute(select(Review).where(Review.order_id == data.order_id))
+        existing = existing_q.scalar_one_or_none()
+        if existing:
+            existing.rating = data.rating
+            existing.comment = data.comment
+            await db.commit()
+            return {"ok": True, "id": existing.id}
+
     order = None
     if data.order_id:
         order_q = await db.execute(select(Order).where(Order.id == data.order_id))
@@ -486,4 +503,5 @@ def _order_to_out(order: Order) -> OrderOut:
         client_telegram_id=order.user.telegram_id if order.user else None,
         courier_name=order.courier.name if order.courier else None,
         courier_phone=order.courier.phone if order.courier else None,
+        review_id=order.review.id if order.review else None,
     )
