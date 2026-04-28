@@ -1,10 +1,9 @@
 import { Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/auth'
 import { useAdminRoleStore } from '../store/adminRole'
 
 const tg = window.Telegram?.WebApp
-const isTelegramWebApp = () => !!tg?.initDataUnsafe?.user
 
 const ROLE_HOME = {
   client: '/',
@@ -15,8 +14,9 @@ const ROLE_HOME = {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }) {
-  const { user, tgAuthPending } = useAuthStore()
+  const { user, tgAuthPending, logout, setTgAuthDone } = useAuthStore()
   const { activeRole, clearRole } = useAdminRoleStore()
+  const [timedOut, setTimedOut] = useState(false)
 
   // Clear stale activeRole when it's no longer in the user's current roles
   useEffect(() => {
@@ -24,6 +24,19 @@ export default function ProtectedRoute({ children, allowedRoles }) {
       clearRole()
     }
   }, [activeRole, user?.roles]) // eslint-disable-line
+
+  // Safety timeout: if pending for >6s, clear auth and redirect to login
+  useEffect(() => {
+    if (!tgAuthPending) return
+    const t = setTimeout(() => {
+      logout()
+      setTgAuthDone()
+      setTimedOut(true)
+    }, 6000)
+    return () => clearTimeout(t)
+  }, [tgAuthPending]) // eslint-disable-line
+
+  if (timedOut) return <Navigate to="/login" replace />
 
   // While Telegram auto-auth is in progress, show a neutral loader
   if (tgAuthPending) {
