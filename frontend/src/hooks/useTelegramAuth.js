@@ -32,6 +32,12 @@ export function useTelegramAuth() {
           navigate('/login', { replace: true })
           return
         }
+        if (!userData.is_registered) {
+          // User started the bot but hasn't completed registration (no name/phone yet)
+          logout()
+          navigate('/login', { replace: true })
+          return
+        }
         login(userData)
         if (isFirstLogin || location.pathname === '/login') {
           navigate(ROLE_HOME[userData.role] || '/', { replace: true })
