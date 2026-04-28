@@ -9,14 +9,8 @@ const ROLE_HOME = {
   client: '/', admin: '/admin', manager: '/manager', courier: '/courier', warehouse: '/warehouse',
 }
 
-/**
- * On every app load inside Telegram WebApp, always fetches fresh user data
- * from the backend to pick up role changes. If there's a cached user we
- * show it immediately (no loader flash), then update roles in the background.
- * ProtectedRoute handles redirecting away from invalid routes automatically.
- */
 export function useTelegramAuth() {
-  const { user, login } = useAuthStore()
+  const { user, login, logout, setTgAuthDone } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const ran = useRef(false)
@@ -26,24 +20,28 @@ export function useTelegramAuth() {
     ran.current = true
 
     const tgUser = tg?.initDataUnsafe?.user
-    if (!tgUser) return
+    if (!tgUser) return  // not in Telegram WebApp
 
     const isFirstLogin = !user
 
-    // Always fetch — this refreshes roles even when already cached in localStorage
     getUserByTelegram(tgUser.id)
       .then((userData) => {
-        if (!userData?.id) return
+        if (!userData?.id) {
+          // Backend returned empty/incomplete data — treat as not registered
+          logout()
+          navigate('/login', { replace: true })
+          return
+        }
         login(userData)
-
-        // Only navigate on first login or when explicitly on the login page.
-        // If already browsing, ProtectedRoute redirects away from invalid routes.
         if (isFirstLogin || location.pathname === '/login') {
           navigate(ROLE_HOME[userData.role] || '/', { replace: true })
         }
       })
       .catch(() => {
-        // Network error — if no cached user, nothing we can do
+        // 404 = user not in DB (new user or DB was reset with stale localStorage)
+        // Clear stale session so ProtectedRoute redirects to /login
+        logout()
+        setTgAuthDone()
       })
   }, []) // eslint-disable-line
 }

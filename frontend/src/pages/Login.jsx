@@ -4,6 +4,9 @@ import { useAuthStore } from '../store/auth'
 import { loginByPhone } from '../api'
 import EverLogo from '../components/EverLogo'
 
+const tg = window.Telegram?.WebApp
+const isTelegramWebApp = () => !!tg?.initDataUnsafe?.user
+
 const ROLE_ROUTES = {
   client: '/',
   admin: '/admin',
@@ -77,6 +80,33 @@ export default function Login() {
   }
 
   const handleKey = (e) => { if (e.key === 'Enter') submit() }
+
+  // When opened from Telegram WebApp without a registered account
+  if (isTelegramWebApp()) {
+    return (
+      <div style={s.page}>
+        <div style={s.container}>
+          <div style={s.brand}>
+            <EverLogo width={120} style={{ borderRadius: 22 }} />
+          </div>
+          <div style={s.tgCard}>
+            <div style={s.tgIcon}>💬</div>
+            <div style={s.tgTitle}>Регистрация через бот</div>
+            <div style={s.tgDesc}>
+              Чтобы использовать приложение, сначала зарегистрируйтесь через Telegram-бот Ever Water.
+              Запустите бота, введите номер телефона и имя — после этого откройте приложение снова.
+            </div>
+            <button
+              style={s.tgBtn}
+              onClick={() => tg?.close?.()}
+            >
+              Закрыть и открыть бота
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={s.page}>
@@ -310,5 +340,41 @@ const s = {
     cursor: 'pointer',
     padding: '0 0 4px',
     textAlign: 'left',
+  },
+  tgCard: {
+    background: '#f7f9f3',
+    border: '1.5px solid #d4edaa',
+    borderRadius: 20,
+    padding: '28px 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
+    textAlign: 'center',
+  },
+  tgIcon: {
+    fontSize: 40,
+  },
+  tgTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: '#1a1a1a',
+  },
+  tgDesc: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 1.6,
+  },
+  tgBtn: {
+    marginTop: 8,
+    background: '#8DC63F',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 14,
+    height: 48,
+    width: '100%',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
   },
 }
