@@ -4,44 +4,87 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import upsert_user, verify_init_data
+from app.auth import verify_init_data
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
-from app.schemas.user import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _PRIORITY = ["admin", "manager", "courier", "client"]
 
 
+def _build_response(user, courier, manager, tg_id: int = None):
+    tid = tg_id or (
+        (user.telegram_id if user else None)
+        or (courier.telegram_id if courier else None)
+        or (manager.telegram_id if manager else None)
+    )
+    all_roles: list[str] = []
+    if tid and tid in settings.ADMIN_IDS:
+        all_roles.append("admin")
+    if manager:
+        all_roles.append("manager")
+    if courier:
+        all_roles.append("courier")
+    if user:
+        all_roles.append("client")
+    if not all_roles:
+        all_roles = ["client"]
+
+    primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
+    name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or ""
+    phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or ""
+    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None)
+    balance = float(user.balance) if user else 0.0
+    bonus = float(user.bonus_points) if user else 0.0
+    is_reg = user.is_registered if user else True
+
+    return {
+        "id": uid,
+        "telegram_id": tid,
+        "name": name,
+        "phone": phone,
+        "role": primary_role,
+        "roles": all_roles,
+        "balance": balance,
+        "bonus_points": bonus,
+        "is_registered": is_reg,
+    }
+
+
 class InitDataBody(BaseModel):
     init_data: str | None = None
     telegram_id: int | None = None
-    name: str | None = None
-    phone: str | None = None
 
 
-@router.post("/telegram", response_model=UserOut)
+@router.post("/telegram")
 async def telegram_auth(body: InitDataBody, db: AsyncSession = Depends(get_db)):
+    """Verify Telegram initData signature and return enriched user profile."""
     if body.init_data:
         tg_user = verify_init_data(body.init_data)
-        return await upsert_user(db, tg_user)
+        tg_id = tg_user["id"]
+    elif settings.ALLOW_DEV_AUTH and body.telegram_id:
+        tg_id = body.telegram_id
+    else:
+        raise HTTPException(status_code=401, detail="initData required")
 
-    if settings.ALLOW_DEV_AUTH and body.telegram_id:
-        tg_user = {"id": body.telegram_id}
-        if body.name:
-            tg_user["first_name"] = body.name
-        user = await upsert_user(db, tg_user)
-        if body.phone and not user.phone:
-            user.phone = body.phone
-            await db.commit()
-            await db.refresh(user)
-        return user
+    user = (await db.execute(select(User).where(User.telegram_id == tg_id))).scalar_one_or_none()
+    courier = (await db.execute(select(Courier).where(Courier.telegram_id == tg_id))).scalar_one_or_none()
+    manager = (await db.execute(
+        select(Manager).where(Manager.telegram_id == tg_id, Manager.is_active == True)
+    )).scalar_one_or_none()
 
-    raise HTTPException(status_code=401, detail="initData required")
+    if not user and not courier and not manager:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Block access for incomplete registrations (started bot but didn't finish)
+    if user and not user.is_registered and not courier and not manager and tg_id not in settings.ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="Registration incomplete")
+
+    return _build_response(user, courier, manager, tg_id)
 
 
 class PhoneLoginBody(BaseModel):
@@ -78,45 +121,6 @@ async def _lookup_by_phone(phone: str, db: AsyncSession):
     return user, courier, manager
 
 
-def _build_response(user, courier, manager):
-    tg_id = (
-        (user.telegram_id if user else None)
-        or (courier.telegram_id if courier else None)
-        or (manager.telegram_id if manager else None)
-    )
-    all_roles: list[str] = []
-    if tg_id and tg_id in settings.ADMIN_IDS:
-        all_roles.append("admin")
-    if manager:
-        all_roles.append("manager")
-    if courier:
-        all_roles.append("courier")
-    if user:
-        all_roles.append("client")
-    if not all_roles:
-        all_roles = ["client"]
-
-    primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
-    name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or ""
-    phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or ""
-    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None)
-    balance = float(user.balance) if user else 0.0
-    bonus = float(user.bonus_points) if user else 0.0
-    is_reg = user.is_registered if user else True
-
-    return {
-        "id": uid,
-        "telegram_id": tg_id,
-        "name": name,
-        "phone": phone,
-        "role": primary_role,
-        "roles": all_roles,
-        "balance": balance,
-        "bonus_points": bonus,
-        "is_registered": is_reg,
-    }
-
-
 @router.post("/login")
 async def login_by_phone(body: PhoneLoginBody, db: AsyncSession = Depends(get_db)):
     user, courier, manager = await _lookup_by_phone(body.phone, db)
@@ -140,3 +144,4 @@ async def get_roles_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
     if not user and not courier and not manager:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return _build_response(user, courier, manager)
+

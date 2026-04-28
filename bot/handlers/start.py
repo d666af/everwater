@@ -233,11 +233,8 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
     await api.update_user(message.from_user.id, name=name, phone=phone, is_registered=True, site_password=password)
     await state.clear()
     await message.answer(
-        f"🎉 Готово, {name}! Регистрация завершена.\n\n"
-        f"🔑 Ваш пароль для сайта:\n<code>{password}</code>\n\n"
-        f"Нажмите на пароль чтобы скопировать.\nСохраните его — он нужен для входа!\n\nТеперь вы можете делать заказы!",
+        f"🎉 Готово, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
         reply_markup=main_menu_kb(),
-        parse_mode="HTML",
     )
     from handlers.client import start_survey
     await start_survey(message, state)
