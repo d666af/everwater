@@ -280,6 +280,9 @@ export const getUserByTelegram = (tgId) =>
     () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 3500, balance: 50000, order_count: 7, is_registered: true })
   )
 
+export const authByInitData = (initData) =>
+  http.post('/auth/telegram', { init_data: initData }).then(r => r.data)
+
 export const createOrGetUser = (data) =>
   safeCall(
     () => http.post('/users/', data).then(r => r.data),

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
-import { getUserByTelegram } from '../api'
+import { authByInitData, getUserByTelegram } from '../api'
 
 const tg = window.Telegram?.WebApp
 
@@ -24,30 +24,34 @@ export function useTelegramAuth() {
 
     const isFirstLogin = !user
 
-    getUserByTelegram(tgUser.id)
-      .then((userData) => {
-        if (!userData?.id) {
-          // Backend returned empty/incomplete data — treat as not registered
-          logout()
-          navigate('/login', { replace: true })
-          return
-        }
-        if (!userData.is_registered) {
-          // User started the bot but hasn't completed registration (no name/phone yet)
-          logout()
-          navigate('/login', { replace: true })
-          return
-        }
-        login(userData)
-        if (isFirstLogin || location.pathname === '/login') {
-          navigate(ROLE_HOME[userData.role] || '/', { replace: true })
-        }
-      })
-      .catch(() => {
-        // 404 = user not in DB (new user or DB was reset with stale localStorage)
-        // Clear stale session so ProtectedRoute redirects to /login
+    const handleUserData = (userData) => {
+      if (!userData?.id) {
         logout()
-        setTgAuthDone()
-      })
+        navigate('/login', { replace: true })
+        return
+      }
+      if (!userData.is_registered) {
+        logout()
+        navigate('/login', { replace: true })
+        return
+      }
+      login(userData)
+      if (isFirstLogin || location.pathname === '/login') {
+        navigate(ROLE_HOME[userData.role] || '/', { replace: true })
+      }
+    }
+
+    const handleError = () => {
+      logout()
+      setTgAuthDone()
+    }
+
+    const initData = tg?.initData
+    if (initData) {
+      authByInitData(initData).then(handleUserData).catch(handleError)
+    } else {
+      // Dev/test environment without real initData — fall back to ID-based lookup
+      getUserByTelegram(tgUser.id).then(handleUserData).catch(handleError)
+    }
   }, []) // eslint-disable-line
 }
