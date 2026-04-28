@@ -91,16 +91,16 @@ export default function Login() {
           </div>
           <div style={s.tgCard}>
             <div style={s.tgIcon}>💬</div>
-            <div style={s.tgTitle}>Регистрация через бот</div>
+            <div style={s.tgTitle}>Завершите регистрацию в боте</div>
             <div style={s.tgDesc}>
-              Чтобы использовать приложение, сначала зарегистрируйтесь через Telegram-бот Ever Water.
-              Запустите бота, введите номер телефона и имя — после этого откройте приложение снова.
+              Чтобы войти в приложение, нужно сначала зарегистрироваться через Telegram-бот:
+              введите имя и номер телефона. После этого вернитесь в приложение.
             </div>
             <button
               style={s.tgBtn}
               onClick={() => tg?.close?.()}
             >
-              Закрыть и открыть бота
+              Вернуться в бот
             </button>
           </div>
         </div>
