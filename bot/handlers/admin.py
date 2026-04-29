@@ -7,7 +7,7 @@ import services.api_client as api
 from keyboards.admin import (
     admin_menu_kb, order_confirm_kb, courier_select_kb,
     stats_period_kb, admin_user_kb, admin_debt_kb, broadcast_target_kb,
-    product_list_kb, product_edit_kb,
+    product_list_kb, product_edit_kb, subs_period_kb,
 )
 from config import settings
 
@@ -1352,4 +1352,72 @@ async def admin_back(call: CallbackQuery):
         await call.message.delete()
     except Exception:
         pass
+    await call.answer()
+
+
+# ─── Subscriptions overview ───────────────────────────────────────────────────
+
+def _format_subs(subs: list, period: str) -> str:
+    """Format subscriptions grouped by weekday for bot display."""
+    DAYS_ORDER = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+    label = "этой неделе" if period == "week" else "этому месяцу"
+    if not subs:
+        return f"📅 <b>Подписки по {label}:</b>\n\nНет активных подписок."
+
+    by_day: dict[str, list] = {}
+    for s in subs:
+        day = s.get("day") or "Не указан"
+        by_day.setdefault(day, []).append(s)
+
+    lines = [f"📅 <b>Подписки на {label}:</b>\n"]
+    # Sort by canonical weekday order; unknown days at the end
+    sorted_days = sorted(by_day.keys(), key=lambda d: DAYS_ORDER.index(d) if d in DAYS_ORDER else 99)
+    total = 0
+    for day in sorted_days:
+        day_subs = by_day[day]
+        total += len(day_subs)
+        lines.append(f"\n<b>{day}</b> — {len(day_subs)} подп.:")
+        # Aggregate water by product for this day
+        water_totals: dict[str, int] = {}
+        for s in day_subs:
+            summary = s.get("water_summary", "")
+            for part in summary.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                # Parse "Вода 20л x2" or "Вода 20л × 2"
+                import re
+                m = re.match(r"(.+?)\s*[x×]\s*(\d+)", part)
+                if m:
+                    name, qty = m.group(1).strip(), int(m.group(2))
+                else:
+                    name, qty = part, 1
+                water_totals[name] = water_totals.get(name, 0) + qty
+        for name, qty in sorted(water_totals.items()):
+            lines.append(f"  • {name} × {qty} шт.")
+
+    lines.append(f"\n<b>Всего:</b> {total} активных подписок")
+    return "\n".join(lines)
+
+
+@router.message(F.text == "📅 Подписки")
+async def admin_subs_overview(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    subs = await api.get_all_subscriptions("week")
+    text = _format_subs(subs, "week")
+    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
+
+
+@router.callback_query(F.data.startswith("admin:subs:"))
+async def admin_subs_period(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    period = call.data.split(":")[2]  # week | month
+    subs = await api.get_all_subscriptions(period)
+    text = _format_subs(subs, period)
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
     await call.answer()

@@ -428,7 +428,11 @@ async def courier_create_order(data: dict):
 
 async def get_warehouse_stock():
     try:
-        return await _get("/warehouse/stock")
+        result = await _get("/warehouse/stock")
+        # Backend returns {stock:[...]}; extract the list
+        if isinstance(result, dict) and "stock" in result:
+            return result["stock"]
+        return result if isinstance(result, list) else []
     except Exception:
         return []
 
@@ -473,6 +477,13 @@ async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id
         if product_id:
             params["product_id"] = product_id
         return await _get("/warehouse/history", params)
+    except Exception:
+        return []
+
+
+async def get_all_subscriptions(period: str = "week") -> list:
+    try:
+        return await _get("/warehouse/subscriptions", {"period": period})
     except Exception:
         return []
 

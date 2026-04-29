@@ -13,7 +13,7 @@ def warehouse_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📦 Остатки"), KeyboardButton(text="➕ Производство")],
             [KeyboardButton(text="📤 Выдать курьеру"), KeyboardButton(text="📥 Принять возврат")],
             [KeyboardButton(text="🔧 Корректировка"), KeyboardButton(text="🚴 Склад курьеров")],
-            [KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="📜 История")],
         ],
         resize_keyboard=True,
     )

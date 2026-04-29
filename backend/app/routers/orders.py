@@ -95,6 +95,45 @@ async def _notify_admins(db: AsyncSession, text: str):
         await _tg(m.telegram_id, text)
 
 
+async def _notify_low_stock_if_needed(db: AsyncSession, items_data: list, order_id: int):
+    """After order creation, check warehouse stock and notify if any product is insufficient."""
+    from app.config import settings as cfg
+    from app.models.warehouse import WaterStock
+    from app.models.manager import Manager
+
+    shortage_lines = []
+    for product, quantity in items_data:
+        stock_q = await db.execute(select(WaterStock).where(WaterStock.product_id == product.id))
+        stock = stock_q.scalar_one_or_none()
+        available = stock.quantity if stock else 0
+        if available < quantity:
+            shortage_lines.append(
+                f"• {product.name}: нужно {quantity} шт., на складе {available} шт."
+            )
+
+    if not shortage_lines:
+        return
+
+    text = (
+        f"⚠️ Нехватка товара на складе!\n"
+        f"Заказ #{order_id}\n\n"
+        + "\n".join(shortage_lines)
+        + "\n\nПополните склад как можно скорее."
+    )
+
+    recipients: list[int] = list(cfg.ADMIN_IDS) + list(cfg.WAREHOUSE_IDS)
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    for m in mgrs:
+        if m.telegram_id:
+            recipients.append(m.telegram_id)
+
+    seen: set[int] = set()
+    for chat_id in recipients:
+        if chat_id and chat_id not in seen:
+            seen.add(chat_id)
+            await _tg(chat_id, text)
+
+
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
     if count <= 0:
         return 0.0
@@ -164,6 +203,12 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     await db.refresh(order)
+
+    # Check warehouse stock for each item and notify if any product is low
+    try:
+        await _notify_low_stock_if_needed(db, items_data, order.id)
+    except Exception:
+        pass  # never fail the order on notification error
 
     result = await db.execute(
         select(Order).where(Order.id == order.id).options(*_order_opts())

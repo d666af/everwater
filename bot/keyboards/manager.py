@@ -11,7 +11,8 @@ def manager_menu_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
             [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="💸 Долги курьеров"), KeyboardButton(text="💬 Поддержка")],
+            [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="💬 Поддержка")],
+            [KeyboardButton(text="💸 Долги курьеров")],
         ],
         resize_keyboard=True,
     )

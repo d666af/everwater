@@ -13,8 +13,9 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
             [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
             [KeyboardButton(text="📦 Товары"), KeyboardButton(text="💸 Долги")],
-            [KeyboardButton(text="🧑‍💼 Менеджеры"), KeyboardButton(text="⚙️ Настройки")],
-            [KeyboardButton(text="📣 Рассылка"), KeyboardButton(text="🔄 Роль")],
+            [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="🧑‍💼 Менеджеры")],
+            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📣 Рассылка")],
+            [KeyboardButton(text="🔄 Роль")],
         ],
         resize_keyboard=True,
     )
@@ -107,4 +108,15 @@ def low_stock_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏭 Открыть склад", callback_data="admin:warehouse")],
         [InlineKeyboardButton(text="🌐 Склад на сайте", url=_site("/admin/warehouse"))],
+    ])
+
+
+def subs_period_kb(prefix: str = "admin") -> InlineKeyboardMarkup:
+    site_path = "/warehouse" if prefix == "wh" else "/manager" if prefix == "mgr" else "/admin/clients"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Эта неделя", callback_data=f"{prefix}:subs:week"),
+            InlineKeyboardButton(text="🗓 Этот месяц", callback_data=f"{prefix}:subs:month"),
+        ],
+        [InlineKeyboardButton(text="🌐 На сайте", url=_site(site_path))],
     ])
