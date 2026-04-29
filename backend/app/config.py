@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # Telegram
     BOT_TOKEN: str
     ADMIN_IDS: list[int] = []
+    WAREHOUSE_IDS: list[int] = []
 
     # App
     SECRET_KEY: str = "change-me-in-production"
@@ -25,9 +26,9 @@ class Settings(BaseSettings):
     BOTTLE_DISCOUNT_TYPE: str = "fixed"  # fixed | percent
     BOTTLE_DISCOUNT_VALUE: float = 2000.0
 
-    @field_validator("ADMIN_IDS", mode="before")
+    @field_validator("ADMIN_IDS", "WAREHOUSE_IDS", mode="before")
     @classmethod
-    def _split_admin_ids(cls, v):
+    def _split_int_list(cls, v):
         if isinstance(v, str):
             return [int(x.strip()) for x in v.split(",") if x.strip()]
         return v

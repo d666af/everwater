@@ -632,7 +632,11 @@ export const removeClientCooler = (userId, coolerId) =>
 // ─── Warehouse ──────────────────────────────────────────────────────────────
 export const getWarehouseStock = () =>
   safeCall(
-    () => http.get('/warehouse/stock').then(r => r.data),
+    () => http.get('/warehouse/stock').then(r => {
+      const data = r.data
+      // Backend returns {stock:[...]}; handle legacy plain array just in case
+      return Array.isArray(data) ? { stock: data } : data
+    }),
     () => ({
       stock: MOCK_WAREHOUSE.stock.filter(s => isWarehouseProduct(s.product_name)),
       history: MOCK_WAREHOUSE.history.filter(h => isWarehouseProduct(h.product_name)),
@@ -645,13 +649,14 @@ export const getWarehouseStock = () =>
     })
   )
 
-export const addProduction = (productId, quantity, note) =>
+export const addProduction = (productId, quantity, note, productNameHint) =>
   safeCall(
-    () => http.post('/warehouse/production', { product_id: productId, quantity, note }).then(r => r.data),
+    () => http.post('/warehouse/production', { product_id: productId, product_name: productNameHint, quantity, note }).then(r => r.data),
     () => {
-      const item = findOrCreateStockRow(productName)
+      const name = productNameHint || String(productId)
+      const item = findOrCreateStockRow(name)
       if (item) item.quantity += quantity
-      const short = shortProductName(productName)
+      const short = shortProductName(name)
       MOCK_WAREHOUSE.history.unshift({ id: Date.now(), type: 'production', product_name: short, quantity, date: new Date().toISOString(), note })
       return { ok: true }
     }

@@ -132,7 +132,7 @@ async def wh_prod_note(message: Message, state: FSMContext):
         f"✅ Производство записано!\n"
         f"Продукт: {prod.get('product_name', data['prod_product_id'])}\n"
         f"Количество: {data['prod_quantity']} шт.\n"
-        f"Новый остаток: {result.get('new_stock', '—')} шт."
+        f"Новый остаток: {result.get('new_quantity', '—')} шт."
     )
     # Notify admins about production
     for admin_id in settings.ADMIN_IDS:
@@ -281,10 +281,13 @@ async def wh_couriers_water(message: Message):
         return
     lines = ["🚴 <b>Вода у курьеров:</b>\n"]
     for c in data:
-        courier_name = c.get("name", f"ID {c.get('courier_id')}")
-        water = c.get("water", [])
-        active_orders = c.get("active_orders", 0)
-        if water:
+        courier_name = c.get("name") or c.get("courier_name") or f"ID {c.get('courier_id')}"
+        water = c.get("water", {})
+        active_orders = c.get("active_orders_count") or len(c.get("active_orders", []))
+        if isinstance(water, dict) and water:
+            items = ", ".join(f"{name}: {qty} шт." for name, qty in water.items())
+            lines.append(f"• <b>{courier_name}</b>: {items} | Активных заказов: {active_orders}")
+        elif isinstance(water, list) and water:
             items = ", ".join(f"{w.get('product_name', w.get('product_id'))}: {w['quantity']} шт." for w in water)
             lines.append(f"• <b>{courier_name}</b>: {items} | Активных заказов: {active_orders}")
         else:
@@ -374,7 +377,7 @@ async def wh_adjust_note(message: Message, state: FSMContext):
         f"🔧 Корректировка записана!\n"
         f"Продукт: {prod.get('product_name', data['adj_product_id'])}\n"
         f"Изменение: {data['adj_quantity']:+d} шт.\n"
-        f"Новый остаток: {result.get('new_stock', '—')} шт."
+        f"Новый остаток: {result.get('quantity', '—')} шт."
     )
 
 
