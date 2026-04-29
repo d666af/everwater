@@ -9,6 +9,8 @@ from keyboards.manager import (
     mgr_stats_period_kb, mgr_client_kb, mgr_debt_kb,
     mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
+from keyboards.admin import subs_period_kb
+from handlers.admin import _format_subs
 from config import settings
 
 router = Router()
@@ -638,4 +640,29 @@ async def mgr_support_quick_reply(call: CallbackQuery):
         await call.message.edit_text(f"✅ Отправлено: {reply_text}")
     except Exception:
         await call.answer("Не удалось отправить", show_alert=True)
+    await call.answer()
+
+
+# ─── Subscriptions overview ───────────────────────────────────────────────────
+
+@router.message(F.text == "📅 Подписки")
+async def mgr_subs_overview(message: Message):
+    if not await is_manager(message.from_user.id):
+        return
+    subs = await api.get_all_subscriptions("week")
+    text = _format_subs(subs, "week")
+    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
+
+
+@router.callback_query(F.data.startswith("mgr:subs:"))
+async def mgr_subs_period(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    period = call.data.split(":")[2]
+    subs = await api.get_all_subscriptions(period)
+    text = _format_subs(subs, period)
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
     await call.answer()

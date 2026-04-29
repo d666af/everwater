@@ -8,6 +8,8 @@ from keyboards.warehouse import (
     warehouse_menu_kb, wh_product_select_kb, wh_courier_select_kb, wh_history_filter_kb,
     wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
 )
+from keyboards.admin import subs_period_kb
+from handlers.admin import _format_subs
 from config import settings
 
 router = Router()
@@ -426,18 +428,44 @@ async def wh_quick_adjust(call: CallbackQuery, state: FSMContext):
 async def wh_period(call: CallbackQuery):
     period = call.data.split(":")[2]
     overview = await api.get_warehouse_overview(period)
-    label = {"day": "день", "week": "неделю", "month": "месяц"}.get(period, period)
-    stock = overview.get("stock", [])
+    label = {"today": "сегодня", "week": "неделю", "month": "месяц"}.get(period, period)
+    totals = overview.get("totals", {})
+    products = overview.get("products", [])
     lines = [f"📊 <b>Сводка склада за {label}:</b>\n"]
-    lines.append(f"Произведено: {overview.get('produced', 0)} шт.")
-    lines.append(f"Выдано: {overview.get('issued', 0)} шт.")
-    lines.append(f"Возвращено: {overview.get('returned', 0)} шт.")
-    lines.append(f"Доставлено заказов: {overview.get('orders_delivered', 0)}")
-    if stock:
+    lines.append(f"Произведено: {totals.get('produced_period', 0)} шт.")
+    lines.append(f"Выдано: {totals.get('issued_period', 0)} шт.")
+    lines.append(f"Возвращено: {totals.get('returned_period', 0)} шт.")
+    lines.append(f"Доставлено заказов: {totals.get('delivered_orders', 0)}")
+    if products:
         lines.append("\n<b>Текущие остатки:</b>")
-        for item in stock:
-            qty = item.get("quantity", 0)
+        for item in products:
+            qty = item.get("stock", item.get("quantity", 0))
             warn = " ⚠️" if qty < 10 else ""
             lines.append(f"• {item.get('product_name', '—')}: {qty} шт.{warn}")
     await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=wh_period_kb())
+    await call.answer()
+
+
+# ─── Subscriptions overview ───────────────────────────────────────────────────
+
+@router.message(F.text == "📅 Подписки")
+async def wh_subs_overview(message: Message):
+    if not await is_warehouse(message.from_user.id):
+        return
+    subs = await api.get_all_subscriptions("week")
+    text = _format_subs(subs, "week")
+    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
+
+
+@router.callback_query(F.data.startswith("wh:subs:"))
+async def wh_subs_period(call: CallbackQuery):
+    if not await is_warehouse(call.from_user.id):
+        return
+    period = call.data.split(":")[2]
+    subs = await api.get_all_subscriptions(period)
+    text = _format_subs(subs, period)
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
     await call.answer()
