@@ -359,32 +359,146 @@ async def reject_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
 
 # ─── Subscriptions (admin view) ───────────────────────────────────────────────
 
+_WEEKDAY_MAP = {
+    "Понедельник": 0, "Вторник": 1, "Среда": 2, "Четверг": 3,
+    "Пятница": 4, "Суббота": 5, "Воскресенье": 6,
+}
+
+
+def _calc_next_delivery(plan: str, day: str | None, from_dt: datetime | None = None) -> datetime | None:
+    base = (from_dt or datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
+    if plan == "monthly":
+        return base + timedelta(days=30)
+    if plan == "weekly" and day:
+        target_dow = _WEEKDAY_MAP.get(day, 0)
+        days_ahead = (target_dow - base.weekday()) % 7 or 7
+        return base + timedelta(days=days_ahead)
+    return None
+
+
+def _sub_out(sub: Subscription, user: User) -> dict:
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    ndd = sub.next_delivery_date
+    if ndd is None:
+        ndd = _calc_next_delivery(sub.plan, sub.day, sub.created_at)
+    overdue = bool(ndd and ndd.date() < today.date())
+    due_today = bool(ndd and ndd.date() == today.date())
+    return {
+        "id": sub.id,
+        "user_id": sub.user_id,
+        "client_name": user.name or "",
+        "client_phone": user.phone or "",
+        "water_summary": sub.water_summary,
+        "qty": sub.qty,
+        "total": sub.total,
+        "address": sub.address,
+        "landmark": sub.landmark,
+        "phone": sub.phone or user.phone or "",
+        "day": sub.day,
+        "time_slot": sub.time_slot,
+        "payment_method": sub.payment_method,
+        "payment_confirmed": sub.payment_confirmed,
+        "status": sub.status,
+        "plan": sub.plan,
+        "created_at": sub.created_at.isoformat(),
+        "next_delivery_date": ndd.isoformat() if ndd else None,
+        "last_delivered_at": sub.last_delivered_at.isoformat() if sub.last_delivered_at else None,
+        "overdue": overdue,
+        "due_today": due_today,
+    }
+
+
 @router.get("/subscriptions")
-async def list_all_subscriptions(status: str = "all", db: AsyncSession = Depends(get_db)):
+async def list_all_subscriptions(
+    status: str = "all",
+    plan: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     q = select(Subscription, User).join(User, User.id == Subscription.user_id)
     if status == "pending":
         q = q.where(Subscription.payment_confirmed == False)
     elif status != "all":
         q = q.where(Subscription.status == status)
+    if plan:
+        q = q.where(Subscription.plan == plan)
     q = q.order_by(Subscription.created_at.desc())
     rows = (await db.execute(q)).all()
-    result = []
-    for sub, user in rows:
-        result.append({
-            "id": sub.id,
-            "type": "subscription",
-            "user_id": sub.user_id,
-            "client_name": user.name or "",
-            "water_summary": sub.water_summary,
-            "address": sub.address,
-            "payment_method": sub.payment_method,
-            "payment_confirmed": sub.payment_confirmed,
-            "total": sub.total,
-            "status": sub.status,
-            "plan": sub.plan,
-            "created_at": sub.created_at.isoformat(),
-        })
-    return result
+    return [_sub_out(sub, user) for sub, user in rows]
+
+
+@router.post("/subscriptions/{sub_id}/create_order")
+async def create_order_from_sub(sub_id: int, db: AsyncSession = Depends(get_db)):
+    """Create a delivery order from an active subscription and advance its delivery date."""
+    import re
+    from app.models.order import OrderItem
+    from app.routers.warehouse import _resolve_product
+
+    sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
+    sub = sub_q.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.status != "active":
+        raise HTTPException(status_code=400, detail="Subscription not active")
+
+    user_q = await db.execute(select(User).where(User.id == sub.user_id))
+    user = user_q.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Parse "Вода 20л x2, Газ. вода 1.5л x1"
+    items_data: list[tuple] = []
+    for part in sub.water_summary.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"(.+?)\s*[xхX×]\s*(\d+)", part)
+        name = m.group(1).strip() if m else part
+        qty = int(m.group(2)) if m else 1
+        try:
+            product = await _resolve_product(db, None, name)
+            items_data.append((product, qty))
+        except HTTPException:
+            pass
+
+    if not items_data:
+        raise HTTPException(status_code=400, detail="Could not resolve products from water_summary")
+
+    subtotal = sum(p.price * q for p, q in items_data)
+
+    order = Order(
+        user_id=sub.user_id,
+        recipient_phone=sub.phone or user.phone or "",
+        address=sub.address,
+        extra_info=sub.landmark,
+        latitude=sub.latitude,
+        longitude=sub.longitude,
+        subtotal=subtotal,
+        total=subtotal,
+        payment_method=sub.payment_method,
+        status=OrderStatus.CONFIRMED,
+        confirmed_at=datetime.utcnow(),
+    )
+    db.add(order)
+    await db.flush()
+
+    for product, qty in items_data:
+        db.add(OrderItem(order_id=order.id, product_id=product.id, quantity=qty, price=product.price))
+
+    sub.last_delivered_at = datetime.utcnow()
+    sub.next_delivery_date = _calc_next_delivery(sub.plan, sub.day, datetime.utcnow())
+
+    await db.commit()
+
+    items_text = ", ".join(f"{p.name} ×{q}" for p, q in items_data)
+    return {
+        "order_id": order.id,
+        "total": subtotal,
+        "items_count": len(items_data),
+        "items_text": items_text,
+        "client_name": user.name or "",
+        "address": sub.address,
+        "next_delivery_date": sub.next_delivery_date.isoformat() if sub.next_delivery_date else None,
+    }
 
 
 @router.post("/subscriptions/{sub_id}/confirm")

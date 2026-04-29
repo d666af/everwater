@@ -9,8 +9,8 @@ from keyboards.manager import (
     mgr_stats_period_kb, mgr_client_kb, mgr_debt_kb,
     mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
-from keyboards.admin import subs_period_kb
-from handlers.admin import _format_subs
+from keyboards.admin import subs_menu_kb, subs_list_kb
+from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text
 from config import settings
 
 router = Router()
@@ -643,26 +643,90 @@ async def mgr_support_quick_reply(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Subscriptions overview ───────────────────────────────────────────────────
+# ─── Subscriptions management ─────────────────────────────────────────────────
+
+async def _mgr_subs_menu(message_or_call, is_call: bool = False):
+    weekly = await api.get_admin_subscriptions(plan="weekly", status="active")
+    monthly = await api.get_admin_subscriptions(plan="monthly", status="active")
+    text = _subs_summary_text(weekly, monthly)
+    kb = subs_menu_kb("mgr", len(weekly), len(monthly))
+    if is_call:
+        try:
+            await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message_or_call.answer()
+    else:
+        await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
+
 
 @router.message(F.text == "📅 Подписки")
 async def mgr_subs_overview(message: Message):
     if not await is_manager(message.from_user.id):
         return
-    subs = await api.get_all_subscriptions("week")
-    text = _format_subs(subs, "week")
-    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
+    await _mgr_subs_menu(message, is_call=False)
 
 
-@router.callback_query(F.data.startswith("mgr:subs:"))
-async def mgr_subs_period(call: CallbackQuery):
+@router.callback_query(F.data == "mgr:subs:menu")
+async def mgr_subs_menu_cb(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
-    period = call.data.split(":")[2]
-    subs = await api.get_all_subscriptions(period)
-    text = _format_subs(subs, period)
+    await _mgr_subs_menu(call, is_call=True)
+
+
+@router.callback_query(F.data.startswith("mgr:subs:weekly:") | F.data.startswith("mgr:subs:monthly:"))
+async def mgr_subs_list(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    plan, page = parts[2], int(parts[3])
+    subs = await api.get_admin_subscriptions(plan=plan, status="active")
+
+    def _sort_key(s):
+        return 0 if s.get("overdue") else (1 if s.get("due_today") else 2)
+
+    subs.sort(key=_sort_key)
+    plan_label = "Еженедельные" if plan == "weekly" else "Ежемесячные"
+    PAGE_SIZE = 5
+    start = page * PAGE_SIZE
+    chunk = subs[start:start + PAGE_SIZE]
+    header = f"📋 <b>{plan_label} подписки ({len(subs)}):</b>\n\n"
+    detail_lines = [f"{i + 1}. {_sub_card_text(s)}" for i, s in enumerate(chunk, start=start)]
+    text = header + "\n\n".join(detail_lines) if chunk else header + "Нет активных подписок."
+
+    kb = subs_list_kb("mgr", subs, plan, page, can_create_order=True)
     try:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
-        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("mgr"))
+        await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:sub_order:"))
+async def mgr_sub_create_order(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    sub_id = int(call.data.split(":")[2])
+    try:
+        result = await api.create_order_from_subscription(sub_id)
+    except Exception as e:
+        await call.answer(f"❌ Ошибка: {e}", show_alert=True)
+        return
+
+    order_id = result["order_id"]
+    couriers = await api.get_couriers()
+    from keyboards.admin import courier_select_kb
+    kb = courier_select_kb(couriers, order_id)
+    text = (
+        f"✅ Заказ #{order_id} создан из подписки!\n\n"
+        f"Клиент: {result.get('client_name', '—')}\n"
+        f"Адрес: {result.get('address', '—')}\n"
+        f"Товары: {result.get('items_text', '—')}\n"
+        f"Сумма: {int(result.get('total', 0)):,} сум\n\n"
+        f"Выберите курьера для назначения:"
+    )
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()

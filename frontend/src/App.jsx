@@ -33,6 +33,7 @@ import AdminSupport from './pages/admin/AdminSupport'
 import AdminWarehouse from './pages/admin/AdminWarehouse'
 import AdminWarehouseCouriers from './pages/admin/AdminWarehouseCouriers'
 import AdminWarehouseHistory from './pages/admin/AdminWarehouseHistory'
+import AdminSubscriptions from './pages/admin/AdminSubscriptions'
 
 // Manager
 import ManagerOrders from './pages/manager/ManagerOrders'
@@ -40,6 +41,7 @@ import ManagerClients from './pages/manager/ManagerClients'
 import ManagerCouriers from './pages/manager/ManagerCouriers'
 import ManagerStats from './pages/manager/ManagerStats'
 import ManagerSupport from './pages/manager/ManagerSupport'
+import ManagerSubscriptions from './pages/manager/ManagerSubscriptions'
 
 // Courier
 import CourierOrders from './pages/courier/CourierOrders'
@@ -51,6 +53,7 @@ import WarehouseStock from './pages/warehouse/WarehouseStock'
 import WarehouseCouriers from './pages/warehouse/WarehouseCouriers'
 import WarehouseHistory from './pages/warehouse/WarehouseHistory'
 import WarehouseProfile from './pages/warehouse/WarehouseProfile'
+import WarehouseSubscriptions from './pages/warehouse/WarehouseSubscriptions'
 
 export default function App() {
   useTelegramAuth()  // Auto-login from Telegram WebApp context on every load
@@ -161,6 +164,11 @@ export default function App() {
             <AdminManagers />
           </ProtectedRoute>
         } />
+        <Route path="/admin/subscriptions" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminSubscriptions />
+          </ProtectedRoute>
+        } />
 
         {/* Manager */}
         <Route path="/manager" element={
@@ -186,6 +194,11 @@ export default function App() {
         <Route path="/manager/stats" element={
           <ProtectedRoute allowedRoles={['manager']}>
             <ManagerStats />
+          </ProtectedRoute>
+        } />
+        <Route path="/manager/subscriptions" element={
+          <ProtectedRoute allowedRoles={['manager']}>
+            <ManagerSubscriptions />
           </ProtectedRoute>
         } />
 
@@ -220,6 +233,11 @@ export default function App() {
         <Route path="/warehouse/history" element={
           <ProtectedRoute allowedRoles={['warehouse']}>
             <WarehouseHistory />
+          </ProtectedRoute>
+        } />
+        <Route path="/warehouse/subscriptions" element={
+          <ProtectedRoute allowedRoles={['warehouse']}>
+            <WarehouseSubscriptions />
           </ProtectedRoute>
         } />
         <Route path="/warehouse/profile" element={
