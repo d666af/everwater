@@ -488,6 +488,33 @@ async def get_all_subscriptions(period: str = "week") -> list:
         return []
 
 
+async def add_warehouse_staff_db(telegram_id: int, name: str = "") -> bool:
+    try:
+        await _post("/warehouse/staff", {"telegram_id": telegram_id, "name": name})
+        return True
+    except Exception:
+        return False
+
+
+async def remove_warehouse_staff_db(telegram_id: int) -> bool:
+    try:
+        import aiohttp
+        from config import settings
+        url = f"{settings.API_URL}/warehouse/staff/{telegram_id}"
+        async with aiohttp.ClientSession() as s:
+            await s.delete(url, timeout=aiohttp.ClientTimeout(total=10))
+        return True
+    except Exception:
+        return False
+
+
+async def get_warehouse_staff_db() -> list:
+    try:
+        return await _get("/warehouse/staff")
+    except Exception:
+        return []
+
+
 # ─── Support chat ──────────────────────────────────────────────────────────────
 
 async def send_user_support_message(telegram_id: int, user_name: str, text: str):

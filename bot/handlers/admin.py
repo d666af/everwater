@@ -961,12 +961,12 @@ async def admin_wh_staff_tg(message: Message, state: FSMContext):
         await state.clear()
         from services.roles import add_warehouse_staff
         add_warehouse_staff(tg_id)
+        await api.add_warehouse_staff_db(tg_id, name)
         await message.answer(
-            f"✅ Завсклада добавлен (имя из аккаунта)!\nИмя: {name}\nTelegram ID: {tg_id}\n\n"
-            "⚠️ Доступ активен до перезапуска бота. Для постоянного доступа добавьте ID в WAREHOUSE_IDS в .env"
+            f"✅ Завсклада добавлен!\nИмя: {name}\nTelegram ID: {tg_id}"
         )
         try:
-            await message.bot.send_message(tg_id, "🏭 Вы добавлены как завсклада Ever Water!\nИспользуйте /warehouse для доступа.")
+            await message.bot.send_message(tg_id, "🏭 Вы добавлены как завсклада Ever Water!\nИспользуйте /warehouse для доступа к боту или откройте мини-приложение.")
         except Exception:
             pass
     else:
@@ -984,15 +984,13 @@ async def admin_wh_staff_name(message: Message, state: FSMContext):
     await state.clear()
     from services.roles import add_warehouse_staff
     add_warehouse_staff(tg_id)
-    await message.answer(
-        f"✅ Завсклада добавлен!\nИмя: {name}\nTelegram ID: {tg_id}\n\n"
-        "⚠️ Доступ активен до перезапуска бота. Для постоянного доступа добавьте ID в WAREHOUSE_IDS в .env"
-    )
+    await api.add_warehouse_staff_db(tg_id, name)
+    await message.answer(f"✅ Завсклада добавлен!\nИмя: {name}\nTelegram ID: {tg_id}")
     try:
         await message.bot.send_message(
             tg_id,
             "🏭 Вы добавлены как завсклада Ever Water!\n"
-            "Используйте /warehouse для доступа к панели склада."
+            "Используйте /warehouse для доступа к панели склада или откройте мини-приложение."
         )
     except Exception:
         pass
@@ -1002,12 +1000,15 @@ async def admin_wh_staff_name(message: Message, state: FSMContext):
 async def admin_wh_list_staff(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    from services.roles import get_all_warehouse_ids
-    ids = get_all_warehouse_ids()
-    if not ids:
+    staff = await api.get_warehouse_staff_db()
+    if not staff:
         await call.answer("Список завсклада пуст.", show_alert=True)
         return
-    lines = ["🏭 <b>Завсклада:</b>\n"] + [f"• {tid}" for tid in ids]
+    lines = ["🏭 <b>Завсклада:</b>\n"]
+    for s in staff:
+        name = s.get("name") or "—"
+        tid = s.get("telegram_id")
+        lines.append(f"• {name} (ID: {tid})")
     await call.message.answer("\n".join(lines), parse_mode="HTML")
     await call.answer()
 
