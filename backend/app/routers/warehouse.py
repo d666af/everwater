@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.warehouse import WaterStock, WaterTransaction, CourierWater
+from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
@@ -681,3 +681,43 @@ async def get_warehouse_subscriptions(
         for s in subs
         if not s.day or s.day in target_days
     ]
+
+
+# ─── Warehouse staff management ───────────────────────────────────────────────
+
+class StaffBody(BaseModel):
+    telegram_id: int
+    name: str = ""
+
+
+@router.post("/staff")
+async def add_warehouse_staff(body: StaffBody, db: AsyncSession = Depends(get_db)):
+    existing = (await db.execute(
+        select(WarehouseStaff).where(WarehouseStaff.telegram_id == body.telegram_id)
+    )).scalar_one_or_none()
+    if existing:
+        existing.is_active = True
+        existing.name = body.name or existing.name
+    else:
+        db.add(WarehouseStaff(telegram_id=body.telegram_id, name=body.name, is_active=True))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/staff/{telegram_id}")
+async def remove_warehouse_staff(telegram_id: int, db: AsyncSession = Depends(get_db)):
+    staff = (await db.execute(
+        select(WarehouseStaff).where(WarehouseStaff.telegram_id == telegram_id)
+    )).scalar_one_or_none()
+    if staff:
+        staff.is_active = False
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/staff")
+async def list_warehouse_staff(db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(WarehouseStaff).where(WarehouseStaff.is_active == True)
+    )).scalars().all()
+    return [{"telegram_id": r.telegram_id, "name": r.name} for r in rows]

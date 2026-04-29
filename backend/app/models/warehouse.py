@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, Float, DateTime, ForeignKey, String, Text
+from sqlalchemy import Integer, Float, DateTime, ForeignKey, String, Text, Boolean, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from app.database import Base
@@ -45,3 +45,14 @@ class CourierWater(Base):
 
     courier: Mapped["Courier"] = relationship("Courier")  # noqa: F821
     product: Mapped["Product"] = relationship("Product")  # noqa: F821
+
+
+class WarehouseStaff(Base):
+    """Persistent warehouse staff members (завсклада)."""
+    __tablename__ = "warehouse_staff"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
