@@ -81,7 +81,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   return (
     <Layout title={title}>
-      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} onSave={async (productId, qty, note) => { await addProduction(productId, qty, note); load() }} />}
+      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint); load() }} />}
       {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note); load() }} />}
       {pickerOpen && (
@@ -349,17 +349,23 @@ function Row({ label, value, color }) {
   )
 }
 
-function AddProductionModal({ onClose, onSave }) {
-  const catalog = getCatalogProducts()
+function AddProductionModal({ onClose, onSave, products: propProducts }) {
+  // Normalize overview products ({product_id, product_name}) and catalog products ({id, short_name})
+  const catalog = (propProducts || getCatalogProducts()).map(p => ({
+    id: p.id ?? p.product_id,
+    short_name: p.short_name ?? p.product_name,
+  }))
   const [selectedId, setSelectedId] = useState(catalog[0]?.id || null)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const selected = catalog.find(p => p.id === selectedId)
+
   const handle = async () => {
     if (!qty || Number(qty) <= 0 || !selectedId) return
     setLoading(true)
-    try { await onSave(selectedId, Number(qty), note.trim()); onClose() }
+    try { await onSave(selectedId, Number(qty), note.trim(), selected?.short_name || selected?.product_name); onClose() }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }

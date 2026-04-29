@@ -13,7 +13,7 @@ from app.models.manager import Manager
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_PRIORITY = ["admin", "manager", "courier", "client"]
+_PRIORITY = ["admin", "warehouse", "manager", "courier", "client"]
 
 
 def _build_response(user, courier, manager, tg_id: int = None):
@@ -25,6 +25,8 @@ def _build_response(user, courier, manager, tg_id: int = None):
     all_roles: list[str] = []
     if tid and tid in settings.ADMIN_IDS:
         all_roles.append("admin")
+    if tid and tid in settings.WAREHOUSE_IDS:
+        all_roles.append("warehouse")
     if manager:
         all_roles.append("manager")
     if courier:
