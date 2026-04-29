@@ -38,6 +38,8 @@ class Subscription(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | expired | cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_delivery_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class TopupRequest(Base):

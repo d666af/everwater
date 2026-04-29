@@ -8,8 +8,8 @@ from keyboards.warehouse import (
     warehouse_menu_kb, wh_product_select_kb, wh_courier_select_kb, wh_history_filter_kb,
     wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
 )
-from keyboards.admin import subs_period_kb
-from handlers.admin import _format_subs
+from keyboards.admin import subs_menu_kb, subs_list_kb
+from handlers.admin import _subs_summary_text, _sub_card_text
 from config import settings
 
 router = Router()
@@ -446,26 +446,77 @@ async def wh_period(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Subscriptions overview ───────────────────────────────────────────────────
+# ─── Subscriptions (read-only, stock focus) ──────────────────────────────────
+
+async def _wh_subs_menu(message_or_call, is_call: bool = False):
+    weekly = await api.get_admin_subscriptions(plan="weekly", status="active")
+    monthly = await api.get_admin_subscriptions(plan="monthly", status="active")
+
+    # Aggregate water needed for this week
+    import re as _re
+    water_totals: dict[str, int] = {}
+    for s in weekly:
+        for part in s.get("water_summary", "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            m = _re.match(r"(.+?)\s*[xхX×]\s*(\d+)", part)
+            name, qty = (m.group(1).strip(), int(m.group(2))) if m else (part, 1)
+            water_totals[name] = water_totals.get(name, 0) + qty
+
+    text = _subs_summary_text(weekly, monthly)
+    if water_totals:
+        text += "\n\n<b>📦 Нужно за эту неделю:</b>\n"
+        text += "\n".join(f"  • {k} × {v} шт." for k, v in sorted(water_totals.items()))
+
+    kb = subs_menu_kb("wh", len(weekly), len(monthly))
+    if is_call:
+        try:
+            await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message_or_call.answer()
+    else:
+        await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
+
 
 @router.message(F.text == "📅 Подписки")
 async def wh_subs_overview(message: Message):
     if not await is_warehouse(message.from_user.id):
         return
-    subs = await api.get_all_subscriptions("week")
-    text = _format_subs(subs, "week")
-    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
+    await _wh_subs_menu(message, is_call=False)
 
 
-@router.callback_query(F.data.startswith("wh:subs:"))
-async def wh_subs_period(call: CallbackQuery):
+@router.callback_query(F.data == "wh:subs:menu")
+async def wh_subs_menu_cb(call: CallbackQuery):
     if not await is_warehouse(call.from_user.id):
         return
-    period = call.data.split(":")[2]
-    subs = await api.get_all_subscriptions(period)
-    text = _format_subs(subs, period)
+    await _wh_subs_menu(call, is_call=True)
+
+
+@router.callback_query(F.data.startswith("wh:subs:weekly:") | F.data.startswith("wh:subs:monthly:"))
+async def wh_subs_list(call: CallbackQuery):
+    if not await is_warehouse(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    plan, page = parts[2], int(parts[3])
+    subs = await api.get_admin_subscriptions(plan=plan, status="active")
+
+    def _sort_key(s):
+        return 0 if s.get("overdue") else (1 if s.get("due_today") else 2)
+
+    subs.sort(key=_sort_key)
+    plan_label = "Еженедельные" if plan == "weekly" else "Ежемесячные"
+    PAGE_SIZE = 5
+    start = page * PAGE_SIZE
+    chunk = subs[start:start + PAGE_SIZE]
+    header = f"📋 <b>{plan_label} подписки ({len(subs)}):</b>\n\n"
+    detail_lines = [f"{i + 1}. {_sub_card_text(s)}" for i, s in enumerate(chunk, start=start)]
+    text = header + "\n\n".join(detail_lines) if chunk else header + "Нет активных подписок."
+
+    kb = subs_list_kb("wh", subs, plan, page, can_create_order=False)
     try:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
-        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("wh"))
+        await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()

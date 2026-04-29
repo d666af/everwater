@@ -557,6 +557,15 @@ export const rejectSubscription = (subId) =>
     () => ({ ok: true })
   )
 
+export const getAdminSubscriptions = (params = {}) =>
+  safeCall(
+    () => http.get('/admin/subscriptions', { params }).then(r => r.data),
+    () => []
+  )
+
+export const createOrderFromSubscription = (subId) =>
+  http.post(`/admin/subscriptions/${subId}/create_order`).then(r => r.data)
+
 // ─── Client lookup by phone ───────────────────────────────────────────────
 export const lookupClientByPhone = (phone) =>
   safeCall(

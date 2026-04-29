@@ -239,6 +239,20 @@ async def cancel_subscription(user_id: int, sub_id: int):
         return {}
 
 
+async def get_admin_subscriptions(plan: str = None, status: str = "active") -> list:
+    try:
+        params = {"status": status}
+        if plan:
+            params["plan"] = plan
+        return await _get("/admin/subscriptions", params)
+    except Exception:
+        return []
+
+
+async def create_order_from_subscription(sub_id: int) -> dict:
+    return await _post(f"/admin/subscriptions/{sub_id}/create_order")
+
+
 async def confirm_subscription(sub_id: int):
     try:
         return await _post(f"/admin/subscriptions/{sub_id}/confirm")

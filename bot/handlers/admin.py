@@ -7,7 +7,7 @@ import services.api_client as api
 from keyboards.admin import (
     admin_menu_kb, order_confirm_kb, courier_select_kb,
     stats_period_kb, admin_user_kb, admin_debt_kb, broadcast_target_kb,
-    product_list_kb, product_edit_kb, subs_period_kb,
+    product_list_kb, product_edit_kb, subs_menu_kb, subs_list_kb,
 )
 from config import settings
 
@@ -1356,69 +1356,189 @@ async def admin_back(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Subscriptions overview ───────────────────────────────────────────────────
+# ─── Subscriptions management ─────────────────────────────────────────────────
+
+import re as _re
+from datetime import datetime as _dt
+
 
 def _format_subs(subs: list, period: str) -> str:
-    """Format subscriptions grouped by weekday for bot display."""
+    """Legacy helper kept for imports from manager/warehouse handlers."""
     DAYS_ORDER = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
     label = "этой неделе" if period == "week" else "этому месяцу"
     if not subs:
         return f"📅 <b>Подписки по {label}:</b>\n\nНет активных подписок."
-
     by_day: dict[str, list] = {}
     for s in subs:
         day = s.get("day") or "Не указан"
         by_day.setdefault(day, []).append(s)
-
     lines = [f"📅 <b>Подписки на {label}:</b>\n"]
-    # Sort by canonical weekday order; unknown days at the end
     sorted_days = sorted(by_day.keys(), key=lambda d: DAYS_ORDER.index(d) if d in DAYS_ORDER else 99)
     total = 0
     for day in sorted_days:
         day_subs = by_day[day]
         total += len(day_subs)
         lines.append(f"\n<b>{day}</b> — {len(day_subs)} подп.:")
-        # Aggregate water by product for this day
         water_totals: dict[str, int] = {}
         for s in day_subs:
-            summary = s.get("water_summary", "")
-            for part in summary.split(","):
+            for part in s.get("water_summary", "").split(","):
                 part = part.strip()
                 if not part:
                     continue
-                # Parse "Вода 20л x2" or "Вода 20л × 2"
-                import re
-                m = re.match(r"(.+?)\s*[x×]\s*(\d+)", part)
-                if m:
-                    name, qty = m.group(1).strip(), int(m.group(2))
-                else:
-                    name, qty = part, 1
+                m = _re.match(r"(.+?)\s*[x×]\s*(\d+)", part)
+                name, qty = (m.group(1).strip(), int(m.group(2))) if m else (part, 1)
                 water_totals[name] = water_totals.get(name, 0) + qty
         for name, qty in sorted(water_totals.items()):
             lines.append(f"  • {name} × {qty} шт.")
-
     lines.append(f"\n<b>Всего:</b> {total} активных подписок")
     return "\n".join(lines)
+
+
+def _subs_summary_text(weekly: list, monthly: list) -> str:
+    today_ru = ["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"][_dt.now().weekday()]
+    due_today = [s for s in weekly if s.get("day") == today_ru]
+    overdue = [s for s in weekly + monthly if s.get("overdue")]
+    lines = [
+        "📅 <b>Подписки на доставку</b>\n",
+        f"Еженедельных: <b>{len(weekly)}</b> активных",
+        f"  ⚡ Сегодня ({today_ru}): <b>{len(due_today)}</b>",
+        f"\nЕжемесячных: <b>{len(monthly)}</b> активных",
+    ]
+    if overdue:
+        lines.append(f"\n🔴 Просрочено: <b>{len(overdue)}</b> — нужна доставка!")
+    return "\n".join(lines)
+
+
+def _sub_card_text(s: dict) -> str:
+    ndd = s.get("next_delivery_date")
+    if ndd:
+        try:
+            d = _dt.fromisoformat(ndd)
+            today = _dt.now().date()
+            if d.date() < today:
+                date_label = f"🔴 Просрочена ({d.strftime('%d.%m')})"
+            elif d.date() == today:
+                date_label = f"⚡ Сегодня ({d.strftime('%d.%m')})"
+            else:
+                date_label = f"📅 {d.strftime('%d.%m.%Y')}"
+        except Exception:
+            date_label = ndd[:10]
+    else:
+        date_label = "—"
+
+    plan_label = "📅 Еженедельно" if s.get("plan") == "weekly" else "🗓 Ежемесячно"
+    return (
+        f"<b>{s.get('client_name', '—')}</b>\n"
+        f"{plan_label} | {s.get('day', '—')}\n"
+        f"💧 {s.get('water_summary', '—')}\n"
+        f"📍 {s.get('address', '—')[:50]}\n"
+        f"📞 {s.get('phone', '—')}\n"
+        f"Следующая: {date_label}"
+    )
+
+
+async def _admin_subs_menu(message_or_call, is_call: bool = False):
+    weekly = await api.get_admin_subscriptions(plan="weekly", status="active")
+    monthly = await api.get_admin_subscriptions(plan="monthly", status="active")
+    text = _subs_summary_text(weekly, monthly)
+    kb = subs_menu_kb("admin", len(weekly), len(monthly))
+    if is_call:
+        try:
+            await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message_or_call.answer()
+    else:
+        await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(F.text == "📅 Подписки")
 async def admin_subs_overview(message: Message):
     if not is_admin(message.from_user.id):
         return
-    subs = await api.get_all_subscriptions("week")
-    text = _format_subs(subs, "week")
-    await message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
+    await _admin_subs_menu(message, is_call=False)
 
 
-@router.callback_query(F.data.startswith("admin:subs:"))
-async def admin_subs_period(call: CallbackQuery):
+@router.callback_query(F.data == "admin:subs:menu")
+async def admin_subs_menu_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    period = call.data.split(":")[2]  # week | month
-    subs = await api.get_all_subscriptions(period)
-    text = _format_subs(subs, period)
+    await _admin_subs_menu(call, is_call=True)
+
+
+@router.callback_query(F.data.startswith("admin:subs:weekly:") | F.data.startswith("admin:subs:monthly:"))
+async def admin_subs_list(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    plan = parts[2]   # weekly | monthly
+    page = int(parts[3])
+    subs = await api.get_admin_subscriptions(plan=plan, status="active")
+
+    # Sort: overdue first, then due today, then by next_delivery_date
+    def _sort_key(s):
+        if s.get("overdue"):
+            return 0
+        if s.get("due_today"):
+            return 1
+        return 2
+
+    subs.sort(key=_sort_key)
+    plan_label = "Еженедельные" if plan == "weekly" else "Ежемесячные"
+    header = f"📋 <b>{plan_label} подписки ({len(subs)}):</b>\n\n"
+
+    from keyboards.admin import subs_list_kb
+    PAGE_SIZE = 5
+    start = page * PAGE_SIZE
+    chunk = subs[start:start + PAGE_SIZE]
+    detail_lines = [f"{i + 1}. {_sub_card_text(s)}" for i, s in enumerate(chunk, start=start)]
+    text = header + "\n\n".join(detail_lines) if chunk else header + "Нет активных подписок."
+
+    kb = subs_list_kb("admin", subs, plan, page, can_create_order=True)
     try:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
-        await call.message.answer(text, parse_mode="HTML", reply_markup=subs_period_kb("admin"))
+        await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin:sub_detail:"))
+async def admin_sub_detail(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    sub_id = int(call.data.split(":")[2])
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Создать заказ", callback_data=f"admin:sub_order:{sub_id}")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="admin:subs:menu")],
+    ])
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin:sub_order:"))
+async def admin_sub_create_order(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    sub_id = int(call.data.split(":")[2])
+    try:
+        result = await api.create_order_from_subscription(sub_id)
+    except Exception as e:
+        await call.answer(f"❌ Ошибка: {e}", show_alert=True)
+        return
+
+    order_id = result["order_id"]
+    couriers = await api.get_couriers()
+    kb = courier_select_kb(couriers, order_id)
+    text = (
+        f"✅ Заказ #{order_id} создан из подписки!\n\n"
+        f"Клиент: {result.get('client_name', '—')}\n"
+        f"Адрес: {result.get('address', '—')}\n"
+        f"Товары: {result.get('items_text', '—')}\n"
+        f"Сумма: {fmt(result.get('total', 0))}\n\n"
+        f"Выберите курьера для назначения:"
+    )
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()

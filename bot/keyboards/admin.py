@@ -111,7 +111,65 @@ def low_stock_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def subs_menu_kb(prefix: str, weekly_count: int, monthly_count: int) -> InlineKeyboardMarkup:
+    """Summary screen: choose weekly or monthly list."""
+    site_path = "/warehouse/subscriptions" if prefix == "wh" else f"/{prefix}/subscriptions"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=f"📅 Еженедельные ({weekly_count})",
+                callback_data=f"{prefix}:subs:weekly:0",
+            ),
+            InlineKeyboardButton(
+                text=f"🗓 Ежемесячные ({monthly_count})",
+                callback_data=f"{prefix}:subs:monthly:0",
+            ),
+        ],
+        [InlineKeyboardButton(text="🌐 На сайте", url=_site(site_path))],
+    ])
+
+
+def subs_list_kb(prefix: str, subs: list, plan: str, page: int, can_create_order: bool = True) -> InlineKeyboardMarkup:
+    """Paginated subscription list with Create Order buttons."""
+    PAGE_SIZE = 5
+    total = len(subs)
+    start = page * PAGE_SIZE
+    chunk = subs[start:start + PAGE_SIZE]
+
+    rows = []
+    for s in chunk:
+        sub_id = s["id"]
+        client = s.get("client_name", "—")[:18]
+        day_label = s.get("day", "?")
+        badge = " 🔴" if s.get("overdue") else (" ⚡" if s.get("due_today") else "")
+        rows.append([
+            InlineKeyboardButton(
+                text=f"👤 {client} | {day_label}{badge}",
+                callback_data=f"{prefix}:sub_detail:{sub_id}",
+            )
+        ])
+        if can_create_order:
+            rows.append([
+                InlineKeyboardButton(
+                    text="🛒 Создать заказ",
+                    callback_data=f"{prefix}:sub_order:{sub_id}",
+                )
+            ])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"{prefix}:subs:{plan}:{page - 1}"))
+    if start + PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="▶️ Далее", callback_data=f"{prefix}:subs:{plan}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="↩️ К подпискам", callback_data=f"{prefix}:subs:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def subs_period_kb(prefix: str = "admin") -> InlineKeyboardMarkup:
+    """Legacy keyboard — kept for backward compat with card-payment confirm flow."""
     site_path = "/warehouse" if prefix == "wh" else "/manager" if prefix == "mgr" else "/admin/clients"
     return InlineKeyboardMarkup(inline_keyboard=[
         [
