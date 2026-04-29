@@ -132,16 +132,56 @@ async def notify_cash_debt_requests(bot):
 
 
 async def notify_low_stock(bot):
-    """Уведомляет склад и админов о низких остатках (< 10 шт.)."""
+    """Alert admins, managers and warehouse staff about genuinely low stock.
+
+    Only fires for products with 1-9 units (skips 0 = never produced)
+    or products with a subscription shortfall this week.
+    """
     stock = await api.get_warehouse_stock()
-    low = [s for s in stock if s.get("quantity", 0) < 10]
-    if not low:
+    # 0 means "never stocked", not "ran out" — skip those to avoid noise
+    low_lines = []
+    for s in stock:
+        qty = s.get("quantity", 0)
+        if 0 < qty < 10:
+            name = s.get("short_name") or s.get("product_name", "—")
+            low_lines.append(f"• {name} — {qty} шт.")
+
+    # Also check subscription shortfall (products we need but don't have enough of)
+    shortfall_lines = []
+    try:
+        overview = await api.get_warehouse_overview("week")
+        for item in overview.get("shortfall_items", []):
+            deficit = item.get("qty", 0)
+            if deficit > 0:
+                shortfall_lines.append(f"• {item.get('product_name', '—')} — не хватает {deficit} шт. для подписок")
+    except Exception:
+        pass
+
+    if not low_lines and not shortfall_lines:
         return
-    lines = ["⚠️ <b>Низкие остатки на складе:</b>\n"]
-    for s in low:
-        lines.append(f"• {s['product_name']} — {s.get('quantity', 0)} шт.")
-    text = "\n".join(lines)
-    recipients = list(settings.ADMIN_IDS) + list(settings.WAREHOUSE_IDS)
+
+    parts = ["⚠️ <b>Низкие остатки на складе:</b>\n"]
+    if low_lines:
+        parts += low_lines
+    if shortfall_lines:
+        parts.append("\n<b>Нехватка для подписок на неделю:</b>")
+        parts += shortfall_lines
+    text = "\n".join(parts)
+
+    recipients: list[int] = list(settings.ADMIN_IDS) + list(settings.WAREHOUSE_IDS)
+    try:
+        for s in await api.get_warehouse_staff_db():
+            if s.get("telegram_id"):
+                recipients.append(s["telegram_id"])
+    except Exception:
+        pass
+    try:
+        for m in await api.get_managers():
+            if m.get("is_active") and m.get("telegram_id"):
+                recipients.append(m["telegram_id"])
+    except Exception:
+        pass
+
     for tg_id in set(recipients):
         try:
             await bot.send_message(tg_id, text, parse_mode="HTML")
