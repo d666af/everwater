@@ -134,14 +134,32 @@ def _order_detail_text(order: dict) -> str:
     )
 
 
-def _order_detail_kb(order_id: int, status: str) -> InlineKeyboardMarkup:
+def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> InlineKeyboardMarkup:
     rows = []
+
+    # Call buttons
+    client_phone = (order or {}).get("recipient_phone", "")
+    manager_phone = (order or {}).get("manager_phone", "")
+    lat = (order or {}).get("latitude")
+    lng = (order or {}).get("longitude")
+    address = (order or {}).get("address", "")
+
+    if client_phone:
+        rows.append([InlineKeyboardButton(text="📞 Клиент", url=f"tel:{client_phone}")])
+    if manager_phone:
+        rows.append([InlineKeyboardButton(text="📞 Менеджер", url=f"tel:{manager_phone}")])
+    if lat and lng:
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
+    elif address:
+        from urllib.parse import quote
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+
+    # Status actions (no "Принял" button)
     if status == "assigned_to_courier":
-        rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"courier:accept:{order_id}")])
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
     if status in ("assigned_to_courier", "in_delivery"):
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
-    if not rows:
+    if not rows or all(r[0].url for r in rows):
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     rows.append([InlineKeyboardButton(text="◀️ К списку", callback_data="cor:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -193,7 +211,7 @@ async def courier_order_detail(call: CallbackQuery, state: FSMContext):
     order = await api.get_order(order_id)
     await call.message.edit_text(
         _order_detail_text(order),
-        reply_markup=_order_detail_kb(order_id, order["status"]),
+        reply_markup=_order_detail_kb(order_id, order["status"], order),
         parse_mode="HTML",
     )
     await call.answer()
@@ -509,7 +527,7 @@ async def courier_accept(call: CallbackQuery):
             pass
     await call.message.edit_text(
         f"✅ Вы приняли заказ.\n{brief}",
-        reply_markup=_order_detail_kb(order_id, "in_delivery"),
+        reply_markup=_order_detail_kb(order_id, "in_delivery", order),
     )
     await call.answer()
 
@@ -533,7 +551,7 @@ async def courier_in_delivery(call: CallbackQuery):
             pass
     await call.message.edit_text(
         f"🚴 В доставке: {brief}",
-        reply_markup=_order_detail_kb(order_id, "in_delivery"),
+        reply_markup=_order_detail_kb(order_id, "in_delivery", order),
     )
     await call.answer()
 

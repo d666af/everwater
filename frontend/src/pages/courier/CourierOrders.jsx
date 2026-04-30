@@ -11,8 +11,6 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
-const MANAGER_PHONE = '+998900000003'
-
 const STATUS_CFG = {
   confirmed:           { label: 'Новый',    bg: '#FFF3BF', color: '#E67700' },
   assigned_to_courier: { label: 'Назначен', bg: `${C}15`,  color: CD },
@@ -203,10 +201,12 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
                 Клиенту
               </a>
             )}
-            <a href={`tel:${MANAGER_PHONE}`} style={s.contactBtn}>
-              <PhoneIcon />
-              Менеджеру
-            </a>
+            {order.manager_phone && (
+              <a href={`tel:${order.manager_phone}`} style={s.contactBtn}>
+                <PhoneIcon />
+                Менеджеру
+              </a>
+            )}
           </div>
 
           {/* Action buttons */}

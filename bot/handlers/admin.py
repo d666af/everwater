@@ -424,7 +424,7 @@ async def admin_set_courier(call: CallbackQuery):
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
     try:
-        await api.assign_courier(order_id, courier_id, from_bot=True)
+        await api.assign_courier(order_id, courier_id, from_bot=True, manager_telegram_id=call.from_user.id)
     except Exception:
         await call.answer("❌ Не удалось назначить курьера. Попробуйте ещё раз.", show_alert=True)
         return

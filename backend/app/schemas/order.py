@@ -64,6 +64,7 @@ class OrderOut(BaseModel):
     client_telegram_id: int | None = None
     courier_name: str | None = None
     courier_phone: str | None = None
+    manager_phone: str | None = None
     review_id: int | None = None
 
     model_config = {"from_attributes": True}
