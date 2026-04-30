@@ -295,6 +295,18 @@ export const updateUser = (tgId, data) =>
     () => ({ ok: true })
   )
 
+export const getUserAddresses = (userId) =>
+  safeCall(
+    () => http.get(`/users/${userId}/addresses`).then(r => r.data),
+    () => []
+  )
+
+export const saveUserAddresses = (userId, addresses) =>
+  safeCall(
+    () => http.post(`/users/${userId}/addresses`, { addresses }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 // ─── Admin ───────────────────────────────────────────────────────────────────
 export const getAdminStats = (period = 'day') =>
   safeCall(
