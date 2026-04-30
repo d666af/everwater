@@ -72,9 +72,6 @@ class SubscriptionState(StatesGroup):
     waiting_card_payment = State()
 
 
-class TopupState(StatesGroup):
-    waiting_amount = State()
-
 
 # ─── Survey after registration ────────────────────────────────────────────────
 
@@ -737,8 +734,6 @@ async def _ask_payment(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="💵 Наличные", callback_data="pm:cash")],
         [InlineKeyboardButton(text="💳 Карта", callback_data="pm:card")],
     ]
-    if balance and balance > 0:
-        rows.append([InlineKeyboardButton(text=f"💰 Баланс ({fmt(balance)})", callback_data="pm:balance")])
     await message.answer("Выберите способ оплаты:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -1146,8 +1141,6 @@ async def _sub_ask_payment(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="💵 Наличные", callback_data="subpm:cash")],
         [InlineKeyboardButton(text="💳 Карта", callback_data="subpm:card")],
     ]
-    if balance > 0:
-        rows.append([InlineKeyboardButton(text=f"💰 Баланс ({fmt(balance)})", callback_data="subpm:balance")])
     await message.answer("Выберите способ оплаты:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -1313,7 +1306,7 @@ async def support_quick(call: CallbackQuery):
 
 _MENU_TEXTS = {
     "🛒 Заказать", "📦 Мои заказы", "👤 Профиль",
-    "📋 Подписки", "💰 Пополнить", "💬 Поддержка", "🔄 Роль",
+    "📋 Подписки", "💬 Поддержка", "🔄 Роль",
 }
 
 
@@ -1332,93 +1325,3 @@ async def forward_to_support(message: Message, state: FSMContext):
     except Exception:
         await message.answer("✉️ Не удалось отправить сообщение. Попробуйте позже.")
 
-
-# ─── Balance Topup ────────────────────────────────────────────────────────────
-
-def _topup_presets_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="5 000", callback_data="tp_preset:5000"),
-            InlineKeyboardButton(text="10 000", callback_data="tp_preset:10000"),
-        ],
-        [
-            InlineKeyboardButton(text="20 000", callback_data="tp_preset:20000"),
-            InlineKeyboardButton(text="50 000", callback_data="tp_preset:50000"),
-        ],
-        [InlineKeyboardButton(text="✏️ Другая сумма", callback_data="tp_preset:custom")],
-    ])
-
-
-@router.message(F.text == "💰 Пополнить")
-async def topup_start(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "Выберите сумму пополнения или введите свою:",
-        reply_markup=_topup_presets_kb(),
-    )
-
-
-@router.callback_query(F.data.startswith("tp_preset:"))
-async def topup_preset(call: CallbackQuery, state: FSMContext):
-    val = call.data.split(":")[1]
-    if val == "custom":
-        await state.set_state(TopupState.waiting_amount)
-        await call.message.edit_text("Введите сумму пополнения баланса (в сум):")
-        await call.answer()
-        return
-    amount = int(val)
-    user = await api.get_user(call.from_user.id)
-    user_id = user["id"] if user else None
-    await call.message.edit_text(
-        f"Для пополнения на <b>{fmt(amount)}</b> переведите средства на карту:\n\n"
-        f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
-        f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
-        "После перевода нажмите кнопку ниже:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"tp:{amount}:{user_id}")
-        ]]),
-        parse_mode="HTML",
-    )
-    await call.answer()
-
-
-@router.message(TopupState.waiting_amount)
-async def topup_amount(message: Message, state: FSMContext):
-    text = message.text.strip().replace(" ", "")
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректную сумму числом.")
-        return
-    amount = int(text)
-    user = await api.get_user(message.from_user.id)
-    user_id = user["id"] if user else None
-    await state.clear()
-    await message.answer(
-        f"Для пополнения на <b>{fmt(amount)}</b> переведите средства на карту:\n\n"
-        f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
-        f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
-        "После перевода нажмите кнопку ниже:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"tp:{amount}:{user_id}")
-        ]]),
-        parse_mode="HTML",
-    )
-
-
-@router.callback_query(F.data.startswith("tp:"))
-async def topup_paid(call: CallbackQuery):
-    parts = call.data.split(":")
-    amount = int(parts[1])
-    user_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
-    if not user_id:
-        await call.answer("Ошибка: пользователь не найден", show_alert=True)
-        return
-    try:
-        await api.create_topup_request(user_id, amount, call.from_user.id)
-    except Exception:
-        await call.answer("Не удалось отправить заявку. Попробуйте позже.", show_alert=True)
-        return
-    await call.message.edit_text(
-        f"✅ Заявка на пополнение {fmt(amount)} отправлена.\n"
-        "Баланс будет зачислен после проверки администратором."
-    )
-    await call.answer()

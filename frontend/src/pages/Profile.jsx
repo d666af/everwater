@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram, getSettings, requestTopup, createSubscription } from '../api'
+import { getUserByTelegram, getSettings, createSubscription } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
 import MapPicker from '../components/MapPicker'
@@ -8,8 +8,6 @@ import MapPicker from '../components/MapPicker'
 const tg = window.Telegram?.WebApp
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
-
-const TOPUP_AMOUNTS = [5000, 10000, 20000, 50000]
 
 const SUB_PLANS = [
   { key: 'weekly', label: 'Еженедельная', desc: 'Доставка каждую неделю', days: 7 },
@@ -113,7 +111,7 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
   const [lat, setLat] = useState(null)
   const [lng, setLng] = useState(null)
   const [selectedAddrId, setSelectedAddrId] = useState(null)
-  const [payMethod, setPayMethod] = useState('balance')
+  const [payMethod, setPayMethod] = useState('card')
   const [bonusUsed, setBonusUsed] = useState(0)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -146,7 +144,6 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
 
   const availableBonus = userStore.bonus_points || 0
   const afterBonus = Math.max(0, total - bonusUsed)
-  const canPayBalance = userStore.balance >= afterBonus
 
   const selectSavedAddress = (a) => {
     setSelectedAddrId(a.id); setAddr(a.address); setLandmark(a.extraInfo || '')
@@ -190,7 +187,6 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
         payment_method: payMethod, bonus_used: bonusUsed, latitude: lat, longitude: lng,
         total: afterBonus, qty: selectedItems.reduce((s, i) => s + i.qty, 0),
       })
-      if (payMethod === 'balance') userStore.deductBalance(afterBonus)
       if (bonusUsed > 0) userStore.deductBonus(bonusUsed)
       setStep('done')
     } catch {
@@ -326,16 +322,6 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button style={payMethod === 'balance' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
-              onClick={() => setPayMethod('balance')}>
-              <div style={ss.payDot(payMethod === 'balance')} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Баланс</div>
-                <div style={{ fontSize: 12, color: canPayBalance ? '#8e8e93' : '#ef4444' }}>
-                  {canPayBalance ? `${userStore.balance.toLocaleString()} сум` : 'Недостаточно средств'}
-                </div>
-              </div>
-            </button>
             <button style={payMethod === 'card' ? { ...ss.payOpt, ...ss.payOptActive } : ss.payOpt}
               onClick={() => setPayMethod('card')}>
               <div style={ss.payDot(payMethod === 'card')} />
@@ -361,12 +347,11 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
           )}
 
           {error && <div style={{ fontSize: 13, color: '#ef4444', textAlign: 'center' }}>{error}</div>}
-          <button style={{ ...s.primaryBtn, ...(payMethod === 'balance' && !canPayBalance ? { opacity: 0.5 } : {}) }}
-            onClick={submit} disabled={loading || (payMethod === 'balance' && !canPayBalance)}>
+          <button style={s.primaryBtn}
+            onClick={submit} disabled={loading}>
             {loading ? <span style={s.spinner} /> :
               payMethod === 'cash' ? `Оформить · ${afterBonus.toLocaleString()} сум` :
-              payMethod === 'card' ? `Далее · ${afterBonus.toLocaleString()} сум` :
-              `Оплатить ${afterBonus.toLocaleString()} сум`}
+              `Далее · ${afterBonus.toLocaleString()} сум`}
           </button>
           <button style={s.ghostBtn} onClick={() => setStep('details')}>Назад</button>
         </div>
@@ -600,136 +585,10 @@ const ss = {
   }),
 }
 
-function TopupModal({ onClose, settings, user }) {
-  const [amount, setAmount] = useState(1000)
-  const [custom, setCustom] = useState('')
-  const [useCustom, setUseCustom] = useState(false)
-  const [step, setStep] = useState('select')
-  const [loading, setLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const finalAmount = useCustom ? (Number(custom) || 0) : amount
-
-  const copyCard = () => {
-    const text = settings?.payment_card || ''
-    try {
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text)
-      } else {
-        const ta = document.createElement('textarea')
-        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
-    } catch {}
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
-
-  if (step === 'pending') return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.sheet}>
-        <div style={s.handle} />
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={s.pendingIcon}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2"/>
-              <path d="M12 7v5l3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a1a' }}>Запрос отправлен</div>
-          <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 6, lineHeight: 1.5 }}>
-            Заявка на <strong>{finalAmount.toLocaleString()} сум</strong> отправлена.
-            Менеджер проверит и зачислит средства.
-          </div>
-        </div>
-        <button style={s.primaryBtn} onClick={onClose}>Закрыть</button>
-      </div>
-    </div>
-  )
-
-  if (step === 'payment') return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.sheet}>
-        <div style={s.handle} />
-        <div style={s.sheetTitle}>Оплата пополнения</div>
-        <div style={s.payCard}>
-          <div style={s.payLabel}>Переведите на карту</div>
-          <div style={{ ...s.payNum, cursor: 'pointer' }} onClick={copyCard}>{settings?.payment_card || '0000 0000 0000 0000'}</div>
-          <div style={{ fontSize: 11, color: copied ? '#8DC63F' : 'rgba(255,255,255,0.4)', marginTop: 2, textAlign: 'center' }}>
-            {copied ? 'Скопировано!' : 'Нажмите на номер чтобы скопировать'}
-          </div>
-          <div style={s.payHolder}>{settings?.payment_holder || '—'}</div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: 0.8 }}>Сумма</div>
-          <div style={s.payAmt}>{finalAmount.toLocaleString()} <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.35)' }}>сум</span></div>
-          <button style={{ ...s.copyBtn, ...(copied ? s.copyDone : {}) }} onClick={copyCard}>
-            {copied ? 'Скопировано' : 'Скопировать номер карты'}
-          </button>
-        </div>
-        <div style={s.helpSteps}>
-          <div style={s.helpStep}><span style={s.helpNum}>1</span> Переведите сумму на карту</div>
-          <div style={s.helpStep}><span style={s.helpNum}>2</span> Нажмите «Я оплатил»</div>
-          <div style={s.helpStep}><span style={s.helpNum}>3</span> Менеджер подтвердит зачисление</div>
-        </div>
-        <button style={s.primaryBtn} onClick={async () => {
-          setLoading(true)
-          try {
-            if (user?.id) {
-              const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || user?.telegram_id || null
-              await requestTopup(user.id, finalAmount, tgId)
-            }
-          } catch {}
-          setLoading(false); setStep('pending')
-        }} disabled={loading}>
-          {loading ? <span style={s.spinner} /> : 'Я оплатил'}
-        </button>
-        <button style={s.ghostBtn} onClick={() => setStep('select')}>Назад</button>
-      </div>
-    </div>
-  )
-
-  return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.sheet}>
-        <div style={s.handle} />
-        <div style={s.sheetTitle}>Пополнение баланса</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {TOPUP_AMOUNTS.map(a => (
-            <button key={a}
-              style={!useCustom && amount === a ? { ...s.amtChip, ...s.amtChipActive } : s.amtChip}
-              onClick={() => { setAmount(a); setUseCustom(false) }}
-            >
-              {a.toLocaleString()} сум
-            </button>
-          ))}
-        </div>
-        <div style={s.customWrap}>
-          <div style={s.customLabel}>Своя сумма</div>
-          <div style={{ ...s.customRow, ...(useCustom ? s.customRowActive : {}) }}>
-            <input type="number" inputMode="numeric" placeholder="0"
-              value={custom}
-              onFocus={() => setUseCustom(true)}
-              onChange={e => { setCustom(e.target.value); setUseCustom(true) }}
-              style={s.customInput}
-            />
-            <span style={{ fontSize: 18, fontWeight: 600, color: '#8e8e93' }}>сум</span>
-          </div>
-        </div>
-        <button style={{ ...s.primaryBtn, ...((!finalAmount || finalAmount < 100) ? { opacity: 0.5 } : {}) }}
-          onClick={() => setStep('payment')} disabled={!finalAmount || finalAmount < 100}>
-          К оплате · {finalAmount > 0 ? `${finalAmount.toLocaleString()} сум` : '—'}
-        </button>
-        <button style={s.ghostBtn} onClick={onClose}>Отмена</button>
-      </div>
-    </div>
-  )
-}
-
 export default function Profile() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
-  const [showTopup, setShowTopup] = useState(false)
   const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
@@ -755,7 +614,6 @@ export default function Profile() {
 
   const doLogout = () => { logout(); navigate('/login') }
 
-  const balance = userStore.initialized ? userStore.balance : (user?.balance || 0)
   const bonusPoints = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
   const orderCount = userStore.initialized ? userStore.order_count : (user?.order_count || 0)
 
@@ -774,8 +632,6 @@ export default function Profile() {
 
   return (
     <div style={s.page}>
-      {showTopup && <TopupModal onClose={() => setShowTopup(false)} settings={settings} user={user} />}
-
       {/* Order count badge — top right */}
       <div style={s.orderBadge}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -791,28 +647,6 @@ export default function Profile() {
         <div style={s.avatar}>{initials}</div>
         <div style={s.profileName}>{user.name}</div>
         <div style={s.profilePhone}>{user.phone}</div>
-      </div>
-
-      {/* Balance card */}
-      <div style={s.balanceCard}>
-        <div style={s.balanceTop}>
-          <div style={s.balanceIconWrap}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <rect x="2" y="5" width="20" height="14" rx="3" stroke="#fff" strokeWidth="1.8"/>
-              <path d="M2 10h20" stroke="#fff" strokeWidth="1.8"/>
-            </svg>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={s.balanceLabel}>Баланс</div>
-            <div style={s.balanceAmount}>{balance.toLocaleString()} <span style={s.balanceCurrency}>сум</span></div>
-          </div>
-          <button style={s.topupBtn} onClick={() => setShowTopup(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-            Пополнить
-          </button>
-        </div>
       </div>
 
       {/* Bonus card */}

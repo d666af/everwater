@@ -17,13 +17,6 @@ import SuccessScreen from './SuccessScreen'
 const tg = window.Telegram?.WebApp
 
 const PAYMENT_METHODS = [
-  { key: 'balance', label: 'Баланс', icon: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.8"/>
-      <path d="M2 10h20" stroke="currentColor" strokeWidth="1.8"/>
-      <circle cx="16" cy="15" r="1.5" fill="currentColor"/>
-    </svg>
-  )},
   { key: 'card', label: 'Перевод на карту', icon: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
       <rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="1.8"/>
@@ -55,7 +48,7 @@ export default function Checkout() {
     phone: '', address: '', extraInfo: '',
     lat: null, lng: null, geoLoading: false,
     returnCount: 0, bonusUsed: 0,
-    paymentMethod: 'balance',
+    paymentMethod: 'card',
   })
   const [selectedAddrId, setSelectedAddrId] = useState(null)
   const [showMap, setShowMap] = useState(false)
@@ -114,14 +107,10 @@ export default function Checkout() {
   })()
   const afterBottle = subtotal - bottleDiscount
   const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
-  const availableBalance = userStore.initialized ? userStore.balance : (user?.balance || 0)
   const bonusMax = Math.min(availableBonus, afterBottle)
 
-  const isBalancePayment = form.paymentMethod === 'balance'
   const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
-  const balanceUsed = isBalancePayment ? Math.min(availableBalance, afterBonus) : 0
-  const finalTotal = Math.max(0, afterBonus - balanceUsed)
-  const cardRemainder = isBalancePayment && finalTotal > 0 ? finalTotal : 0
+  const finalTotal = afterBonus
 
   // Saved addresses
   const savedAddresses = userStore.saved_addresses
@@ -167,8 +156,8 @@ export default function Checkout() {
         return_bottles_volume: has20L ? 20 : 0,
         bottle_discount: bottleDiscount,
         bonus_used: Number(form.bonusUsed),
-        balance_used: balanceUsed,
-        payment_method: cardRemainder > 0 ? 'balance_card' : form.paymentMethod,
+        balance_used: 0,
+        payment_method: form.paymentMethod,
         items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.product.price })),
       })
       setCreatedOrder(order)
@@ -178,9 +167,6 @@ export default function Checkout() {
       if (effectiveReturnCount > 0) userStore.returnBottles(effectiveReturnCount)
 
       if (form.paymentMethod === 'cash') {
-        await paymentConfirmed(order.id)
-        finishOrder(order)
-      } else if (form.paymentMethod === 'balance' && cardRemainder === 0) {
         await paymentConfirmed(order.id)
         finishOrder(order)
       }
@@ -216,7 +202,6 @@ export default function Checkout() {
     }
     addOrder(fullOrder)
     if (Number(form.bonusUsed)) userStore.deductBonus(Number(form.bonusUsed))
-    if (balanceUsed > 0) userStore.deductBalance(balanceUsed)
     userStore.incrementOrders()
     clearCart()
 
@@ -259,13 +244,12 @@ export default function Checkout() {
   )
 
   // ── Card Payment ──
-  const needCardPayment = createdOrder && (form.paymentMethod === 'card' || cardRemainder > 0)
-  if (needCardPayment) return (
+  if (createdOrder && form.paymentMethod === 'card') return (
     <CardPayment
       settings={settings}
-      amount={cardRemainder > 0 ? cardRemainder : finalTotal}
-      balanceUsed={balanceUsed}
-      cardRemainder={cardRemainder}
+      amount={finalTotal}
+      balanceUsed={0}
+      cardRemainder={0}
       onConfirm={confirmCardPayment}
       loading={loading}
       error={error}
@@ -433,7 +417,6 @@ export default function Checkout() {
         <div style={s.sLabel}>Способ оплаты</div>
         <div style={s.card}>
           {PAYMENT_METHODS.map(m => {
-            const isBalance = m.key === 'balance'
             const isSelected = form.paymentMethod === m.key
             return (
               <button key={m.key}
@@ -443,16 +426,8 @@ export default function Checkout() {
                 <div style={{ color: isSelected ? C : '#8e8e93' }}>{m.icon}</div>
                 <div style={{ flex: 1, textAlign: 'left' }}>
                   <span style={{ ...s.payMethodLabel, color: isSelected ? '#1a1a1a' : '#3c3c43' }}>
-                    {isBalance ? `Баланс (${availableBalance.toLocaleString()} сум)` : m.label}
+                    {m.label}
                   </span>
-                  {isBalance && isSelected && availableBalance > 0 && availableBalance < afterBonus && (
-                    <div style={{ fontSize: 12, color: '#e67e22', marginTop: 3, fontWeight: 500 }}>
-                      Остаток {(afterBonus - availableBalance).toLocaleString()} сум — переводом на карту
-                    </div>
-                  )}
-                  {isBalance && availableBalance === 0 && (
-                    <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 3 }}>Пополните баланс в профиле</div>
-                  )}
                 </div>
                 {isSelected && (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', flexShrink: 0 }}>
@@ -471,12 +446,6 @@ export default function Checkout() {
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>
         </div>
-        {isBalancePayment && balanceUsed > 0 && (
-          <div style={{ padding: '0 4px', fontSize: 13, color: '#8e8e93' }}>
-            С баланса: {balanceUsed.toLocaleString()} сум
-            {cardRemainder > 0 && <span> · Картой: {cardRemainder.toLocaleString()} сум</span>}
-          </div>
-        )}
         {error && <div style={s.errorBox}>{error}</div>}
         <button style={s.primaryBtn} onClick={submitOrder} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Оформить заказ'}
