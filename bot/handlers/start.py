@@ -422,7 +422,6 @@ async def profile(message: Message, state: FSMContext):
         f"<b>👤 Профиль</b>\n\n"
         f"Имя: {user.get('name', '—')}\n"
         f"Телефон: {user.get('phone', '—')}\n\n"
-        f"💰 Баланс: <b>{fmt(user.get('balance', 0))}</b>\n"
         f"⭐ Бонусы: <b>{fmt(user.get('bonus_points', 0))}</b>\n"
     )
     if bottle_count > 0:
@@ -431,18 +430,10 @@ async def profile(message: Message, state: FSMContext):
         text += f"📋 Активных подписок: <b>{len(active_subs)}</b>\n"
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="profile:topup")],
         [InlineKeyboardButton(text="📋 Мои подписки", callback_data="profile:subs")],
         [InlineKeyboardButton(text="🌐 Профиль на сайте", url=_site("/profile"))],
     ])
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
-
-
-@router.callback_query(F.data == "profile:topup")
-async def profile_topup(call: CallbackQuery, state: FSMContext):
-    await call.answer()
-    from handlers.client import topup_start
-    await topup_start(call.message, state)
 
 
 @router.callback_query(F.data == "profile:subs")
