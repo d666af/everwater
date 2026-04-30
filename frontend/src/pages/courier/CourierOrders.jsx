@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
 import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import { useAuthStore } from '../../store/auth'
+import PhonePopup from '../../components/PhonePopup'
 
 const tg = window.Telegram?.WebApp
 
@@ -58,6 +59,7 @@ const PhoneIcon = () => (
 function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
   const [open, setOpen] = useState(false)
   const [cashConfirm, setCashConfirm] = useState(false)
+  const [phoneModal, setPhoneModal] = useState(null)
   const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
   const deliveryInfo = [order.delivery_date, order.delivery_period].filter(Boolean).join(' · ')
@@ -114,7 +116,6 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>#{order.id}</span>
               <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: st.bg, color: st.color }}>{st.label}</span>
             </div>
             {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
@@ -194,18 +195,19 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
           )}
 
           {/* Call buttons: client + manager */}
+          {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           <div style={{ display: 'flex', gap: 8 }}>
             {order.recipient_phone && (
-              <a href={`tel:${order.recipient_phone}`} style={s.contactBtn}>
+              <button onClick={() => setPhoneModal({ number: order.recipient_phone, label: 'Телефон клиента' })} style={s.contactBtn}>
                 <PhoneIcon />
                 Клиенту
-              </a>
+              </button>
             )}
             {order.manager_phone && (
-              <a href={`tel:${order.manager_phone}`} style={s.contactBtn}>
+              <button onClick={() => setPhoneModal({ number: order.manager_phone, label: 'Телефон менеджера' })} style={s.contactBtn}>
                 <PhoneIcon />
                 Менеджеру
-              </a>
+              </button>
             )}
           </div>
 
@@ -428,7 +430,7 @@ export default function CourierOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [filter, setFilter] = useState('waiting')
+  const [filter, setFilter] = useState('all')
   const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
