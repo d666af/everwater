@@ -385,6 +385,7 @@ async def store_notification_msg_ids(order_id: int, body: NotificationMsgIdsBody
 
 class AssignBody(BaseModel):
     courier_id: int
+    manager_telegram_id: int | None = None
 
 
 @router.patch("/{order_id}/assign_courier")
@@ -414,6 +415,23 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     order.status = OrderStatus.ASSIGNED_TO_COURIER
     if not order.delivery_expected_at:
         order.delivery_expected_at = datetime.utcnow() + timedelta(hours=2)
+
+    # Store which manager assigned this courier
+    if body.manager_telegram_id:
+        from app.models.manager import Manager
+        from app.config import settings as cfg
+        mgr = (await db.execute(
+            select(Manager).where(Manager.telegram_id == body.manager_telegram_id, Manager.is_active == True)
+        )).scalar_one_or_none()
+        if mgr and mgr.phone:
+            order.manager_phone = mgr.phone
+        elif body.manager_telegram_id in cfg.ADMIN_IDS:
+            admin_user = (await db.execute(
+                select(User).where(User.telegram_id == body.manager_telegram_id)
+            )).scalar_one_or_none()
+            if admin_user and admin_user.phone:
+                order.manager_phone = admin_user.phone
+
     await db.commit()
 
     if not from_bot:
@@ -613,5 +631,6 @@ def _order_to_out(order: Order) -> OrderOut:
         client_telegram_id=order.user.telegram_id if order.user else None,
         courier_name=order.courier.name if order.courier else None,
         courier_phone=order.courier.phone if order.courier else None,
+        manager_phone=order.manager_phone,
         review_id=order.review.id if order.review else None,
     )

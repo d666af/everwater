@@ -156,8 +156,11 @@ async def cancel_order(order_id: int):
         return None
 
 
-async def assign_courier(order_id: int, courier_id: int, from_bot: bool = True):
-    return await _patch(f"/orders/{order_id}/assign_courier", {"courier_id": courier_id},
+async def assign_courier(order_id: int, courier_id: int, from_bot: bool = True, manager_telegram_id: int | None = None):
+    body = {"courier_id": courier_id}
+    if manager_telegram_id:
+        body["manager_telegram_id"] = manager_telegram_id
+    return await _patch(f"/orders/{order_id}/assign_courier", body,
                         params={"from_bot": str(from_bot).lower()})
 
 

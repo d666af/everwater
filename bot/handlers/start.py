@@ -338,6 +338,8 @@ async def order_detail(call: CallbackQuery):
     buttons = []
     if status == "delivered" and not order.get("review_id"):
         buttons.append([InlineKeyboardButton(text="⭐ Оценить доставку", callback_data=f"review:{order_id}:0")])
+    if status in ("assigned_to_courier", "in_delivery") and order.get("courier_phone"):
+        buttons.append([InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{order['courier_phone']}")])
     buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
     if status in ("new", "awaiting_confirmation"):
         buttons.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_order:{order_id}")])
