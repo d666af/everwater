@@ -123,13 +123,15 @@ def _order_detail_text(order: dict) -> str:
     status = STATUS_RU.get(order["status"], order["status"])
     urgency = _urgency_suffix(order)
     time_str = order.get("delivery_time") or "—"
+    pay = order.get('payment_method', 'cash')
+    cash_line = f"\nПолучить от клиента: {fmt(order['total'])}" if pay == 'cash' else ""
     return (
         f"📦 <b>{status}{urgency}</b>\n\n"
         f"Адрес: {order['address']}\n"
         f"Телефон: {order['recipient_phone']}\n"
         f"Время: {time_str}\n"
-        f"Товары:\n{items_text}\n\n"
-        f"Сумма: {fmt(order['total'])}\n"
+        f"Товары:\n{items_text}"
+        f"{cash_line}\n"
         f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт."
     )
 
@@ -157,9 +159,7 @@ def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> I
     # Status actions (no "Принял" button)
     if status == "assigned_to_courier":
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
-    if status in ("assigned_to_courier", "in_delivery"):
-        rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
-    if not rows or all(r[0].url for r in rows):
+    elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     rows.append([InlineKeyboardButton(text="◀️ К списку", callback_data="cor:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

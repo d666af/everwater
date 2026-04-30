@@ -1376,7 +1376,13 @@ async def forward_to_support(message: Message, state: FSMContext):
 
     try:
         await api.send_user_support_message(tg_id, name, message.text)
-        await message.answer("✉️ Сообщение отправлено. Оператор ответит в ближайшее время.")
+        await message.answer(
+            "✉️ Сообщение отправлено. Оператор ответит в ближайшее время.",
+            reply_markup=main_menu_kb(),
+        )
     except Exception:
-        await message.answer("✉️ Не удалось отправить сообщение. Попробуйте позже.")
+        await message.answer(
+            "✉️ Не удалось отправить сообщение. Попробуйте позже.",
+            reply_markup=main_menu_kb(),
+        )
 

@@ -5,6 +5,7 @@ import { useOrdersStore } from '../store/orders'
 import { useAuthStore } from '../store/auth'
 import { getUserByTelegram, getUserOrders } from '../api'
 import ReviewModal from '../components/ReviewModal'
+import PhonePopup from '../components/PhonePopup'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -189,9 +190,11 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   const canReview = order.status === 'delivered' && !reviewedIds.has(order.id) && !order.review_id
   const itemCount = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0
   const isRejected = order.status === 'rejected' || order.status === 'rejected_by_manager' || order.status === 'cancelled'
+  const [phoneModal, setPhoneModal] = useState(null)
 
   return (
     <div style={s.card}>
+      {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
       <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
         <div style={{ ...s.statusIcon, background: colors.bg, color: colors.color, border: `1.5px solid ${colors.color}30` }}>
           <StatusIcon status={order.status} size={18} />
@@ -243,12 +246,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                   <div style={s.courierName}>{order.courier_name}</div>
                 </div>
                 {order.courier_phone && (
-                  <a href={`tel:${order.courier_phone}`} style={s.callBtn}>
+                  <button onClick={() => setPhoneModal({ number: order.courier_phone, label: 'Телефон курьера' })} style={s.callBtn}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                       <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#fff" strokeWidth="1.5"/>
                     </svg>
                     Позвонить
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

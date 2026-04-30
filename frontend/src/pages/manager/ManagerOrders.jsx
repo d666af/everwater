@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmTopupRequest, rejectTopupRequest, confirmSubscription, rejectSubscription } from '../../api'
+import PhonePopup from '../../components/PhonePopup'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -228,6 +229,7 @@ function OrderCard({
 }) {
   const orderStage = getStage(order)
   const [showMore, setShowMore] = useState(false)
+  const [phoneModal, setPhoneModal] = useState(null)
 
   const stageLabel = {
     payment: 'Проверка оплаты',
@@ -465,22 +467,23 @@ function OrderCard({
           )}
 
           {/* Always visible: cancel + contact client */}
+          {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
             {order.recipient_phone && (<>
-              <a href={`tel:${order.recipient_phone}`} style={st.btnOutline}>
+              <button onClick={() => setPhoneModal({ number: order.recipient_phone, label: 'Телефон клиента' })} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
                 Позвонить
-              </a>
-              <a href={`https://t.me/${order.client_telegram_id || ''}`} target="_blank" rel="noopener noreferrer" style={st.btnOutline}>
+              </button>
+              <a href={`tg://user?id=${order.client_telegram_id}`} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
                 Написать
               </a>
             </>)}
             {order.courier_phone && (
-              <a href={`tel:${order.courier_phone}`} style={st.btnOutline}>
+              <button onClick={() => setPhoneModal({ number: order.courier_phone, label: 'Телефон курьера' })} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
                 Курьер
-              </a>
+              </button>
             )}
             {orderStage !== 'done' && rejectingId !== order.id && (
               <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} onClick={() => { setRejectingId(order.id); setRejectReason('') }}>

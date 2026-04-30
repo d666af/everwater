@@ -97,6 +97,46 @@ async def admin_panel(message: Message):
 
 # ─── ReplyKeyboard text handlers (admin main menu) ────────────────────────────
 
+def _admin_order_text(o: dict) -> str:
+    st = STATUS_RU.get(o["status"], o["status"])
+    items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+    pay = PAY_RU.get(o.get("payment_method", ""), "—")
+    lines = [
+        f"📦 <b>{st}</b>",
+        f"Клиент: {o.get('client_name','—')}  |  {o.get('recipient_phone','—')}",
+        f"Адрес: {o.get('address','—')}",
+    ]
+    if o.get("extra_info"):
+        lines.append(f"Доп.: {o['extra_info']}")
+    lines += [f"\nТовары:\n{items_text}", f"\nСумма: {fmt(o['total'])}  |  {pay}"]
+    if o.get("courier_name"):
+        lines.append(f"Курьер: {o['courier_name']}")
+    return "\n".join(lines)
+
+
+def _admin_order_kb(o: dict):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    oid = o["id"]
+    status = o.get("status", "")
+    rows = []
+    client_phone = o.get("recipient_phone", "")
+    courier_phone = o.get("courier_phone", "")
+    client_tg = o.get("client_telegram_id")
+    if client_phone:
+        rows.append([InlineKeyboardButton(text="📞 Клиенту", url=f"tel:{client_phone}")])
+    if courier_phone:
+        rows.append([InlineKeyboardButton(text="📞 Курьеру", url=f"tel:{courier_phone}")])
+    if client_tg:
+        rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
+    if status == "confirmed":
+        rows.append([InlineKeyboardButton(text="🚴 Отметить в пути", callback_data=f"admin:in_delivery:{oid}")])
+    if status in ("confirmed", "assigned_to_courier", "in_delivery"):
+        rows.append([InlineKeyboardButton(text="✔️ Отметить доставлен", callback_data=f"admin:delivered:{oid}")])
+    if status not in ("delivered", "rejected"):
+        rows.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"admin:cancel_order:{oid}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(F.text == "📋 Заказы")
 async def admin_text_orders(message: Message):
     if not is_admin(message.from_user.id):
@@ -105,11 +145,12 @@ async def admin_text_orders(message: Message):
     if not orders:
         await message.answer("Заказов нет.")
         return
-    lines = ["📋 <b>Все заказы (последние 20):</b>\n"]
-    for o in orders[:20]:
-        st = STATUS_RU.get(o["status"], o["status"])
-        lines.append(f"{st} — {fmt(o['total'])} — {o['address'][:25]}")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")][:10]
+    if not active:
+        await message.answer("Нет активных заказов.")
+        return
+    for o in active:
+        await message.answer(_admin_order_text(o), reply_markup=_admin_order_kb(o), parse_mode="HTML")
 
 
 @router.message(F.text == "⏳ Новые заказы")
@@ -311,6 +352,39 @@ async def admin_all_orders(call: CallbackQuery):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("admin:in_delivery:"))
+async def admin_mark_in_delivery(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    await api.start_delivery(order_id, from_bot=True)
+    order = await api.get_order(order_id)
+    await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    await call.answer("✅ Статус обновлён")
+
+
+@router.callback_query(F.data.startswith("admin:delivered:"))
+async def admin_mark_delivered(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    await api.mark_delivered(order_id, from_bot=True)
+    order = await api.get_order(order_id)
+    await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    await call.answer("✅ Доставлен")
+
+
+@router.callback_query(F.data.startswith("admin:cancel_order:"))
+async def admin_cancel_order_cb(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    await api.reject_order(order_id, "Отменён администратором", from_bot=True)
+    order = await api.get_order(order_id)
+    await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    await call.answer("❌ Заказ отменён")
+
+
 @router.callback_query(F.data == "admin:orders:awaiting_confirmation")
 async def admin_pending_orders(call: CallbackQuery):
     if not is_admin(call.from_user.id):
@@ -450,9 +524,15 @@ async def admin_set_courier(call: CallbackQuery):
         client_tg = order.get("client_telegram_id")
         if client_tg:
             try:
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                courier_phone = courier.get("phone", "")
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{courier_phone}")]
+                ]) if courier_phone else None
                 await call.bot.send_message(
                     client_tg,
-                    f"🚴 Курьер {courier['name']} назначен на ваш заказ #{order_id}!\nОжидайте доставку."
+                    f"🚴 Курьер {courier['name']} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
+                    reply_markup=kb,
                 )
             except Exception:
                 pass
