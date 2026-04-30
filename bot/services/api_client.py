@@ -214,6 +214,22 @@ async def get_addresses(user_id: int):
         return []
 
 
+async def get_user_addresses(user_id: int):
+    """Fetch saved addresses stored on the user record."""
+    try:
+        return await _get(f"/users/{user_id}/addresses")
+    except Exception:
+        return []
+
+
+async def save_user_addresses(user_id: int, addresses: list):
+    """Persist the saved addresses list on the user record."""
+    try:
+        return await _post(f"/users/{user_id}/addresses", {"addresses": addresses})
+    except Exception:
+        return {}
+
+
 async def save_address(user_id: int, data: dict):
     try:
         return await _post(f"/client/{user_id}/addresses", data)

@@ -1,4 +1,6 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -37,6 +39,7 @@ def _build_full_user(telegram_id: int, user, courier, manager) -> dict:
         "balance": float(user.balance) if user else 0.0,
         "bonus_points": float(user.bonus_points) if user else 0.0,
         "is_registered": user.is_registered if user else True,
+        "saved_addresses": json.loads(user.saved_addresses) if user and user.saved_addresses else [],
     }
 
 
@@ -98,3 +101,27 @@ async def get_users_to_remind(db: AsyncSession = Depends(get_db)):
         select(User).where(User.is_registered == False, User.is_blocked == False)
     )
     return result.scalars().all()
+
+
+class AddressesPayload(BaseModel):
+    addresses: list[dict]
+
+
+@router.get("/{user_id}/addresses")
+async def get_user_addresses(user_id: int, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return json.loads(user.saved_addresses) if user.saved_addresses else []
+
+
+@router.post("/{user_id}/addresses")
+async def save_user_addresses(user_id: int, payload: AddressesPayload, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Keep at most 10 addresses
+    addresses = payload.addresses[-10:]
+    user.saved_addresses = json.dumps(addresses, ensure_ascii=False)
+    await db.commit()
+    return {"ok": True, "count": len(addresses)}

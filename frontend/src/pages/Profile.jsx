@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram, getSettings, createSubscription } from '../api'
+import { getUserByTelegram, getSettings, createSubscription, getProducts } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
 import MapPicker from '../components/MapPicker'
@@ -116,6 +116,18 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+  const [products, setProducts] = useState([])
+
+  useEffect(() => {
+    getProducts()
+      .then(data => {
+        const active = (data || [])
+          .filter(p => p.is_active)
+          .map(p => ({ id: p.id.toString(), name: p.name, volume: p.volume, price: p.price, blockSize: 1 }))
+        setProducts(active)
+      })
+      .catch(() => setProducts([]))
+  }, [])
 
   const savedAddresses = userStore.saved_addresses
 
@@ -130,13 +142,13 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
   const setQty = (id, q) => setSelected(p => ({ ...p, [id]: { ...p[id], qty: Math.max(1, q) } }))
 
   const total = Object.entries(selected).reduce((sum, [id, { qty }]) => {
-    const w = SUB_WATERS.find(w => w.id === id)
+    const w = products.find(w => w.id === id)
     if (!w) return sum
     return sum + w.price * qty
   }, 0)
 
   const selectedItems = Object.entries(selected).map(([id, { qty }]) => {
-    const w = SUB_WATERS.find(w => w.id === id)
+    const w = products.find(w => w.id === id)
     return { ...w, qty }
   }).filter(Boolean)
 
@@ -453,7 +465,10 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
         {/* Water selection — scrollable */}
         <div style={ss.secLabel}>Вода</div>
         <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 4 }}>
-          {SUB_WATERS.map(w => {
+          {products.length === 0 && (
+            <div style={{ fontSize: 13, color: '#8e8e93', textAlign: 'center', padding: '12px 0' }}>Загрузка...</div>
+          )}
+          {products.map(w => {
             const sel = selected[w.id]
             return (
               <div key={w.id} style={sel ? { ...ss.waterCard, ...ss.waterCardActive } : ss.waterCard}>

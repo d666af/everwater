@@ -23,6 +23,7 @@ class User(Base):
     last_reminder_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     site_password: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    saved_addresses: Mapped[str | None] = mapped_column(String(4000), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

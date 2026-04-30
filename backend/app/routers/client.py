@@ -144,12 +144,26 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
 
 @router.delete("/{user_id}/subscriptions/{sub_id}")
 async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
+    from app.config import settings as cfg
+    from app.models.manager import Manager
+    from app.services.tg_notify import notify_all
+
     result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
     sub.status = "cancelled"
     await db.commit()
+
+    # Notify admins and managers about the cancellation
+    user_q = await db.execute(select(User).where(User.id == user_id))
+    u = user_q.scalar_one_or_none()
+    client_name = u.name if u else str(user_id)
+    client_phone = u.phone if u else "—"
+    text = f"❌ Клиент {client_name} ({client_phone}) отменил подписку на {sub.water_summary}."
+    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    await notify_all(cfg.ADMIN_IDS, mgrs, text)
+
     return {"ok": True}
 
 

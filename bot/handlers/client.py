@@ -63,6 +63,7 @@ class CheckoutState(StatesGroup):
 class SubscriptionState(StatesGroup):
     choosing_plan        = State()
     choosing_water       = State()
+    choosing_address     = State()
     waiting_address      = State()
     waiting_landmark     = State()
     waiting_location     = State()
@@ -486,7 +487,7 @@ async def checkout_start(call: CallbackQuery, state: FSMContext):
     if not user:
         await call.answer("Пользователь не найден")
         return
-    saved = await api.get_addresses(user["id"]) or []
+    saved = await api.get_user_addresses(user["id"]) or []
     await state.update_data(co_user=user, saved_addrs=saved)
     if saved:
         await state.set_state(CheckoutState.choosing_address)
@@ -916,6 +917,19 @@ async def save_addr_cb(call: CallbackQuery, state: FSMContext):
                 "longitude": data.get("save_lng"),
                 "extra_info": data.get("save_extra"),
             })
+            # Also persist to the user-level saved addresses
+            user_id = data["save_user_id"]
+            existing = await api.get_user_addresses(user_id) or []
+            new_addr = {
+                "id": int(__import__("time").time() * 1000),
+                "address": data.get("save_address", ""),
+                "lat": data.get("save_lat"),
+                "lng": data.get("save_lng"),
+                "extra_info": data.get("save_extra"),
+                "label": data.get("save_address", ""),
+            }
+            if not any(a.get("address") == new_addr["address"] for a in existing):
+                await api.save_user_addresses(user_id, (existing + [new_addr])[-10:])
             await call.message.edit_text("✅ Адрес сохранён!")
         except Exception:
             await call.message.edit_text("Не удалось сохранить адрес.")
@@ -1043,6 +1057,47 @@ async def sub_water_done(call: CallbackQuery, state: FSMContext):
     if not data.get("sub_cart"):
         await call.answer("Выберите хотя бы один товар", show_alert=True)
         return
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    await state.update_data(sub_user=user)
+    saved = []
+    if user and user.get("id"):
+        saved = await api.get_user_addresses(user["id"]) or []
+    await state.update_data(sub_saved_addrs=saved)
+    if saved:
+        await state.set_state(SubscriptionState.choosing_address)
+        rows = [[InlineKeyboardButton(
+            text=f"📍 {a.get('label') or a['address']}",
+            callback_data=f"sua:{i}",
+        )] for i, a in enumerate(saved)]
+        rows.append([InlineKeyboardButton(text="✏️ Новый адрес", callback_data="sub_new_addr")])
+        await call.message.edit_text(
+            "Выберите адрес доставки:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    else:
+        await state.set_state(SubscriptionState.waiting_address)
+        await call.message.edit_text("Введите адрес доставки:")
+    await call.answer()
+
+
+@router.callback_query(SubscriptionState.choosing_address, F.data.startswith("sua:"))
+async def sub_use_saved_addr(call: CallbackQuery, state: FSMContext):
+    idx = int(call.data.split(":")[1])
+    data = await state.get_data()
+    addr = data["sub_saved_addrs"][idx]
+    await state.update_data(
+        sub_address=addr["address"],
+        sub_lat=addr.get("lat"),
+        sub_lon=addr.get("lng"),
+        sub_landmark=addr.get("extra_info") or "",
+    )
+    await call.answer()
+    await call.message.edit_text(f"📍 Адрес: <b>{addr['address']}</b>", parse_mode="HTML")
+    await _sub_ask_phone(call.message, state)
+
+
+@router.callback_query(SubscriptionState.choosing_address, F.data == "sub_new_addr")
+async def sub_new_addr(call: CallbackQuery, state: FSMContext):
     await state.set_state(SubscriptionState.waiting_address)
     await call.message.edit_text("Введите адрес доставки:")
     await call.answer()

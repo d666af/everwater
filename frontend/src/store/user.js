@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getUserAddresses, saveUserAddresses } from '../api/index.js'
 
 const LS_ADDRESSES = 'everwater_saved_addresses'
 const LS_BOTTLES = 'everwater_bottles_owed'
@@ -33,14 +34,28 @@ export const useUserStore = create((set, get) => ({
 
   init: (userData) => {
     if (!userData) return
-    set({
+    const update = {
       id: userData.id || null,
       telegram_id: userData.telegram_id || null,
       balance: userData.balance || 0,
       bonus_points: userData.bonus_points || 0,
       order_count: userData.order_count || 0,
       initialized: true,
-    })
+    }
+    // If backend returned saved_addresses, use them (merge with localStorage by preferring DB)
+    if (Array.isArray(userData.saved_addresses) && userData.saved_addresses.length > 0) {
+      update.saved_addresses = userData.saved_addresses
+      localStorage.setItem(LS_ADDRESSES, JSON.stringify(userData.saved_addresses))
+    } else if (userData.id) {
+      // Load from DB asynchronously; no need to block init
+      getUserAddresses(userData.id).then(addrs => {
+        if (Array.isArray(addrs) && addrs.length > 0) {
+          localStorage.setItem(LS_ADDRESSES, JSON.stringify(addrs))
+          set({ saved_addresses: addrs })
+        }
+      }).catch(() => {})
+    }
+    set(update)
   },
 
   addBalance: (amount) => set({ balance: get().balance + amount }),
@@ -63,14 +78,18 @@ export const useUserStore = create((set, get) => ({
 
   // Saved addresses
   addSavedAddress: (addr) => {
-    const list = [...get().saved_addresses, { ...addr, id: Date.now() }]
+    const list = [...get().saved_addresses, { ...addr, id: Date.now() }].slice(-10)
     localStorage.setItem(LS_ADDRESSES, JSON.stringify(list))
     set({ saved_addresses: list })
+    const userId = get().id
+    if (userId) saveUserAddresses(userId, list).catch(() => {})
   },
   removeSavedAddress: (id) => {
     const list = get().saved_addresses.filter(a => a.id !== id)
     localStorage.setItem(LS_ADDRESSES, JSON.stringify(list))
     set({ saved_addresses: list })
+    const userId = get().id
+    if (userId) saveUserAddresses(userId, list).catch(() => {})
   },
 
   // Subscriptions
