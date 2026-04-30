@@ -45,6 +45,12 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE topup_requests ADD COLUMN IF NOT EXISTS notification_msg_ids TEXT"
         ))
+        await conn.execute(text(
+            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS next_delivery_date TIMESTAMP"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS last_delivered_at TIMESTAMP"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)
