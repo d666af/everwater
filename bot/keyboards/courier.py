@@ -20,11 +20,8 @@ def courier_menu_kb() -> ReplyKeyboardMarkup:
 def courier_order_kb(order_id: int, status: str = "assigned_to_courier") -> InlineKeyboardMarkup:
     rows = []
     if status == "assigned_to_courier":
-        rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"courier:accept:{order_id}")])
-    if status in ("assigned_to_courier", "in_delivery"):
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
-        rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
-    if not rows:
+    elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -150,7 +150,10 @@ async def admin_text_orders(message: Message):
         await message.answer("Нет активных заказов.")
         return
     for o in active:
-        await message.answer(_admin_order_text(o), reply_markup=_admin_order_kb(o), parse_mode="HTML")
+        try:
+            await message.answer(_admin_order_text(o), reply_markup=_admin_order_kb(o), parse_mode="HTML")
+        except Exception as e:
+            await message.answer(f"Заказ #{o.get('id','?')}: ошибка отображения — {e}")
 
 
 @router.message(F.text == "⏳ Новые заказы")
@@ -510,14 +513,16 @@ async def admin_set_courier(call: CallbackQuery):
         if courier.get("telegram_id"):
             try:
                 from keyboards.courier import courier_order_kb
+                pay = order.get("payment_method", "cash")
+                cash_line = f"\nПолучить от клиента: {fmt(order.get('total', 0))}" if pay == "cash" else ""
                 await call.bot.send_message(
                     courier["telegram_id"],
-                    f"🚴 Вам назначен заказ #{order_id}!\n\n"
+                    f"🚴 Вам назначен новый заказ!\n\n"
                     f"Адрес: {order.get('address','—')}\nТелефон: {order.get('recipient_phone','—')}\n"
-                    f"Товары:\n{items_text}\n"
-                    f"Сумма: {fmt(order.get('total',0))}\n"
+                    f"Товары:\n{items_text}"
+                    f"{cash_line}\n"
                     f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт.",
-                    reply_markup=courier_order_kb(order_id),
+                    reply_markup=courier_order_kb(order_id, "assigned_to_courier"),
                 )
             except Exception:
                 pass

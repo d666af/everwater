@@ -2,7 +2,7 @@ import secrets
 import string
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
@@ -114,6 +114,65 @@ async def show_role_menu(target, role: str):
         except Exception:
             if switch_kb:
                 await send("Переключить роль:", reply_markup=switch_kb)
+
+
+_ALL_MENU_BUTTONS = frozenset({
+    # client
+    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль", "📋 Подписки", "💬 Поддержка",
+    # admin
+    "📋 Заказы", "⏳ Новые заказы", "📊 Статистика", "🚴 Курьеры", "👥 Клиенты",
+    "🏭 Склад", "📦 Товары", "💸 Долги", "📅 Подписки", "🧑‍💼 Менеджеры",
+    "⚙️ Настройки", "📣 Рассылка",
+    # manager
+    "📋 Заказы", "👥 Клиенты", "📊 Статистика",
+    # courier
+    "📋 Мои заказы", "📊 Мои отчеты", "💧 Мой склад", "💸 Мои долги", "⭐ Мои отзывы", "📝 Создать заказ",
+    # shared
+    "🔄 Роль",
+})
+
+
+@router.message(~StateFilter(None), F.text.in_(_ALL_MENU_BUTTONS))
+async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
+    """When user presses a menu button while stuck in an FSM flow, abort flow and restore keyboard."""
+    await state.clear()
+    role = await get_primary_role(message.from_user.id)
+    if role == "admin":
+        from keyboards.admin import admin_menu_kb
+        await message.answer("Главное меню:", reply_markup=admin_menu_kb())
+    elif role == "manager":
+        from keyboards.manager import manager_menu_kb
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb())
+    elif role == "courier":
+        from keyboards.courier import courier_menu_kb
+        await message.answer("Главное меню:", reply_markup=courier_menu_kb())
+    elif role == "warehouse":
+        from keyboards.warehouse import warehouse_menu_kb
+        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb())
+    else:
+        await message.answer("Главное меню:", reply_markup=main_menu_kb())
+
+
+# ─── /menu — always restores keyboard regardless of FSM state ────────────────
+
+@router.message(Command("menu"))
+async def cmd_menu(message: Message, state: FSMContext):
+    await state.clear()
+    role = await get_primary_role(message.from_user.id)
+    if role == "admin":
+        from keyboards.admin import admin_menu_kb
+        await message.answer("Главное меню:", reply_markup=admin_menu_kb())
+    elif role == "manager":
+        from keyboards.manager import manager_menu_kb
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb())
+    elif role == "courier":
+        from keyboards.courier import courier_menu_kb
+        await message.answer("Главное меню:", reply_markup=courier_menu_kb())
+    elif role == "warehouse":
+        from keyboards.warehouse import warehouse_menu_kb
+        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb())
+    else:
+        await message.answer("Главное меню:", reply_markup=main_menu_kb())
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────

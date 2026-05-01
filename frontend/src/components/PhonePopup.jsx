@@ -6,9 +6,11 @@ export default function PhonePopup({ number, label, onClose }) {
         <div style={{ width: 36, height: 4, borderRadius: 2, background: '#e5e5ea', margin: '0 auto' }} />
         <div style={{ fontSize: 13, color: '#8e8e93', textAlign: 'center' }}>{label}</div>
         <div style={{ fontSize: 24, fontWeight: 800, color: '#1a1a1a', textAlign: 'center', letterSpacing: 1 }}>{number}</div>
-        <a href={`tel:${number}`} style={{ display: 'block', background: '#8DC63F', color: '#fff', borderRadius: 14, padding: '14px', fontSize: 16, fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}>
+        <button
+          onClick={() => { window.location.href = `tel:${number}` }}
+          style={{ display: 'block', width: '100%', background: '#8DC63F', color: '#fff', borderRadius: 14, padding: '14px', fontSize: 16, fontWeight: 700, textAlign: 'center', border: 'none', cursor: 'pointer' }}>
           📞 Позвонить
-        </a>
+        </button>
         <button onClick={onClose} style={{ background: 'none', border: '1.5px solid #e5e5ea', borderRadius: 14, padding: '13px', fontSize: 15, fontWeight: 600, color: '#3c3c43', cursor: 'pointer' }}>
           Отмена
         </button>
