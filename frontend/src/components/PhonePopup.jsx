@@ -1,3 +1,19 @@
+function callNumber(number) {
+  const url = `tel:${number}`
+  // Telegram WebApp: use openLink which hands tel: to the OS dialer
+  const tg = window.Telegram?.WebApp
+  if (tg?.openLink) {
+    try { tg.openLink(url); return } catch (_) {}
+  }
+  // Fallback: create a real anchor click (works in most WebViews)
+  const a = document.createElement('a')
+  a.href = url
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 export default function PhonePopup({ number, label, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -7,7 +23,7 @@ export default function PhonePopup({ number, label, onClose }) {
         <div style={{ fontSize: 13, color: '#8e8e93', textAlign: 'center' }}>{label}</div>
         <div style={{ fontSize: 24, fontWeight: 800, color: '#1a1a1a', textAlign: 'center', letterSpacing: 1 }}>{number}</div>
         <button
-          onClick={() => { window.location.href = `tel:${number}` }}
+          onClick={() => callNumber(number)}
           style={{ display: 'block', width: '100%', background: '#8DC63F', color: '#fff', borderRadius: 14, padding: '14px', fontSize: 16, fontWeight: 700, textAlign: 'center', border: 'none', cursor: 'pointer' }}>
           📞 Позвонить
         </button>
