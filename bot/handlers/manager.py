@@ -328,13 +328,10 @@ async def mgr_set_courier(call: CallbackQuery):
         try:
             courier_name = courier["name"] if courier else "Курьер"
             courier_phone = courier.get("phone", "") if courier else ""
-            client_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{courier_phone}")]
-            ]) if _is_phone(courier_phone) else None
+            phone_line = f"\nТелефон курьера: {courier_phone}" if _is_phone(courier_phone) else ""
             await call.bot.send_message(
                 client_tg,
-                f"🚴 {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
-                reply_markup=client_kb,
+                f"🚴 {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.{phone_line}",
             )
             client_notified = True
         except Exception as e:

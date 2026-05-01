@@ -23,10 +23,13 @@ def courier_assignment_text(order: dict) -> str:
     total = order.get("total") or 0
     cash_line = f"\nПолучить от клиента: {_fmt_sum(total)}" if pay == "cash" else ""
     time_str = order.get("delivery_time") or "—"
+    manager_phone = order.get("manager_phone") or ""
+    manager_line = f"\nМенеджер: {manager_phone}" if _is_phone(manager_phone) else ""
     return (
         f"📦 <b>🚚 Назначен курьеру</b>\n\n"
         f"Адрес: {order.get('address') or '—'}\n"
-        f"Телефон: {order.get('recipient_phone') or '—'}\n"
+        f"Клиент: {order.get('recipient_phone') or '—'}"
+        f"{manager_line}\n"
         f"Время: {time_str}\n"
         f"Товары:\n{items_text}"
         f"{cash_line}\n"
@@ -36,16 +39,10 @@ def courier_assignment_text(order: dict) -> str:
 
 def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
     rows = []
-    client_phone = order.get("recipient_phone", "")
-    manager_phone = order.get("manager_phone", "")
     lat = order.get("latitude")
     lng = order.get("longitude")
     address = order.get("address", "")
 
-    if _is_phone(client_phone):
-        rows.append([InlineKeyboardButton(text="📞 Клиент", url=f"tel:{client_phone}")])
-    if _is_phone(manager_phone):
-        rows.append([InlineKeyboardButton(text="📞 Менеджер", url=f"tel:{manager_phone}")])
     if lat and lng:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
     elif address:
