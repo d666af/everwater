@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails, getAllCashDebts, approveDebtClearance, rejectDebtClearance } from '../../api'
+import PhonePopup from '../../components/PhonePopup'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -54,6 +55,7 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
   const [details, setDetails] = useState(null)
   const [loadingD, setLoadingD] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [phoneModal, setPhoneModal] = useState(null)
 
   const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
   const myDebts = debts.filter(d => d.courier_id === c.id && d.clearance_status !== 'approved')
@@ -99,10 +101,11 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           {c.phone && (
-            <a href={`tel:${c.phone}`} style={{ width: 40, height: 40, borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill={C}/></svg>
-            </a>
+            <button style={{ width: 40, height: 40, borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setPhoneModal({ number: c.phone, label: c.name }) }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+            </button>
           )}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}><path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>

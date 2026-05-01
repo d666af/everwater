@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminUsers, getUserOrders, confirmTopup, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler } from '../../api'
+import PhonePopup from '../../components/PhonePopup'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -84,6 +85,7 @@ function ClientDetail({ user, onClose, onTopup }) {
   const [loadingD, setLoadingD] = useState(true)
   const [loadingC, setLoadingC] = useState(true)
   const [showCoolerForm, setShowCoolerForm] = useState(false)
+  const [phoneModal, setPhoneModal] = useState(null)
 
   useEffect(() => {
     getUserOrders(user.id).then(setOrders).catch(() => setOrders([])).finally(() => setLoadingO(false))
@@ -290,16 +292,17 @@ function ClientDetail({ user, onClose, onTopup }) {
             </button>
           </div>
 
+          {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           <div style={{ display: 'flex', gap: 6, padding: '0 20px 8px' }}>
             <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 3px 10px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent' }} onClick={onTopup}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20" stroke="currentColor" strokeWidth="1.5"/></svg>
               Пополнить
             </button>
             {user.phone && (
-              <a href={`tel:${user.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>
+              <button onClick={() => setPhoneModal({ number: user.phone, label: user.name })} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
                 Позвонить
-              </a>
+              </button>
             )}
           </div>
 
@@ -491,6 +494,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [search, setSearch] = useState('')
   const [selectedUser, setSelectedUser] = useState(null)
   const [topupUser, setTopupUser] = useState(null)
+  const [phoneModal, setPhoneModal] = useState(null)
 
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
@@ -509,6 +513,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
 
   return (
     <Layout title={title}>
+      {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
       {topupUser && <TopupModal user={topupUser} onClose={() => setTopupUser(null)} onConfirm={(amt) => handleTopupConfirm(topupUser.id, amt)} />}
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
@@ -550,9 +555,16 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                   {(u.bonus_points || 0) > 0 && <span style={{ fontSize: 11, background: '#FFF3BF', color: '#E67700', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{Math.round(u.bonus_points)} бон.</span>}
                 </div>
               </div>
-              <button style={{ width: 38, height: 38, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setTopupUser(u) }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M8 15h3m5 0h-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-              </button>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                {u.phone && (
+                  <button style={{ width: 38, height: 38, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setPhoneModal({ number: u.phone, label: u.name }) }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
+                  </button>
+                )}
+                <button style={{ width: 38, height: 38, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setTopupUser(u) }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M8 15h3m5 0h-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              </div>
             </div>
           ))}
         </div>
