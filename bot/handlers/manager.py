@@ -10,6 +10,8 @@ from keyboards.manager import (
     mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
+from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text
 from config import settings
 
@@ -302,11 +304,10 @@ async def mgr_set_courier(call: CallbackQuery):
     courier = next((c for c in couriers if c["id"] == courier_id), None)
     if courier and courier.get("telegram_id"):
         try:
-            from handlers.courier import _order_detail_text, _order_detail_kb
             await call.bot.send_message(
                 courier["telegram_id"],
-                "🚴 Вам назначен новый заказ!\n\n" + _order_detail_text(order),
-                reply_markup=_order_detail_kb(order_id, "assigned_to_courier", order),
+                "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order),
+                reply_markup=courier_assignment_kb(order_id, order),
                 parse_mode="HTML",
             )
         except Exception:
@@ -314,16 +315,15 @@ async def mgr_set_courier(call: CallbackQuery):
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            cname = courier["name"] if courier else "Курьер"
+            courier_name = courier["name"] if courier else "Курьер"
             courier_phone = courier.get("phone", "") if courier else ""
-            kb = InlineKeyboardMarkup(inline_keyboard=[
+            client_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{courier_phone}")]
-            ]) if courier_phone else None
+            ]) if _is_phone(courier_phone) else None
             await call.bot.send_message(
                 client_tg,
-                f"🚴 {cname} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
-                reply_markup=kb,
+                f"🚴 {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
+                reply_markup=client_kb,
             )
         except Exception:
             pass

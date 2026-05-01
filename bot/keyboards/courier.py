@@ -1,9 +1,57 @@
+from urllib.parse import quote
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from config import settings
 
 
 def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
+
+
+def _is_phone(v: str) -> bool:
+    return bool(v) and str(v) not in ("—", "-", "None") and any(c.isdigit() for c in str(v))
+
+
+def _fmt_sum(v) -> str:
+    return f"{int(v):,}".replace(",", " ") + " сум"
+
+
+def courier_assignment_text(order: dict) -> str:
+    items_text = "\n".join(
+        f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", [])
+    )
+    pay = order.get("payment_method", "cash")
+    cash_line = f"\nПолучить от клиента: {_fmt_sum(order['total'])}" if pay == "cash" else ""
+    time_str = order.get("delivery_time") or "—"
+    return (
+        f"📦 <b>🚚 Назначен курьеру</b>\n\n"
+        f"Адрес: {order.get('address', '—')}\n"
+        f"Телефон: {order.get('recipient_phone', '—')}\n"
+        f"Время: {time_str}\n"
+        f"Товары:\n{items_text}"
+        f"{cash_line}\n"
+        f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт."
+    )
+
+
+def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
+    rows = []
+    client_phone = order.get("recipient_phone", "")
+    manager_phone = order.get("manager_phone", "")
+    lat = order.get("latitude")
+    lng = order.get("longitude")
+    address = order.get("address", "")
+
+    if _is_phone(client_phone):
+        rows.append([InlineKeyboardButton(text="📞 Клиент", url=f"tel:{client_phone}")])
+    if _is_phone(manager_phone):
+        rows.append([InlineKeyboardButton(text="📞 Менеджер", url=f"tel:{manager_phone}")])
+    if lat and lng:
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
+    elif address:
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+    rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
+    rows.append([InlineKeyboardButton(text="◀️ К списку", callback_data="cor:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def courier_menu_kb() -> ReplyKeyboardMarkup:

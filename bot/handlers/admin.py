@@ -9,6 +9,8 @@ from keyboards.admin import (
     stats_period_kb, admin_user_kb, admin_debt_kb, broadcast_target_kb,
     product_list_kb, product_edit_kb, subs_menu_kb, subs_list_kb,
 )
+from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import settings
 
 router = Router()
@@ -508,34 +510,31 @@ async def admin_set_courier(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
-    if courier:
-        items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", []))
-        if courier.get("telegram_id"):
-            try:
-                from handlers.courier import _order_detail_text, _order_detail_kb
-                await call.bot.send_message(
-                    courier["telegram_id"],
-                    "🚴 Вам назначен новый заказ!\n\n" + _order_detail_text(order),
-                    reply_markup=_order_detail_kb(order_id, "assigned_to_courier", order),
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
-        client_tg = order.get("client_telegram_id")
-        if client_tg:
-            try:
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                courier_phone = courier.get("phone", "")
-                kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{courier_phone}")]
-                ]) if courier_phone else None
-                await call.bot.send_message(
-                    client_tg,
-                    f"🚴 Курьер {courier['name']} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
-                    reply_markup=kb,
-                )
-            except Exception:
-                pass
+    if courier and courier.get("telegram_id"):
+        try:
+            await call.bot.send_message(
+                courier["telegram_id"],
+                "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order),
+                reply_markup=courier_assignment_kb(order_id, order),
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            courier_name = courier["name"] if courier else "Курьер"
+            courier_phone = courier.get("phone", "") if courier else ""
+            client_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📞 Позвонить курьеру", url=f"tel:{courier_phone}")]
+            ]) if _is_phone(courier_phone) else None
+            await call.bot.send_message(
+                client_tg,
+                f"🚴 Курьер {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
+                reply_markup=client_kb,
+            )
+        except Exception:
+            pass
     result_text = f"✅ Курьер {'«' + courier['name'] + '»' if courier else ''} назначен на заказ #{order_id}."
     try:
         await call.message.edit_text(result_text)
