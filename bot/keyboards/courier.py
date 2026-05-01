@@ -17,19 +17,20 @@ def _fmt_sum(v) -> str:
 
 def courier_assignment_text(order: dict) -> str:
     items_text = "\n".join(
-        f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", [])
+        f"  • {i.get('product_name', '?')} ×{i.get('quantity', 1)}" for i in order.get("items", [])
     )
     pay = order.get("payment_method", "cash")
-    cash_line = f"\nПолучить от клиента: {_fmt_sum(order['total'])}" if pay == "cash" else ""
+    total = order.get("total") or 0
+    cash_line = f"\nПолучить от клиента: {_fmt_sum(total)}" if pay == "cash" else ""
     time_str = order.get("delivery_time") or "—"
     return (
         f"📦 <b>🚚 Назначен курьеру</b>\n\n"
-        f"Адрес: {order.get('address', '—')}\n"
-        f"Телефон: {order.get('recipient_phone', '—')}\n"
+        f"Адрес: {order.get('address') or '—'}\n"
+        f"Телефон: {order.get('recipient_phone') or '—'}\n"
         f"Время: {time_str}\n"
         f"Товары:\n{items_text}"
         f"{cash_line}\n"
-        f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт."
+        f"Возврат бутылок: {order.get('return_bottles_count') or 0} шт."
     )
 
 

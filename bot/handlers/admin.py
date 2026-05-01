@@ -510,6 +510,11 @@ async def admin_set_courier(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
+    courier_notified = False
+    client_notified = False
+    courier_err = ""
+    client_err = ""
+
     if courier and courier.get("telegram_id"):
         try:
             await call.bot.send_message(
@@ -518,8 +523,14 @@ async def admin_set_courier(call: CallbackQuery):
                 reply_markup=courier_assignment_kb(order_id, order),
                 parse_mode="HTML",
             )
-        except Exception:
-            pass
+            courier_notified = True
+        except Exception as e:
+            courier_err = str(e)
+    elif not courier:
+        courier_err = "курьер не найден"
+    elif not courier.get("telegram_id"):
+        courier_err = "нет telegram_id у курьера"
+
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
@@ -533,9 +544,22 @@ async def admin_set_courier(call: CallbackQuery):
                 f"🚴 Курьер {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.",
                 reply_markup=client_kb,
             )
-        except Exception:
-            pass
-    result_text = f"✅ Курьер {'«' + courier['name'] + '»' if courier else ''} назначен на заказ #{order_id}."
+            client_notified = True
+        except Exception as e:
+            client_err = str(e)
+    else:
+        client_err = "нет telegram_id у клиента"
+
+    courier_label = f"«{courier['name']}»" if courier else ""
+    result_text = f"✅ Курьер {courier_label} назначен на заказ #{order_id}."
+    if courier_notified:
+        result_text += "\n📨 Курьер уведомлён."
+    else:
+        result_text += f"\n⚠️ Курьер НЕ уведомлён ({courier_err})."
+    if client_notified:
+        result_text += "\n📨 Клиент уведомлён."
+    else:
+        result_text += f"\n⚠️ Клиент НЕ уведомлён ({client_err})."
     try:
         await call.message.edit_text(result_text)
     except Exception:
