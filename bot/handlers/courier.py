@@ -136,19 +136,22 @@ def _order_detail_text(order: dict) -> str:
     )
 
 
+def _is_phone(v: str) -> bool:
+    return bool(v) and v not in ("—", "-", "None") and any(c.isdigit() for c in v)
+
+
 def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> InlineKeyboardMarkup:
     rows = []
 
-    # Call buttons
     client_phone = (order or {}).get("recipient_phone", "")
     manager_phone = (order or {}).get("manager_phone", "")
     lat = (order or {}).get("latitude")
     lng = (order or {}).get("longitude")
     address = (order or {}).get("address", "")
 
-    if client_phone:
+    if _is_phone(client_phone):
         rows.append([InlineKeyboardButton(text="📞 Клиент", url=f"tel:{client_phone}")])
-    if manager_phone:
+    if _is_phone(manager_phone):
         rows.append([InlineKeyboardButton(text="📞 Менеджер", url=f"tel:{manager_phone}")])
     if lat and lng:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
@@ -156,7 +159,6 @@ def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> I
         from urllib.parse import quote
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
 
-    # Status actions (no "Принял" button)
     if status == "assigned_to_courier":
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
     elif status == "in_delivery":
@@ -537,23 +539,15 @@ async def courier_in_delivery(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     await api.start_delivery(order_id, from_bot=True)
     order = await api.get_order(order_id)
-    brief = _order_brief(order)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            await call.bot.send_message(client_tg, f"🚴 Ваш заказ в пути! Курьер уже едет к вам.\n{brief}")
-        except Exception:
-            pass
-    for admin_id in settings.ADMIN_IDS:
-        try:
-            await call.bot.send_message(admin_id, f"🚴 Курьер начал доставку\n{brief}")
-        except Exception:
-            pass
-    await call.message.edit_text(
-        f"🚴 В доставке: {brief}",
-        reply_markup=_order_detail_kb(order_id, "in_delivery", order),
-    )
-    await call.answer()
+    try:
+        await call.message.edit_text(
+            _order_detail_text(order),
+            reply_markup=_order_detail_kb(order_id, "in_delivery", order),
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+    await call.answer("🚴 Выехал!")
 
 
 @router.callback_query(F.data.startswith("courier:done:"))

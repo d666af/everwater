@@ -512,17 +512,12 @@ async def admin_set_courier(call: CallbackQuery):
         items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", []))
         if courier.get("telegram_id"):
             try:
-                from keyboards.courier import courier_order_kb
-                pay = order.get("payment_method", "cash")
-                cash_line = f"\nПолучить от клиента: {fmt(order.get('total', 0))}" if pay == "cash" else ""
+                from handlers.courier import _order_detail_text, _order_detail_kb
                 await call.bot.send_message(
                     courier["telegram_id"],
-                    f"🚴 Вам назначен новый заказ!\n\n"
-                    f"Адрес: {order.get('address','—')}\nТелефон: {order.get('recipient_phone','—')}\n"
-                    f"Товары:\n{items_text}"
-                    f"{cash_line}\n"
-                    f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт.",
-                    reply_markup=courier_order_kb(order_id, "assigned_to_courier"),
+                    "🚴 Вам назначен новый заказ!\n\n" + _order_detail_text(order),
+                    reply_markup=_order_detail_kb(order_id, "assigned_to_courier", order),
+                    parse_mode="HTML",
                 )
             except Exception:
                 pass
