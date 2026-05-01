@@ -37,7 +37,14 @@ async def get_user_roles(telegram_id: int) -> list[str]:
     roles = ["client"]
     if telegram_id in settings.ADMIN_IDS:
         roles.append("admin")
-    if telegram_id in get_all_warehouse_ids():
+    is_wh = telegram_id in get_all_warehouse_ids()
+    if not is_wh:
+        try:
+            staff = await api.get_warehouse_staff_db()
+            is_wh = any(s.get("telegram_id") == telegram_id for s in staff)
+        except Exception:
+            pass
+    if is_wh:
         roles.append("warehouse")
     mgr = await api.get_manager_by_telegram(telegram_id)
     if mgr:
