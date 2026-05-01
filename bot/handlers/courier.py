@@ -124,11 +124,16 @@ def _order_detail_text(order: dict) -> str:
     urgency = _urgency_suffix(order)
     time_str = order.get("delivery_time") or "—"
     pay = order.get('payment_method', 'cash')
-    cash_line = f"\nПолучить от клиента: {fmt(order['total'])}" if pay == 'cash' else ""
+    total = order.get('total') or 0
+    cash_line = f"\nПолучить от клиента: {fmt(total)}" if pay == 'cash' else ""
+    manager_phone = order.get("manager_phone") or ""
+    from keyboards.courier import _is_phone as _ip
+    manager_line = f"\nМенеджер: {manager_phone}" if _ip(manager_phone) else ""
     return (
         f"📦 <b>{status}{urgency}</b>\n\n"
-        f"Адрес: {order['address']}\n"
-        f"Телефон: {order['recipient_phone']}\n"
+        f"Адрес: {order.get('address') or '—'}\n"
+        f"Клиент: {order.get('recipient_phone') or '—'}"
+        f"{manager_line}\n"
         f"Время: {time_str}\n"
         f"Товары:\n{items_text}"
         f"{cash_line}\n"
@@ -141,22 +146,15 @@ def _is_phone(v: str) -> bool:
 
 
 def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> InlineKeyboardMarkup:
+    from urllib.parse import quote
     rows = []
-
-    client_phone = (order or {}).get("recipient_phone", "")
-    manager_phone = (order or {}).get("manager_phone", "")
     lat = (order or {}).get("latitude")
     lng = (order or {}).get("longitude")
     address = (order or {}).get("address", "")
 
-    if _is_phone(client_phone):
-        rows.append([InlineKeyboardButton(text="📞 Клиент", url=f"tel:{client_phone}")])
-    if _is_phone(manager_phone):
-        rows.append([InlineKeyboardButton(text="📞 Менеджер", url=f"tel:{manager_phone}")])
     if lat and lng:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
     elif address:
-        from urllib.parse import quote
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
 
     if status == "assigned_to_courier":
