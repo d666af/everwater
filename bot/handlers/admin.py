@@ -112,22 +112,17 @@ def _admin_order_text(o: dict) -> str:
         lines.append(f"Доп.: {o['extra_info']}")
     lines += [f"\nТовары:\n{items_text}", f"\nСумма: {fmt(o['total'])}  |  {pay}"]
     if o.get("courier_name"):
-        lines.append(f"Курьер: {o['courier_name']}")
+        courier_phone = o.get("courier_phone", "")
+        phone_part = f"  |  {courier_phone}" if courier_phone else ""
+        lines.append(f"Курьер: {o['courier_name']}{phone_part}")
     return "\n".join(lines)
 
 
 def _admin_order_kb(o: dict):
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     oid = o["id"]
     status = o.get("status", "")
     rows = []
-    client_phone = o.get("recipient_phone", "")
-    courier_phone = o.get("courier_phone", "")
     client_tg = o.get("client_telegram_id")
-    if client_phone:
-        rows.append([InlineKeyboardButton(text="📞 Клиенту", url=f"tel:{client_phone}")])
-    if courier_phone:
-        rows.append([InlineKeyboardButton(text="📞 Курьеру", url=f"tel:{courier_phone}")])
     if client_tg:
         rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
     if status == "confirmed":
