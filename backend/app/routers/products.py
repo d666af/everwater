@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -7,13 +10,30 @@ from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
 
 router = APIRouter(prefix="/products", tags=["products"])
 
+UPLOAD_DIR = Path("static/products")
+ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
 
 @router.get("/", response_model=list[ProductOut])
-async def get_products(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Product).where(Product.is_active == True).order_by(Product.sort_order)
-    )
+async def get_products(include_inactive: bool = False, db: AsyncSession = Depends(get_db)):
+    query = select(Product).order_by(Product.sort_order)
+    if not include_inactive:
+        query = query.where(Product.is_active == True)
+    result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post("/upload-photo")
+async def upload_product_photo(request: Request, file: UploadFile = File(...)):
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+    if suffix not in ALLOWED_SUFFIXES:
+        suffix = ".jpg"
+    filename = f"{uuid.uuid4().hex}{suffix}"
+    content = await file.read()
+    (UPLOAD_DIR / filename).write_bytes(content)
+    base = str(request.base_url).rstrip("/")
+    return {"url": f"{base}/static/products/{filename}"}
 
 
 @router.get("/{product_id}", response_model=ProductOut)
