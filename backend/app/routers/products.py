@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -24,7 +24,7 @@ async def get_products(include_inactive: bool = False, db: AsyncSession = Depend
 
 
 @router.post("/upload-photo")
-async def upload_product_photo(request: Request, file: UploadFile = File(...)):
+async def upload_product_photo(file: UploadFile = File(...)):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename).suffix.lower() if file.filename else ".jpg"
     if suffix not in ALLOWED_SUFFIXES:
@@ -32,8 +32,7 @@ async def upload_product_photo(request: Request, file: UploadFile = File(...)):
     filename = f"{uuid.uuid4().hex}{suffix}"
     content = await file.read()
     (UPLOAD_DIR / filename).write_bytes(content)
-    base = str(request.base_url).rstrip("/")
-    return {"url": f"{base}/static/products/{filename}"}
+    return {"url": f"/static/products/{filename}"}
 
 
 @router.get("/{product_id}", response_model=ProductOut)
