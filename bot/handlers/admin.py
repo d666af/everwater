@@ -1421,12 +1421,18 @@ async def admin_product_type(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
     wtype = call.data.split(":")[1]
+    type_label = "💧 Без газа" if wtype == "still" else "🫧 Газированная"
     await state.update_data(new_prod_type=wtype)
     await state.set_state(AdminProductCreate.waiting_photo)
     skip_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data="apc:skip_photo")]
     ])
-    await call.message.answer("Отправьте фото товара или нажмите «Пропустить»:", reply_markup=skip_kb)
+    # Edit the type-selection message in-place — replaces type buttons with photo prompt
+    msg = await call.message.edit_text(
+        f"Тип воды: {type_label}\n\nОтправьте фото товара или нажмите «Пропустить»:",
+        reply_markup=skip_kb,
+    )
+    await state.update_data(photo_prompt_msg_id=msg.message_id if msg else None)
     await call.answer()
 
 
@@ -1440,7 +1446,8 @@ async def _download_and_upload_photo(message: Message) -> str | None:
         return None
 
 
-async def _finish_product_create(message: Message, state: FSMContext, photo_url: str | None):
+async def _finish_product_create(bot_message, state: FSMContext, photo_url: str | None,
+                                  prompt_text: str = ""):
     data = await state.get_data()
     await state.clear()
     payload = {
@@ -1453,11 +1460,16 @@ async def _finish_product_create(message: Message, state: FSMContext, photo_url:
     if photo_url:
         payload["photo_url"] = photo_url
     result = await api.create_product(payload)
-    await message.answer(
+    result_text = (
         f"✅ Товар создан!\n"
         f"Название: {result.get('name')}\n"
         f"Объём: {result.get('volume')} л | Цена: {fmt(result.get('price', 0))}"
     )
+    # Edit the prompt message to show the final result (removes all buttons)
+    try:
+        await bot_message.edit_text(f"{prompt_text}{result_text}" if prompt_text else result_text)
+    except Exception:
+        await bot_message.answer(result_text)
 
 
 @router.message(AdminProductCreate.waiting_photo, F.photo)
@@ -1465,7 +1477,38 @@ async def admin_product_photo_msg(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     photo_url = await _download_and_upload_photo(message)
-    await _finish_product_create(message, state, photo_url)
+    # Retrieve the bot's prompt message id to edit it
+    data = await state.get_data()
+    prompt_msg_id = data.get("photo_prompt_msg_id")
+    if prompt_msg_id:
+        try:
+            from aiogram.types import InaccessibleMessage
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=prompt_msg_id,
+                text="📷 Фото получено!",
+            )
+        except Exception:
+            pass
+    await state.update_data(photo_prompt_msg_id=None)
+    # Build and send result
+    data2 = await state.get_data()
+    await state.clear()
+    payload = {
+        "name": data2["new_prod_name"],
+        "volume": data2["new_prod_volume"],
+        "price": data2["new_prod_price"],
+        "type": data2.get("new_prod_type", "still"),
+        "is_active": True,
+    }
+    if photo_url:
+        payload["photo_url"] = photo_url
+    result = await api.create_product(payload)
+    await message.answer(
+        f"✅ Товар создан!\n"
+        f"Название: {result.get('name')}\n"
+        f"Объём: {result.get('volume')} л | Цена: {fmt(result.get('price', 0))}"
+    )
 
 
 @router.callback_query(AdminProductCreate.waiting_photo, F.data == "apc:skip_photo")
