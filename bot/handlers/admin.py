@@ -83,9 +83,11 @@ class AdminProductCreate(StatesGroup):
     waiting_volume = State()
     waiting_price  = State()
     waiting_type   = State()
+    waiting_photo  = State()
 
 class AdminProductEdit(StatesGroup):
     waiting_value = State()
+    waiting_photo = State()
 
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
@@ -1419,20 +1421,58 @@ async def admin_product_type(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
     wtype = call.data.split(":")[1]
+    await state.update_data(new_prod_type=wtype)
+    await state.set_state(AdminProductCreate.waiting_photo)
+    skip_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Пропустить", callback_data="apc:skip_photo")]
+    ])
+    await call.message.answer("Отправьте фото товара или нажмите «Пропустить»:", reply_markup=skip_kb)
+    await call.answer()
+
+
+async def _download_and_upload_photo(message: Message) -> str | None:
+    try:
+        from io import BytesIO
+        bio = BytesIO()
+        await message.bot.download(message.photo[-1].file_id, destination=bio)
+        return await api.upload_product_photo(bio.getvalue(), "product.jpg")
+    except Exception:
+        return None
+
+
+async def _finish_product_create(message: Message, state: FSMContext, photo_url: str | None):
     data = await state.get_data()
     await state.clear()
-    result = await api.create_product({
+    payload = {
         "name": data["new_prod_name"],
         "volume": data["new_prod_volume"],
         "price": data["new_prod_price"],
-        "type": wtype,
+        "type": data.get("new_prod_type", "still"),
         "is_active": True,
-    })
-    await call.message.edit_text(
+    }
+    if photo_url:
+        payload["photo_url"] = photo_url
+    result = await api.create_product(payload)
+    await message.answer(
         f"✅ Товар создан!\n"
         f"Название: {result.get('name')}\n"
         f"Объём: {result.get('volume')} л | Цена: {fmt(result.get('price', 0))}"
     )
+
+
+@router.message(AdminProductCreate.waiting_photo, F.photo)
+async def admin_product_photo_msg(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    photo_url = await _download_and_upload_photo(message)
+    await _finish_product_create(message, state, photo_url)
+
+
+@router.callback_query(AdminProductCreate.waiting_photo, F.data == "apc:skip_photo")
+async def admin_product_skip_photo(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    await _finish_product_create(call.message, state, None)
     await call.answer()
 
 
@@ -1454,6 +1494,12 @@ async def admin_product_edit_field(call: CallbackQuery, state: FSMContext):
                 f"Товар {'активен ✅' if new_val else 'неактивен ❌'}",
                 reply_markup=product_edit_kb(pid),
             )
+        return
+    if field == "photo":
+        await state.update_data(edit_product_id=pid)
+        await state.set_state(AdminProductEdit.waiting_photo)
+        await call.message.answer("Отправьте новое фото товара:")
+        await call.answer()
         return
     prompts = {"name": "Введите новое название:", "volume": "Введите новый объём (литры):",
                "price": "Введите новую цену (сум):"}
@@ -1480,6 +1526,21 @@ async def admin_product_edit_value(message: Message, state: FSMContext):
     await api.update_product(pid, {field: val})
     await state.clear()
     await message.answer(f"✅ Товар обновлён: {field} = {val}")
+
+
+@router.message(AdminProductEdit.waiting_photo, F.photo)
+async def admin_product_edit_photo(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    pid = data["edit_product_id"]
+    photo_url = await _download_and_upload_photo(message)
+    await state.clear()
+    if photo_url:
+        await api.update_product(pid, {"photo_url": photo_url})
+        await message.answer("✅ Фото товара обновлено!")
+    else:
+        await message.answer("❌ Не удалось загрузить фото. Попробуйте ещё раз.")
 
 
 # ─── Back ─────────────────────────────────────────────────────────────────────

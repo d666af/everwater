@@ -93,6 +93,19 @@ async def get_products():
         return []
 
 
+async def upload_product_photo(data: bytes, filename: str = "product.jpg") -> str | None:
+    try:
+        form = aiohttp.FormData()
+        form.add_field("file", data, filename=filename, content_type="image/jpeg")
+        async with aiohttp.ClientSession() as s:
+            async with s.post(f"{BASE}/products/upload-photo", data=form) as r:
+                r.raise_for_status()
+                result = await r.json()
+                return result.get("url")
+    except Exception:
+        return None
+
+
 async def create_product(data: dict):
     return await _post("/products/", data)
 

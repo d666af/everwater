@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { getProducts, createProduct, updateProduct, deleteProduct } from '../../api'
+import { getProducts, createProduct, updateProduct, deleteProduct, uploadProductPhoto } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -11,7 +11,27 @@ const BORDER = 'rgba(60,60,67,0.12)'
 const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0 }
 
 function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
+  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
+
   const f = (name) => ({ value: form[name], onChange: e => setForm(p => ({ ...p, [name]: e.target.value })) })
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true); setUploadErr('')
+    try {
+      const url = await uploadProductPhoto(file)
+      setForm(p => ({ ...p, photo_url: url }))
+    } catch {
+      setUploadErr('Не удалось загрузить фото')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   return (
     <div style={s.formCard}>
       <div style={s.formTitle}>{title}</div>
@@ -37,14 +57,37 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
         <div style={s.label}>Описание</div>
         <textarea style={s.textarea} placeholder="Природная горная вода..." rows={2} {...f('description')} />
       </div>
+
       <div style={s.field}>
-        <div style={s.label}>URL фото</div>
-        <input style={s.input} placeholder="https://..." {...f('photo_url')} />
+        <div style={s.label}>Фото товара</div>
+        <div style={s.photoRow}>
+          {form.photo_url ? (
+            <div style={s.photoPreviewWrap}>
+              <img src={form.photo_url} alt="" style={s.imgPreview}
+                onError={e => e.target.style.display = 'none'} />
+              <button style={s.removePhotoBtn}
+                onClick={() => setForm(p => ({ ...p, photo_url: '' }))}>✕</button>
+            </div>
+          ) : (
+            <div style={s.photoPlaceholder}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"
+                  stroke={C} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button style={{ ...s.uploadBtn, opacity: uploading ? 0.6 : 1 }}
+              onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading ? 'Загрузка...' : form.photo_url ? '🔄 Заменить фото' : '📷 Загрузить фото'}
+            </button>
+            {uploadErr && <div style={s.uploadErr}>{uploadErr}</div>}
+          </div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={handleFileChange} />
       </div>
-      {form.photo_url && (
-        <img src={form.photo_url} alt="" style={s.imgPreview}
-          onError={e => e.target.style.display = 'none'} />
-      )}
+
       <label style={s.checkRow}>
         <input type="checkbox" checked={form.is_active}
           onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
@@ -213,7 +256,27 @@ const s = {
     fontSize: 15, outline: 'none', resize: 'vertical', background: '#FAFAFA',
     color: TEXT, fontFamily: 'inherit',
   },
+  photoRow: { display: 'flex', alignItems: 'center', gap: 14 },
+  photoPreviewWrap: { position: 'relative', width: 90, height: 90, flexShrink: 0 },
   imgPreview: { width: 90, height: 90, objectFit: 'cover', borderRadius: 12 },
+  removePhotoBtn: {
+    position: 'absolute', top: -6, right: -6,
+    width: 20, height: 20, borderRadius: '50%',
+    background: '#E03131', color: '#fff', border: 'none',
+    fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontWeight: 700, lineHeight: 1,
+  },
+  photoPlaceholder: {
+    width: 90, height: 90, flexShrink: 0,
+    background: '#F0FFF4', borderRadius: 12, border: `1.5px dashed ${C}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  uploadBtn: {
+    padding: '10px 16px', background: '#F0FFF4', border: `1.5px solid ${C}`,
+    borderRadius: 10, fontSize: 13, fontWeight: 700, color: C, cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  uploadErr: { fontSize: 12, color: '#E03131' },
   checkRow: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
   error: { color: '#E03131', fontSize: 13, fontWeight: 500 },
   formActions: { display: 'flex', gap: 10, justifyContent: 'flex-end' },

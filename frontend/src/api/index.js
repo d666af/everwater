@@ -100,6 +100,14 @@ export const deleteProduct = (id) =>
     () => ({ ok: true })
   )
 
+export const uploadProductPhoto = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return http.post('/products/upload-photo', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data.url)
+}
+
 // ─── Orders ──────────────────────────────────────────────────────────────────
 export const createOrder = (data) =>
   safeCall(

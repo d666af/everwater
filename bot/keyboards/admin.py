@@ -99,6 +99,7 @@ def product_edit_kb(product_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"ape:name:{product_id}")],
         [InlineKeyboardButton(text="📏 Объём", callback_data=f"ape:volume:{product_id}")],
         [InlineKeyboardButton(text="💰 Цена", callback_data=f"ape:price:{product_id}")],
+        [InlineKeyboardButton(text="🖼 Фото", callback_data=f"ape:photo:{product_id}")],
         [InlineKeyboardButton(text="🔄 Активность", callback_data=f"ape:toggle:{product_id}")],
         [InlineKeyboardButton(text="← Назад", callback_data="admin:products")],
     ])
