@@ -101,12 +101,17 @@ def _mgr_order_kb(o: dict):
     status = o.get("status", "")
     rows = []
     client_tg = o.get("client_telegram_id")
-    if client_tg:
-        rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
+    if status == "awaiting_confirmation":
+        rows.append([
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"mgr:confirm:{oid}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"mgr:reject:{oid}"),
+        ])
     if status == "confirmed":
-        rows.append([InlineKeyboardButton(text="🚴 Отметить в пути", callback_data=f"mgr:in_delivery:{oid}")])
+        rows.append([InlineKeyboardButton(text="🚴 Назначить курьера", callback_data=f"mgr:assign:{oid}")])
     if status in ("confirmed", "assigned_to_courier", "in_delivery"):
         rows.append([InlineKeyboardButton(text="✔️ Отметить доставлен", callback_data=f"mgr:delivered:{oid}")])
+    if client_tg:
+        rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
     if status not in ("delivered", "rejected"):
         rows.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"mgr:cancel_order:{oid}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -117,15 +122,55 @@ async def mgr_all_orders(message: Message):
     if not await is_manager(message.from_user.id):
         return
     orders = await api.get_all_orders()
-    if not orders:
-        await message.answer("Заказов нет.")
+    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
+
+    pending_subs = await api.get_admin_subscriptions(status="pending")
+    active_subs = await api.get_admin_subscriptions(status="active")
+    due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
+
+    if not active and not pending_subs and not due_subs:
+        await message.answer("Нет активных заказов и подписок.")
         return
-    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")][:10]
-    if not active:
-        await message.answer("Нет активных заказов.")
-        return
-    for o in active:
-        await message.answer(_mgr_order_text(o), reply_markup=_mgr_order_kb(o), parse_mode="HTML")
+
+    for o in active[:15]:
+        try:
+            await message.answer(_mgr_order_text(o), reply_markup=_mgr_order_kb(o), parse_mode="HTML")
+        except Exception as e:
+            await message.answer(f"Заказ #{o.get('id','?')}: ошибка — {e}")
+
+    for s in pending_subs[:5]:
+        try:
+            sub_id = s["id"]
+            text = (
+                f"📅 <b>Подписка #{sub_id} — ожидает подтверждения</b>\n"
+                f"Клиент: {s.get('client_name') or '—'}\n"
+                f"Адрес: {s.get('address') or '—'}\n"
+                f"Тариф: {s.get('plan') or '—'}"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin_sub_confirm:{sub_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_sub_reject:{sub_id}"),
+            ]])
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+
+    for s in due_subs[:5]:
+        try:
+            sub_id = s["id"]
+            marker = "🔴 Просрочена" if s.get("overdue") else "📅 Сегодня"
+            text = (
+                f"📅 <b>Подписка #{sub_id} — {marker}</b>\n"
+                f"Клиент: {s.get('client_name') or '—'}\n"
+                f"Адрес: {s.get('address') or '—'}\n"
+                f"Тариф: {s.get('plan') or '—'}"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🛒 Создать заказ", callback_data=f"mgr:sub_order:{sub_id}"),
+            ]])
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
 
 
 @router.message(F.text == "⏳ Новые заказы")
