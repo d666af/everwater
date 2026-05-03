@@ -4,7 +4,7 @@ import { useCartStore } from '../store'
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #9DD44D 0%, #6DBE1E 50%, #4FA812 100%)'
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, priceWithReturn }) {
   const { addToCart, items, updateQuantity } = useCartStore()
   const cartItem = items.find(i => i.product.id === product.id)
   const [imgError, setImgError] = useState(false)
@@ -44,6 +44,11 @@ export default function ProductCard({ product }) {
           <div>
             <span style={s.price}>{product.price.toLocaleString()}</span>
             <span style={s.currency}> сум</span>
+            {priceWithReturn != null && priceWithReturn < product.price && (
+              <div style={s.returnPrice}>
+                ↩ {priceWithReturn.toLocaleString()} со сдачей
+              </div>
+            )}
           </div>
 
           {!cartItem ? (
@@ -114,6 +119,7 @@ const s = {
   },
   price: { fontWeight: 800, fontSize: 17, color: '#1a1a1a', letterSpacing: -0.3 },
   currency: { fontWeight: 500, fontSize: 12, color: '#8e8e93' },
+  returnPrice: { fontSize: 11, fontWeight: 600, color: '#2B8A3E', marginTop: 2 },
 
   /* Add button */
   addBtn: {
