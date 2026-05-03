@@ -385,12 +385,15 @@ def _sub_out(sub: Subscription, user: User) -> dict:
     due_today = bool(ndd and ndd.date() == today.date())
     return {
         "id": sub.id,
+        "type": "subscription",
         "user_id": sub.user_id,
         "client_name": user.name or "",
+        "client_telegram_id": user.telegram_id,
+        "recipient_phone": sub.phone or user.phone or "",
         "client_phone": user.phone or "",
         "water_summary": sub.water_summary,
         "qty": sub.qty,
-        "total": sub.total,
+        "total": sub.total or 0,
         "address": sub.address,
         "landmark": sub.landmark,
         "phone": sub.phone or user.phone or "",
@@ -405,6 +408,7 @@ def _sub_out(sub: Subscription, user: User) -> dict:
         "last_delivered_at": sub.last_delivered_at.isoformat() if sub.last_delivered_at else None,
         "overdue": overdue,
         "due_today": due_today,
+        "items": [],
     }
 
 

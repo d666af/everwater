@@ -62,6 +62,9 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS has_bottle_deposit BOOLEAN DEFAULT FALSE"
         ))
+        await conn.execute(text(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS deposit_price INTEGER DEFAULT NULL"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)
