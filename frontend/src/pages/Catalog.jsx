@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProducts } from '../api'
+import { getProducts, getSettings } from '../api'
 import ProductCard from '../components/ProductCard'
 import { SkeletonCard } from '../components/Skeleton'
 import { useOrdersStore } from '../store/orders'
@@ -11,7 +11,7 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const QUICK_CATS = [
   { key: 'all', label: 'Все' },
-  { key: '20', label: '20л' },
+  { key: '19', label: '19л' },
   { key: '10', label: '10л' },
   { key: '5', label: '5л' },
   { key: '1.5', label: '1.5л' },
@@ -22,6 +22,7 @@ const QUICK_CATS = [
 
 export default function Catalog() {
   const [products, setProducts] = useState([])
+  const [settings, setSettings] = useState({ bottle_discount_type: 'fixed', bottle_discount_value: 0 })
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState('all')
   const navigate = useNavigate()
@@ -34,20 +35,42 @@ export default function Catalog() {
   }, [orders])
 
   useEffect(() => {
-    getProducts()
-      .then(setProducts)
+    Promise.all([getProducts(), getSettings()])
+      .then(([prods, cfg]) => { setProducts(prods); setSettings(cfg) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
 
+  // Only show filter buttons for categories that have at least one product
+  const visibleCats = useMemo(() => {
+    if (!products.length) return QUICK_CATS.slice(0, 1)
+    return QUICK_CATS.filter(({ key }) => {
+      if (key === 'all') return true
+      if (key === 'carbonated') return products.some(p => p.type === 'carbonated')
+      if (key === '19') return products.some(p => p.volume >= 18.9)
+      const vol = parseFloat(key)
+      return products.some(p => Math.abs(p.volume - vol) < 0.1)
+    })
+  }, [products])
+
   const filtered = useMemo(() => {
     if (activeCategory === 'all') return products
-    if (activeCategory === 'carbonated') {
-      return products.filter(p => p.type === 'carbonated' || p.name?.toLowerCase().includes('газированн'))
-    }
+    if (activeCategory === 'carbonated') return products.filter(p => p.type === 'carbonated')
+    if (activeCategory === '19') return products.filter(p => p.volume >= 18.9)
     const vol = parseFloat(activeCategory)
-    return products.filter(p => p.volume === vol)
+    return products.filter(p => Math.abs(p.volume - vol) < 0.1)
   }, [products, activeCategory])
+
+  // Compute effective price after returning 1 bottle (for 19L products)
+  const computeReturnPrice = (product) => {
+    if (product.volume < 18.9) return null
+    const val = Number(settings.bottle_discount_value || 0)
+    if (!val) return null
+    if (settings.bottle_discount_type === 'percent') {
+      return Math.round(product.price * (1 - val / 100))
+    }
+    return Math.max(0, product.price - val)
+  }
 
   return (
     <div style={s.page}>
@@ -70,18 +93,20 @@ export default function Catalog() {
       )}
 
       {/* Quick categories */}
-      <div style={s.catSection}>
-        <div style={s.catScroll}>
-          {QUICK_CATS.map(({ key, label }) => (
-            <button key={key}
-              style={activeCategory === key ? { ...s.catBtn, ...s.catBtnActive } : s.catBtn}
-              onClick={() => setActiveCategory(key)}
-            >
-              {label}
-            </button>
-          ))}
+      {visibleCats.length > 1 && (
+        <div style={s.catSection}>
+          <div style={s.catScroll}>
+            {visibleCats.map(({ key, label }) => (
+              <button key={key}
+                style={activeCategory === key ? { ...s.catBtn, ...s.catBtnActive } : s.catBtn}
+                onClick={() => setActiveCategory(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Products grid */}
       <div style={s.section}>
@@ -101,7 +126,7 @@ export default function Catalog() {
 
         {!loading && products.length > 0 && (
           <div style={s.grid}>
-            {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+            {filtered.map(p => <ProductCard key={p.id} product={p} priceWithReturn={computeReturnPrice(p)} />)}
           </div>
         )}
 

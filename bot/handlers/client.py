@@ -222,11 +222,17 @@ async def survey_count_text(message: Message, state: FSMContext):
 # ─── Catalog ─────────────────────────────────────────────────────────────────
 
 def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboardMarkup:
-    buttons = [[
-        InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="cf:all"),
-        InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"),
-        InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"),
-    ]]
+    has_still = any(p.get("type") != "carbonated" for p in products)
+    has_carb = any(p.get("type") == "carbonated" for p in products)
+    buttons = []
+    # Only show type filters when both types have products
+    if has_still and has_carb:
+        row = [InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="cf:all")]
+        if has_still:
+            row.append(InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"))
+        if has_carb:
+            row.append(InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"))
+        buttons.append(row)
 
     for p in products:
         if ftype != "all" and p.get("type") != ftype:
@@ -272,6 +278,20 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     await state.update_data(products=products, cf=ftype, cart=cart)
     kb = _catalog_kb(products, cart, ftype)
 
+    try:
+        cfg = await api.get_settings() or {}
+    except Exception:
+        cfg = {}
+    disc_type = cfg.get("bottle_discount_type", "fixed")
+    disc_val = float(cfg.get("bottle_discount_value") or 0)
+
+    def _return_price(price: float, volume: float) -> int | None:
+        if volume < 18.9 or disc_val <= 0:
+            return None
+        if disc_type == "percent":
+            return max(0, round(price * (1 - disc_val / 100)))
+        return max(0, round(price - disc_val))
+
     # Текст: список всех товаров с ценами
     lines = ["🛒 <b>Каталог воды Ever Water</b>\n"]
     shown = [p for p in products if ftype == "all" or p.get("type") == ftype]
@@ -280,7 +300,11 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     if still:
         lines.append("💧 <b>Без газа:</b>")
         for p in still:
-            lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
+            rp = _return_price(p["price"], p.get("volume", 0))
+            line = f"  {_short_name(p)} — {fmt(p['price'])}"
+            if rp is not None:
+                line += f" (↩ {fmt(rp)} со сдачей)"
+            lines.append(line)
     if carb:
         lines.append("\n🫧 <b>Газированная:</b>")
         for p in carb:
