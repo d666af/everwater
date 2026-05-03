@@ -75,6 +75,11 @@ export const useUserStore = create((set, get) => ({
     localStorage.setItem(LS_BOTTLES, JSON.stringify(v))
     set({ bottles_owed: v })
   },
+  setBottlesOwed: (count) => {
+    const v = Math.max(0, count)
+    localStorage.setItem(LS_BOTTLES, JSON.stringify(v))
+    set({ bottles_owed: v })
+  },
 
   // Saved addresses
   addSavedAddress: (addr) => {

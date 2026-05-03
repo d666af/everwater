@@ -8,7 +8,7 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
-const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0 }
+const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false }
 
 function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
   const fileRef = useRef(null)
@@ -93,6 +93,11 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
           onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
         <span style={{ fontSize: 14, color: TEXT }}>Активен (отображается в каталоге)</span>
       </label>
+      <label style={s.checkRow}>
+        <input type="checkbox" checked={form.has_bottle_deposit || false}
+          onChange={e => setForm(p => ({ ...p, has_bottle_deposit: e.target.checked }))} />
+        <span style={{ fontSize: 14, color: TEXT }}>Залоговая цена (показывать цену со сдачей бутылки как основную)</span>
+      </label>
       {error && <div style={s.error}>{error}</div>}
       <div style={s.formActions}>
         <button style={s.cancelBtn} onClick={onCancel}>Отмена</button>
@@ -122,7 +127,7 @@ export default function AdminProducts() {
 
   const openNew = () => { setForm(EMPTY); setEditing('new'); setError('') }
   const openEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order })
+    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false })
     setEditing(p); setError('')
   }
 

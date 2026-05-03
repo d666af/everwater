@@ -221,17 +221,24 @@ async def survey_count_text(message: Message, state: FSMContext):
 
 # ─── Catalog ─────────────────────────────────────────────────────────────────
 
-def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboardMarkup:
+def _eff_price(p: dict, disc_val: float = 0, disc_type: str = "fixed") -> float:
+    """Return the effective display price (with return discount) for deposit products."""
+    if not p.get("has_bottle_deposit") or disc_val <= 0:
+        return p["price"]
+    if disc_type == "percent":
+        return max(0, round(p["price"] * (1 - disc_val / 100)))
+    return max(0, p["price"] - disc_val)
+
+
+def _catalog_kb(products: list, cart: dict, ftype: str = "all",
+                disc_val: float = 0, disc_type: str = "fixed") -> InlineKeyboardMarkup:
     has_still = any(p.get("type") != "carbonated" for p in products)
     has_carb = any(p.get("type") == "carbonated" for p in products)
     buttons = []
-    # Only show type filters when both types have products
     if has_still and has_carb:
         row = [InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="cf:all")]
-        if has_still:
-            row.append(InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"))
-        if has_carb:
-            row.append(InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"))
+        row.append(InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"))
+        row.append(InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"))
         buttons.append(row)
 
     for p in products:
@@ -241,11 +248,13 @@ def _catalog_kb(products: list, cart: dict, ftype: str = "all") -> InlineKeyboar
         qty = cart.get(pid, {}).get("qty", 0)
         emoji = "🫧" if p.get("type") == "carbonated" else "💧"
         sname = _short_name(p)
-        price_str = fmt(p["price"])
+        ep = _eff_price(p, disc_val, disc_type)
+        deposit_mark = " ♻" if p.get("has_bottle_deposit") and ep < p["price"] else ""
+        price_str = fmt(ep)
 
         if qty == 0:
             buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {sname} — {price_str}  ➕",
+                text=f"{emoji} {sname} — {price_str}{deposit_mark}  ➕",
                 callback_data=f"ca:{pid}",
             )])
         else:
@@ -275,9 +284,6 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
         if pid in cart:
             cart[pid].update(name=p["name"], price=p["price"],
                              volume=p.get("volume", 0), product_id=p["id"])
-    await state.update_data(products=products, cf=ftype, cart=cart)
-    kb = _catalog_kb(products, cart, ftype)
-
     try:
         cfg = await api.get_settings() or {}
     except Exception:
@@ -285,12 +291,8 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     disc_type = cfg.get("bottle_discount_type", "fixed")
     disc_val = float(cfg.get("bottle_discount_value") or 0)
 
-    def _return_price(price: float, volume: float) -> int | None:
-        if volume < 18.9 or disc_val <= 0:
-            return None
-        if disc_type == "percent":
-            return max(0, round(price * (1 - disc_val / 100)))
-        return max(0, round(price - disc_val))
+    await state.update_data(products=products, cf=ftype, cart=cart)
+    kb = _catalog_kb(products, cart, ftype, disc_val, disc_type)
 
     # Текст: список всех товаров с ценами
     lines = ["🛒 <b>Каталог воды Ever Water</b>\n"]
@@ -300,10 +302,11 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     if still:
         lines.append("💧 <b>Без газа:</b>")
         for p in still:
-            rp = _return_price(p["price"], p.get("volume", 0))
-            line = f"  {_short_name(p)} — {fmt(p['price'])}"
-            if rp is not None:
-                line += f" (↩ {fmt(rp)} со сдачей)"
+            ep = _eff_price(p, disc_val, disc_type)
+            if p.get("has_bottle_deposit") and ep < p["price"]:
+                line = f"  {_short_name(p)} — {fmt(ep)} ♻ (без возврата: {fmt(p['price'])})"
+            else:
+                line = f"  {_short_name(p)} — {fmt(p['price'])}"
             lines.append(line)
     if carb:
         lines.append("\n🫧 <b>Газированная:</b>")
@@ -320,17 +323,29 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
         await msg.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-def _sub_catalog_kb(products: list, cart: dict) -> InlineKeyboardMarkup:
+def _sub_catalog_kb(products: list, cart: dict, ftype: str = "all",
+                    disc_val: float = 0, disc_type: str = "fixed") -> InlineKeyboardMarkup:
     buttons = []
+    has_still = any(p.get("type") != "carbonated" for p in products)
+    has_carb = any(p.get("type") == "carbonated" for p in products)
+    if has_still and has_carb:
+        row = [InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="scf:all")]
+        row.append(InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="scf:still"))
+        row.append(InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="scf:carbonated"))
+        buttons.append(row)
+
     for p in products:
+        if ftype != "all" and p.get("type") != ftype:
+            continue
         pid = str(p["id"])
         qty = cart.get(pid, {}).get("qty", 0)
         emoji = "🫧" if p.get("type") == "carbonated" else "💧"
         sname = _short_name(p)
-        price_str = fmt(p["price"])
+        ep = _eff_price(p, disc_val, disc_type)
+        deposit_mark = " ♻" if p.get("has_bottle_deposit") and ep < p["price"] else ""
         if qty == 0:
             buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {sname} — {price_str}  ➕",
+                text=f"{emoji} {sname} — {fmt(ep)}{deposit_mark}  ➕",
                 callback_data=f"sca:{pid}",
             )])
         else:
@@ -348,27 +363,41 @@ def _sub_catalog_kb(products: list, cart: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-async def _render_sub_catalog(target, state: FSMContext, edit: bool = False):
+async def _render_sub_catalog(target, state: FSMContext, ftype: str = "all", edit: bool = False):
     products = await api.get_products() or []
+    try:
+        cfg = await api.get_settings() or {}
+    except Exception:
+        cfg = {}
+    disc_type = cfg.get("bottle_discount_type", "fixed")
+    disc_val = float(cfg.get("bottle_discount_value") or 0)
+
     data = await state.get_data()
     cart = data.get("sub_cart", {})
     for p in products:
         pid = str(p["id"])
         if pid in cart:
             cart[pid].update(name=_short_name(p), price=p["price"])
-    await state.update_data(products=products, sub_cart=cart)
-    kb = _sub_catalog_kb(products, cart)
-    lines = ["🛒 <b>Выберите воду для подписки:</b>\n"]
-    still = [p for p in products if p.get("type") != "carbonated"]
-    carb = [p for p in products if p.get("type") == "carbonated"]
+    await state.update_data(products=products, sub_cart=cart, sub_cf=ftype)
+    kb = _sub_catalog_kb(products, cart, ftype, disc_val, disc_type)
+
+    lines = ["🛒 <b>Каталог воды Ever Water</b>\n"]
+    shown = [p for p in products if ftype == "all" or p.get("type") == ftype]
+    still = [p for p in shown if p.get("type") != "carbonated"]
+    carb = [p for p in shown if p.get("type") == "carbonated"]
     if still:
         lines.append("💧 <b>Без газа:</b>")
         for p in still:
-            lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
+            ep = _eff_price(p, disc_val, disc_type)
+            if p.get("has_bottle_deposit") and ep < p["price"]:
+                lines.append(f"  {_short_name(p)} — {fmt(ep)} ♻ (без возврата: {fmt(p['price'])})")
+            else:
+                lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
     if carb:
         lines.append("\n🫧 <b>Газированная:</b>")
         for p in carb:
             lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
+    lines.append("\n<i>Нажмите на товар чтобы добавить в корзину</i>")
     text = "\n".join(lines)
     msg = target.message if isinstance(target, CallbackQuery) else target
     if edit:
@@ -1042,9 +1071,15 @@ async def sub_new(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SubscriptionState.choosing_plan, F.data.startswith("sp:"))
 async def sub_plan(call: CallbackQuery, state: FSMContext):
-    await state.update_data(sub_plan=call.data.split(":")[1], sub_cart={})
+    await state.update_data(sub_plan=call.data.split(":")[1], sub_cart={}, sub_cf="all")
     await state.set_state(SubscriptionState.choosing_water)
-    await _render_sub_catalog(call, state, edit=True)
+    await _render_sub_catalog(call, state, ftype="all", edit=True)
+    await call.answer()
+
+
+@router.callback_query(SubscriptionState.choosing_water, F.data.startswith("scf:"))
+async def sub_catalog_filter(call: CallbackQuery, state: FSMContext):
+    await _render_sub_catalog(call, state, ftype=call.data.split(":")[1], edit=True)
     await call.answer()
 
 
@@ -1062,7 +1097,7 @@ async def sub_cart_add(call: CallbackQuery, state: FSMContext):
         cart[pid] = {"name": _short_name(p), "price": p["price"], "qty": 0}
     cart[pid]["qty"] += 1
     await state.update_data(sub_cart=cart)
-    await _render_sub_catalog(call, state, edit=True)
+    await _render_sub_catalog(call, state, ftype=data.get("sub_cf", "all"), edit=True)
     await call.answer()
 
 
@@ -1076,7 +1111,7 @@ async def sub_cart_remove(call: CallbackQuery, state: FSMContext):
         if cart[pid]["qty"] == 0:
             del cart[pid]
     await state.update_data(sub_cart=cart)
-    await _render_sub_catalog(call, state, edit=True)
+    await _render_sub_catalog(call, state, ftype=data.get("sub_cf", "all"), edit=True)
     await call.answer()
 
 
