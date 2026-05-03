@@ -1342,7 +1342,7 @@ async def admin_product_edit_menu(call: CallbackQuery):
         f"<b>{p.get('name', '—')}</b>\n"
         f"Объём: {p.get('volume', '—')} л | Цена: {fmt(p.get('price', 0))}\n"
         f"Тип: {p.get('type', '—')} | {active}",
-        reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False)),
+        reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False), deposit_price=p.get("deposit_price")),
         parse_mode="HTML",
     )
     await call.answer()
@@ -1535,7 +1535,7 @@ async def admin_product_edit_field(call: CallbackQuery, state: FSMContext):
             await call.answer(f"Товар {action}")
             await call.message.edit_text(
                 f"Товар {'активен ✅' if new_val else 'неактивен ❌'}",
-                reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False)),
+                reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False), deposit_price=p.get("deposit_price")),
             )
         return
     if field == "deposit":
@@ -1548,8 +1548,14 @@ async def admin_product_edit_field(call: CallbackQuery, state: FSMContext):
             await call.answer(f"Залоговая цена {label}")
             await call.message.edit_text(
                 f"Залоговая цена {'активна ✅' if new_val else 'неактивна ❌'}",
-                reply_markup=product_edit_kb(pid, has_deposit=new_val),
+                reply_markup=product_edit_kb(pid, has_deposit=new_val, deposit_price=p.get("deposit_price")),
             )
+        return
+    if field == "deposit_price":
+        await state.update_data(edit_product_id=pid, edit_product_field="deposit_price")
+        await state.set_state(AdminProductEdit.waiting_value)
+        await call.message.answer("Введите цену со сдачей бутылки (сум), например: 18000")
+        await call.answer()
         return
     if field == "photo":
         await state.update_data(edit_product_id=pid)
@@ -1573,7 +1579,7 @@ async def admin_product_edit_value(message: Message, state: FSMContext):
     pid = data["edit_product_id"]
     field = data["edit_product_field"]
     raw = message.text.strip()
-    if field == "price":
+    if field in ("price", "deposit_price"):
         val = int(raw.replace(" ", ""))
     elif field == "volume":
         val = float(raw.replace(",", "."))

@@ -10,6 +10,8 @@ from app.models.order import Order, OrderItem, OrderStatus, Review
 from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
+from app.models.client_data import BottleDebt
+from app.models.cash_debt import CashDebt
 from app.schemas.order import OrderCreate, OrderOut, ReviewCreate
 from app.services.settings_service import get_all_settings
 
@@ -500,11 +502,32 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             bonus = order.total * cashback_pct / 100.0
             user.bonus_points += bonus
 
+        # Track 19L bottle debt for customer
+        bottles_delivered = sum(
+            i.quantity for i in order.items
+            if i.product and i.product.has_bottle_deposit
+        )
+        if bottles_delivered > 0 and user:
+            debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user.id))
+            debt_row = debt_q.scalar_one_or_none()
+            if debt_row:
+                debt_row.count = max(0, debt_row.count + bottles_delivered)
+            else:
+                db.add(BottleDebt(user_id=user.id, count=bottles_delivered))
+
         if order.courier_id:
             result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
             courier = result.scalar_one_or_none()
             if courier:
                 courier.total_deliveries += 1
+                # Track cash debt when payment is by cash
+                if order.payment_method == "cash":
+                    db.add(CashDebt(
+                        courier_id=courier.id,
+                        order_id=order.id,
+                        amount=order.total,
+                        status="pending",
+                    ))
 
         await db.commit()
 

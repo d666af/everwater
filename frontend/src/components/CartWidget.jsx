@@ -5,12 +5,17 @@ import { useCartStore, cartEvents } from '../store'
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
+function effPrice(product) {
+  if (product.has_bottle_deposit && product.deposit_price > 0) return product.deposit_price
+  return product.price
+}
+
 export default function CartWidget() {
   const navigate = useNavigate()
   const location = useLocation()
   const items = useCartStore(s => s.items)
-  const total = useCartStore(s => s.total())
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
+  const total = items.reduce((sum, i) => sum + effPrice(i.product) * i.quantity, 0)
 
   const [expanded, setExpanded] = useState(false)
   const [notification, setNotification] = useState(null)
@@ -62,7 +67,7 @@ export default function CartWidget() {
                 <div key={product.id} style={st.panelItem}>
                   <div style={st.panelItemInfo}>
                     <span style={st.panelItemName}>{product.name}</span>
-                    <span style={st.panelItemPrice}>{(product.price * quantity).toLocaleString()} сум</span>
+                    <span style={st.panelItemPrice}>{(effPrice(product) * quantity).toLocaleString()} сум</span>
                   </div>
                   <div style={st.panelStepper}>
                     <button style={st.panelStepBtn}

@@ -8,7 +8,7 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
-const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false }
+const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, deposit_price: null }
 
 function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
   const fileRef = useRef(null)
@@ -96,8 +96,19 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
       <label style={s.checkRow}>
         <input type="checkbox" checked={form.has_bottle_deposit || false}
           onChange={e => setForm(p => ({ ...p, has_bottle_deposit: e.target.checked }))} />
-        <span style={{ fontSize: 14, color: TEXT }}>Залоговая цена (показывать цену со сдачей бутылки как основную)</span>
+        <span style={{ fontSize: 14, color: TEXT }}>Залоговая цена (пока��ывать цену со сдачей бутылки как основную)</span>
       </label>
+      {form.has_bottle_deposit && (
+        <div>
+          <div style={s.label}>Цена со сдачей бутылки (сум)</div>
+          <input style={s.input} type="number" min="0" placeholder="напр. 18000"
+            value={form.deposit_price || ''}
+            onChange={e => setForm(p => ({ ...p, deposit_price: e.target.value ? Number(e.target.value) : null }))} />
+          <div style={{ fontSize: 11, color: '#8e8e93', marginTop: 4 }}>
+            Показывается как основная цена. «Без возврата»: {Number(form.price || 0).toLocaleString()} сум
+          </div>
+        </div>
+      )}
       {error && <div style={s.error}>{error}</div>}
       <div style={s.formActions}>
         <button style={s.cancelBtn} onClick={onCancel}>Отмена</button>
@@ -127,7 +138,7 @@ export default function AdminProducts() {
 
   const openNew = () => { setForm(EMPTY); setEditing('new'); setError('') }
   const openEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false })
+    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, deposit_price: p.deposit_price || null })
     setEditing(p); setError('')
   }
 

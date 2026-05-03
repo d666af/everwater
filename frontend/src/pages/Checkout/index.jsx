@@ -42,7 +42,7 @@ export default function Checkout() {
   const [settings, setSettings] = useState({
     payment_card: '', payment_holder: '',
     bottle_discount_type: 'fixed', bottle_discount_value: 2000,
-    bottle_return_buttons_visible: true, bottle_return_mode: 'max',
+    bottle_return_buttons_visible: false, bottle_return_mode: 'max',
   })
   const [form, setForm] = useState({
     phone: '', address: '', extraInfo: '',
@@ -104,6 +104,7 @@ export default function Checkout() {
   const deposit19L = items.find(i => i.product.volume >= 18.9 && i.product.has_bottle_deposit)?.product ?? null
   const discountPerBottle = (() => {
     if (!deposit19L) return 0
+    if (deposit19L.deposit_price > 0) return Math.max(0, deposit19L.price - deposit19L.deposit_price)
     const val = Number(settings.bottle_discount_value || 0)
     if (!val) return 0
     if (settings.bottle_discount_type === 'percent') return Math.round(deposit19L.price * val / 100)

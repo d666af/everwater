@@ -2,11 +2,12 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
+from app.models.order import Order, OrderStatus
 from app.schemas.user import UserCreate, UserUpdate, UserOut
 from app.config import settings as cfg
 
@@ -64,7 +65,15 @@ async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_
     manager = (await db.execute(select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True))).scalar_one_or_none()
     if not user and not courier and not manager:
         raise HTTPException(status_code=404, detail="User not found")
-    return _build_full_user(telegram_id, user, courier, manager)
+    result = _build_full_user(telegram_id, user, courier, manager)
+    if user:
+        count_row = await db.execute(
+            select(func.count(Order.id)).where(Order.user_id == user.id, Order.status == OrderStatus.DELIVERED)
+        )
+        result["order_count"] = count_row.scalar() or 0
+    else:
+        result["order_count"] = 0
+    return result
 
 
 @router.post("/", response_model=UserOut)

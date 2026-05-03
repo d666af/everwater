@@ -64,6 +64,7 @@ export default function Catalog() {
   // Compute effective "with return" price — only for products flagged as deposit
   const computeReturnPrice = (product) => {
     if (!product.has_bottle_deposit) return null
+    if (product.deposit_price > 0) return product.deposit_price
     const val = Number(settings.bottle_discount_value || 0)
     if (!val) return null
     if (settings.bottle_discount_type === 'percent') {

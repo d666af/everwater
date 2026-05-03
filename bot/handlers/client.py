@@ -223,7 +223,11 @@ async def survey_count_text(message: Message, state: FSMContext):
 
 def _eff_price(p: dict, disc_val: float = 0, disc_type: str = "fixed") -> float:
     """Return the effective display price (with return discount) for deposit products."""
-    if not p.get("has_bottle_deposit") or disc_val <= 0:
+    if not p.get("has_bottle_deposit"):
+        return p["price"]
+    if p.get("deposit_price") and p["deposit_price"] > 0:
+        return p["deposit_price"]
+    if disc_val <= 0:
         return p["price"]
     if disc_type == "percent":
         return max(0, round(p["price"] * (1 - disc_val / 100)))

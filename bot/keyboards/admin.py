@@ -94,17 +94,21 @@ def product_list_kb(products: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def product_edit_kb(product_id: int, has_deposit: bool = False) -> InlineKeyboardMarkup:
+def product_edit_kb(product_id: int, has_deposit: bool = False, deposit_price: int | None = None) -> InlineKeyboardMarkup:
     deposit_label = "♻️ Залог. цена: ВКЛ ✅" if has_deposit else "♻️ Залог. цена: ВЫКЛ"
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"ape:name:{product_id}")],
         [InlineKeyboardButton(text="📏 Объём", callback_data=f"ape:volume:{product_id}")],
         [InlineKeyboardButton(text="💰 Цена", callback_data=f"ape:price:{product_id}")],
         [InlineKeyboardButton(text="🖼 Фото", callback_data=f"ape:photo:{product_id}")],
         [InlineKeyboardButton(text="🔄 Активность", callback_data=f"ape:toggle:{product_id}")],
         [InlineKeyboardButton(text=deposit_label, callback_data=f"ape:deposit:{product_id}")],
-        [InlineKeyboardButton(text="← Назад", callback_data="admin:products")],
-    ])
+    ]
+    if has_deposit:
+        dp_label = f"💵 Цена со сдачей: {deposit_price:,} сум".replace(",", " ") if deposit_price else "💵 Цена со сдачей: не задана"
+        rows.append([InlineKeyboardButton(text=dp_label, callback_data=f"ape:deposit_price:{product_id}")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:products")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def low_stock_kb() -> InlineKeyboardMarkup:
