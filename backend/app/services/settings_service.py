@@ -18,6 +18,7 @@ DEFAULTS: dict[str, Any] = {
     "bottle_return_buttons_visible": True,
     "bottle_return_mode": "max",
     "accepted_bottle_companies": [],
+    "require_bottle_brand_selection": False,
     "delivery_price": 0,
     "min_order": 25000,
     "working_hours": "08:00–22:00",

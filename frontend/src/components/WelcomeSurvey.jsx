@@ -5,8 +5,6 @@ import { getSettings } from '../api'
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
-const ALL_COMPANIES = ['Grand Water', 'Fresco', 'Hamd', 'Hydrolife', 'Zam-Zam', 'Kavsar', 'Montella']
-
 const LS_SURVEY_EXT = 'everwater_survey_company'
 
 export default function WelcomeSurvey() {
@@ -15,9 +13,13 @@ export default function WelcomeSurvey() {
   const [company, setCompany] = useState(null)
   const [count, setCount] = useState(0)
   const [acceptedCompanies, setAcceptedCompanies] = useState([])
+  const [requireBrandSelection, setRequireBrandSelection] = useState(false)
 
   useEffect(() => {
-    getSettings().then(s => setAcceptedCompanies(s.accepted_bottle_companies || [])).catch(() => {})
+    getSettings().then(s => {
+      setAcceptedCompanies(s.accepted_bottle_companies || [])
+      setRequireBrandSelection(s.require_bottle_brand_selection || false)
+    }).catch(() => {})
   }, [])
 
   if (survey_done) return null
@@ -47,7 +49,15 @@ export default function WelcomeSurvey() {
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 2 }}>Everwater, уже покупал у нас</div>
             </div>
           </button>
-          <button style={s.optionBtn} onClick={() => setStep('company')}>
+          <button style={s.optionBtn} onClick={() => {
+            if (requireBrandSelection && acceptedCompanies.length > 0) {
+              setStep('company')
+            } else {
+              setCompany('other')
+              setCount(0)
+              setStep('count')
+            }
+          }}>
             <div style={{ ...s.optIcon, background: '#FFF3D9' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#E67700" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="#E67700" strokeWidth="2" strokeLinecap="round"/></svg>
             </div>
@@ -81,21 +91,17 @@ export default function WelcomeSurvey() {
         <h3 style={s.title}>Чья бутылка?</h3>
         <p style={{ ...s.desc, marginBottom: 4 }}>Выберите марку</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%' }}>
-          {ALL_COMPANIES.map(c => {
-            const accepted = acceptedCompanies.includes(c)
-            return (
-              <button key={c} onClick={() => { setCompany(c); setCount(0); setStep('count') }} style={{
-                flex: '1 1 calc(50% - 4px)', padding: '10px 12px', borderRadius: 12,
-                background: company === c ? GRAD : '#f2f2f7',
-                color: company === c ? '#fff' : '#1a1a1a',
-                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left',
-              }}>
-                <span style={{ flex: 1 }}>{c}</span>
-                {accepted && <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.3)', padding: '2px 6px', borderRadius: 99, color: company === c ? '#fff' : '#2B8A3E', fontWeight: 700 }}>Принимаем</span>}
-              </button>
-            )
-          })}
+          {acceptedCompanies.map(c => (
+            <button key={c} onClick={() => { setCompany(c); setCount(0); setStep('count') }} style={{
+              flex: '1 1 calc(50% - 4px)', padding: '10px 12px', borderRadius: 12,
+              background: company === c ? GRAD : '#f2f2f7',
+              color: company === c ? '#fff' : '#1a1a1a',
+              border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left',
+            }}>
+              <span style={{ flex: 1 }}>{c}</span>
+            </button>
+          ))}
         </div>
         <button style={{ ...s.btnGhost, width: '100%', marginTop: 4 }} onClick={() => setStep('ask')}>← Назад</button>
       </div>
@@ -104,11 +110,14 @@ export default function WelcomeSurvey() {
 
   if (step === 'count') {
     const isOur = company === 'our'
-    const isAccepted = isOur || acceptedCompanies.includes(company)
+    const isOther = company === 'other'
+    const isAccepted = isOur || isOther || acceptedCompanies.includes(company)
+    const label = isOur ? 'Наши бутылки (Everwater)' : isOther ? 'Чужие бутылки' : company
+    const backStep = (isOur || isOther) ? 'ask' : 'company'
     return (
       <div style={s.overlay}>
         <div style={s.card}>
-          <div style={{ ...s.iconWrap, background: isAccepted ? GRAD : 'linear-gradient(135deg,#aaa,#888)' }}>
+          <div style={{ ...s.iconWrap, background: GRAD }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path d="M9 2h6v3l3 3v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8l3-3V2z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round"/>
               <path d="M9 2v3h6V2" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round"/>
@@ -116,26 +125,19 @@ export default function WelcomeSurvey() {
           </div>
           <h3 style={s.title}>Сколько бутылок?</h3>
           <p style={s.desc}>
-            {isOur ? 'Наши бутылки (Everwater)' : company}
-            {isAccepted
-              ? <span style={{ color: '#2B8A3E', fontWeight: 700 }}> · принимаем</span>
-              : <span style={{ color: '#E03131', fontWeight: 700 }}> · не принимаем</span>}
+            {label}
+            <span style={{ color: '#2B8A3E', fontWeight: 700 }}> · принимаем</span>
           </p>
-          {!isAccepted && (
-            <div style={{ background: '#FFF5F5', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#c0392b', textAlign: 'center' }}>
-              Бутылки этой марки мы не принимаем — они не будут учитываться
-            </div>
-          )}
           <div style={s.stepper}>
             <button style={count <= 0 ? { ...s.stepBtn, opacity: 0.3 } : s.stepBtn}
               onClick={() => setCount(Math.max(0, count - 1))} disabled={count <= 0}>−</button>
             <span style={s.stepVal}>{count}</span>
             <button style={s.stepBtn} onClick={() => setCount(count + 1)}>+</button>
           </div>
-          <button style={{ ...s.btnPrimary, width: '100%' }} onClick={() => finish(isAccepted ? count : 0, company, isOur ? 'our' : 'other')}>
+          <button style={{ ...s.btnPrimary, width: '100%' }} onClick={() => finish(count, isOther ? null : company, isOur ? 'our' : 'other')}>
             Продолжить
           </button>
-          <button style={{ ...s.btnGhost, width: '100%' }} onClick={() => setStep(isOur ? 'ask' : 'company')}>← Назад</button>
+          <button style={{ ...s.btnGhost, width: '100%' }} onClick={() => setStep(backStep)}>← Назад</button>
         </div>
       </div>
     )

@@ -115,18 +115,25 @@ async def survey_source(call: CallbackQuery, state: FSMContext):
         await _survey_ask_count(call, state)
         await call.answer()
         return
-    # other: fetch accepted companies from settings
+    # other: check require_bottle_brand_selection setting
     try:
         settings_data = await api.get_settings()
+        require_brand = settings_data.get("require_bottle_brand_selection", False) if settings_data else False
         accepted = settings_data.get("accepted_bottle_companies", []) if settings_data else []
     except Exception:
+        require_brand = False
         accepted = []
+
+    if not require_brand or not accepted:
+        # Brand selection disabled or no brands configured — accept all foreign bottles
+        await state.update_data(survey_company="other", survey_accepted=True)
+        await _survey_ask_count(call, state)
+        await call.answer()
+        return
+
     await state.update_data(survey_accepted_companies=accepted)
     await state.set_state(SurveyState.asking_company)
-    rows = []
-    for company in ALL_BOTTLE_COMPANIES:
-        badge = " ✓" if company in accepted else ""
-        rows.append([InlineKeyboardButton(text=f"{company}{badge}", callback_data=f"survey_co:{company}")])
+    rows = [[InlineKeyboardButton(text=company, callback_data=f"survey_co:{company}")] for company in accepted]
     try:
         await call.message.edit_text(
             "Выберите бренд ваших бутылок:",
@@ -143,10 +150,8 @@ async def survey_source(call: CallbackQuery, state: FSMContext):
 @router.callback_query(SurveyState.asking_company, F.data.startswith("survey_co:"))
 async def survey_company(call: CallbackQuery, state: FSMContext):
     company = call.data[len("survey_co:"):]
-    data = await state.get_data()
-    accepted = data.get("survey_accepted_companies", [])
-    is_accepted = company in accepted
-    await state.update_data(survey_company=company, survey_accepted=is_accepted)
+    # All shown brands are from the accepted list, so always accepted
+    await state.update_data(survey_company=company, survey_accepted=True)
     await _survey_ask_count(call, state)
     await call.answer()
 

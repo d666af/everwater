@@ -8,8 +8,6 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
-const ALL_BOTTLE_COMPANIES = ['Grand Water', 'Fresco', 'Hamd', 'Hydrolife', 'Zam-Zam', 'Kavsar', 'Montella']
-
 function Section({ icon, title, hint, children }) {
   return (
     <div style={s.section}>
@@ -35,11 +33,13 @@ export default function AdminSettings() {
     bottle_return_buttons_visible: true,
     bottle_return_mode: 'max',
     accepted_bottle_companies: [],
+    require_bottle_brand_selection: false,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [newBrand, setNewBrand] = useState('')
 
   useEffect(() => {
     getSettings()
@@ -212,49 +212,111 @@ export default function AdminSettings() {
             </svg>
           }
           title="Приём чужих бутылок"
-          hint="Отметьте компании, бутылки которых мы принимаем — клиент получит скидку за возврат"
+          hint="Настройка брендов и необходимости выбора марки клиентом"
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-            {ALL_BOTTLE_COMPANIES.map(co => {
-              const active = (form.accepted_bottle_companies || []).includes(co)
-              return (
-                <button key={co}
-                  onClick={() => setForm(p => {
-                    const cur = p.accepted_bottle_companies || []
-                    const next = active ? cur.filter(x => x !== co) : [...cur, co]
-                    return { ...p, accepted_bottle_companies: next }
-                  })}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
-                    border: `1.5px solid ${active ? C : BORDER}`,
-                    background: active ? '#F0FFF0' : '#fff',
-                    fontSize: 14, fontWeight: 600, color: active ? TEXT : TEXT2,
-                    textAlign: 'left',
-                  }}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                    border: `2px solid ${active ? C : BORDER}`,
-                    background: active ? C : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {active && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                        <path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span style={{ flex: 1 }}>{co}</span>
-                </button>
-              )
-            })}
+          {/* Toggle: require brand selection */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Включить указание бренда</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.require_bottle_brand_selection
+                  ? 'Клиент выбирает бренд из списка ниже'
+                  : 'Клиент не выбирает бренд — принимаются все чужие бутылки'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, require_bottle_brand_selection: !p.require_bottle_brand_selection }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.require_bottle_brand_selection ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.require_bottle_brand_selection ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
           </div>
+
+          {/* Brand list management */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Список брендов
+            </div>
+            {(form.accepted_bottle_companies || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: TEXT2, padding: '8px 0' }}>Бренды не добавлены</div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(form.accepted_bottle_companies || []).map(co => (
+                  <div key={co} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 12px', borderRadius: 10,
+                    border: `1.5px solid ${C}`, background: '#F0FFF0',
+                    fontSize: 13, fontWeight: 600, color: TEXT,
+                  }}>
+                    <span>{co}</span>
+                    <button
+                      onClick={() => setForm(p => ({ ...p, accepted_bottle_companies: (p.accepted_bottle_companies || []).filter(x => x !== co) }))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: '#c0392b', fontSize: 16, display: 'flex', alignItems: 'center' }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add new brand */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <input
+                style={{ ...s.input, flex: 1 }}
+                placeholder="Новый бренд..."
+                value={newBrand}
+                onChange={e => setNewBrand(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newBrand.trim()) {
+                    const name = newBrand.trim()
+                    setForm(p => {
+                      const cur = p.accepted_bottle_companies || []
+                      if (cur.includes(name)) return p
+                      return { ...p, accepted_bottle_companies: [...cur, name] }
+                    })
+                    setNewBrand('')
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const name = newBrand.trim()
+                  if (!name) return
+                  setForm(p => {
+                    const cur = p.accepted_bottle_companies || []
+                    if (cur.includes(name)) return p
+                    return { ...p, accepted_bottle_companies: [...cur, name] }
+                  })
+                  setNewBrand('')
+                }}
+                style={{
+                  padding: '10px 16px', borderRadius: 10, border: 'none',
+                  background: C, color: '#fff', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+              >Добавить</button>
+            </div>
+          </div>
+
           <div style={s.preview}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            Принимаем: <b>{(form.accepted_bottle_companies || []).length === 0 ? 'только свои' : (form.accepted_bottle_companies || []).join(', ')}</b>
+            {form.require_bottle_brand_selection
+              ? (form.accepted_bottle_companies || []).length === 0
+                ? 'Бренды не настроены — клиент не сможет выбрать'
+                : <>Клиент выбирает из: <b>{(form.accepted_bottle_companies || []).join(', ')}</b></>
+              : 'Клиент просто указывает количество — все чужие бутылки принимаются'}
           </div>
         </Section>
 
