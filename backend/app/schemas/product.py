@@ -10,6 +10,7 @@ class ProductCreate(BaseModel):
     photo_url: str | None = None
     stock: int = 999
     sort_order: int = 0
+    has_bottle_deposit: bool = False
 
 
 class ProductUpdate(BaseModel):
@@ -22,6 +23,7 @@ class ProductUpdate(BaseModel):
     stock: int | None = None
     is_active: bool | None = None
     sort_order: int | None = None
+    has_bottle_deposit: bool | None = None
 
 
 class ProductOut(BaseModel):
@@ -35,5 +37,6 @@ class ProductOut(BaseModel):
     stock: int
     is_active: bool
     sort_order: int
+    has_bottle_deposit: bool
 
     model_config = {"from_attributes": True}

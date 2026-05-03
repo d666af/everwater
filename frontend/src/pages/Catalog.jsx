@@ -61,9 +61,9 @@ export default function Catalog() {
     return products.filter(p => Math.abs(p.volume - vol) < 0.1)
   }, [products, activeCategory])
 
-  // Compute effective price after returning 1 bottle (for 19L products)
+  // Compute effective "with return" price — only for products flagged as deposit
   const computeReturnPrice = (product) => {
-    if (product.volume < 18.9) return null
+    if (!product.has_bottle_deposit) return null
     const val = Number(settings.bottle_discount_value || 0)
     if (!val) return null
     if (settings.bottle_discount_type === 'percent') {
@@ -126,7 +126,12 @@ export default function Catalog() {
 
         {!loading && products.length > 0 && (
           <div style={s.grid}>
-            {filtered.map(p => <ProductCard key={p.id} product={p} priceWithReturn={computeReturnPrice(p)} />)}
+            {filtered.map(p => (
+              <ProductCard key={p.id} product={p}
+                priceWithReturn={computeReturnPrice(p)}
+                isDepositProduct={p.has_bottle_deposit || false}
+              />
+            ))}
           </div>
         )}
 

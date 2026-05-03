@@ -1342,7 +1342,7 @@ async def admin_product_edit_menu(call: CallbackQuery):
         f"<b>{p.get('name', '—')}</b>\n"
         f"Объём: {p.get('volume', '—')} л | Цена: {fmt(p.get('price', 0))}\n"
         f"Тип: {p.get('type', '—')} | {active}",
-        reply_markup=product_edit_kb(pid),
+        reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False)),
         parse_mode="HTML",
     )
     await call.answer()
@@ -1535,7 +1535,20 @@ async def admin_product_edit_field(call: CallbackQuery, state: FSMContext):
             await call.answer(f"Товар {action}")
             await call.message.edit_text(
                 f"Товар {'активен ✅' if new_val else 'неактивен ❌'}",
-                reply_markup=product_edit_kb(pid),
+                reply_markup=product_edit_kb(pid, has_deposit=p.get("has_bottle_deposit", False)),
+            )
+        return
+    if field == "deposit":
+        products = await api.get_products()
+        p = next((x for x in products if x["id"] == pid), None)
+        if p:
+            new_val = not p.get("has_bottle_deposit", False)
+            await api.update_product(pid, {"has_bottle_deposit": new_val})
+            label = "включена ✅" if new_val else "выключена ❌"
+            await call.answer(f"Залоговая цена {label}")
+            await call.message.edit_text(
+                f"Залоговая цена {'активна ✅' if new_val else 'неактивна ❌'}",
+                reply_markup=product_edit_kb(pid, has_deposit=new_val),
             )
         return
     if field == "photo":

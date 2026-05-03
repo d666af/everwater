@@ -71,7 +71,7 @@ export default function Checkout() {
         })
         .then(debt => {
           setSurveyDone(debt.survey_done ?? true)
-          if (debt.count > 0) userStore.addBottlesOwed(0) // sync without adding
+          userStore.setBottlesOwed(debt.count ?? 0)
         })
         .catch(console.error)
     } else if (authUser) {
@@ -79,7 +79,10 @@ export default function Checkout() {
       setForm(f => ({ ...f, phone: authUser.phone || '' }))
       if (!userStore.initialized) userStore.init(authUser)
       getBottlesOwed(authUser.id)
-        .then(debt => { setSurveyDone(debt.survey_done ?? true) })
+        .then(debt => {
+          setSurveyDone(debt.survey_done ?? true)
+          userStore.setBottlesOwed(debt.count ?? 0)
+        })
         .catch(console.error)
     }
     getSettings().then(s => setSettings(prev => ({ ...prev, ...s }))).catch(console.error)
@@ -96,6 +99,17 @@ export default function Checkout() {
   const maxReturn = settings.bottle_return_mode === 'equal'
     ? Math.min(qty20L, bottlesOwed)
     : bottlesOwed
+
+  // Deposit pricing info for 19L products shown in bottle return block
+  const deposit19L = items.find(i => i.product.volume >= 18.9 && i.product.has_bottle_deposit)?.product ?? null
+  const discountPerBottle = (() => {
+    if (!deposit19L) return 0
+    const val = Number(settings.bottle_discount_value || 0)
+    if (!val) return 0
+    if (settings.bottle_discount_type === 'percent') return Math.round(deposit19L.price * val / 100)
+    return val
+  })()
+  const price19LWithReturn = deposit19L && discountPerBottle > 0 ? Math.max(0, deposit19L.price - discountPerBottle) : null
 
   // Calculations
   const subtotal = total()
@@ -366,11 +380,16 @@ export default function Checkout() {
       {/* Bottle return / initial survey */}
       {has20L && !surveyDone && (
         <div style={s.section}>
-          <div style={s.sLabel}>Бутылки 20 л к возврату</div>
+          <div style={s.sLabel}>Бутылки 19 л к возврату</div>
           <div style={s.card}>
             <div style={{ fontSize: 13, color: '#8e8e93', marginBottom: 10 }}>
               Укажите, сколько пустых бутылок вернёте при доставке:
             </div>
+            {deposit19L && discountPerBottle > 0 && (
+              <div style={{ fontSize: 12, color: '#2B8A3E', marginBottom: 10, lineHeight: 1.5 }}>
+                ♻ Со сдачей: <b>{price19LWithReturn?.toLocaleString()} сум</b> · без возврата: {deposit19L.price.toLocaleString()} сум
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button
                 style={surveyCount <= 0 ? { ...s.stepperBtn, ...s.stepperBtnDisabled } : s.stepperBtn}
@@ -393,6 +412,9 @@ export default function Checkout() {
           bottleDiscount={bottleDiscount}
           bottlesOwed={maxReturn}
           settings={settings}
+          fullBottlePrice={deposit19L?.price ?? null}
+          priceWithReturn={price19LWithReturn}
+          discountPerBottle={discountPerBottle || null}
         />
       )}
 

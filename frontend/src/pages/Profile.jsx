@@ -123,7 +123,7 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
       .then(data => {
         const active = (data || [])
           .filter(p => p.is_active)
-          .map(p => ({ id: p.id.toString(), name: p.name, volume: p.volume, price: p.price, blockSize: 1 }))
+          .map(p => ({ id: p.id.toString(), name: p.name, volume: p.volume, price: p.price, blockSize: 1, has_bottle_deposit: p.has_bottle_deposit || false }))
         setProducts(active)
       })
       .catch(() => setProducts([]))
@@ -481,7 +481,14 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{w.name}</div>
-                    <div style={{ fontSize: 12, color: '#8e8e93' }}>{w.price.toLocaleString()} сум</div>
+                    <div style={{ fontSize: 12, color: '#8e8e93' }}>
+                      {w.price.toLocaleString()} сум
+                      {w.has_bottle_deposit && settings?.bottle_discount_value > 0 && (
+                        <span style={{ color: '#2B8A3E', marginLeft: 6 }}>
+                          ♻ {Math.max(0, w.price - Number(settings.bottle_discount_value || 0)).toLocaleString()} со сдачей
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {sel && (
