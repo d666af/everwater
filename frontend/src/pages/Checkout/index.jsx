@@ -91,13 +91,18 @@ export default function Checkout() {
   const has20L = items.some(i => i.product.volume >= 18.9)
   const qty20L = items.filter(i => i.product.volume >= 18.9).reduce((sum, i) => sum + i.quantity, 0)
 
-  // Bottle return limit
+  // Bottle return limit — always capped at actual debt
   const bottlesOwed = userStore.bottles_owed
-  const maxReturn = settings.bottle_return_mode === 'equal' ? qty20L : bottlesOwed
+  const maxReturn = settings.bottle_return_mode === 'equal'
+    ? Math.min(qty20L, bottlesOwed)
+    : bottlesOwed
 
   // Calculations
   const subtotal = total()
-  const effectiveReturnCount = surveyDone ? Number(form.returnCount) : surveyCount
+  // When buttons are hidden the count is forced to maxReturn, not user-controlled
+  const effectiveReturnCount = surveyDone
+    ? (settings.bottle_return_buttons_visible !== false ? Number(form.returnCount) : maxReturn)
+    : surveyCount
   const bottleDiscount = (() => {
     const c = effectiveReturnCount
     if (!c) return 0
@@ -152,8 +157,8 @@ export default function Checkout() {
         extra_info: form.extraInfo || null,
         delivery_time: null,
         latitude: form.lat, longitude: form.lng,
-        return_bottles_count: surveyDone ? Number(form.returnCount) : surveyCount,
-        return_bottles_volume: has20L ? 20 : 0,
+        return_bottles_count: effectiveReturnCount,
+        return_bottles_volume: has20L ? 19 : 0,
         bottle_discount: bottleDiscount,
         bonus_used: Number(form.bonusUsed),
         balance_used: 0,

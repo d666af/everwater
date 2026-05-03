@@ -648,7 +648,7 @@ async def co_phone(message: Message, state: FSMContext):
 
         if buttons_visible and max_return > 1:
             await message.answer(
-                f"У вас числится {count} бутылок 20л к возврату.\n"
+                f"У вас числится {count} бутылок 19л к возврату.\n"
                 f"Сколько вернёте? (макс. {max_return} шт.)",
                 reply_markup=_bottle_adj_kb(max_return, max_return),
             )
@@ -658,7 +658,7 @@ async def co_phone(message: Message, state: FSMContext):
                 InlineKeyboardButton(text="Нет", callback_data="rb:0"),
             ]])
             await message.answer(
-                f"У вас числится {count} бутылок 20л к возврату. "
+                f"У вас числится {count} бутылок 19л к возврату. "
                 f"Вернёте {max_return} шт.?",
                 reply_markup=kb,
             )
