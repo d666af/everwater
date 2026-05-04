@@ -24,8 +24,15 @@ def fmt(amount):
 def _cart_summary(cart: dict) -> str:
     parts = [f"{v['name']} ×{v['qty']}" for v in list(cart.values())[:3]]
     extra = f" +ещё {len(cart) - 3}" if len(cart) > 3 else ""
-    total = sum(v["price"] * v["qty"] for v in cart.values())
+    total = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
     return f"{', '.join(parts)}{extra} · {fmt(total)}"
+
+
+def _item_eff_price(item: dict) -> float:
+    """Effective display price for a cart item (uses deposit_price if deposit product)."""
+    if item.get("has_bottle_deposit") and item.get("deposit_price"):
+        return item["deposit_price"]
+    return item["price"]
 
 
 def _short_name(p: dict) -> str:
@@ -270,7 +277,7 @@ def _catalog_kb(products: list, cart: dict, ftype: str = "all",
 
     if cart:
         total_qty = sum(v["qty"] for v in cart.values())
-        total_sum = sum(v["price"] * v["qty"] for v in cart.values())
+        total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
         buttons.append([InlineKeyboardButton(
             text=f"🛒 Корзина ({total_qty} шт.) — {fmt(total_sum)}",
             callback_data="show_cart",
@@ -434,7 +441,9 @@ async def cart_add(call: CallbackQuery, state: FSMContext):
         return
     if pid not in cart:
         cart[pid] = {"name": _short_name(p), "price": p["price"],
-                     "qty": 0, "volume": p.get("volume", 0), "product_id": p["id"]}
+                     "qty": 0, "volume": p.get("volume", 0), "product_id": p["id"],
+                     "has_bottle_deposit": p.get("has_bottle_deposit", False),
+                     "deposit_price": p.get("deposit_price")}
     cart[pid]["qty"] += 1
     await state.update_data(cart=cart)
     await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
@@ -489,9 +498,11 @@ async def show_cart(target, state: FSMContext):
         lines = ["🛒 <b>Корзина</b>\n"]
         total = 0
         for item in cart.values():
-            s = item["price"] * item["qty"]
+            ep = _item_eff_price(item)
+            s = ep * item["qty"]
             total += s
-            lines.append(f"• {item['name']} × {item['qty']} — {fmt(s)}")
+            deposit_note = " ♻" if item.get("has_bottle_deposit") and item.get("deposit_price") else ""
+            lines.append(f"• {item['name']} × {item['qty']} — {fmt(s)}{deposit_note}")
         lines.append(f"\n<b>Итого: {fmt(total)}</b>")
         lines.append("\n(Нажмите на товар, чтобы удалить)")
         text = "\n".join(lines)
@@ -701,27 +712,58 @@ async def co_phone(message: Message, state: FSMContext):
         buttons_visible = cfg.get("bottle_return_buttons_visible", True)
         max_return = min(qty_20l, count) if mode == "equal" else count
 
-        await state.set_state(CheckoutState.asking_return)
+        # Build deposit price hint from cart
+        deposit_hint = _deposit_hint_for_cart(cart, cfg)
 
-        if buttons_visible and max_return > 1:
-            await message.answer(
-                f"У вас числится {count} бутылок 19л к возврату.\n"
-                f"Сколько вернёте? (макс. {max_return} шт.)",
-                reply_markup=_bottle_adj_kb(max_return, max_return),
-            )
+        if not buttons_visible:
+            # Admin disabled choice — auto-apply max_return silently
+            await state.update_data(co_return=max_return)
+            if max_return > 0 and deposit_hint:
+                await message.answer(
+                    f"♻️ <b>Возврат бутылок: {max_return} шт.</b>\n{deposit_hint}",
+                    parse_mode="HTML",
+                )
+            await _ask_bonus(message, state)
         else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=f"Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
-                InlineKeyboardButton(text="Нет", callback_data="rb:0"),
-            ]])
-            await message.answer(
-                f"У вас числится {count} бутылок 19л к возврату. "
-                f"Вернёте {max_return} шт.?",
-                reply_markup=kb,
-            )
+            await state.set_state(CheckoutState.asking_return)
+            if max_return > 1:
+                await message.answer(
+                    f"У вас числится {count} бутылок 19л к возврату.\n"
+                    f"Сколько вернёте? (макс. {max_return} шт.)\n"
+                    + (deposit_hint or ""),
+                    reply_markup=_bottle_adj_kb(max_return, max_return),
+                    parse_mode="HTML",
+                )
+            else:
+                kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=f"✅ Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
+                    InlineKeyboardButton(text="❌ Нет", callback_data="rb:0"),
+                ]])
+                await message.answer(
+                    f"У вас числится {count} бутылок 19л к возврату. "
+                    f"Вернёте {max_return} шт.?"
+                    + (f"\n{deposit_hint}" if deposit_hint else ""),
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
     else:
         await state.update_data(co_return=0)
         await _ask_bonus(message, state)
+
+
+def _deposit_hint_for_cart(cart: dict, cfg: dict) -> str:
+    """Return a one-line deposit price hint if cart has deposit items, else empty string."""
+    deposit_items = [v for v in cart.values() if v.get("has_bottle_deposit")]
+    if not deposit_items:
+        return ""
+    disc_val = float(cfg.get("bottle_discount_value") or 0)
+    disc_type = cfg.get("bottle_discount_type", "fixed")
+    hints = []
+    for item in deposit_items:
+        ep = _item_eff_price(item)
+        if ep < item["price"]:
+            hints.append(f"<i>Со сдачей бутылки: {fmt(ep)} (без возврата: {fmt(item['price'])})</i>")
+    return "\n".join(hints)
 
 
 def _bottle_adj_kb(count: int, max_return: int) -> InlineKeyboardMarkup:
@@ -1098,7 +1140,9 @@ async def sub_cart_add(call: CallbackQuery, state: FSMContext):
         await call.answer("Товар не найден")
         return
     if pid not in cart:
-        cart[pid] = {"name": _short_name(p), "price": p["price"], "qty": 0}
+        cart[pid] = {"name": _short_name(p), "price": p["price"], "qty": 0,
+                     "has_bottle_deposit": p.get("has_bottle_deposit", False),
+                     "deposit_price": p.get("deposit_price")}
     cart[pid]["qty"] += 1
     await state.update_data(sub_cart=cart)
     await _render_sub_catalog(call, state, ftype=data.get("sub_cf", "all"), edit=True)
@@ -1282,7 +1326,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
 
     if method == "card":
         # Show card details; create subscription only when user confirms payment
-        total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+        total = sum(_item_eff_price(v) * v.get("qty", 0) for v in cart.values())
         bonus = data.get("sub_bonus", 0)
         to_pay = max(0, total - bonus)
         await call.message.edit_text(
@@ -1300,7 +1344,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         return
 
     # For cash/balance — create subscription immediately
-    total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+    total = sum(_item_eff_price(v) * v.get("qty", 0) for v in cart.values())
     bonus = data.get("sub_bonus", 0)
     to_pay = max(0, total - bonus)
     pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
@@ -1341,7 +1385,7 @@ async def sub_card_paid(call: CallbackQuery, state: FSMContext):
         await call.answer("Пользователь не найден")
         return
     cart = data.get("sub_cart", {})
-    total = sum(v.get("price", 0) * v.get("qty", 0) for v in cart.values())
+    total = sum(_item_eff_price(v) * v.get("qty", 0) for v in cart.values())
     bonus = data.get("sub_bonus", 0)
     to_pay = max(0, total - bonus)
     result = await api.create_subscription(user["id"], {

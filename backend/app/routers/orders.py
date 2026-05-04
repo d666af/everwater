@@ -97,8 +97,13 @@ async def _notify_admins(db: AsyncSession, text: str):
         await _tg(m.telegram_id, text)
 
 
-async def _notify_low_stock_if_needed(db: AsyncSession, items_data: list, order_id: int):
-    """After order creation, check warehouse stock and notify if any product is insufficient."""
+async def _notify_low_stock_if_needed(
+    db: AsyncSession,
+    items_data: list,
+    order_id: int,
+    extra_chat_ids: list[int] | None = None,
+):
+    """Check warehouse stock and notify relevant parties if any product is insufficient."""
     from app.config import settings as cfg
     from app.models.warehouse import WaterStock
     from app.models.manager import Manager
@@ -123,7 +128,7 @@ async def _notify_low_stock_if_needed(db: AsyncSession, items_data: list, order_
         + "\n\nПополните склад как можно скорее."
     )
 
-    recipients: list[int] = list(cfg.ADMIN_IDS) + list(cfg.WAREHOUSE_IDS)
+    recipients: list[int] = list(cfg.ADMIN_IDS) + list(cfg.WAREHOUSE_IDS) + list(extra_chat_ids or [])
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
     for m in mgrs:
         if m.telegram_id:
@@ -405,6 +410,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     client_tg = order.user.telegram_id if order.user else None
     old_msg_id = order.client_status_msg_id
     items = _order_items_text(order.items)
+    items_data_for_stock = [(i.product, i.quantity) for i in order.items if i.product]
     order_address = order.address
     order_phone = order.recipient_phone
     order_time = order.delivery_time or "—"
@@ -446,6 +452,15 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
+
+    # Notify warehouse (+ courier) if any ordered item has insufficient stock
+    try:
+        await _notify_low_stock_if_needed(
+            db, items_data_for_stock, oid,
+            extra_chat_ids=[courier_tg] if courier_tg else [],
+        )
+    except Exception:
+        pass
 
     return {"ok": True}
 

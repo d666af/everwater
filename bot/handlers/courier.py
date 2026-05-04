@@ -285,7 +285,7 @@ async def courier_water(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    water = await api.get_courier_water(courier["id"])
+    water = await api.get_courier_water(message.from_user.id)
     products = await api.get_products()
     prod_map = {p["id"]: p["name"] for p in products}
     if not water:
@@ -305,7 +305,7 @@ async def courier_debts(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    result = await api.get_courier_cash_debts(courier["id"])
+    result = await api.get_courier_cash_debts(message.from_user.id)
     total = result.get("total_pending", 0)
     debts = result.get("debts", [])
     if not debts:

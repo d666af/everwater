@@ -507,15 +507,19 @@ export const confirmTopup = (userId, amount) =>
 // ─── Cash debt tracking ─────────────────────────────────────────────────────
 let mockCashDebts = [...MOCK_CASH_DEBTS]
 
+// Backend returns `status`; normalise to `clearance_status` for UI consistency
+const _normDebt = (d) => ({ ...d, clearance_status: d.clearance_status ?? d.status })
+const _normDebts = (arr) => (arr || []).map(_normDebt)
+
 export const getCashDebts = (courierId) =>
   safeCall(
-    () => http.get(`/couriers/${courierId}/cash_debts`).then(r => r.data),
+    () => http.get(`/couriers/${courierId}/cash_debts`).then(r => _normDebts(r.data)),
     () => mockCashDebts.filter(d => d.courier_id === courierId && d.clearance_status !== 'approved')
   )
 
 export const getAllCashDebts = () =>
   safeCall(
-    () => http.get('/admin/cash_debts').then(r => r.data),
+    () => http.get('/couriers/admin/cash_debts').then(r => _normDebts(r.data)),
     () => mockCashDebts
   )
 
@@ -530,7 +534,7 @@ export const requestDebtClearance = (debtId) =>
 
 export const approveDebtClearance = (debtId) =>
   safeCall(
-    () => http.patch(`/admin/cash_debts/${debtId}/approve`).then(r => r.data),
+    () => http.post(`/couriers/admin/cash_debts/${debtId}/decide`, { action: 'approve' }).then(r => r.data),
     () => {
       mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'approved' } : d)
       return { ok: true }
@@ -539,7 +543,7 @@ export const approveDebtClearance = (debtId) =>
 
 export const rejectDebtClearance = (debtId) =>
   safeCall(
-    () => http.patch(`/admin/cash_debts/${debtId}/reject`).then(r => r.data),
+    () => http.post(`/couriers/admin/cash_debts/${debtId}/decide`, { action: 'reject' }).then(r => r.data),
     () => {
       mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'rejected' } : d)
       return { ok: true }
