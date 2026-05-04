@@ -716,11 +716,12 @@ async def co_phone(message: Message, state: FSMContext):
         deposit_hint = _deposit_hint_for_cart(cart, cfg)
 
         if not buttons_visible:
-            # Admin disabled choice — auto-apply max_return silently
+            # Admin disabled choice — auto-apply max_return, always inform user
             await state.update_data(co_return=max_return)
-            if max_return > 0 and deposit_hint:
+            if max_return > 0:
+                hint_part = f"\n{deposit_hint}" if deposit_hint else ""
                 await message.answer(
-                    f"♻️ <b>Возврат бутылок: {max_return} шт.</b>\n{deposit_hint}",
+                    f"♻️ <b>Учтён возврат {max_return} бутылок 19л</b>{hint_part}",
                     parse_mode="HTML",
                 )
             await _ask_bonus(message, state)
@@ -1361,6 +1362,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
     })
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
     pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    bonus_line = f"\nСписано бонусов: {fmt(bonus)}" if bonus > 0 else ""
     if result:
         await call.message.edit_text(
             f"✅ Подписка оформлена!\n\n"
@@ -1368,7 +1370,9 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
             f"Вода: {water_summary}\n"
             f"Адрес: {data.get('sub_address')}\n"
             f"Ориентир: {data.get('sub_landmark', '—')}\n"
-            f"Оплата: {pay_label.get(method, method)}"
+            f"Оплата: {pay_label.get(method, method)}{bonus_line}\n"
+            f"<b>Сумма: {fmt(to_pay)}</b>",
+            parse_mode="HTML",
         )
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
@@ -1400,16 +1404,20 @@ async def sub_card_paid(call: CallbackQuery, state: FSMContext):
     })
     if result:
         sub_id = result.get("id", "")
+        bonus_line = f"\nСписано бонусов: {fmt(bonus)}" if bonus > 0 else ""
         await call.message.edit_text(
             f"⏳ Заявка на подписку #{sub_id} отправлена!\n\n"
-            "Менеджер проверит оплату и активирует подписку."
+            f"Вода: {data.get('sub_water_summary', '')}\n"
+            f"Адрес: {data.get('sub_address', '')}\n"
+            f"Оплата: 💳 Карта{bonus_line}\n"
+            f"<b>Сумма: {fmt(to_pay)}</b>\n\n"
+            "Менеджер проверит оплату и активирует подписку.",
+            parse_mode="HTML",
         )
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
     await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
-    await call.answer()
-    await state.clear()
     await call.answer()
 
 

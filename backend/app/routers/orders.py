@@ -97,29 +97,26 @@ async def _notify_admins(db: AsyncSession, text: str):
         await _tg(m.telegram_id, text)
 
 
-async def _notify_low_stock_if_needed(
-    db: AsyncSession,
-    items_data: list,
-    order_id: int,
-    extra_chat_ids: list[int] | None = None,
-):
-    """Check warehouse stock and notify relevant parties if any product is insufficient."""
-    from app.config import settings as cfg
+async def _get_shortage_lines(db: AsyncSession, items_data: list) -> list[str]:
+    """Return one description line per product whose warehouse stock is insufficient."""
     from app.models.warehouse import WaterStock
-    from app.models.manager import Manager
-
-    shortage_lines = []
+    lines = []
     for product, quantity in items_data:
         stock_q = await db.execute(select(WaterStock).where(WaterStock.product_id == product.id))
         stock = stock_q.scalar_one_or_none()
         available = stock.quantity if stock else 0
         if available < quantity:
-            shortage_lines.append(
-                f"• {product.name}: нужно {quantity} шт., на складе {available} шт."
-            )
+            lines.append(f"• {product.name}: нужно {quantity} шт., на складе {available} шт.")
+    return lines
 
+
+async def _send_shortage_notification(db: AsyncSession, shortage_lines: list, order_id: int,
+                                       extra_chat_ids: list[int] | None = None):
+    """Send a pre-computed shortage notification to warehouse, managers, and optional extra recipients."""
     if not shortage_lines:
         return
+    from app.config import settings as cfg
+    from app.models.manager import Manager
 
     text = (
         f"⚠️ Нехватка товара на складе!\n"
@@ -127,18 +124,27 @@ async def _notify_low_stock_if_needed(
         + "\n".join(shortage_lines)
         + "\n\nПополните склад как можно скорее."
     )
-
     recipients: list[int] = list(cfg.ADMIN_IDS) + list(cfg.WAREHOUSE_IDS) + list(extra_chat_ids or [])
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
     for m in mgrs:
         if m.telegram_id:
             recipients.append(m.telegram_id)
-
     seen: set[int] = set()
     for chat_id in recipients:
         if chat_id and chat_id not in seen:
             seen.add(chat_id)
             await _tg(chat_id, text)
+
+
+async def _notify_low_stock_if_needed(
+    db: AsyncSession,
+    items_data: list,
+    order_id: int,
+    extra_chat_ids: list[int] | None = None,
+):
+    """Check warehouse stock and notify if any product is insufficient."""
+    shortage_lines = await _get_shortage_lines(db, items_data)
+    await _send_shortage_notification(db, shortage_lines, order_id, extra_chat_ids)
 
 
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
@@ -442,27 +448,33 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     await db.commit()
 
+    # Check stock shortage once — embed in courier message, notify warehouse separately
+    shortage_lines: list[str] = []
+    try:
+        shortage_lines = await _get_shortage_lines(db, items_data_for_stock)
+    except Exception:
+        pass
+    shortage_suffix = ("\n\n⚠️ Нехватка на складе:\n" + "\n".join(shortage_lines)) if shortage_lines else ""
+
     if not from_bot:
         await _tg(courier_tg,
                   f"🚴 Вам назначен заказ!\n\n"
                   f"Адрес: {order_address}\nТелефон: {order_phone}\n"
                   f"Время: {order_time}\nТовары:\n{items}\n"
-                  f"Сумма: {order_total:,} сум")
+                  f"Сумма: {order_total:,} сум"
+                  + shortage_suffix)
         text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
 
-    # Notify warehouse (+ courier) if any ordered item has insufficient stock
+    # Notify warehouse/admins about shortage (courier already saw it in assignment message)
     try:
-        await _notify_low_stock_if_needed(
-            db, items_data_for_stock, oid,
-            extra_chat_ids=[courier_tg] if courier_tg else [],
-        )
+        await _send_shortage_notification(db, shortage_lines, oid)
     except Exception:
         pass
 
-    return {"ok": True}
+    return {"ok": True, "shortage_text": "\n".join(shortage_lines)}
 
 
 @router.patch("/{order_id}/in_delivery")
