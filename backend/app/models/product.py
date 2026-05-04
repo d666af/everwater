@@ -1,5 +1,6 @@
-from sqlalchemy import String, Float, Boolean, Text, Integer
+from sqlalchemy import String, Float, Boolean, Text, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
 from app.database import Base
 
 
@@ -18,5 +19,8 @@ class Product(Base):
     type: Mapped[str] = mapped_column(String(16), default="still")  # still | carbonated
     has_bottle_deposit: Mapped[bool] = mapped_column(Boolean, default=False)
     deposit_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_price: Mapped[float | None] = mapped_column(Float, nullable=True)  # себестоимость
+    discount_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)  # % скидки акции
+    discount_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # до когда действует
 
     order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")  # noqa: F821

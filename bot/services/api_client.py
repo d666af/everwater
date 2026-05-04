@@ -271,6 +271,34 @@ async def cancel_subscription(user_id: int, sub_id: int):
         return {}
 
 
+async def pause_subscription(user_id: int, sub_id: int):
+    try:
+        return await _post(f"/client/{user_id}/subscriptions/{sub_id}/pause")
+    except Exception:
+        return {}
+
+
+async def resume_subscription(user_id: int, sub_id: int):
+    try:
+        return await _post(f"/client/{user_id}/subscriptions/{sub_id}/resume")
+    except Exception:
+        return {}
+
+
+async def request_cancellation(order_id: int, reason: str = ""):
+    try:
+        return await _post(f"/orders/{order_id}/request_cancellation", {"reason": reason})
+    except Exception:
+        return {}
+
+
+async def get_queue_position(order_id: int):
+    try:
+        return await _get(f"/orders/{order_id}/queue_position")
+    except Exception:
+        return {"queue_position": None}
+
+
 async def get_admin_subscriptions(plan: str = None, status: str = "active") -> list:
     try:
         params = {"status": status}

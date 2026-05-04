@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '../store'
 import { useOrdersStore } from '../store/orders'
 import { useAuthStore } from '../store/auth'
-import { getUserByTelegram, getUserOrders } from '../api'
+import { getUserByTelegram, getUserOrders, requestCancellation, getQueuePosition } from '../api'
 import ReviewModal from '../components/ReviewModal'
 import PhonePopup from '../components/PhonePopup'
 
@@ -20,6 +20,7 @@ const STATUSES = [
   { key: 'rejected', label: 'Отклонён', icon: 'x' },
   { key: 'rejected_by_manager', label: 'Отклонён менеджером', icon: 'x' },
   { key: 'cancelled', label: 'Отклонён', icon: 'x' },
+  { key: 'cancellation_requested', label: 'Ожидает отмены', icon: 'clock' },
 ]
 
 /* On-brand colors: green for active/positive, light gray for neutral, muted red only for rejected */
@@ -33,9 +34,11 @@ const STATUS_COLORS = {
   rejected:               { bg: '#fef2f2', color: '#c0392b' },
   rejected_by_manager:    { bg: '#fef2f2', color: '#c0392b' },
   cancelled:              { bg: '#fef2f2', color: '#c0392b' },
+  cancellation_requested: { bg: '#fff7ed', color: '#d97706' },
 }
 
-const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery'])
+const ACTIVE = new Set(['new', 'awaiting_confirmation', 'confirmed', 'assigned_to_courier', 'in_delivery', 'cancellation_requested'])
+const CANCELLABLE = new Set(['new', 'awaiting_confirmation', 'confirmed'])
 const STEPS = ['awaiting', 'assigned_to_courier', 'in_delivery', 'delivered']
 const STATUS_TO_STEP = {
   new: 0, awaiting_confirmation: 0, confirmed: 0,
@@ -63,6 +66,10 @@ export default function OrderHistory() {
   const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
   const { orders, setOrders, loaded } = useOrdersStore()
+
+  const handleOrderUpdate = (orderId, newStatus) => {
+    setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
+  }
   const { user: authUser } = useAuthStore()
   const navigate = useNavigate()
 
@@ -147,7 +154,7 @@ export default function OrderHistory() {
 
       {active.map(order => (
         <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} isActive navigate={navigate} />
+          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} isActive navigate={navigate} onOrderUpdate={handleOrderUpdate} />
       ))}
 
       {archived.length > 0 && (
@@ -183,7 +190,40 @@ function ProgressSteps({ status }) {
   )
 }
 
-function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedIds, isActive, navigate }) {
+function CancelModal({ onConfirm, onClose }) {
+  const [reason, setReason] = useState('')
+  const REASONS = ['Изменились планы', 'Заказал случайно', 'Нашёл другой вариант', 'Другое']
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ width: '100%', background: '#fff', borderRadius: '20px 20px 0 0', padding: '20px 20px 32px' }}>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>Отмена заказа</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {REASONS.map(r => (
+            <button key={r} onClick={() => setReason(r)}
+              style={{ padding: '12px 14px', borderRadius: 12, border: `2px solid ${reason === r ? C : '#e0e0e4'}`,
+                background: reason === r ? `${C}15` : '#f8f8fa', fontSize: 14, fontWeight: 500,
+                color: '#3c3c43', cursor: 'pointer', textAlign: 'left' }}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <button style={{ width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
+          background: 'linear-gradient(135deg,#e74c3c,#c0392b)', color: '#fff',
+          fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}
+          onClick={() => onConfirm(reason)} disabled={!reason}>
+          Запросить отмену
+        </button>
+        <button style={{ width: '100%', padding: '12px 0', borderRadius: 14, border: 'none',
+          background: '#f2f2f7', color: '#8e8e93', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+          onClick={onClose}>
+          Назад
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedIds, isActive, navigate, onOrderUpdate }) {
   const isOpen = expanded === order.id
   const statusInfo = STATUSES.find(s => s.key === order.status) || { label: order.status }
   const colors = STATUS_COLORS[order.status] || { bg: '#f5f5f5', color: '#888' }
@@ -191,10 +231,28 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   const itemCount = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0
   const isRejected = order.status === 'rejected' || order.status === 'rejected_by_manager' || order.status === 'cancelled'
   const [phoneModal, setPhoneModal] = useState(null)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelDone, setCancelDone] = useState(false)
+  const [queuePos, setQueuePos] = useState(null)
+  const canCancel = CANCELLABLE.has(order.status) && !cancelDone
+
+  useEffect(() => {
+    if (isOpen && isActive && order.status !== 'cancellation_requested') {
+      getQueuePosition(order.id).then(d => setQueuePos(d?.queue_position ?? null)).catch(() => {})
+    }
+  }, [isOpen, isActive, order.id, order.status]) // eslint-disable-line
+
+  const handleCancelConfirm = async (reason) => {
+    await requestCancellation(order.id, reason)
+    setShowCancelModal(false)
+    setCancelDone(true)
+    if (onOrderUpdate) onOrderUpdate(order.id, 'cancellation_requested')
+  }
 
   return (
     <div style={s.card}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
+      {showCancelModal && <CancelModal onConfirm={handleCancelConfirm} onClose={() => setShowCancelModal(false)} />}
       <div style={s.cardHead} onClick={() => setExpanded(e => e === order.id ? null : order.id)}>
         <div style={{ ...s.statusIcon, background: colors.bg, color: colors.color, border: `1.5px solid ${colors.color}30` }}>
           <StatusIcon status={order.status} size={18} />
@@ -222,6 +280,17 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
       {isOpen && (
         <div style={s.details}>
           {isActive && <ProgressSteps status={order.status} />}
+
+          {isActive && queuePos !== null && order.status !== 'in_delivery' && (
+            <div style={s.queueBox}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#7aaa30" strokeWidth="1.8"/>
+                <circle cx="9" cy="7" r="4" stroke="#7aaa30" strokeWidth="1.8"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="#7aaa30" strokeWidth="1.8"/>
+              </svg>
+              <span>{queuePos === 0 ? 'Ваш заказ следующий в очереди!' : `В очереди: ${queuePos} ${queuePos === 1 ? 'заказ' : queuePos < 5 ? 'заказа' : 'заказов'} впереди вас`}</span>
+            </div>
+          )}
 
           {order.address && (
             <div style={s.detailRow}>
@@ -266,6 +335,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                   <span style={s.itemQty}>{i.quantity} x {i.price.toLocaleString()}</span>
                 </div>
               ))}
+              {order.delivery_fee > 0 && (
+                <div style={{ ...s.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
+                  <span style={s.itemName}>Доставка</span>
+                  <span style={s.itemQty}>{order.delivery_fee.toLocaleString()} сум</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -318,6 +393,17 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
               </span>
             )}
           </div>
+
+          {canCancel && (
+            <button style={s.cancelBtn} onClick={() => setShowCancelModal(true)}>
+              Отменить заказ
+            </button>
+          )}
+          {(order.status === 'cancellation_requested' || cancelDone) && (
+            <div style={{ textAlign: 'center', fontSize: 13, color: '#d97706', fontWeight: 500, paddingTop: 4 }}>
+              ⏳ Запрос на отмену отправлен — ожидайте подтверждения
+            </div>
+          )}
 
           {/* Support button */}
           <button style={s.supportBtn} onClick={() => navigate('/support')}>
@@ -495,5 +581,20 @@ const s = {
     color: '#3c3c43', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', display: 'flex', alignItems: 'center',
     justifyContent: 'center', gap: 6,
+  },
+
+  /* Queue position */
+  queueBox: {
+    background: `${C}10`, borderRadius: 10, padding: '8px 12px',
+    fontSize: 13, color: '#5a9620', fontWeight: 500,
+    display: 'flex', alignItems: 'center', gap: 8,
+  },
+
+  /* Cancel order */
+  cancelBtn: {
+    width: '100%', padding: '11px 0', borderRadius: 12,
+    border: '1.5px solid #e74c3c', background: '#fef2f2',
+    color: '#c0392b', fontSize: 13, fontWeight: 600,
+    cursor: 'pointer',
   },
 }

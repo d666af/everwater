@@ -4,7 +4,8 @@ from sqlalchemy import select, func, and_
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.database import get_db
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderStatus, OrderItem
+from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
@@ -76,6 +77,83 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "cancelled": cancelled,
         "repeat_customers": repeat_customers,
         "by_status": status_map,
+    }
+
+
+@router.get("/stats/extended")
+async def get_stats_extended(period: str = "month", db: AsyncSession = Depends(get_db)):
+    now = datetime.utcnow()
+    if period == "day":
+        since = now - timedelta(days=1)
+        prev_since = now - timedelta(days=2)
+    elif period == "week":
+        since = now - timedelta(weeks=1)
+        prev_since = now - timedelta(weeks=2)
+    else:
+        since = now - timedelta(days=30)
+        prev_since = now - timedelta(days=60)
+
+    # Delivered orders this period
+    orders_q = await db.execute(
+        select(Order).where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
+    )
+    orders = orders_q.scalars().all()
+
+    # Profit: sum of (price - cost_price) * quantity for delivered orders with known cost
+    order_ids = [o.id for o in orders]
+    profit = 0.0
+    if order_ids:
+        items_q = await db.execute(
+            select(OrderItem, Product)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id.in_(order_ids))
+        )
+        for item, product in items_q.all():
+            if product.cost_price is not None:
+                profit += (item.price - product.cost_price) * item.quantity
+
+    # LTV: average revenue per user over all time
+    ltv_q = await db.execute(
+        select(Order.user_id, func.sum(Order.total).label("user_total"))
+        .where(Order.status == OrderStatus.DELIVERED)
+        .group_by(Order.user_id)
+    )
+    user_totals = [row.user_total for row in ltv_q.all()]
+    ltv = sum(user_totals) / len(user_totals) if user_totals else 0.0
+
+    # Bonus load: total outstanding bonus points
+    bonus_load_q = await db.execute(
+        select(func.sum(User.bonus_points)).where(User.bonus_points > 0)
+    )
+    bonus_load = bonus_load_q.scalar() or 0.0
+
+    # Base growth: new users this period vs prev period
+    new_this_q = await db.execute(
+        select(func.count(User.id)).where(User.created_at >= since)
+    )
+    new_this = new_this_q.scalar() or 0
+
+    new_prev_q = await db.execute(
+        select(func.count(User.id)).where(
+            and_(User.created_at >= prev_since, User.created_at < since)
+        )
+    )
+    new_prev = new_prev_q.scalar() or 0
+    growth_pct = ((new_this - new_prev) / new_prev * 100) if new_prev > 0 else None
+
+    # Total users
+    total_users_q = await db.execute(select(func.count(User.id)))
+    total_users = total_users_q.scalar() or 0
+
+    return {
+        "period": period,
+        "profit": round(profit, 2),
+        "ltv": round(ltv, 2),
+        "bonus_load": round(bonus_load, 2),
+        "new_users": new_this,
+        "prev_new_users": new_prev,
+        "growth_pct": round(growth_pct, 1) if growth_pct is not None else None,
+        "total_users": total_users,
     }
 
 
@@ -369,6 +447,10 @@ def _calc_next_delivery(plan: str, day: str | None, from_dt: datetime | None = N
     base = (from_dt or datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
     if plan == "monthly":
         return base + timedelta(days=30)
+    if plan == "biweekly":
+        return base + timedelta(days=14)
+    if plan == "ten_days":
+        return base + timedelta(days=10)
     if plan == "weekly" and day:
         target_dow = _WEEKDAY_MAP.get(day, 0)
         days_ahead = (target_dow - base.weekday()) % 7 or 7

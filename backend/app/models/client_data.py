@@ -35,7 +35,10 @@ class Subscription(Base):
     payment_confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="active")  # active | expired | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active | paused | expired | cancelled
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    bonus_used: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_delivery_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

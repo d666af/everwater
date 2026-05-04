@@ -1,4 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+
+
+from datetime import datetime
 
 
 class ProductCreate(BaseModel):
@@ -12,6 +15,9 @@ class ProductCreate(BaseModel):
     sort_order: int = 0
     has_bottle_deposit: bool = False
     deposit_price: int | None = None
+    cost_price: float | None = None
+    discount_percent: int | None = None
+    discount_until: datetime | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -26,6 +32,9 @@ class ProductUpdate(BaseModel):
     sort_order: int | None = None
     has_bottle_deposit: bool | None = None
     deposit_price: int | None = None
+    cost_price: float | None = None
+    discount_percent: int | None = None
+    discount_until: datetime | None = None
 
 
 class ProductOut(BaseModel):
@@ -41,5 +50,21 @@ class ProductOut(BaseModel):
     sort_order: int
     has_bottle_deposit: bool
     deposit_price: int | None = None
+    cost_price: float | None = None
+    discount_percent: int | None = None
+    discount_until: datetime | None = None
+
+    @computed_field
+    @property
+    def effective_price(self) -> float:
+        """Current selling price, taking active discount into account."""
+        now = datetime.utcnow()
+        if (
+            self.discount_percent
+            and self.discount_percent > 0
+            and (self.discount_until is None or self.discount_until > now)
+        ):
+            return round(self.price * (1 - self.discount_percent / 100), 2)
+        return self.price
 
     model_config = {"from_attributes": True}

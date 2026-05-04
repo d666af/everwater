@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats } from '../../api'
+import { getAdminStats, getAdminStatsExtended } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -290,18 +290,18 @@ function RevenueContext({ stats, period }) {
   )
 }
 
-export default function ManagerStats({ Layout = ManagerLayout, title = 'Статистика' }) {
+export default function ManagerStats({ Layout = ManagerLayout, title = 'Статистика', showExtended = false }) {
   const [period, setPeriod] = useState('day')
   const [stats, setStats] = useState(null)
+  const [extStats, setExtStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    getAdminStats(period)
-      .then(setStats)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [period])
+    const calls = [getAdminStats(period).then(setStats).catch(console.error)]
+    if (showExtended) calls.push(getAdminStatsExtended(period).then(setExtStats).catch(console.error))
+    Promise.all(calls).finally(() => setLoading(false))
+  }, [period, showExtended])
 
   const byStatusTotal =
     stats?.by_status
@@ -430,6 +430,37 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
 
           {/* Revenue trend context card */}
           <RevenueContext stats={stats} period={period} />
+
+          {/* Extended analytics (admin-only) */}
+          {showExtended && extStats && (
+            <div style={{ background: '#fff', borderRadius: 18, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 16 }}>Расширенная аналитика</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Прибыль</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#2B8A3E' }}>{extStats.profit?.toLocaleString()} сум</div>
+                </div>
+                <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>LTV клиента</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2' }}>{Math.round(extStats.ltv || 0).toLocaleString()} сум</div>
+                </div>
+                <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Бонусов у клиентов</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#E67700' }}>{Math.round(extStats.bonus_load || 0).toLocaleString()} сум</div>
+                </div>
+                <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Новых клиентов</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C }}>{extStats.new_users ?? 0}</div>
+                  {extStats.growth_pct != null && (
+                    <div style={{ fontSize: 12, color: extStats.growth_pct >= 0 ? '#2B8A3E' : '#E03131', fontWeight: 600, marginTop: 2 }}>
+                      {extStats.growth_pct >= 0 ? '+' : ''}{extStats.growth_pct}% vs пред. период
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12, color: TEXT2 }}>Всего клиентов в базе: {extStats.total_users}</div>
+            </div>
+          )}
         </>
       )}
     </Layout>

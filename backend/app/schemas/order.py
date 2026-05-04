@@ -23,6 +23,7 @@ class OrderCreate(BaseModel):
     balance_used: float = 0.0
     payment_method: str = "cash"
     bottle_discount: float | None = None
+    delivery_fee: float = 0.0
 
 
 class OrderItemOut(BaseModel):
@@ -57,6 +58,9 @@ class OrderOut(BaseModel):
     cash_collected: bool
     rejection_reason: str | None
     payment_confirmed: bool
+    delivery_fee: float = 0.0
+    cancellation_reason: str | None = None
+    cancellation_penalty: float = 0.0
     created_at: datetime
     items: list[OrderItemOut] = []
     # Denormalized convenience fields
@@ -66,6 +70,7 @@ class OrderOut(BaseModel):
     courier_phone: str | None = None
     manager_phone: str | None = None
     review_id: int | None = None
+    queue_position: int | None = None
 
     model_config = {"from_attributes": True}
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserByTelegram, getSettings, createSubscription, getProducts } from '../api'
+import { getUserByTelegram, getSettings, createSubscription, getProducts, pauseSubscription, resumeSubscription } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
 import MapPicker from '../components/MapPicker'
@@ -11,6 +11,8 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const SUB_PLANS = [
   { key: 'weekly', label: 'Еженедельная', desc: 'Доставка каждую неделю', days: 7 },
+  { key: 'biweekly', label: 'Каждые 2 недели', desc: 'Доставка раз в 2 недели', days: 14 },
+  { key: 'ten_days', label: 'Каждые 10 дней', desc: 'Доставка раз в 10 дней', days: 10 },
   { key: 'monthly', label: 'Ежемесячная', desc: 'Доставка раз в месяц', days: 30 },
 ]
 const SUB_WATERS = [
@@ -26,13 +28,32 @@ const SUB_WATERS = [
 ]
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
+const PLAN_LABELS = {
+  weekly: 'Еженедельная', biweekly: 'Каждые 2 недели',
+  ten_days: 'Каждые 10 дней', monthly: 'Ежемесячная',
+}
+
 // ─── Active Subscription Detail ──────────────────────────────────────────────
-export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
+export function SubscriptionDetail({ sub, onClose, onExtend, onCancel, onPause, onResume }) {
   const [confirming, setConfirming] = useState(false)
+  const [localStatus, setLocalStatus] = useState(sub.status || 'active')
+  const days = { weekly: 7, biweekly: 14, ten_days: 10, monthly: 30 }[sub.plan] || 30
   const endDate = new Date(sub.created)
-  endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
+  endDate.setDate(endDate.getDate() + days)
   const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
   const isExpiring = daysLeft <= 3
+  const isPaused = localStatus === 'paused'
+
+  const handlePause = async () => {
+    await pauseSubscription(sub.user_id, sub.id)
+    setLocalStatus('paused')
+    if (onPause) onPause(sub.id)
+  }
+  const handleResume = async () => {
+    await resumeSubscription(sub.user_id, sub.id)
+    setLocalStatus('active')
+    if (onResume) onResume(sub.id)
+  }
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -43,12 +64,12 @@ export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
         <div style={{ background: isExpiring ? '#FFF5F5' : '#f8f8fa', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: '#1a1a1a' }}>
-              {sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}
+              {PLAN_LABELS[sub.plan] || sub.plan}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
-              background: sub.status === 'active' ? '#EBFBEE' : '#FFF5F5',
-              color: sub.status === 'active' ? '#2B8A3E' : '#E03131' }}>
-              {sub.status === 'active' ? 'Активна' : 'Истекла'}
+              background: isPaused ? '#fff7ed' : localStatus === 'active' ? '#EBFBEE' : '#FFF5F5',
+              color: isPaused ? '#d97706' : localStatus === 'active' ? '#2B8A3E' : '#E03131' }}>
+              {isPaused ? 'Пауза' : localStatus === 'active' ? 'Активна' : 'Истекла'}
             </span>
           </div>
           <div style={{ fontSize: 13, color: '#3c3c43' }}>{sub.water} × {sub.qty}</div>
@@ -68,7 +89,7 @@ export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
           </div>
         </div>
 
-        {isExpiring && (
+        {isExpiring && !isPaused && (
           <div style={{ background: '#FFF8E6', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M12 9v4M12 17h.01" stroke="#E67700" strokeWidth="2" strokeLinecap="round"/>
@@ -81,6 +102,18 @@ export function SubscriptionDetail({ sub, onClose, onExtend, onCancel }) {
         <button style={s.primaryBtn} onClick={() => onExtend(sub)}>
           Продлить подписку
         </button>
+
+        {localStatus === 'active' && (
+          <button style={{ ...s.ghostBtn, color: '#d97706' }} onClick={handlePause}>
+            ⏸ Приостановить подписку
+          </button>
+        )}
+        {isPaused && (
+          <button style={{ ...s.primaryBtn, background: 'linear-gradient(135deg, #f59e0b, #d97706)' }} onClick={handleResume}>
+            ▶ Возобновить подписку
+          </button>
+        )}
+
         {!confirming ? (
           <button style={{ ...s.ghostBtn, color: '#ef4444' }} onClick={() => setConfirming(true)}>
             Прекратить подписку
@@ -672,20 +705,23 @@ export default function Profile() {
         <div style={s.profilePhone}>{user.phone}</div>
       </div>
 
-      {/* Bonus card */}
-      {bonusPoints > 0 && (
-        <div style={s.bonusCard}>
-          <div style={s.bonusIcon}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#F59E0B"/>
-            </svg>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={s.bonusTitle}>{bonusPoints.toLocaleString()} бонусов</div>
-            <div style={s.bonusDesc}>Используйте при оформлении заказа</div>
-          </div>
+      {/* Bonus card — always visible */}
+      <div style={s.bonusCard}>
+        <div style={s.bonusIcon}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#F59E0B"/>
+          </svg>
         </div>
-      )}
+        <div style={{ flex: 1 }}>
+          <div style={s.bonusTitle}>{bonusPoints > 0 ? `${bonusPoints.toLocaleString()} бонусов` : 'Нет бонусов'}</div>
+          <div style={s.bonusDesc}>{bonusPoints > 0 ? 'Используйте при оформлении заказа' : 'Бонусы начисляются за каждый заказ'}</div>
+        </div>
+        {bonusPoints > 0 && (
+          <div style={{ fontSize: 13, color: '#F59E0B', fontWeight: 700 }}>
+            {bonusPoints.toLocaleString()}
+          </div>
+        )}
+      </div>
 
       {/* Menu */}
       <div style={s.menuCard}>
