@@ -259,6 +259,62 @@ export const courierAccept = (orderId) =>
     () => ({ ok: true })
   )
 
+export const requestCancellation = (orderId, reason = '') =>
+  safeCall(
+    () => http.post(`/orders/${orderId}/request_cancellation`, { reason }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getQueuePosition = (orderId) =>
+  safeCall(
+    () => http.get(`/orders/${orderId}/queue_position`).then(r => r.data),
+    () => ({ order_id: orderId, queue_position: 0 })
+  )
+
+export const pauseSubscription = (userId, subId) =>
+  safeCall(
+    () => http.post(`/client/${userId}/subscriptions/${subId}/pause`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const resumeSubscription = (userId, subId) =>
+  safeCall(
+    () => http.post(`/client/${userId}/subscriptions/${subId}/resume`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const uploadReviewPhoto = (reviewId, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return http.post(`/orders/reviews/${reviewId}/upload_photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+export const getReviews = (approvedOnly = false) =>
+  safeCall(
+    () => http.get('/orders/reviews/', { params: { approved_only: approvedOnly } }).then(r => r.data),
+    () => []
+  )
+
+export const approveReview = (reviewId) =>
+  safeCall(
+    () => http.patch(`/orders/reviews/${reviewId}/approve`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const hideReview = (reviewId) =>
+  safeCall(
+    () => http.patch(`/orders/reviews/${reviewId}/hide`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getAdminStatsExtended = (period = 'month') =>
+  safeCall(
+    () => http.get('/admin/stats/extended', { params: { period } }).then(r => r.data),
+    () => ({ period, profit: 0, ltv: 0, bonus_load: 0, new_users: 0, prev_new_users: 0, growth_pct: null, total_users: 0 })
+  )
+
 // ─── Reviews ─────────────────────────────────────────────────────────────────
 let mockReviews = []
 

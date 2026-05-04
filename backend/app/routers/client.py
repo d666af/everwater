@@ -167,6 +167,34 @@ async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_d
     return {"ok": True}
 
 
+@router.post("/{user_id}/subscriptions/{sub_id}/pause")
+async def pause_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.status != "active":
+        raise HTTPException(status_code=409, detail="Subscription is not active")
+    sub.status = "paused"
+    sub.paused_at = datetime.utcnow()
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/{user_id}/subscriptions/{sub_id}/resume")
+async def resume_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.status != "paused":
+        raise HTTPException(status_code=409, detail="Subscription is not paused")
+    sub.status = "active"
+    sub.paused_at = None
+    await db.commit()
+    return {"ok": True}
+
+
 # ─── Bottle debts (20L bottles owed) ─────────────────────────────────────────
 class BottleDeltaBody(BaseModel):
     delta: int  # positive = more bottles owed, negative = returned

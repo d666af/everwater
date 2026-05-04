@@ -22,6 +22,13 @@ DEFAULTS: dict[str, Any] = {
     "delivery_price": 0,
     "min_order": 25000,
     "working_hours": "08:00–22:00",
+    # Bonus system
+    "bonus_per_bottle": 100,           # сум за каждую доставленную 19л бутылку
+    "bonus_expiry_days": 60,           # срок жизни бонусов в днях (0 = бессрочно)
+    # Cancellation
+    "cancellation_penalty_pct": 10,    # % от суммы заказа списывается из бонусов при поздней отмене
+    # Late order warning
+    "late_order_hour": 18,             # после этого часа — предупреждение о переносе доставки
 }
 
 

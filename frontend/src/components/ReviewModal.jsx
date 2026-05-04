@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { createReview } from '../api'
+import { useState, useRef } from 'react'
+import { createReview, uploadReviewPhoto } from '../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -12,14 +12,27 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
 
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const fileRef = useRef(null)
+
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
 
   const submit = async () => {
     if (!rating) { setError('Поставьте оценку'); return }
     setLoading(true); setError('')
     try {
-      await createReview({ order_id: id, courier_id: courierId, rating, comment: comment || null })
+      const result = await createReview({ order_id: id, courier_id: courierId, rating, comment: comment || null })
+      if (photoFile && result?.id) {
+        try { await uploadReviewPhoto(result.id, photoFile) } catch {}
+      }
       onDone()
     } catch {
       setError('Не удалось отправить отзыв')
@@ -71,6 +84,32 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
           onChange={e => setComment(e.target.value)}
           rows={3}
         />
+
+        {/* Photo upload */}
+        <div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
+          {photoPreview ? (
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <img src={photoPreview} alt="preview" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 12, border: `2px solid ${C}` }} />
+              <button onClick={() => { setPhotoFile(null); setPhotoPreview(null) }}
+                style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: 'none',
+                  background: '#ef4444', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                ×
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => fileRef.current?.click()}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 12,
+                border: `1.5px dashed ${C}`, background: `${C}08`, color: '#5a9620', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+                <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+                <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              Прикрепить фото
+            </button>
+          )}
+        </div>
 
         {error && <div style={s.error}>{error}</div>}
 

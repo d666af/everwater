@@ -14,7 +14,8 @@ def main_menu_kb(show_role_switch: bool = False) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="🛒 Заказать")],
         [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="💬 Поддержка")],
+        [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="🎁 Бонусы")],
+        [KeyboardButton(text="💬 Поддержка")],
     ]
     if show_role_switch:
         keyboard.append([KeyboardButton(text="🔄 Роль")])
@@ -74,6 +75,7 @@ def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
         "rejected": "❌",
         "cancelled": "🚫",
         "rejected_by_manager": "❌",
+        "cancellation_requested": "⏳",
     }
     buttons = []
     for o in orders[:10]:

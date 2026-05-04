@@ -4,6 +4,11 @@ import { useUserStore } from '../store/user'
 import { useAuthStore } from '../store/auth'
 import { SubscriptionModal, SubscriptionDetail } from './Profile'
 
+const PLAN_LABELS = {
+  weekly: 'Еженедельная', biweekly: 'Каждые 2 недели',
+  ten_days: 'Каждые 10 дней', monthly: 'Ежемесячная',
+}
+
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
@@ -71,8 +76,9 @@ export default function Subscription() {
       ) : (
         <div style={s.list}>
           {subs.map(sub => {
+            const days = { weekly: 7, biweekly: 14, ten_days: 10, monthly: 30 }[sub.plan] || 30
             const endDate = new Date(sub.created)
-            endDate.setDate(endDate.getDate() + (sub.plan === 'weekly' ? 7 : 30))
+            endDate.setDate(endDate.getDate() + days)
             const daysLeft = Math.max(0, Math.ceil((endDate - Date.now()) / 86400000))
             const isExpiring = daysLeft <= 3
             return (
@@ -84,7 +90,7 @@ export default function Subscription() {
                   </svg>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={s.subTitle}>{sub.plan === 'weekly' ? 'Еженедельная' : 'Ежемесячная'}</div>
+                  <div style={s.subTitle}>{PLAN_LABELS[sub.plan] || sub.plan}</div>
                   <div style={s.subDesc}>
                     {sub.water}
                     {isExpiring ? ` · ${daysLeft} дн.` : ` · до ${endDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}

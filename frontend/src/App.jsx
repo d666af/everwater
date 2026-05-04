@@ -34,6 +34,7 @@ import AdminWarehouse from './pages/admin/AdminWarehouse'
 import AdminWarehouseCouriers from './pages/admin/AdminWarehouseCouriers'
 import AdminWarehouseHistory from './pages/admin/AdminWarehouseHistory'
 import AdminSubscriptions from './pages/admin/AdminSubscriptions'
+import AdminReviews from './pages/admin/AdminReviews'
 
 // Manager
 import ManagerOrders from './pages/manager/ManagerOrders'
@@ -167,6 +168,11 @@ export default function App() {
         <Route path="/admin/subscriptions" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminSubscriptions />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/reviews" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminReviews />
           </ProtectedRoute>
         } />
 

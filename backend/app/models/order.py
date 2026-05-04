@@ -16,6 +16,7 @@ class OrderStatus(str, enum.Enum):
     IN_DELIVERY = "in_delivery"
     DELIVERED = "delivered"
     REJECTED = "rejected"
+    CANCELLATION_REQUESTED = "cancellation_requested"
 
 
 class Order(Base):
@@ -52,9 +53,16 @@ class Order(Base):
     payment_method: Mapped[str] = mapped_column(String(32), default="cash")  # cash | card | balance | balance_card
     cash_collected: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Delivery fee
+    delivery_fee: Mapped[float] = mapped_column(Float, default=0.0)
+
     # Admin
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Cancellation
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancellation_penalty: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Telegram status message tracking (for edit-in-place notifications)
     client_status_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -97,6 +105,9 @@ class Review(Base):
     rating: Mapped[int] = mapped_column(Integer)  # 1-5
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped["User | None"] = relationship("User", back_populates="reviews")  # noqa: F821
     order: Mapped["Order"] = relationship("Order", back_populates="review")

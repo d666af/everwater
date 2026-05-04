@@ -27,6 +27,7 @@ STATUS_MAP = {
     "rejected": "❌ Отклонён",
     "cancelled": "🚫 Отменён",
     "rejected_by_manager": "❌ Отклонён менеджером",
+    "cancellation_requested": "⏳ Ожидает отмены",
 }
 
 PAY_MAP = {
@@ -118,7 +119,7 @@ async def show_role_menu(target, role: str):
 
 _ALL_MENU_BUTTONS = frozenset({
     # client
-    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль", "📋 Подписки", "💬 Поддержка",
+    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль", "📋 Подписки", "🎁 Бонусы", "💬 Поддержка",
     # admin
     "📋 Заказы", "⏳ Новые заказы", "📊 Статистика", "🚴 Курьеры", "👥 Клиенты",
     "🏭 Склад", "📦 Товары", "💸 Долги", "📅 Подписки", "🧑‍💼 Менеджеры",
@@ -393,6 +394,20 @@ async def order_detail(call: CallbackQuery):
     if order.get("manager_comment"):
         lines += ["", f"💬 Комментарий: {order['manager_comment']}"]
 
+    # Queue position for active orders
+    ACTIVE = {"new", "awaiting_confirmation", "confirmed", "assigned_to_courier", "in_delivery"}
+    if status in ACTIVE:
+        try:
+            qp = await api.get_queue_position(order_id)
+            pos = qp.get("queue_position") if qp else None
+            if pos is not None:
+                if pos == 0:
+                    lines.append("\n🥇 Ваш заказ следующий в очереди!")
+                else:
+                    lines.append(f"\n📋 В очереди: {pos} заказов впереди вас")
+        except Exception:
+            pass
+
     # Courier phone in text (tel: not allowed in inline buttons)
     if status in ("assigned_to_courier", "in_delivery") and order.get("courier_phone"):
         lines.append(f"🚴 Курьер: {order['courier_phone']}")
@@ -402,8 +417,10 @@ async def order_detail(call: CallbackQuery):
     if status == "delivered" and not order.get("review_id"):
         buttons.append([InlineKeyboardButton(text="⭐ Оценить доставку", callback_data=f"review:{order_id}:0")])
     buttons.append([InlineKeyboardButton(text="🔄 Повторить заказ", callback_data=f"reorder:{order_id}")])
-    if status in ("new", "awaiting_confirmation"):
-        buttons.append([InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_order:{order_id}")])
+    if status in ("new", "awaiting_confirmation", "confirmed"):
+        buttons.append([InlineKeyboardButton(text="❌ Запросить отмену", callback_data=f"req_cancel:{order_id}")])
+    elif status == "cancellation_requested":
+        buttons.append([InlineKeyboardButton(text="⏳ Отмена на рассмотрении", callback_data="noop")])
     buttons.append([InlineKeyboardButton(text="💬 Связаться с поддержкой", url=_site("/support"))])
     buttons.append([InlineKeyboardButton(text="← Назад к заказам", callback_data="my_orders")])
 
@@ -437,14 +454,55 @@ async def inline_my_orders(call: CallbackQuery):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("req_cancel:"))
+async def req_cancel_cb(call: CallbackQuery):
+    order_id = int(call.data.split(":")[1])
+    reasons = ["Изменились планы", "Заказал случайно", "Нашёл другой вариант", "Другое"]
+    buttons = [
+        [InlineKeyboardButton(text=r, callback_data=f"cancel_reason:{order_id}:{i}")]
+        for i, r in enumerate(reasons)
+    ]
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data=f"order_detail:{order_id}")])
+    await call.message.edit_text(
+        "❌ Укажите причину отмены:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_reason:"))
+async def cancel_reason_cb(call: CallbackQuery):
+    parts = call.data.split(":")
+    order_id = int(parts[1])
+    idx = int(parts[2])
+    reasons = ["Изменились планы", "Заказал случайно", "Нашёл другой вариант", "Другое"]
+    reason = reasons[idx] if idx < len(reasons) else "Другое"
+    result = await api.request_cancellation(order_id, reason)
+    if result and result.get("ok"):
+        await call.message.edit_text(
+            f"⏳ Запрос на отмену заказа #{order_id} отправлен.\n"
+            f"Причина: {reason}\n\n"
+            "Ожидайте подтверждения от оператора."
+        )
+    else:
+        await call.answer("Не удалось отправить запрос. Обратитесь в поддержку.", show_alert=True)
+    await call.answer()
+
+
 @router.callback_query(F.data.startswith("cancel_order:"))
 async def cancel_order_cb(call: CallbackQuery):
+    # Legacy handler — now redirect to req_cancel
     order_id = int(call.data.split(":")[1])
     result = await api.cancel_order(order_id)
     if result:
         await call.message.edit_text("🚫 Заказ отменён.")
     else:
         await call.answer("Не удалось отменить заказ. Обратитесь в поддержку.", show_alert=True)
+    await call.answer()
+
+
+@router.callback_query(F.data == "noop")
+async def noop_cb(call: CallbackQuery):
     await call.answer()
 
 
@@ -499,6 +557,38 @@ async def profile(message: Message, state: FSMContext):
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
+@router.message(F.text == "🎁 Бонусы")
+async def bonuses_menu(message: Message, state: FSMContext):
+    await state.clear()
+    user = await api.get_user(message.from_user.id)
+    if not user:
+        return
+    bonus = int(user.get("bonus_points", 0))
+    expires = user.get("bonus_expires_at")
+
+    text = f"🎁 <b>Бонусная программа</b>\n\n"
+    text += f"💰 Ваш бонусный баланс: <b>{fmt(bonus)} бонусов</b>\n\n"
+
+    if expires:
+        try:
+            from datetime import datetime
+            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            text += f"⏰ Бонусы действуют до: <b>{exp_dt.strftime('%d.%m.%Y')}</b>\n\n"
+        except Exception:
+            pass
+
+    text += (
+        "Как начисляются бонусы:\n"
+        "• За каждую доставленную бутылку 19л\n"
+        "• Используйте бонусы при оформлении заказа\n\n"
+        "Бонусы спишутся автоматически при оплате."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Оформить заказ", url=_site("/"))],
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
 @router.callback_query(F.data == "profile:subs")
 async def profile_subs(call: CallbackQuery, state: FSMContext):
     await call.answer()
@@ -509,14 +599,24 @@ async def profile_subs(call: CallbackQuery, state: FSMContext):
     subs = await api.get_subscriptions(user["id"]) or []
     active = [s for s in subs if s.get("status") == "active"]
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
+    plan_label_full = {
+        "weekly": "Еженедельная", "biweekly": "Каждые 2 недели",
+        "ten_days": "Каждые 10 дней", "monthly": "Ежемесячная",
+    }
     if active:
         lines = ["<b>📋 Активные подписки:</b>\n"]
         for s in active:
-            plan = plan_label.get(s.get("plan", ""), s.get("plan", ""))
-            lines.append(f"• {plan} | {s.get('water_summary', '')} | День: {s.get('day', '—')}")
+            plan = plan_label_full.get(s.get("plan", ""), s.get("plan", ""))
+            status_emoji = "⏸" if s.get("status") == "paused" else "✅"
+            lines.append(f"{status_emoji} {plan} | {s.get('water_summary', '')} | День: {s.get('day', '—')}")
         rows = [[InlineKeyboardButton(text="➕ Новая подписка", callback_data="sub_new")]]
         for s in active:
-            rows.append([InlineKeyboardButton(text=f"❌ Отменить #{s['id']}", callback_data=f"sub_del:{s['id']}")])
+            sub_id = s['id']
+            if s.get("status") == "paused":
+                rows.append([InlineKeyboardButton(text=f"▶ Возобновить #{sub_id}", callback_data=f"sub_resume:{sub_id}")])
+            else:
+                rows.append([InlineKeyboardButton(text=f"⏸ Пауза #{sub_id}", callback_data=f"sub_pause:{sub_id}")])
+            rows.append([InlineKeyboardButton(text=f"❌ Отменить #{sub_id}", callback_data=f"sub_del:{sub_id}")])
         rows.append([InlineKeyboardButton(text="🌐 Подписки на сайте", url=_site("/subscription"))])
         await call.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
                                    parse_mode="HTML")

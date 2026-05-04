@@ -855,8 +855,20 @@ async def co_payment(call: CallbackQuery, state: FSMContext):
 
 
 async def _show_summary(message: Message, state: FSMContext):
+    from datetime import datetime
     data = await state.get_data()
     cart = data.get("cart", {})
+
+    # Late order warning
+    late_warning = ""
+    try:
+        cfg = await api.get_settings()
+        late_hour = int(cfg.get("late_order_hour") or 18)
+        now_h = datetime.utcnow().hour + 5  # UTC+5 approximate
+        if now_h >= late_hour:
+            late_warning = f"\n⚠️ <b>Внимание:</b> Заказы после {late_hour}:00 могут быть доставлены на следующий день.\n"
+    except Exception:
+        pass
     pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
     lines = ["<b>📋 Подтверждение заказа</b>\n", "<b>Товары:</b>"]
     total = 0
@@ -884,7 +896,10 @@ async def _show_summary(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="✅ Подтвердить", callback_data="co_confirm")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="co_cancel")],
     ])
-    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+    text = "\n".join(lines)
+    if late_warning:
+        text = late_warning + text
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(CheckoutState.confirming, F.data == "co_confirm")
@@ -1103,6 +1118,28 @@ async def sub_cancel(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("sub_pause:"))
+async def sub_pause(call: CallbackQuery, state: FSMContext):
+    sub_id = int(call.data.split(":")[1])
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    if user:
+        await api.pause_subscription(user["id"], sub_id)
+    await call.message.edit_text("⏸ Подписка приостановлена.")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("sub_resume:"))
+async def sub_resume(call: CallbackQuery, state: FSMContext):
+    sub_id = int(call.data.split(":")[1])
+    data = await state.get_data()
+    user = data.get("sub_user") or await api.get_user(call.from_user.id)
+    if user:
+        await api.resume_subscription(user["id"], sub_id)
+    await call.message.edit_text("▶ Подписка возобновлена!")
+    await call.answer()
+
+
 @router.callback_query(F.data == "sub_new")
 async def sub_new(call: CallbackQuery, state: FSMContext):
     await state.set_state(SubscriptionState.choosing_plan)
@@ -1110,6 +1147,8 @@ async def sub_new(call: CallbackQuery, state: FSMContext):
         "Выберите план подписки:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📅 Еженедельная", callback_data="sp:weekly")],
+            [InlineKeyboardButton(text="📅 Каждые 2 недели", callback_data="sp:biweekly")],
+            [InlineKeyboardButton(text="📅 Каждые 10 дней", callback_data="sp:ten_days")],
             [InlineKeyboardButton(text="🗓 Ежемесячная", callback_data="sp:monthly")],
         ]),
     )
@@ -1481,7 +1520,7 @@ async def support_quick(call: CallbackQuery):
 
 _MENU_TEXTS = {
     "🛒 Заказать", "📦 Мои заказы", "👤 Профиль",
-    "📋 Подписки", "💬 Поддержка", "🔄 Роль",
+    "📋 Подписки", "🎁 Бонусы", "💬 Поддержка", "🔄 Роль",
 }
 
 

@@ -129,8 +129,9 @@ export default function Checkout() {
   const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
   const bonusMax = Math.min(availableBonus, afterBottle)
 
+  const deliveryFee = Number(settings.delivery_price || 0)
   const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
-  const finalTotal = afterBonus
+  const finalTotal = afterBonus + deliveryFee
 
   // Saved addresses
   const savedAddresses = userStore.saved_addresses
@@ -178,6 +179,7 @@ export default function Checkout() {
         bonus_used: Number(form.bonusUsed),
         balance_used: 0,
         payment_method: form.paymentMethod,
+        delivery_fee: deliveryFee,
         items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.product.price })),
       })
       setCreatedOrder(order)
@@ -470,6 +472,12 @@ export default function Checkout() {
 
       {/* Total + submit */}
       <div style={s.totalSection}>
+        {deliveryFee > 0 && (
+          <div style={{ ...s.totalRow, fontSize: 13, opacity: 0.7, marginBottom: 4 }}>
+            <span style={s.totalLabel}>Доставка</span>
+            <span>{deliveryFee.toLocaleString()} сум</span>
+          </div>
+        )}
         <div style={s.totalRow}>
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>

@@ -8,7 +8,7 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
-const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, deposit_price: null }
+const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, deposit_price: null, cost_price: '', discount_percent: '', discount_until: '' }
 
 function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
   const fileRef = useRef(null)
@@ -109,6 +109,31 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
           </div>
         </div>
       )}
+      {/* Cost price & discount */}
+      <div style={s.formGrid}>
+        <div style={s.field}>
+          <div style={s.label}>Себестоимость (сум)</div>
+          <input style={s.input} type="number" min="0" placeholder="напр. 20000"
+            value={form.cost_price || ''}
+            onChange={e => setForm(p => ({ ...p, cost_price: e.target.value ? Number(e.target.value) : null }))} />
+        </div>
+        <div style={s.field}>
+          <div style={s.label}>Скидка (%)</div>
+          <input style={s.input} type="number" min="0" max="100" placeholder="напр. 10"
+            value={form.discount_percent || ''}
+            onChange={e => setForm(p => ({ ...p, discount_percent: e.target.value ? Number(e.target.value) : null }))} />
+        </div>
+      </div>
+      {form.discount_percent > 0 && (
+        <div style={s.field}>
+          <div style={s.label}>Скидка действует до</div>
+          <input style={s.input} type="date"
+            value={form.discount_until ? form.discount_until.split('T')[0] : ''}
+            onChange={e => setForm(p => ({ ...p, discount_until: e.target.value ? e.target.value + 'T23:59:59' : null }))} />
+          <div style={{ fontSize: 11, color: '#8e8e93', marginTop: 4 }}>Оставьте пустым — скидка бессрочная</div>
+        </div>
+      )}
+
       {error && <div style={s.error}>{error}</div>}
       <div style={s.formActions}>
         <button style={s.cancelBtn} onClick={onCancel}>Отмена</button>
@@ -138,7 +163,7 @@ export default function AdminProducts() {
 
   const openNew = () => { setForm(EMPTY); setEditing('new'); setError('') }
   const openEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, deposit_price: p.deposit_price || null })
+    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, deposit_price: p.deposit_price || null, cost_price: p.cost_price || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
     setEditing(p); setError('')
   }
 

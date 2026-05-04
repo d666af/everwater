@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,10 +182,11 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
     bottle_discount = data.bottle_discount if data.bottle_discount is not None else \
         calc_bottle_discount(data.return_bottles_count, subtotal, cfg)
 
+    delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0)
     bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0), subtotal)
     balance_used = min(float(data.balance_used or 0), float(user.balance or 0),
                        max(0.0, subtotal - bottle_discount - bonus_used))
-    total = max(0.0, subtotal - bottle_discount - bonus_used - balance_used)
+    total = max(0.0, subtotal - bottle_discount - bonus_used - balance_used + delivery_fee)
 
     order = Order(
         user_id=data.user_id,
@@ -196,6 +200,7 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
         return_bottles_volume=data.return_bottles_volume,
         bottle_discount=bottle_discount,
         subtotal=subtotal,
+        delivery_fee=delivery_fee,
         total=total,
         bonus_used=bonus_used,
         balance_used=balance_used,
@@ -525,9 +530,23 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
         user = result.scalar_one_or_none()
         if user:
             cfg = await get_all_settings(db)
-            cashback_pct = float(cfg.get("cashback_percent") or 5)
-            bonus = order.total * cashback_pct / 100.0
+            # Per-bottle bonus (ТЗ: N сум за каждую 19л бутылку)
+            bonus_per_bottle = float(cfg.get("bonus_per_bottle") or 0)
+            bottles_in_order = sum(
+                i.quantity for i in order.items if i.product and i.product.has_bottle_deposit
+            )
+            if bonus_per_bottle > 0 and bottles_in_order > 0:
+                bonus = bonus_per_bottle * bottles_in_order
+            else:
+                # Fallback: cashback % от суммы заказа
+                cashback_pct = float(cfg.get("cashback_percent") or 5)
+                bonus = order.total * cashback_pct / 100.0
             user.bonus_points += bonus
+            # Reset bonus expiry on award
+            expiry_days = int(cfg.get("bonus_expiry_days") or 0)
+            if expiry_days > 0:
+                from datetime import timedelta
+                user.bonus_expires_at = datetime.utcnow() + timedelta(days=expiry_days)
 
         # Track 19L bottle debt for customer
         bottles_delivered = sum(
@@ -629,6 +648,187 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "id": review.id}
 
 
+_REVIEW_UPLOAD_DIR = Path("static/reviews")
+_ALLOWED_IMG = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+@router.post("/reviews/{review_id}/upload_photo")
+async def upload_review_photo(review_id: int, file: UploadFile = File(...),
+                               db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    _REVIEW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+    if suffix not in _ALLOWED_IMG:
+        suffix = ".jpg"
+    filename = f"{uuid.uuid4().hex}{suffix}"
+    content = await file.read()
+    (_REVIEW_UPLOAD_DIR / filename).write_bytes(content)
+
+    review.photo_url = f"/static/reviews/{filename}"
+    await db.commit()
+    return {"ok": True, "photo_url": review.photo_url}
+
+
+@router.get("/reviews/")
+async def list_reviews(approved_only: bool = False, db: AsyncSession = Depends(get_db)):
+    q = select(Review)
+    if approved_only:
+        q = q.where(Review.is_approved == True)
+    q = q.order_by(Review.id.desc())
+    result = await db.execute(q)
+    reviews = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "order_id": r.order_id,
+            "user_id": r.user_id,
+            "courier_id": r.courier_id,
+            "rating": r.rating,
+            "comment": r.comment,
+            "photo_url": r.photo_url,
+            "is_approved": r.is_approved,
+        }
+        for r in reviews
+    ]
+
+
+@router.patch("/reviews/{review_id}/approve")
+async def approve_review(review_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.is_approved = True
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/reviews/{review_id}/hide")
+async def hide_review(review_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.is_approved = False
+    await db.commit()
+    return {"ok": True}
+
+
+class CancelRequestBody(BaseModel):
+    reason: str = ""
+
+
+@router.post("/{order_id}/request_cancellation")
+async def request_cancellation(order_id: int, body: CancelRequestBody = CancelRequestBody(),
+                                db: AsyncSession = Depends(get_db)):
+    """Client requests order cancellation. Sets status to CANCELLATION_REQUESTED."""
+    order = await _get_order(order_id, db)
+    if order.status in (OrderStatus.DELIVERED, OrderStatus.REJECTED):
+        raise HTTPException(status_code=409, detail="Order already finalized")
+    if order.status == OrderStatus.CANCELLATION_REQUESTED:
+        return {"ok": True}
+
+    order.cancellation_reason = body.reason
+    order.status = OrderStatus.CANCELLATION_REQUESTED
+
+    client_tg = order.user.telegram_id if order.user else None
+    items = _order_items_text(order.items)
+    oid = order.id
+
+    await db.commit()
+
+    reason_part = f"\nПричина: {body.reason}" if body.reason else ""
+    await _notify_admins(db, f"⚠️ Клиент запросил отмену заказа #{oid}\n{items}{reason_part}")
+
+    if client_tg:
+        await _tg(client_tg,
+                  f"⏳ Запрос на отмену заказа #{oid} отправлен.\n"
+                  "Ожидайте подтверждения от оператора.")
+    return {"ok": True}
+
+
+@router.post("/{order_id}/confirm_cancellation")
+async def confirm_cancellation(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Admin confirms the client's cancellation request. Applies penalty if courier was assigned."""
+    order = await _get_order(order_id, db)
+    if order.status != OrderStatus.CANCELLATION_REQUESTED:
+        raise HTTPException(status_code=409, detail="No pending cancellation request")
+
+    client_tg = order.user.telegram_id if order.user else None
+    items = _order_items_text(order.items)
+    oid = order.id
+    penalty = 0.0
+
+    # Penalty: if courier was already assigned, deduct % of order total from bonuses
+    courier_was_assigned = order.courier_id is not None
+    if courier_was_assigned:
+        result = await db.execute(select(User).where(User.id == order.user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            cfg = await get_all_settings(db)
+            penalty_pct = float(cfg.get("cancellation_penalty_pct") or 10)
+            penalty = round(order.total * penalty_pct / 100.0, 2)
+            penalty = min(penalty, float(user.bonus_points or 0))
+            user.bonus_points = max(0.0, user.bonus_points - penalty)
+            order.cancellation_penalty = penalty
+
+    order.status = OrderStatus.REJECTED
+    await db.commit()
+
+    bonus_line = f"\n⚠️ Штраф: {int(penalty):,} бонусов списано" if penalty > 0 else ""
+    if client_tg:
+        await _tg(client_tg, f"✅ Отмена заказа #{oid} подтверждена.{bonus_line}\n{items}")
+    return {"ok": True, "penalty": penalty}
+
+
+@router.post("/{order_id}/reject_cancellation")
+async def reject_cancellation(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Admin rejects the cancellation request — order returns to previous active status."""
+    order = await _get_order(order_id, db)
+    if order.status != OrderStatus.CANCELLATION_REQUESTED:
+        raise HTTPException(status_code=409, detail="No pending cancellation request")
+
+    # Restore to last sensible active status
+    order.status = (
+        OrderStatus.ASSIGNED_TO_COURIER if order.courier_id else OrderStatus.CONFIRMED
+    )
+    client_tg = order.user.telegram_id if order.user else None
+    oid = order.id
+    await db.commit()
+
+    if client_tg:
+        await _tg(client_tg,
+                  f"❌ Запрос на отмену заказа #{oid} отклонён.\n"
+                  "Заказ продолжает выполняться. Свяжитесь с оператором при вопросах.")
+    return {"ok": True}
+
+
+@router.get("/{order_id}/queue_position")
+async def get_queue_position(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Return how many active orders are ahead of this order (by creation time)."""
+    order_q = await db.execute(select(Order).where(Order.id == order_id))
+    order = order_q.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    active_statuses = [
+        OrderStatus.AWAITING_CONFIRMATION, OrderStatus.CONFIRMED,
+        OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY,
+    ]
+    count_q = await db.execute(
+        select(Order.id).where(
+            Order.status.in_(active_statuses),
+            Order.created_at < order.created_at,
+            Order.id != order_id,
+        )
+    )
+    position = len(count_q.all())
+    return {"order_id": order_id, "queue_position": position}
+
+
 async def _get_order(order_id: int, db: AsyncSession) -> Order:
     result = await db.execute(
         select(Order)
@@ -675,6 +875,9 @@ def _order_to_out(order: Order) -> OrderOut:
         cash_collected=order.cash_collected,
         rejection_reason=order.rejection_reason,
         payment_confirmed=order.payment_confirmed,
+        delivery_fee=order.delivery_fee or 0.0,
+        cancellation_reason=order.cancellation_reason,
+        cancellation_penalty=order.cancellation_penalty or 0.0,
         created_at=order.created_at,
         items=items,
         client_name=order.user.name if order.user else None,

@@ -17,6 +17,7 @@ class User(Base):
     # Balance & bonuses
     balance: Mapped[float] = mapped_column(Float, default=0.0)
     bonus_points: Mapped[float] = mapped_column(Float, default=0.0)
+    bonus_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Registration reminders
     reminder_count: Mapped[int] = mapped_column(default=0)
