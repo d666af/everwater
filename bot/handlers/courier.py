@@ -285,7 +285,7 @@ async def courier_water(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    water = await api.get_courier_water(courier["id"])
+    water = await api.get_courier_water(message.from_user.id)
     products = await api.get_products()
     prod_map = {p["id"]: p["name"] for p in products}
     if not water:
@@ -305,24 +305,33 @@ async def courier_debts(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    result = await api.get_courier_cash_debts(courier["id"])
+    result = await api.get_courier_cash_debts(message.from_user.id)
     total = result.get("total_pending", 0)
     debts = result.get("debts", [])
     if not debts:
         await message.answer("💸 Долгов нет.")
         return
-    lines = [f"💸 <b>Долги по наличным</b>\nОжидает погашения: {fmt(total)}\n"]
-    for d in debts[:10]:
-        status_map = {"pending": "⏳", "requested": "📤", "approved": "✅", "rejected": "❌"}
-        icon = status_map.get(d["status"], "•")
-        lines.append(f"{icon} {fmt(d['amount'])} [{d['status']}]")
+
+    status_map = {"pending": "⏳ Ожидает", "requested": "📤 Запрошено", "approved": "✅ Погашен", "rejected": "❌ Отклонён"}
+    lines = [f"💸 <b>Долги по наличным</b>\n<b>Ожидает погашения: {fmt(total)}</b>\n"]
+    for d in debts[:15]:
+        icon_label = status_map.get(d["status"], d["status"])
+        lines.append(f"• {fmt(d['amount'])} — {icon_label}")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
+    # Single "request all pending" button instead of per-debt buttons
     pending = [d for d in debts if d["status"] == "pending"]
-    for d in pending[:3]:
+    if pending:
+        total_pending_amt = sum(d["amount"] for d in pending)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=f"📤 Запросить погашение всех долгов ({fmt(total_pending_amt)})",
+                callback_data=f"courier:debt_request_all:{','.join(str(d['id']) for d in pending)}",
+            )
+        ]])
         await message.answer(
-            f"Долг на {fmt(d['amount'])} — запросить погашение?",
-            reply_markup=courier_debt_kb(d["id"]),
+            f"У вас {len(pending)} неоплаченных долгов на {fmt(total_pending_amt)}.\nЗапросить погашение всех сразу?",
+            reply_markup=kb,
         )
 
 
@@ -330,14 +339,42 @@ async def courier_debts(message: Message):
 async def courier_debt_request(call: CallbackQuery):
     debt_id = int(call.data.split(":")[2])
     await api.request_cash_clearance(debt_id)
-    await call.message.edit_text(f"📤 Запрос на погашение долга отправлен администратору.")
+    await call.message.edit_text("📤 Запрос на погашение долга отправлен администратору.")
+    courier = await _get_courier(call.from_user.id)
+    name = courier["name"] if courier else str(call.from_user.id)
     for admin_id in settings.ADMIN_IDS:
         try:
-            courier = await _get_courier(call.from_user.id)
-            name = courier["name"] if courier else str(call.from_user.id)
             await call.bot.send_message(
                 admin_id,
                 f"💸 Курьер {name} запрашивает погашение долга #{debt_id}.\n"
+                "Проверьте раздел «Долги курьеров» в /admin",
+            )
+        except Exception:
+            pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:debt_request_all:"))
+async def courier_debt_request_all(call: CallbackQuery):
+    debt_ids_str = call.data.split(":")[2]
+    debt_ids = [int(x) for x in debt_ids_str.split(",") if x]
+    success = 0
+    for debt_id in debt_ids:
+        try:
+            await api.request_cash_clearance(debt_id)
+            success += 1
+        except Exception:
+            pass
+    await call.message.edit_text(
+        f"📤 Запрос на погашение {success} долгов отправлен администратору.\nОжидайте подтверждения."
+    )
+    courier = await _get_courier(call.from_user.id)
+    name = courier["name"] if courier else str(call.from_user.id)
+    for admin_id in settings.ADMIN_IDS:
+        try:
+            await call.bot.send_message(
+                admin_id,
+                f"💸 Курьер {name} запрашивает погашение {success} долгов.\n"
                 "Проверьте раздел «Долги курьеров» в /admin",
             )
         except Exception:

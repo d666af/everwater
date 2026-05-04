@@ -144,7 +144,8 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
   const total = Object.entries(selected).reduce((sum, [id, { qty }]) => {
     const w = products.find(w => w.id === id)
     if (!w) return sum
-    return sum + w.price * qty
+    const effP = w.has_bottle_deposit && w.deposit_price > 0 ? w.deposit_price : w.price
+    return sum + effP * qty
   }, 0)
 
   const selectedItems = Object.entries(selected).map(([id, { qty }]) => {
