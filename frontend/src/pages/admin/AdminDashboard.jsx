@@ -42,8 +42,6 @@ const SHORTCUTS = [
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg> },
   { path: '/admin/subscriptions',   label: 'Подписки',       accent: '#6741D9', bg: '#F3F0FF',
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M8 10h8M8 14h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
-  { path: '/admin/reviews',         label: 'Отзывы',         accent: '#F76707', bg: '#FFF4E6',
-    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg> },
   { path: '/admin/managers',        label: 'Менеджеры',      accent: '#862E9C', bg: '#F8F0FC',
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
   { path: '/admin/support',         label: 'Поддержка',      accent: '#E67700', bg: '#FFF3D9',
@@ -52,8 +50,6 @@ const SHORTCUTS = [
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M19.4 15a7.9 7.9 0 0 0 0-6l2-1.2-2-3.5-2.3.8a7.9 7.9 0 0 0-5.2-3L11.5 0h-4l-.4 2.3a7.9 7.9 0 0 0-5.2 3L-.4 4.3l-2 3.5 2 1.2a7.9 7.9 0 0 0 0 6" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
   { path: '/admin/warehouse/history', label: 'История склада', accent: '#2F9E44', bg: '#EBFBEE',
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
-  { path: '/admin/stats',           label: 'Статистика',     accent: '#6741D9', bg: '#F3F0FF',
-    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
 ]
 
 export default function AdminDashboard() {
