@@ -27,7 +27,7 @@ export function useTelegramAuth() {
     const handleUserData = (userData) => {
       if (!userData?.id) {
         logout()
-        navigate('/login', { replace: true })
+        setTgAuthDone()
         return
       }
       if (!userData.is_registered) {
@@ -41,9 +41,19 @@ export function useTelegramAuth() {
       }
     }
 
-    const handleError = () => {
-      logout()
-      setTgAuthDone()
+    const handleError = (err) => {
+      // 403 = registered in DB but bot registration incomplete → show "finish in bot"
+      // Any other error (5xx, network) → don't block, just mark auth done so app loads
+      const status = err?.response?.status
+      if (status === 403) {
+        logout()
+        navigate('/login', { replace: true })
+      } else {
+        // Server error or network issue: don't force re-registration screen,
+        // just clear pending so ProtectedRoute redirects normally
+        logout()
+        setTgAuthDone()
+      }
     }
 
     const initData = tg?.initData

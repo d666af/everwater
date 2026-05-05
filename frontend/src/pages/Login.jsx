@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
-import { loginByPhone } from '../api'
+import { loginByPhone, authByInitData, getUserByTelegram } from '../api'
 import EverLogo from '../components/EverLogo'
 
 const tg = window.Telegram?.WebApp
@@ -81,8 +81,40 @@ export default function Login() {
 
   const handleKey = (e) => { if (e.key === 'Enter') submit() }
 
-  // When opened from Telegram WebApp without a registered account
+  const [tgRetrying, setTgRetrying] = useState(false)
+  const [tgRetryError, setTgRetryError] = useState('')
+
+  const retryTgAuth = async () => {
+    setTgRetrying(true); setTgRetryError('')
+    try {
+      const tgUser = tg?.initDataUnsafe?.user
+      let userData
+      if (tg?.initData) {
+        userData = await authByInitData(tg.initData)
+      } else if (tgUser?.id) {
+        userData = await getUserByTelegram(tgUser.id)
+      }
+      if (userData?.id && userData.is_registered) {
+        login(userData)
+        navigate(ROLE_HOME[userData.role] || '/', { replace: true })
+      } else if (userData && !userData.is_registered) {
+        setTgRetryError('register')
+      } else {
+        setTgRetryError('not_found')
+      }
+    } catch {
+      setTgRetryError('server')
+    } finally {
+      setTgRetrying(false)
+    }
+  }
+
+  const ROLE_HOME = { client: '/', admin: '/admin', manager: '/manager', courier: '/courier', warehouse: '/warehouse' }
+
+  // When opened from Telegram WebApp
   if (isTelegramWebApp()) {
+    // Only show "register in bot" if we explicitly know registration is incomplete
+    const needsRegister = tgRetryError === 'register'
     return (
       <div style={s.page}>
         <div style={s.container}>
@@ -90,18 +122,26 @@ export default function Login() {
             <EverLogo width={120} style={{ borderRadius: 22 }} />
           </div>
           <div style={s.tgCard}>
-            <div style={s.tgIcon}>💬</div>
-            <div style={s.tgTitle}>Завершите регистрацию в боте</div>
-            <div style={s.tgDesc}>
-              Чтобы войти в приложение, нужно сначала зарегистрироваться через Telegram-бот:
-              введите имя и номер телефона. После этого вернитесь в приложение.
+            <div style={s.tgIcon}>{needsRegister ? '💬' : '🔄'}</div>
+            <div style={s.tgTitle}>
+              {needsRegister ? 'Завершите регистрацию в боте' : 'Не удалось войти'}
             </div>
-            <button
-              style={s.tgBtn}
-              onClick={() => tg?.close?.()}
-            >
-              Вернуться в бот
-            </button>
+            <div style={s.tgDesc}>
+              {needsRegister
+                ? 'Чтобы войти в приложение, нужно сначала зарегистрироваться через Telegram-бот: введите имя и номер телефона. После этого вернитесь в приложение.'
+                : tgRetryError === 'not_found'
+                  ? 'Аккаунт не найден. Убедитесь что вы зарегистрированы в боте.'
+                  : 'Ошибка соединения с сервером. Нажмите «Попробовать снова».'}
+            </div>
+            {needsRegister ? (
+              <button style={s.tgBtn} onClick={() => tg?.close?.()}>
+                Вернуться в бот
+              </button>
+            ) : (
+              <button style={s.tgBtn} onClick={retryTgAuth} disabled={tgRetrying}>
+                {tgRetrying ? 'Подключаемся...' : 'Попробовать снова'}
+              </button>
+            )}
           </div>
         </div>
       </div>
