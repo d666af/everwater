@@ -727,14 +727,24 @@ async def upload_review_photo(review_id: int, file: UploadFile = File(...),
 
 @router.get("/reviews/")
 async def list_reviews(approved_only: bool = False, db: AsyncSession = Depends(get_db)):
-    q = select(Review)
+    q = (
+        select(Review)
+        .options(
+            selectinload(Review.user),
+            selectinload(Review.order).selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Review.order).selectinload(Order.courier),
+        )
+        .order_by(Review.id.desc())
+    )
     if approved_only:
         q = q.where(Review.is_approved == True)
-    q = q.order_by(Review.id.desc())
     result = await db.execute(q)
     reviews = result.scalars().all()
-    return [
-        {
+    out = []
+    for r in reviews:
+        order = r.order
+        courier = order.courier if order else None
+        out.append({
             "id": r.id,
             "order_id": r.order_id,
             "user_id": r.user_id,
@@ -743,9 +753,17 @@ async def list_reviews(approved_only: bool = False, db: AsyncSession = Depends(g
             "comment": r.comment,
             "photo_url": r.photo_url,
             "is_approved": r.is_approved,
-        }
-        for r in reviews
-    ]
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            # Enriched fields
+            "client_name": r.user.name if r.user else None,
+            "client_phone": r.user.phone if r.user else None,
+            "courier_name": courier.name if courier else None,
+            "courier_phone": courier.phone if courier else None,
+            "order_total": order.total if order else None,
+            "order_address": order.address if order else None,
+            "order_items": _order_items_text(order.items) if order else None,
+        })
+    return out
 
 
 @router.patch("/reviews/{review_id}/approve")

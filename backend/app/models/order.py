@@ -107,7 +107,7 @@ class Review(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User | None"] = relationship("User", back_populates="reviews")  # noqa: F821
     order: Mapped["Order"] = relationship("Order", back_populates="review")
