@@ -628,24 +628,76 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
             existing.rating = data.rating
             existing.comment = data.comment
             await db.commit()
+            await _notify_review(db, existing, data.rating, data.comment, data.order_id)
             return {"ok": True, "id": existing.id}
 
     order = None
     if data.order_id:
-        order_q = await db.execute(select(Order).where(Order.id == data.order_id))
+        order_q = await db.execute(
+            select(Order).where(Order.id == data.order_id).options(*_order_opts())
+        )
         order = order_q.scalar_one_or_none()
 
+    courier_id = data.courier_id or (order.courier_id if order else None)
     review = Review(
         order_id=data.order_id,
         user_id=data.user_id or (order.user_id if order else None),
-        courier_id=data.courier_id or (order.courier_id if order else None),
+        courier_id=courier_id,
         rating=data.rating,
         comment=data.comment,
     )
     db.add(review)
+
+    # Update courier average rating
+    if courier_id:
+        courier_q = await db.execute(select(Courier).where(Courier.id == courier_id))
+        courier = courier_q.scalar_one_or_none()
+        if courier:
+            old_count = courier.rating_count or 0
+            old_avg = courier.avg_rating or 0.0
+            new_count = old_count + 1
+            courier.avg_rating = (old_avg * old_count + data.rating) / new_count
+            courier.rating_count = new_count
+
     await db.commit()
     await db.refresh(review)
+    await _notify_review(db, review, data.rating, data.comment, data.order_id, order)
     return {"ok": True, "id": review.id}
+
+
+async def _notify_review(db: AsyncSession, review: Review, rating: int, comment: str | None,
+                          order_id: int | None, order=None):
+    """Send new review notification to all admins and managers."""
+    stars = "⭐" * rating
+    lines = [f"💬 Новый отзыв клиента! {stars}"]
+
+    if order_id:
+        lines.append(f"Заказ: #{order_id}")
+
+    if order is None and order_id:
+        order_q = await db.execute(
+            select(Order).where(Order.id == order_id).options(*_order_opts())
+        )
+        order = order_q.scalar_one_or_none()
+
+    if order:
+        if order.user:
+            lines.append(f"Клиент: {order.user.name or '—'}")
+        if order.courier:
+            lines.append(f"Курьер: {order.courier.name or '—'}")
+        items_txt = _order_items_text(order.items)
+        if items_txt and items_txt != "—":
+            lines.append(f"Состав: {items_txt}")
+
+    if comment:
+        lines.append(f"Комментарий: {comment}")
+
+    if review.photo_url:
+        from app.config import settings as cfg
+        base = cfg.MINI_APP_URL.rstrip("/")
+        lines.append(f"Фото: {base}{review.photo_url}")
+
+    await _notify_admins(db, "\n".join(lines))
 
 
 _REVIEW_UPLOAD_DIR = Path("static/reviews")
@@ -809,24 +861,57 @@ async def reject_cancellation(order_id: int, db: AsyncSession = Depends(get_db))
 
 @router.get("/{order_id}/queue_position")
 async def get_queue_position(order_id: int, db: AsyncSession = Depends(get_db)):
-    """Return how many active orders are ahead of this order (by creation time)."""
+    """Return per-stage queue count and a stage-specific message."""
     order_q = await db.execute(select(Order).where(Order.id == order_id))
     order = order_q.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    active_statuses = [
-        OrderStatus.AWAITING_CONFIRMATION, OrderStatus.CONFIRMED,
-        OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY,
-    ]
+
+    status = order.status
+
+    # Map status → which statuses to count as "same stage"
+    stage_statuses = {
+        OrderStatus.AWAITING_CONFIRMATION: [OrderStatus.AWAITING_CONFIRMATION],
+        OrderStatus.CONFIRMED: [OrderStatus.AWAITING_CONFIRMATION, OrderStatus.CONFIRMED],
+        OrderStatus.NEW: [OrderStatus.NEW, OrderStatus.AWAITING_CONFIRMATION, OrderStatus.CONFIRMED],
+        OrderStatus.ASSIGNED_TO_COURIER: [OrderStatus.ASSIGNED_TO_COURIER],
+        OrderStatus.IN_DELIVERY: [OrderStatus.IN_DELIVERY],
+    }
+    stage_msgs = {
+        OrderStatus.AWAITING_CONFIRMATION: "ожидают подтверждения",
+        OrderStatus.CONFIRMED: "ожидают назначения курьера",
+        OrderStatus.NEW: "заказов в очереди",
+        OrderStatus.ASSIGNED_TO_COURIER: "ожидают начала доставки",
+        OrderStatus.IN_DELIVERY: "ожидают завершения доставки",
+    }
+
+    count_statuses = stage_statuses.get(status)
+    if not count_statuses:
+        return {"order_id": order_id, "queue_position": 0, "message": None}
+
     count_q = await db.execute(
         select(Order.id).where(
-            Order.status.in_(active_statuses),
+            Order.status.in_(count_statuses),
             Order.created_at < order.created_at,
             Order.id != order_id,
         )
     )
     position = len(count_q.all())
-    return {"order_id": order_id, "queue_position": position}
+    msg_suffix = stage_msgs.get(status, "")
+
+    if position == 0:
+        message = "Ваш заказ следующий в очереди!"
+    else:
+        n = position
+        if n % 10 == 1 and n % 100 != 11:
+            word = "заказ"
+        elif 2 <= n % 10 <= 4 and not (12 <= n % 100 <= 14):
+            word = "заказа"
+        else:
+            word = "заказов"
+        message = f"В очереди: {n} {word} {msg_suffix} впереди вас"
+
+    return {"order_id": order_id, "queue_position": position, "message": message}
 
 
 async def _get_order(order_id: int, db: AsyncSession) -> Order:

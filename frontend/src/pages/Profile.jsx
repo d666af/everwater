@@ -485,12 +485,12 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
 
         {/* Plan selection */}
         <div style={ss.secLabel}>Тип подписки</div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {SUB_PLANS.map(p => (
             <button key={p.key}
               style={plan === p.key ? { ...ss.planChip, ...ss.planChipActive } : ss.planChip}
               onClick={() => setPlan(p.key)}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>{p.label}</div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{p.label}</div>
               <div style={{ fontSize: 11, color: plan === p.key ? 'rgba(255,255,255,0.7)' : '#8e8e93' }}>{p.desc}</div>
             </button>
           ))}
@@ -555,7 +555,7 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
 const ss = {
   secLabel: { fontSize: 12, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: -4 },
   planChip: {
-    flex: 1, padding: '12px 10px', borderRadius: 14,
+    padding: '9px 10px', borderRadius: 14,
     border: '1.5px solid #e5e5ea', background: '#fff',
     cursor: 'pointer', textAlign: 'center',
   },
@@ -645,7 +645,6 @@ export default function Profile() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
-  const [lang, setLang] = useState('ru')
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
   const { logout, user: authUser } = useAuthStore()
   const userStore = useUserStore()
@@ -716,11 +715,6 @@ export default function Profile() {
           <div style={s.bonusTitle}>{bonusPoints > 0 ? `${bonusPoints.toLocaleString()} бонусов` : 'Нет бонусов'}</div>
           <div style={s.bonusDesc}>{bonusPoints > 0 ? 'Используйте при оформлении заказа' : 'Бонусы начисляются за каждый заказ'}</div>
         </div>
-        {bonusPoints > 0 && (
-          <div style={{ fontSize: 13, color: '#F59E0B', fontWeight: 700 }}>
-            {bonusPoints.toLocaleString()}
-          </div>
-        )}
       </div>
 
       {/* Menu */}
@@ -735,27 +729,6 @@ export default function Profile() {
           <span style={s.menuLabel}>Поддержка</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
-        <div style={s.menuDivider} />
-        <div style={s.menuItem}>
-          <div style={{ ...s.menuIcon, background: `${C}12` }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke={C} strokeWidth="1.7"/>
-              <path d="M2 12h20" stroke={C} strokeWidth="1.7"/>
-              <ellipse cx="12" cy="12" rx="4" ry="9" stroke={C} strokeWidth="1.7"/>
-            </svg>
-          </div>
-          <span style={s.menuLabel}>Язык</span>
-          <div style={s.langSwitch}>
-            <button
-              style={lang === 'ru' ? { ...s.langBtn, ...s.langBtnActive } : s.langBtn}
-              onClick={() => setLang('ru')}
-            >RU</button>
-            <button
-              style={lang === 'uz' ? { ...s.langBtn, ...s.langBtnActive } : s.langBtn}
-              onClick={() => setLang('uz')}
-            >UZ</button>
-          </div>
-        </div>
       </div>
 
       {/* Info */}

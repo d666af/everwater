@@ -394,17 +394,14 @@ async def order_detail(call: CallbackQuery):
     if order.get("manager_comment"):
         lines += ["", f"💬 Комментарий: {order['manager_comment']}"]
 
-    # Queue position for active orders
+    # Queue position for active orders (stage-specific message from API)
     ACTIVE = {"new", "awaiting_confirmation", "confirmed", "assigned_to_courier", "in_delivery"}
     if status in ACTIVE:
         try:
             qp = await api.get_queue_position(order_id)
-            pos = qp.get("queue_position") if qp else None
-            if pos is not None:
-                if pos == 0:
-                    lines.append("\n🥇 Ваш заказ следующий в очереди!")
-                else:
-                    lines.append(f"\n📋 В очереди: {pos} заказов впереди вас")
+            msg = qp.get("message") if qp else None
+            if msg:
+                lines.append(f"\n📋 {msg}")
         except Exception:
             pass
 

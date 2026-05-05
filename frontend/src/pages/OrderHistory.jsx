@@ -234,11 +234,14 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelDone, setCancelDone] = useState(false)
   const [queuePos, setQueuePos] = useState(null)
+  const [queueMsg, setQueueMsg] = useState(null)
   const canCancel = CANCELLABLE.has(order.status) && !cancelDone
 
   useEffect(() => {
     if (isOpen && isActive && order.status !== 'cancellation_requested') {
-      getQueuePosition(order.id).then(d => setQueuePos(d?.queue_position ?? null)).catch(() => {})
+      getQueuePosition(order.id)
+        .then(d => { setQueuePos(d?.queue_position ?? null); setQueueMsg(d?.message ?? null) })
+        .catch(() => {})
     }
   }, [isOpen, isActive, order.id, order.status]) // eslint-disable-line
 
@@ -281,14 +284,14 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
         <div style={s.details}>
           {isActive && <ProgressSteps status={order.status} />}
 
-          {isActive && queuePos !== null && order.status !== 'in_delivery' && (
+          {isActive && queuePos !== null && queueMsg && (
             <div style={s.queueBox}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
                 <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#7aaa30" strokeWidth="1.8"/>
                 <circle cx="9" cy="7" r="4" stroke="#7aaa30" strokeWidth="1.8"/>
                 <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="#7aaa30" strokeWidth="1.8"/>
               </svg>
-              <span>{queuePos === 0 ? 'Ваш заказ следующий в очереди!' : `В очереди: ${queuePos} ${queuePos === 1 ? 'заказ' : queuePos < 5 ? 'заказа' : 'заказов'} впереди вас`}</span>
+              <span>{queueMsg}</span>
             </div>
           )}
 
