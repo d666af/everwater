@@ -96,5 +96,7 @@ class CourierOut(BaseModel):
     phone: str | None
     is_active: bool
     total_deliveries: int
+    avg_rating: float = 0.0
+    rating_count: int = 0
 
     model_config = {"from_attributes": True}

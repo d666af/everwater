@@ -34,6 +34,11 @@ export default function AdminSettings() {
     bottle_return_mode: 'max',
     accepted_bottle_companies: [],
     require_bottle_brand_selection: false,
+    delivery_price: 0,
+    bonus_per_bottle: 100,
+    bonus_expiry_days: 60,
+    cancellation_penalty_pct: 10,
+    late_order_hour: 18,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -341,6 +346,98 @@ export default function AdminSettings() {
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
             Пример: заказ на 100 000 сум — клиент получит <b>{form.cashback_percent * 1000} сум</b> бонусами
+          </div>
+        </Section>
+
+        {/* Delivery */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <rect x="1" y="6" width="15" height="11" rx="2" stroke={C} strokeWidth="1.8"/>
+              <path d="M16 10h3l3 3v4h-6V10z" stroke={C} strokeWidth="1.8"/>
+              <circle cx="6.5" cy="18.5" r="1.5" fill={C}/>
+              <circle cx="18.5" cy="18.5" r="1.5" fill={C}/>
+            </svg>
+          }
+          title="Доставка"
+          hint="Стоимость доставки, добавляемая к каждому заказу"
+        >
+          <div style={s.field}>
+            <div style={s.label}>Цена доставки (сум)</div>
+            <input style={{ ...s.input, maxWidth: 200 }} type="number" min="0" {...f('delivery_price')} />
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {Number(form.delivery_price) === 0
+              ? 'Доставка бесплатная'
+              : <>Доставка: <b>{Number(form.delivery_price).toLocaleString()} сум</b> к каждому заказу</>}
+          </div>
+        </Section>
+
+        {/* Bonus program extended */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                stroke="#E67700" strokeWidth="1.8" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Начисление и срок бонусов"
+          hint="Бонусы за 19л бутылки и срок их действия"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Бонус за бутылку 19л (сум)</div>
+              <input style={s.input} type="number" min="0" {...f('bonus_per_bottle')} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Срок действия бонусов (дней)</div>
+              <input style={s.input} type="number" min="0" {...f('bonus_expiry_days')} />
+            </div>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            За каждую бутылку 19л — <b>{Number(form.bonus_per_bottle).toLocaleString()} бонусов</b>
+            {Number(form.bonus_expiry_days) > 0
+              ? <>, срок <b>{form.bonus_expiry_days} дн.</b></>
+              : <>, бонусы не сгорают</>}
+          </div>
+        </Section>
+
+        {/* Cancellation & late orders */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                stroke="#E03131" strokeWidth="1.8" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Отмены и поздние заказы"
+          hint="Штраф за отмену после назначения курьера и порог времени"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Штраф за отмену (%)</div>
+              <input style={s.input} type="number" min="0" max="100" {...f('cancellation_penalty_pct')} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Поздний заказ с (час, 0–23)</div>
+              <input style={s.input} type="number" min="0" max="23" {...f('late_order_hour')} />
+            </div>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            При отмене после назначения курьера — штраф <b>{form.cancellation_penalty_pct}%</b>.
+            Предупреждение о позднем заказе после <b>{form.late_order_hour}:00</b>.
           </div>
         </Section>
 
