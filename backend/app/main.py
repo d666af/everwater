@@ -103,6 +103,12 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS bonus_used FLOAT DEFAULT 0"
         ))
+        await conn.execute(text(
+            "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS avg_rating FLOAT DEFAULT 0"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS rating_count INTEGER DEFAULT 0"
+        ))
         # Extend enum for cancellation_requested status
         await conn.execute(text(
             "ALTER TYPE orderstatus ADD VALUE IF NOT EXISTS 'cancellation_requested'"
