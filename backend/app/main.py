@@ -89,7 +89,11 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500) DEFAULT NULL"
         ))
         await conn.execute(text(
-            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT TRUE"
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE"
+        ))
+        # Update default for existing column (in case it was added with TRUE before)
+        await conn.execute(text(
+            "ALTER TABLE reviews ALTER COLUMN is_approved SET DEFAULT FALSE"
         ))
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_expires_at TIMESTAMP DEFAULT NULL"
