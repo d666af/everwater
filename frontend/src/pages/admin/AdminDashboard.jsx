@@ -191,12 +191,13 @@ export default function AdminDashboard() {
             {SHORTCUTS.map(sc => (
               <button key={sc.path} onClick={() => navigate(sc.path)} style={s.shortcutBtn}>
                 <div style={{ ...s.shortcutIcon, background: sc.bg, color: sc.accent }}>{sc.icon}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{sc.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, textAlign: 'center', lineHeight: 1.3, height: '2.6em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{sc.label}</div>
               </button>
             ))}
           </div>
 
           {/* Recent orders */}
+          <div style={{ height: 8 }} />
           {recent.length > 0 && (
             <div style={s.card}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
