@@ -82,7 +82,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
+      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note); load() }} />}
       {pickerOpen && (
         <DateTimePickerModal
@@ -388,6 +388,12 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
             ))}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[1, 2, 5, 10, 20, 50].map(n => (
+              <button key={n} onClick={() => setQty(p => String((Number(p) || 0) + n))} style={st.presetBtn}>+{n}</button>
+            ))}
+            {Number(qty) > 0 && <button onClick={() => setQty('')} style={st.presetBtnReset}>✕</button>}
+          </div>
           <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Заметка</div>
           <input style={st.input} placeholder="Необязательно" value={note} onChange={e => setNote(e.target.value)} />
@@ -401,14 +407,14 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
   )
 }
 
-function IssueToCourierModal({ couriers, onClose, onSave }) {
-  const catalog = getCatalogProducts()
+function IssueToCourierModal({ couriers, products, onClose, onSave }) {
+  const catalog = (products || []).map(p => ({ id: p.product_id ?? p.id, name: p.product_name ?? p.name }))
   const [courierId, setCourierId] = useState(couriers[0]?.id || null)
-  const [name, setName] = useState(catalog[0]?.short_name || '')
+  const [name, setName] = useState(catalog[0]?.name || '')
   const [qty, setQty] = useState('')
   const [loading, setLoading] = useState(false)
   const courier = couriers.find(c => c.id === courierId)
-  const dis = !qty || Number(qty) <= 0 || !courierId
+  const dis = !qty || Number(qty) <= 0 || !courierId || !name
   const handle = async () => {
     if (dis) return
     setLoading(true)
@@ -436,15 +442,21 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {catalog.map(p => (
-              <button key={p.id} onClick={() => setName(p.short_name)} style={{
+              <button key={p.id} onClick={() => setName(p.name)} style={{
                 padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: name === p.short_name ? GRAD : '#F8F9FA',
-                color: name === p.short_name ? '#fff' : TEXT,
-                border: name === p.short_name ? 'none' : `1px solid ${BORDER}`,
-              }}>{p.short_name}</button>
+                background: name === p.name ? GRAD : '#F8F9FA',
+                color: name === p.name ? '#fff' : TEXT,
+                border: name === p.name ? 'none' : `1px solid ${BORDER}`,
+              }}>{p.name}</button>
             ))}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[1, 2, 5, 10, 20, 50].map(n => (
+              <button key={n} onClick={() => setQty(p => String((Number(p) || 0) + n))} style={st.presetBtn}>+{n}</button>
+            ))}
+            {Number(qty) > 0 && <button onClick={() => setQty('')} style={st.presetBtnReset}>✕</button>}
+          </div>
           <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
         <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
@@ -515,4 +527,6 @@ const st = {
   handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
   input: { border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' },
   primaryBtn: { padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' },
+  presetBtn: { padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${C}`, background: '#fff', color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  presetBtnReset: { padding: '7px 10px', borderRadius: 10, border: '1.5px solid #ddd', background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer' },
 }

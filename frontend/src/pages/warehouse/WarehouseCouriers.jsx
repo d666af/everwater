@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import {
-  getWarehouseCourierStats, getWarehouseStock, getCatalogProducts,
+  getWarehouseCourierStats, getWarehouseStock, getProducts,
   issueWaterToCourier, returnWaterFromCourier, issueOrderToCourier,
 } from '../../api'
 
@@ -15,16 +15,20 @@ const BORDER = 'rgba(60,60,67,0.08)'
 export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Курьеры' }) {
   const [couriers, setCouriers] = useState([])
   const [stock, setStock] = useState([])
+  const [allProducts, setAllProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showManual, setShowManual] = useState(null)   // { courier, mode: 'issue'|'return' }
   const [expanded, setExpanded] = useState(null)
 
-  const catalog = useMemo(() => getCatalogProducts(), [])
+  const catalog = useMemo(() =>
+    allProducts.filter(p => p.is_active).map(p => ({ id: p.id, short_name: p.name })),
+    [allProducts]
+  )
 
   const load = () => {
     setLoading(true)
-    Promise.all([getWarehouseCourierStats(), getWarehouseStock()])
-      .then(([cs, wh]) => { setCouriers(cs); setStock(wh.stock || []) })
+    Promise.all([getWarehouseCourierStats(), getWarehouseStock(), getProducts()])
+      .then(([cs, wh, prods]) => { setCouriers(cs); setStock(wh.stock || []); setAllProducts(prods || []) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
@@ -390,11 +394,19 @@ function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, o
                   </span>
                 </div>
                 {sel && (
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
-                    <button style={st.qtyBtn} onClick={() => setQty(p, items[p] - 1)}>−</button>
-                    <span style={{ fontSize: 16, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{items[p]}</span>
-                    <button style={st.qtyBtn} onClick={() => setQty(p, items[p] + 1)}>+</button>
-                    <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>макс: {max}</span>
+                  <div style={{ marginTop: 8, paddingLeft: 30 }}>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {[1, 2, 5, 10, 20].map(n => (
+                        <button key={n} onClick={() => setQty(p, (items[p] || 0) + n)} style={st.presetBtn}>+{n}</button>
+                      ))}
+                      <button style={st.qtyBtn} onClick={() => setQty(p, 0)}>✕</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <button style={st.qtyBtn} onClick={() => setQty(p, items[p] - 1)}>−</button>
+                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{items[p]}</span>
+                      <button style={st.qtyBtn} onClick={() => setQty(p, items[p] + 1)}>+</button>
+                      <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>макс: {max}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -433,4 +445,5 @@ const st = {
   sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
   handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
   qtyBtn: { width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  presetBtn: { padding: '4px 9px', borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer' },
 }
