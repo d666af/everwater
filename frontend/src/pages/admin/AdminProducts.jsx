@@ -173,7 +173,16 @@ export default function AdminProducts() {
     }
     setSaving(true); setError('')
     try {
-      const data = { ...form, volume: Number(form.volume), price: Number(form.price), sort_order: Number(form.sort_order) }
+      const data = {
+        ...form,
+        volume: Number(form.volume),
+        price: Number(form.price),
+        sort_order: Number(form.sort_order),
+        cost_price: form.cost_price !== '' && form.cost_price != null ? Number(form.cost_price) : null,
+        discount_percent: form.discount_percent !== '' && form.discount_percent != null ? Number(form.discount_percent) : null,
+        discount_until: form.discount_until || null,
+        deposit_price: form.deposit_price !== '' && form.deposit_price != null ? Number(form.deposit_price) : null,
+      }
       if (editing === 'new') await createProduct(data)
       else await updateProduct(editing.id, data)
       setEditing(null); load()
