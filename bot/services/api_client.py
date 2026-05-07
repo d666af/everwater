@@ -1,7 +1,9 @@
+import logging
 import aiohttp
 from config import settings
 
 BASE = settings.API_BASE_URL
+log = logging.getLogger(__name__)
 
 
 async def _get(path: str, params: dict = None):
@@ -14,7 +16,10 @@ async def _get(path: str, params: dict = None):
 async def _post(path: str, data: dict = None):
     async with aiohttp.ClientSession() as s:
         async with s.post(f"{BASE}{path}", json=data) as r:
-            r.raise_for_status()
+            if not r.ok:
+                body = await r.text()
+                log.error("POST %s → %s: %s", path, r.status, body)
+                r.raise_for_status()
             return await r.json()
 
 

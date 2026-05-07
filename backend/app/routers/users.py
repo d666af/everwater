@@ -65,6 +65,18 @@ async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_
     manager = (await db.execute(select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True))).scalar_one_or_none()
     if not user and not courier and not manager:
         raise HTTPException(status_code=404, detail="User not found")
+    # Courier/manager without a users-table record can't place orders — auto-create one.
+    if not user and (courier or manager):
+        entity = courier or manager
+        user = User(
+            telegram_id=telegram_id,
+            name=entity.name or "",
+            phone=entity.phone or "",
+            is_registered=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
     result = _build_full_user(telegram_id, user, courier, manager)
     if user:
         count_row = await db.execute(
