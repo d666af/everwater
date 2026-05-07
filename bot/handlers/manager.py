@@ -65,6 +65,12 @@ class MgrSupportReply(StatesGroup):
 class MgrRejectCustom(StatesGroup):
     waiting_reason = State()
 
+class MgrOrderCreate(StatesGroup):
+    waiting_phone = State()
+    choosing_product = State()
+    waiting_address = State()
+    confirming = State()
+
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
@@ -867,4 +873,161 @@ async def mgr_sub_create_order(call: CallbackQuery):
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await call.answer()
+
+
+# ─── Manager manual order creation ────────────────────────────────────────────
+
+from aiogram.types import ReplyKeyboardRemove
+
+
+@router.message(F.text == "📝 Создать заказ")
+async def mgr_create_order_start(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    await state.update_data(mco_items={})
+    await state.set_state(MgrOrderCreate.waiting_phone)
+    await message.answer("Введите номер телефона клиента:", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(MgrOrderCreate.waiting_phone)
+async def mgr_co_phone(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    phone = message.text.strip()
+    products = await api.get_products()
+    await state.update_data(mco_phone=phone, mco_products=products, mco_items={})
+    await state.set_state(MgrOrderCreate.choosing_product)
+    await message.answer("Добавьте товары в заказ:", reply_markup=_mco_catalog_kb(products, {}))
+
+
+def _mco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for p in products:
+        if not p.get("is_active"):
+            continue
+        pid = str(p["id"])
+        qty = items.get(pid, 0)
+        qty_label = f" ×{qty}" if qty else ""
+        rows.append([
+            InlineKeyboardButton(text=f"{p['name']}{qty_label}", callback_data="mco:noop"),
+            InlineKeyboardButton(text="−", callback_data=f"mco:rem:{p['id']}"),
+            InlineKeyboardButton(text=f"+{qty or ''}", callback_data=f"mco:add:{p['id']}"),
+        ])
+    total = sum(p.get("price", 0) * int(items.get(str(p["id"]), 0)) for p in products if items.get(str(p["id"]), 0))
+    footer = [InlineKeyboardButton(text=f"✅ Готово · {fmt(total)}", callback_data="mco:done")] if items else \
+             [InlineKeyboardButton(text="— выберите товары —", callback_data="mco:noop")]
+    rows.append(footer)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _mco_catalog_text(items: dict, products: list) -> str:
+    if not items:
+        return "Добавьте товары в заказ:"
+    prod_map = {str(p["id"]): p for p in products}
+    lines = ["🛒 <b>Состав заказа:</b>"]
+    total = 0
+    for pid, qty in items.items():
+        p = prod_map.get(pid, {})
+        s = p.get("price", 0) * qty
+        total += s
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+    lines.append(f"\n<b>Итого: {fmt(total)}</b>")
+    return "\n".join(lines)
+
+
+@router.callback_query(MgrOrderCreate.choosing_product, F.data.startswith("mco:add:"))
+async def mgr_co_add(call: CallbackQuery, state: FSMContext):
+    pid = int(call.data.split(":")[2])
+    data = await state.get_data()
+    items = dict(data.get("mco_items", {}))
+    items[str(pid)] = items.get(str(pid), 0) + 1
+    await state.update_data(mco_items=items)
+    products = data.get("mco_products", [])
+    await call.message.edit_text(_mco_catalog_text(items, products), reply_markup=_mco_catalog_kb(products, items), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(MgrOrderCreate.choosing_product, F.data.startswith("mco:rem:"))
+async def mgr_co_rem(call: CallbackQuery, state: FSMContext):
+    pid = int(call.data.split(":")[2])
+    data = await state.get_data()
+    items = dict(data.get("mco_items", {}))
+    if items.get(str(pid), 0) > 1:
+        items[str(pid)] -= 1
+    else:
+        items.pop(str(pid), None)
+    await state.update_data(mco_items=items)
+    products = data.get("mco_products", [])
+    await call.message.edit_text(_mco_catalog_text(items, products), reply_markup=_mco_catalog_kb(products, items), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(MgrOrderCreate.choosing_product, F.data == "mco:noop")
+async def mgr_co_noop(call: CallbackQuery):
+    await call.answer()
+
+
+@router.callback_query(MgrOrderCreate.choosing_product, F.data == "mco:done")
+async def mgr_co_items_done(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("mco_items"):
+        await call.answer("Добавьте хотя бы один товар!")
+        return
+    await state.set_state(MgrOrderCreate.waiting_address)
+    await call.message.edit_text("Введите адрес доставки:")
+    await call.answer()
+
+
+@router.message(MgrOrderCreate.waiting_address)
+async def mgr_co_address(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    await state.update_data(mco_address=message.text.strip())
+    data = await state.get_data()
+    products = data.get("mco_products", [])
+    items = data.get("mco_items", {})
+    prod_map = {str(p["id"]): p for p in products}
+    lines = ["📋 <b>Подтверждение заказа</b>\n", f"Клиент: {data['mco_phone']}", f"Адрес: {data['mco_address']}", "\nТовары:"]
+    total = 0
+    for pid, qty in items.items():
+        p = prod_map.get(pid, {})
+        s = p.get("price", 0) * qty
+        total += s
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+    lines.append(f"\n<b>Итого: {fmt(total)}</b>")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Создать", callback_data="mco:confirm"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="mco:cancel"),
+    ]])
+    await state.set_state(MgrOrderCreate.confirming)
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(MgrOrderCreate.confirming, F.data == "mco:confirm")
+async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    data = await state.get_data()
+    items = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["mco_items"].items()]
+    try:
+        await api.courier_create_order({
+            "phone": data["mco_phone"],
+            "address": data["mco_address"],
+            "items": items,
+            "payment_method": "cash",
+        })
+        await call.message.edit_text(f"✅ Заказ создан для клиента {data['mco_phone']}!")
+    except Exception:
+        await call.message.edit_text("❌ Ошибка при создании заказа.")
+    await state.clear()
+    await call.answer()
+    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb())
+
+
+@router.callback_query(MgrOrderCreate.confirming, F.data == "mco:cancel")
+async def mgr_co_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Заказ отменён.")
+    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb())
     await call.answer()
