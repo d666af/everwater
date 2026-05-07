@@ -138,6 +138,22 @@ async def _lookup_by_phone(phone: str, db: AsyncSession):
         result = await db.execute(select(User).where(User.telegram_id == manager.telegram_id))
         user = result.scalar_one_or_none()
 
+    # If phone lookup didn't find manager (nullable phone), try by user's telegram_id
+    if not manager and user and user.telegram_id:
+        mgr_by_tid = await db.execute(select(Manager).where(
+            Manager.telegram_id == user.telegram_id,
+            Manager.is_active == True,
+        ))
+        manager = mgr_by_tid.scalar_one_or_none()
+
+    # Same fallback via courier's telegram_id
+    if not manager and courier and courier.telegram_id:
+        mgr_by_tid = await db.execute(select(Manager).where(
+            Manager.telegram_id == courier.telegram_id,
+            Manager.is_active == True,
+        ))
+        manager = mgr_by_tid.scalar_one_or_none()
+
     return user, courier, manager
 
 
