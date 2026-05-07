@@ -37,7 +37,15 @@ export function useTelegramAuth() {
       }
       login(userData)
       if (isFirstLogin || location.pathname === '/login') {
-        navigate(ROLE_HOME[userData.role] || '/', { replace: true })
+        // If the opened URL already matches one of the user's roles, stay there
+        const userRoles = userData.roles || [userData.role]
+        const currentPath = location.pathname
+        const pathMatchesRole = Object.entries(ROLE_HOME).some(
+          ([role, path]) => userRoles.includes(role) && path !== '/' && currentPath.startsWith(path)
+        )
+        if (!pathMatchesRole || currentPath === '/login') {
+          navigate(ROLE_HOME[userData.role] || '/', { replace: true })
+        }
       }
     }
 

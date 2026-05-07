@@ -1,4 +1,5 @@
-import { useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 import { useAdminRoleStore } from '../store/adminRole'
 
@@ -14,10 +15,24 @@ export default function AdminRolePicker() {
   const { user } = useAuthStore()
   const { activeRole, setActiveRole } = useAdminRoleStore()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Treat stale activeRole (role no longer assigned to user) as null
   const validActiveRole = (activeRole && user?.roles?.includes(activeRole)) ? activeRole : null
+
+  // Auto-select role from URL path (e.g. opening /manager → activate manager role)
+  useEffect(() => {
+    if (!user?.roles || user.roles.length <= 1 || validActiveRole) return
+    const matched = ROLES.find(r => r.path !== '/' && location.pathname.startsWith(r.path))
+    if (matched && user.roles.includes(matched.id)) {
+      setActiveRole(matched.id)
+    }
+  }, [user?.roles?.join?.(','), location.pathname, validActiveRole]) // eslint-disable-line
+
   if (!user?.roles || user.roles.length <= 1 || validActiveRole) return null
+
+  // Suppress picker flash while auto-selection is pending (path already matches a role)
+  const pathRole = ROLES.find(r => r.path !== '/' && location.pathname.startsWith(r.path))
+  if (pathRole && user.roles.includes(pathRole.id)) return null
 
   const userRoles = ROLES.filter(r => user.roles.includes(r.id))
 
