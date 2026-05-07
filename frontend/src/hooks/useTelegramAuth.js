@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
+import { useAdminRoleStore } from '../store/adminRole'
 import { authByInitData, getUserByTelegram } from '../api'
 
 const tg = window.Telegram?.WebApp
@@ -11,6 +12,7 @@ const ROLE_HOME = {
 
 export function useTelegramAuth() {
   const { user, login, logout, setTgAuthDone } = useAuthStore()
+  const { setActiveRole } = useAdminRoleStore()
   const navigate = useNavigate()
   const location = useLocation()
   const ran = useRef(false)
@@ -37,13 +39,16 @@ export function useTelegramAuth() {
       }
       login(userData)
       if (isFirstLogin || location.pathname === '/login') {
-        // If the opened URL already matches one of the user's roles, stay there
         const userRoles = userData.roles || [userData.role]
         const currentPath = location.pathname
-        const pathMatchesRole = Object.entries(ROLE_HOME).some(
+        // Check if opened URL matches one of the user's roles
+        const matchedEntry = Object.entries(ROLE_HOME).find(
           ([role, path]) => userRoles.includes(role) && path !== '/' && currentPath.startsWith(path)
         )
-        if (!pathMatchesRole || currentPath === '/login') {
+        if (matchedEntry && currentPath !== '/login') {
+          // Stay on current path and activate the matching role (skip role picker)
+          setActiveRole(matchedEntry[0])
+        } else {
           navigate(ROLE_HOME[userData.role] || '/', { replace: true })
         }
       }
