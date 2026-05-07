@@ -11,9 +11,12 @@ const ROLES = [
 ]
 
 export default function AdminRolePicker() {
-  const { user } = useAuthStore()
+  const { user, tgAuthPending } = useAuthStore()
   const { activeRole, setActiveRole } = useAdminRoleStore()
   const navigate = useNavigate()
+
+  // Don't show picker while TG auth is in progress (roles not final yet)
+  if (tgAuthPending) return null
 
   // Treat stale activeRole (role no longer assigned to user) as null
   const validActiveRole = (activeRole && user?.roles?.includes(activeRole)) ? activeRole : null
