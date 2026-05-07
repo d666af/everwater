@@ -8,8 +8,9 @@ from config import settings
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 
-# Track already-notified IDs between runs to avoid spam
-_notified_new_orders: set[int] = set()
+# Track already-notified IDs between runs to avoid spam.
+# None = first run (pre-populate without notifying to avoid re-notifying on restart).
+_notified_new_orders: set[int] | None = None
 _notified_cash_debts: set[int] = set()
 
 
@@ -77,6 +78,12 @@ async def notify_new_orders(bot):
     """Уведомляет админов и менеджеров о новых заказах (из сайта/API)."""
     global _notified_new_orders
     orders = await api.get_all_orders(status="new")
+
+    # First run after (re)start: mark all existing orders as seen to avoid re-notifying.
+    if _notified_new_orders is None:
+        _notified_new_orders = {o["id"] for o in orders}
+        return
+
     managers = await api.get_managers()
     active_mgr_ids = [m["telegram_id"] for m in managers if m.get("is_active") and m.get("telegram_id")]
 
@@ -84,6 +91,10 @@ async def notify_new_orders(bot):
     for order in orders:
         oid = order["id"]
         if oid in _notified_new_orders:
+            continue
+        # Skip orders already notified by the bot handler (notification_msg_ids is set)
+        if order.get("notification_msg_ids"):
+            _notified_new_orders.add(oid)
             continue
         _notified_new_orders.add(oid)
         text = (

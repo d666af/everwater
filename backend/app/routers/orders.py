@@ -989,4 +989,5 @@ def _order_to_out(order: Order) -> OrderOut:
         courier_phone=order.courier.phone if order.courier else None,
         manager_phone=order.manager_phone,
         review_id=order.review.id if order.review else None,
+        notification_msg_ids=order.notification_msg_ids,
     )

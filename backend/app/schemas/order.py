@@ -71,6 +71,7 @@ class OrderOut(BaseModel):
     manager_phone: str | None = None
     review_id: int | None = None
     queue_position: int | None = None
+    notification_msg_ids: str | None = None
 
     model_config = {"from_attributes": True}
 

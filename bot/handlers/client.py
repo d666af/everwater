@@ -919,19 +919,22 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         {"product_id": v["product_id"], "quantity": v["qty"], "price": v["price"]}
         for v in cart.values()
     ]
-    order = await api.create_order({
-        "user_id": user["id"],
-        "items": items,
-        "address": data.get("co_address", ""),
-        "extra_info": data.get("co_extra"),
-        "latitude": data.get("co_lat"),
-        "longitude": data.get("co_lng"),
-        "recipient_phone": data.get("co_phone", user.get("phone", "")),
-        "return_bottles_count": data.get("co_return", 0),
-        "bonus_used": data.get("co_bonus", 0),
-        "balance_used": balance_used,
-        "payment_method": pay_method,
-    })
+    try:
+        order = await api.create_order({
+            "user_id": user["id"],
+            "items": items,
+            "address": data.get("co_address", ""),
+            "extra_info": data.get("co_extra"),
+            "latitude": data.get("co_lat"),
+            "longitude": data.get("co_lng"),
+            "recipient_phone": data.get("co_phone", user.get("phone", "")),
+            "return_bottles_count": data.get("co_return", 0),
+            "bonus_used": data.get("co_bonus", 0),
+            "balance_used": balance_used,
+            "payment_method": pay_method,
+        })
+    except Exception:
+        order = None
     if not order or "id" not in order:
         await call.message.answer("Ошибка при создании заказа. Попробуйте ещё раз.")
         await call.answer()
