@@ -11,6 +11,7 @@ from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, Review
 from app.models.cash_debt import CashDebt
 from app.models.warehouse import CourierWater
+from app.models.product import Product
 from app.models.user import User
 from app.routers.orders import _order_opts, _order_to_out
 
@@ -127,13 +128,16 @@ async def get_courier_reviews(telegram_id: int, db: AsyncSession = Depends(get_d
 async def get_courier_water(telegram_id: int, db: AsyncSession = Depends(get_db)):
     courier = await _get_courier_by_telegram(telegram_id, db)
     result = await db.execute(
-        select(CourierWater).where(CourierWater.courier_id == courier.id)
+        select(CourierWater, Product.name)
+        .join(Product, Product.id == CourierWater.product_id)
+        .where(CourierWater.courier_id == courier.id)
     )
-    items = result.scalars().all()
-    return [
-        {"product_id": w.product_id, "quantity": w.quantity, "issued_today": w.issued_today}
-        for w in items
-    ]
+    rows = result.all()
+    return {
+        name: w.quantity
+        for w, name in rows
+        if w.quantity > 0
+    }
 
 
 # ─── Cash debts ───────────────────────────────────────────────────────────────
