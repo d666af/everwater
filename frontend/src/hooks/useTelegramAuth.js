@@ -38,19 +38,16 @@ export function useTelegramAuth() {
         return
       }
       login(userData)
-      if (isFirstLogin || location.pathname === '/login') {
-        const userRoles = userData.roles || [userData.role]
-        const currentPath = location.pathname
-        // Check if opened URL matches one of the user's roles
-        const matchedEntry = Object.entries(ROLE_HOME).find(
-          ([role, path]) => userRoles.includes(role) && path !== '/' && currentPath.startsWith(path)
-        )
-        if (matchedEntry && currentPath !== '/login') {
-          // Stay on current path and activate the matching role (skip role picker)
-          setActiveRole(matchedEntry[0])
-        } else {
-          navigate(ROLE_HOME[userData.role] || '/', { replace: true })
-        }
+      const userRoles = userData.roles || [userData.role]
+      const currentPath = location.pathname
+      // If the current URL matches one of the user's roles, activate it immediately
+      const matchedEntry = Object.entries(ROLE_HOME).find(
+        ([role, path]) => userRoles.includes(role) && path !== '/' && currentPath.startsWith(path)
+      )
+      if (matchedEntry && currentPath !== '/login') {
+        setActiveRole(matchedEntry[0])
+      } else if (isFirstLogin || currentPath === '/login') {
+        navigate(ROLE_HOME[userData.role] || '/', { replace: true })
       }
     }
 
