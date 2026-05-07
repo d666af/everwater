@@ -28,8 +28,10 @@ export const useAuthStore = create((set, get) => {
   return {
     user: initial,
     token: initial?.token || null,
-    // Pending whenever in Telegram WebApp — always re-auth to get fresh roles
-    tgAuthPending: inTgWebApp(),
+    // Pending until fresh roles are loaded:
+    // - TG WebApp: always re-auth for fresh data
+    // - Regular browser with cached user: wait for useRoleRefresh
+    tgAuthPending: inTgWebApp() || !!initial,
 
     login: (userData) => {
       const data = { ...userData }
