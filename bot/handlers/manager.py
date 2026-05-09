@@ -916,8 +916,15 @@ async def mgr_co_phone(message: Message, state: FSMContext):
     await message.answer(f"{info}\n\nДобавьте товары в заказ:", reply_markup=_mco_catalog_kb(products, {}), parse_mode="HTML")
 
 
-def _mco_eff_price(p: dict) -> float:
+def _mco_exch_price(p: dict) -> float:
+    """Exchange price: deposit_price for bottle products, effective_price otherwise."""
+    if p.get("has_bottle_deposit") and p.get("deposit_price"):
+        return float(p["deposit_price"])
     return float(p.get("effective_price") or p.get("price") or 0)
+
+
+def _mco_full_price(p: dict) -> float:
+    return float(p.get("price") or 0)
 
 
 def _mco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
@@ -927,16 +934,17 @@ def _mco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
             continue
         pid = str(p["id"])
         qty = items.get(pid, 0)
-        price = _mco_eff_price(p)
-        dep = f"+{fmt(p['deposit_price'])}зал" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        price_label = f"{fmt(price)}" + (f" {dep}" if dep else "")
+        ep = _mco_exch_price(p)
+        fp = _mco_full_price(p)
+        dep_mark = " ♻" if p.get("has_bottle_deposit") and ep < fp else ""
+        price_label = f"{fmt(ep)}{dep_mark}"
         qty_label = f" ×{qty}" if qty else ""
         rows.append([
             InlineKeyboardButton(text=f"{p['name']}{qty_label} ({price_label})", callback_data="mco:noop"),
             InlineKeyboardButton(text="−", callback_data=f"mco:rem:{p['id']}"),
             InlineKeyboardButton(text=f"+{qty or ''}", callback_data=f"mco:add:{p['id']}"),
         ])
-    total = sum(_mco_eff_price(p) * int(items.get(str(p["id"]), 0)) for p in products if items.get(str(p["id"]), 0))
+    total = sum(_mco_exch_price(p) * int(items.get(str(p["id"]), 0)) for p in products if items.get(str(p["id"]), 0))
     footer = [InlineKeyboardButton(text=f"✅ Готово · {fmt(total)}", callback_data="mco:done")] if items else \
              [InlineKeyboardButton(text="— выберите товары —", callback_data="mco:noop")]
     rows.append(footer)
@@ -951,11 +959,12 @@ def _mco_catalog_text(items: dict, products: list) -> str:
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        price = _mco_eff_price(p)
-        s = price * qty
+        ep = _mco_exch_price(p)
+        fp = _mco_full_price(p)
+        s = ep * qty
         total += s
-        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+        dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -1048,11 +1057,12 @@ async def mgr_co_address(message: Message, state: FSMContext):
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        price = _mco_eff_price(p)
-        s = price * qty
+        ep = _mco_exch_price(p)
+        fp = _mco_full_price(p)
+        s = ep * qty
         total += s
-        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+        dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
     if bottles > 0:
         lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")

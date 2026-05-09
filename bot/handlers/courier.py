@@ -385,8 +385,15 @@ async def courier_debt_request_all(call: CallbackQuery):
 
 # ─── Create order ─────────────────────────────────────────────────────────────
 
-def _effective_price(p: dict) -> float:
+def _exch_price(p: dict) -> float:
+    """Display/exchange price: deposit_price for bottle products, price otherwise."""
+    if p.get("has_bottle_deposit") and p.get("deposit_price"):
+        return float(p["deposit_price"])
     return float(p.get("effective_price") or p.get("price") or 0)
+
+
+def _full_price(p: dict) -> float:
+    return float(p.get("price") or 0)
 
 
 def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
@@ -395,9 +402,12 @@ def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
         if not p.get("is_active", True):
             continue
         qty = items.get(str(p["id"]), 0)
-        price = _effective_price(p)
-        dep = f" +{fmt(p['deposit_price'])} зал." if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        label = f"{p['name']} ({p.get('volume', '')}л) — {fmt(price)}{dep}"
+        ep = _exch_price(p)
+        fp = _full_price(p)
+        if p.get("has_bottle_deposit") and ep < fp:
+            label = f"{p['name']} ({p.get('volume', '')}л) — {fmt(ep)} ♻"
+        else:
+            label = f"{p['name']} ({p.get('volume', '')}л) — {fmt(fp)}"
         if qty == 0:
             rows.append([InlineKeyboardButton(text=f"➕ {label}", callback_data=f"cco:add:{p['id']}")])
         else:
@@ -407,7 +417,8 @@ def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="➕", callback_data=f"cco:add:{p['id']}"),
             ])
     total_qty = sum(items.values())
-    total_price = sum(_effective_price(p) * qty for p in products for pid, qty in items.items() if str(p["id"]) == pid)
+    prod_map = {str(p["id"]): p for p in products}
+    total_price = sum(_exch_price(prod_map[pid]) * qty for pid, qty in items.items() if pid in prod_map)
     done_label = f"✅ Готово ({total_qty} шт. · {fmt(total_price)})" if total_qty else "✅ Готово"
     rows.append([InlineKeyboardButton(text=done_label, callback_data="cco:done")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -421,11 +432,12 @@ def _cco_catalog_text(items: dict, products: list) -> str:
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        price = _effective_price(p)
-        s = price * qty
+        ep = _exch_price(p)
+        fp = _full_price(p)
+        s = ep * qty
         total += s
-        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+        dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -551,11 +563,12 @@ async def courier_co_address(message: Message, state: FSMContext):
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        price = _effective_price(p)
-        s = price * qty
+        ep = _exch_price(p)
+        fp = _full_price(p)
+        s = ep * qty
         total += s
-        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+        dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
     if bottles > 0:
         lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
