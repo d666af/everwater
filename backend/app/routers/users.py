@@ -44,18 +44,64 @@ def _build_full_user(telegram_id: int, user, courier, manager) -> dict:
     }
 
 
-@router.get("/lookup", response_model=UserOut)
+@router.get("/lookup")
 async def lookup_user(phone: str | None = None, telegram_id: int | None = None, db: AsyncSession = Depends(get_db)):
+    user = None
     if phone:
+        # Exact match first
         result = await db.execute(select(User).where(User.phone == phone))
+        user = result.scalar_one_or_none()
+        if not user:
+            # Fuzzy: match last 9 digits (handles +998/8/0 prefix differences)
+            digits = ''.join(c for c in phone if c.isdigit())
+            if len(digits) >= 9:
+                result = await db.execute(
+                    select(User).where(User.phone.contains(digits[-9:])).limit(1)
+                )
+                user = result.scalars().first()
     elif telegram_id:
         result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+        user = result.scalar_one_or_none()
     else:
         raise HTTPException(status_code=400, detail="Provide phone or telegram_id")
-    user = result.scalar_one_or_none()
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+
+    # Enrich with bottle debt and order stats
+    import json as _json
+    from app.models.client_data import BottleDebt
+    from sqlalchemy import func as sqlfunc
+    from app.models.order import Order, OrderStatus
+
+    debt_row = (await db.execute(select(BottleDebt).where(BottleDebt.user_id == user.id))).scalar_one_or_none()
+    bottles_owed = debt_row.count if debt_row else 0
+
+    order_count = (await db.execute(
+        select(sqlfunc.count(Order.id)).where(
+            Order.user_id == user.id, Order.status == OrderStatus.DELIVERED
+        )
+    )).scalar() or 0
+
+    addresses = _json.loads(user.saved_addresses) if user.saved_addresses else []
+
+    return {
+        "id": user.id,
+        "telegram_id": user.telegram_id,
+        "name": user.name or "",
+        "phone": user.phone or "",
+        "balance": float(user.balance or 0),
+        "bonus_points": float(user.bonus_points or 0),
+        "is_registered": user.is_registered,
+        "order_count": order_count,
+        "bottles_owed": bottles_owed,
+        "addresses": [
+            {"id": i, "address": a.get("address", ""), "label": a.get("label", "")}
+            for i, a in enumerate(addresses)
+        ],
+        "saved_addresses": user.saved_addresses,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
 
 
 @router.get("/by_telegram/{telegram_id}")

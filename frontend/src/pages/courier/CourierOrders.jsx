@@ -293,7 +293,8 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
     return n
   })
 
-  const effPrice = (p) => p.effective_price ?? p.price
+  // Exchange price: deposit_price for bottle products, effective_price otherwise
+  const effPrice = (p) => (p.has_bottle_deposit && p.deposit_price) ? p.deposit_price : (p.effective_price ?? p.price)
 
   const total = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
@@ -400,8 +401,8 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}{p.volume ? ` (${p.volume}л)` : ''}</div>
                         <div style={{ fontSize: 11, color: TEXT2 }}>
-                          {price.toLocaleString()} сум
-                          {p.has_bottle_deposit && p.deposit_price ? <span style={{ color: '#E03131' }}> + {p.deposit_price.toLocaleString()} залог</span> : null}
+                          {price.toLocaleString()} сум{p.has_bottle_deposit && p.deposit_price ? ' ♻' : ''}
+                          {p.has_bottle_deposit && p.deposit_price ? <span style={{ color: TEXT2 }}> (без возврата: {p.price.toLocaleString()} сум)</span> : null}
                         </div>
                       </div>
                       {qty === 0 ? (
@@ -460,7 +461,7 @@ export default function CourierOrders() {
   const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
-  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
+  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
 
   const load = useCallback(() => {
     if (!courierId) { setLoading(false); return }

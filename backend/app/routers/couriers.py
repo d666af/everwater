@@ -245,16 +245,20 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     from app.config import settings as cfg
     from app.models.manager import Manager
     from app.services.tg_notify import notify_all
-    from app.routers.orders import _tg
+    from app.routers.orders import _tg, _tg_send, calc_bottle_discount
+    from app.services.settings_service import get_all_settings
+    from sqlalchemy import update as sa_update
 
-    # Phone lookup — use .first() to avoid MultipleResultsFound when several
-    # users share the same last-9-digit suffix.
-    normalized = body.phone.replace(" ", "").replace("-", "").replace("+", "")
-    user_q = await db.execute(
-        select(User).where(User.phone.contains(normalized[-9:])).limit(1)
-    )
-    user = user_q.scalars().first()
+    # Fuzzy phone lookup (last 9 digits to handle prefix differences)
+    digits = ''.join(c for c in body.phone if c.isdigit())
+    user = None
+    if len(digits) >= 9:
+        user_q = await db.execute(
+            select(User).where(User.phone.contains(digits[-9:])).limit(1)
+        )
+        user = user_q.scalars().first()
 
+    # Build order items using full product.price as subtotal base
     subtotal = 0.0
     items_data = []
     for item in body.items:
@@ -263,18 +267,18 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             prod_q = await db.execute(select(Product).where(Product.id == item["product_id"]))
             product = prod_q.scalar_one_or_none()
         if product:
-            # Use effective_price (accounts for active discounts)
-            price = product.price
-            if product.discount_percent and product.discount_until and \
-               product.discount_until > datetime.utcnow():
-                price = price * (1 - product.discount_percent / 100)
-            subtotal += price * item["quantity"]
+            subtotal += product.price * item["quantity"]
             items_data.append((product, item["quantity"]))
         elif item.get("price"):
             subtotal += float(item["price"]) * item["quantity"]
 
     if not subtotal and body.total:
         subtotal = body.total
+
+    # Apply bottle return discount (same as normal order flow)
+    settings_cfg = await get_all_settings(db)
+    bottle_discount = calc_bottle_discount(body.return_bottles_count, subtotal, settings_cfg)
+    total = max(0.0, subtotal - bottle_discount)
 
     order = Order(
         user_id=user.id if user else None,
@@ -283,7 +287,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         extra_info=body.note,
         delivery_time=body.delivery_time,
         subtotal=subtotal,
-        total=subtotal,
+        total=total,
+        bottle_discount=bottle_discount,
         payment_method=body.payment_method,
         return_bottles_count=body.return_bottles_count,
         status=OrderStatus.CONFIRMED,
@@ -295,71 +300,105 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                          quantity=quantity, price=product.price))
 
     # Auto-assign if a courier created the order
-    courier_name = None
-    if body.creator_role == "courier" and body.courier_telegram_id:
+    creator_courier = None
+    if body.courier_telegram_id:
         c_q = await db.execute(
             select(Courier).where(Courier.telegram_id == body.courier_telegram_id)
         )
         creator_courier = c_q.scalar_one_or_none()
-        if creator_courier:
+        if creator_courier and body.creator_role == "courier":
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
-            courier_name = creator_courier.name
 
     await db.commit()
 
     oid = order.id
     items_text = ", ".join(f"{p.name} x{q}" for p, q in items_data) if items_data else "—"
-    total_str = f"{int(subtotal):,}"
+    items_lines = "\n".join(f"  • {p.name} ×{q}" for p, q in items_data) if items_data else "  —"
+    total_int = int(total)
 
-    # Notify client if their Telegram is known
     client_tg = user.telegram_id if user else None
-    if client_tg:
-        await _tg(client_tg, (
-            f"✅ Ваш заказ #{oid} создан!\n"
-            f"Адрес: {body.address}\n"
-            f"Состав: {items_text}\n"
-            f"Сумма: {total_str} сум\n"
-            f"Оплата: наличные"
-        ))
-
-    # Notify admins + managers
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
 
-    if body.creator_role == "courier":
-        courier_label = f" {courier_name}" if courier_name else ""
-        text = (
-            f"📦 Новый заказ #{oid} (создан курьером{courier_label})\n"
+    # ── Courier-created order (already assigned) ──
+    if body.creator_role == "courier" and creator_courier:
+        courier_name = creator_courier.name
+        courier_phone = creator_courier.phone or ""
+
+        # Notify courier with full assignment message + action buttons
+        from urllib.parse import quote as url_quote
+        kb_rows = []
+        if body.address:
+            kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={url_quote(body.address)}"}])
+        kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
+        kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+        courier_kb = {"inline_keyboard": kb_rows}
+        bottles_line = f"\nВозврат бутылок: {body.return_bottles_count} шт." if body.return_bottles_count else ""
+        courier_text = (
+            f"📦 <b>🚚 Назначен курьеру</b>\n\n"
+            f"Адрес: {body.address}\n"
+            f"Клиент: {body.phone}\n"
+            f"Время: {body.delivery_time or '—'}\n"
+            f"Товары:\n{items_lines}\n"
+            f"Получить от клиента: {total_int:,} сум{bottles_line}"
+        )
+        await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+
+        # Notify client about created+assigned order
+        if client_tg:
+            phone_line = f"\nТелефон курьера: {courier_phone}" if courier_phone else ""
+            await _tg(client_tg, (
+                f"✅ Ваш заказ #{oid} создан и передан курьеру!\n"
+                f"Курьер: {courier_name}{phone_line}\n"
+                f"Адрес: {body.address}\n"
+                f"Состав: {items_text}\n"
+                f"Сумма: {total_int:,} сум"
+            ))
+
+        # Inform admins/managers (no action needed)
+        info_text = (
+            f"📦 Новый заказ #{oid} (курьер {courier_name})\n"
             f"Клиент: {body.phone}\n"
             f"Адрес: {body.address}\n"
             f"Состав: {items_text}\n"
-            f"Сумма: {total_str} сум\n"
-            f"Курьер назначен автоматически"
+            f"Сумма: {total_int:,} сум\n"
+            f"✅ Курьер назначен автоматически"
         )
         for aid in cfg.ADMIN_IDS:
-            await _tg(aid, text)
+            await _tg(aid, info_text)
         for m in mgrs:
             if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
-                await _tg(m.telegram_id, text)
+                await _tg(m.telegram_id, info_text)
+
+    # ── Manager/admin-created order (needs courier assignment) ──
     else:
         role_label = "менеджером" if body.creator_role == "manager" else "администратором"
-        site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+
+        # Notify client that order was created
+        if client_tg:
+            await _tg(client_tg, (
+                f"✅ Ваш заказ #{oid} создан!\n"
+                f"Адрес: {body.address}\n"
+                f"Состав: {items_text}\n"
+                f"Сумма: {total_int:,} сум\n"
+                f"Ожидайте подтверждения и назначения курьера."
+            ))
+
+        # Notify admins/managers with "assign courier" inline button
         text = (
             f"🆕 Новый заказ #{oid} (создан {role_label})\n"
             f"Клиент: {body.phone}\n"
             f"Адрес: {body.address}\n"
             f"Состав: {items_text}\n"
-            f"Сумма: {total_str} сум\n"
+            f"Сумма: {total_int:,} сум\n"
             f"Назначьте курьера!"
         )
         kb = {"inline_keyboard": [
-            [{"text": "🌐 Назначить курьера", "url": site_url}],
+            [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+            [{"text": "🌐 Заказ на сайте", "url": cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"}],
         ]}
-        from sqlalchemy import update as sa_update
         msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
-        await db.execute(
-            sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json)
-        )
+        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
         await db.commit()
 
     return {"ok": True, "order_id": oid}
