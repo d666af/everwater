@@ -342,7 +342,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             f"Товары:\n{items_lines}\n"
             f"Получить от клиента: {total_int:,} сум{bottles_line}"
         )
-        await _tg_send(creator_courier.telegram_id, courier_text, {**courier_kb, "parse_mode": "HTML"})
+        await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
 
         # Notify client about created+assigned order
         if client_tg:

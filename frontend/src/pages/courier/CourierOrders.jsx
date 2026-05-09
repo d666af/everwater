@@ -461,7 +461,7 @@ export default function CourierOrders() {
   const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
-  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
+  const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
 
   const load = useCallback(() => {
     if (!courierId) { setLoading(false); return }

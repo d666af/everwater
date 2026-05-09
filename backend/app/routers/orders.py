@@ -44,7 +44,8 @@ async def _tg(chat_id: int, text: str):
         pass
 
 
-async def _tg_send(chat_id: int, text: str, reply_markup: dict | None = None) -> int | None:
+async def _tg_send(chat_id: int, text: str, reply_markup: dict | None = None,
+                   parse_mode: str | None = None) -> int | None:
     """Send Telegram message, return message_id on success."""
     from app.config import settings as cfg
     import aiohttp
@@ -53,6 +54,8 @@ async def _tg_send(chat_id: int, text: str, reply_markup: dict | None = None) ->
     payload: dict = {"chat_id": chat_id, "text": text}
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
     try:
         async with aiohttp.ClientSession() as s:
