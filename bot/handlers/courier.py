@@ -46,6 +46,7 @@ async def _get_courier(telegram_id: int):
 class CourierOrderCreate(StatesGroup):
     waiting_phone = State()
     choosing_product = State()
+    waiting_bottles = State()
     waiting_address = State()
     confirming = State()
 
@@ -384,11 +385,19 @@ async def courier_debt_request_all(call: CallbackQuery):
 
 # ─── Create order ─────────────────────────────────────────────────────────────
 
+def _effective_price(p: dict) -> float:
+    return float(p.get("effective_price") or p.get("price") or 0)
+
+
 def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
     rows = []
     for p in products:
+        if not p.get("is_active", True):
+            continue
         qty = items.get(str(p["id"]), 0)
-        label = f"{p['name']} ({p.get('volume', '')}л) — {fmt(p['price'])}"
+        price = _effective_price(p)
+        dep = f" +{fmt(p['deposit_price'])} зал." if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        label = f"{p['name']} ({p.get('volume', '')}л) — {fmt(price)}{dep}"
         if qty == 0:
             rows.append([InlineKeyboardButton(text=f"➕ {label}", callback_data=f"cco:add:{p['id']}")])
         else:
@@ -398,13 +407,8 @@ def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="➕", callback_data=f"cco:add:{p['id']}"),
             ])
     total_qty = sum(items.values())
-    total_price = sum(
-        next((p["price"] for p in products if str(p["id"]) == pid), 0) * qty
-        for pid, qty in items.items()
-    )
-    done_label = (
-        f"✅ Готово ({total_qty} шт. · {fmt(total_price)})" if total_qty else "✅ Готово"
-    )
+    total_price = sum(_effective_price(p) * qty for p in products for pid, qty in items.items() if str(p["id"]) == pid)
+    done_label = f"✅ Готово ({total_qty} шт. · {fmt(total_price)})" if total_qty else "✅ Готово"
     rows.append([InlineKeyboardButton(text=done_label, callback_data="cco:done")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -417,9 +421,11 @@ def _cco_catalog_text(items: dict, products: list) -> str:
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        s = p.get("price", 0) * qty
+        price = _effective_price(p)
+        s = price * qty
         total += s
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -437,12 +443,19 @@ async def courier_create_order_start(message: Message, state: FSMContext):
 @router.message(CourierOrderCreate.waiting_phone)
 async def courier_co_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
-    products = await api.get_products()
-    await state.update_data(co_phone=phone, co_products=products, co_items={})
+    client, products = await api.lookup_user_by_phone(phone), await api.get_products()
+    await state.update_data(co_phone=phone, co_products=products, co_items={}, co_client=client)
     await state.set_state(CourierOrderCreate.choosing_product)
+
+    if client:
+        info = (f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}")
+    else:
+        info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"
+
     await message.answer(
-        "Добавьте товары в заказ:",
+        f"{info}\n\nДобавьте товары в заказ:",
         reply_markup=_cco_catalog_kb(products, {}),
+        parse_mode="HTML",
     )
 
 
@@ -492,9 +505,32 @@ async def courier_co_items_done(call: CallbackQuery, state: FSMContext):
     if not data.get("co_items"):
         await call.answer("Добавьте хотя бы один товар!")
         return
-    await state.set_state(CourierOrderCreate.waiting_address)
-    await call.message.edit_text("Введите адрес доставки:")
+    items = data.get("co_items", {})
+    products = data.get("co_products", [])
+    prod_map = {str(p["id"]): p for p in products}
+    has_deposit = any(prod_map.get(pid, {}).get("has_bottle_deposit") for pid in items)
+    if has_deposit:
+        await state.set_state(CourierOrderCreate.waiting_bottles)
+        await call.message.edit_text(
+            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+        )
+    else:
+        await state.update_data(co_return_bottles=0)
+        await state.set_state(CourierOrderCreate.waiting_address)
+        await call.message.edit_text("Введите адрес доставки:")
     await call.answer()
+
+
+@router.message(CourierOrderCreate.waiting_bottles)
+async def courier_co_bottles(message: Message, state: FSMContext):
+    try:
+        count = max(0, int(message.text.strip()))
+    except ValueError:
+        await message.answer("Введите число, например: 0, 1, 2")
+        return
+    await state.update_data(co_return_bottles=count)
+    await state.set_state(CourierOrderCreate.waiting_address)
+    await message.answer("Введите адрес доставки:")
 
 
 @router.message(CourierOrderCreate.waiting_address)
@@ -504,14 +540,24 @@ async def courier_co_address(message: Message, state: FSMContext):
     products = data.get("co_products", [])
     items = data.get("co_items", {})
     prod_map = {str(p["id"]): p for p in products}
-    lines = [f"📋 <b>Подтверждение заказа</b>\n",
-             f"Клиент: {data['co_phone']}", f"Адрес: {data['co_address']}", "\nТовары:"]
+    client = data.get("co_client")
+    bottles = data.get("co_return_bottles", 0)
+    lines = [f"📋 <b>Подтверждение заказа</b>\n"]
+    if client:
+        lines.append(f"Клиент: {client.get('name', '—')} ({data['co_phone']})")
+    else:
+        lines.append(f"Клиент: {data['co_phone']}")
+    lines += [f"Адрес: {data['co_address']}", "\nТовары:"]
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        s = p.get("price", 0) * qty
+        price = _effective_price(p)
+        s = price * qty
         total += s
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+    if bottles > 0:
+        lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Создать", callback_data="cco:confirm"),
@@ -526,15 +572,19 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     items = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["co_items"].items()]
     try:
-        await api.courier_create_order({
+        result = await api.courier_create_order({
             "phone": data["co_phone"],
             "address": data["co_address"],
             "items": items,
             "payment_method": "cash",
+            "return_bottles_count": data.get("co_return_bottles", 0),
+            "courier_telegram_id": call.from_user.id,
+            "creator_role": "courier",
         })
-        await call.message.edit_text(f"✅ Заказ создан для клиента {data['co_phone']}!")
+        oid = result.get("order_id", "?")
+        await call.message.edit_text(f"✅ Заказ #{oid} создан!\nКлиент: {data['co_phone']}")
     except Exception:
-        await call.message.edit_text(f"❌ Клиент с телефоном {data['co_phone']} не найден в системе.")
+        await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
     await call.message.answer("Панель курьера:", reply_markup=courier_menu_kb())

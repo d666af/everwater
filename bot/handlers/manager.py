@@ -68,6 +68,7 @@ class MgrRejectCustom(StatesGroup):
 class MgrOrderCreate(StatesGroup):
     waiting_phone = State()
     choosing_product = State()
+    waiting_bottles = State()
     waiting_address = State()
     confirming = State()
 
@@ -895,26 +896,47 @@ async def mgr_co_phone(message: Message, state: FSMContext):
     if not await is_manager(message.from_user.id):
         return
     phone = message.text.strip()
-    products = await api.get_products()
-    await state.update_data(mco_phone=phone, mco_products=products, mco_items={})
+    client, products = await api.lookup_user_by_phone(phone), await api.get_products()
+    await state.update_data(mco_phone=phone, mco_products=products, mco_items={}, mco_client=client)
     await state.set_state(MgrOrderCreate.choosing_product)
-    await message.answer("Добавьте товары в заказ:", reply_markup=_mco_catalog_kb(products, {}))
+
+    if client:
+        balance_line = f"\n  💰 Баланс: {fmt(client['balance'])}" if client.get("balance", 0) else ""
+        bonus_line = f"\n  🎁 Бонусы: {fmt(client['bonus_points'])}" if client.get("bonus_points", 0) else ""
+        orders_line = f"\n  📦 Заказов: {client.get('order_count', '—')}" if client.get("order_count") is not None else ""
+        info = (
+            f"✅ <b>Клиент найден</b>\n"
+            f"  👤 {client.get('name', '—')}\n"
+            f"  📞 {client.get('phone', phone)}"
+            f"{balance_line}{bonus_line}{orders_line}"
+        )
+    else:
+        info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"
+
+    await message.answer(f"{info}\n\nДобавьте товары в заказ:", reply_markup=_mco_catalog_kb(products, {}), parse_mode="HTML")
+
+
+def _mco_eff_price(p: dict) -> float:
+    return float(p.get("effective_price") or p.get("price") or 0)
 
 
 def _mco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
     rows = []
     for p in products:
-        if not p.get("is_active"):
+        if not p.get("is_active", True):
             continue
         pid = str(p["id"])
         qty = items.get(pid, 0)
+        price = _mco_eff_price(p)
+        dep = f"+{fmt(p['deposit_price'])}зал" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        price_label = f"{fmt(price)}" + (f" {dep}" if dep else "")
         qty_label = f" ×{qty}" if qty else ""
         rows.append([
-            InlineKeyboardButton(text=f"{p['name']}{qty_label}", callback_data="mco:noop"),
+            InlineKeyboardButton(text=f"{p['name']}{qty_label} ({price_label})", callback_data="mco:noop"),
             InlineKeyboardButton(text="−", callback_data=f"mco:rem:{p['id']}"),
             InlineKeyboardButton(text=f"+{qty or ''}", callback_data=f"mco:add:{p['id']}"),
         ])
-    total = sum(p.get("price", 0) * int(items.get(str(p["id"]), 0)) for p in products if items.get(str(p["id"]), 0))
+    total = sum(_mco_eff_price(p) * int(items.get(str(p["id"]), 0)) for p in products if items.get(str(p["id"]), 0))
     footer = [InlineKeyboardButton(text=f"✅ Готово · {fmt(total)}", callback_data="mco:done")] if items else \
              [InlineKeyboardButton(text="— выберите товары —", callback_data="mco:noop")]
     rows.append(footer)
@@ -929,9 +951,11 @@ def _mco_catalog_text(items: dict, products: list) -> str:
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        s = p.get("price", 0) * qty
+        price = _mco_eff_price(p)
+        s = price * qty
         total += s
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -974,9 +998,34 @@ async def mgr_co_items_done(call: CallbackQuery, state: FSMContext):
     if not data.get("mco_items"):
         await call.answer("Добавьте хотя бы один товар!")
         return
-    await state.set_state(MgrOrderCreate.waiting_address)
-    await call.message.edit_text("Введите адрес доставки:")
+    items = data.get("mco_items", {})
+    products = data.get("mco_products", [])
+    prod_map = {str(p["id"]): p for p in products}
+    has_deposit = any(prod_map.get(pid, {}).get("has_bottle_deposit") for pid in items)
+    if has_deposit:
+        await state.set_state(MgrOrderCreate.waiting_bottles)
+        await call.message.edit_text(
+            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+        )
+    else:
+        await state.update_data(mco_return_bottles=0)
+        await state.set_state(MgrOrderCreate.waiting_address)
+        await call.message.edit_text("Введите адрес доставки:")
     await call.answer()
+
+
+@router.message(MgrOrderCreate.waiting_bottles)
+async def mgr_co_bottles(message: Message, state: FSMContext):
+    if not await is_manager(message.from_user.id):
+        return
+    try:
+        count = max(0, int(message.text.strip()))
+    except ValueError:
+        await message.answer("Введите число, например: 0, 1, 2")
+        return
+    await state.update_data(mco_return_bottles=count)
+    await state.set_state(MgrOrderCreate.waiting_address)
+    await message.answer("Введите адрес доставки:")
 
 
 @router.message(MgrOrderCreate.waiting_address)
@@ -988,13 +1037,24 @@ async def mgr_co_address(message: Message, state: FSMContext):
     products = data.get("mco_products", [])
     items = data.get("mco_items", {})
     prod_map = {str(p["id"]): p for p in products}
-    lines = ["📋 <b>Подтверждение заказа</b>\n", f"Клиент: {data['mco_phone']}", f"Адрес: {data['mco_address']}", "\nТовары:"]
+    client = data.get("mco_client")
+    bottles = data.get("mco_return_bottles", 0)
+    lines = ["📋 <b>Подтверждение заказа</b>\n"]
+    if client:
+        lines.append(f"Клиент: {client.get('name', '—')} ({data['mco_phone']})")
+    else:
+        lines.append(f"Клиент: {data['mco_phone']}")
+    lines += [f"Адрес: {data['mco_address']}", "\nТовары:"]
     total = 0
     for pid, qty in items.items():
         p = prod_map.get(pid, {})
-        s = p.get("price", 0) * qty
+        price = _mco_eff_price(p)
+        s = price * qty
         total += s
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}")
+        dep = f" (+{fmt(p['deposit_price'])} залог)" if p.get("has_bottle_deposit") and p.get("deposit_price") else ""
+        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep}")
+    if bottles > 0:
+        lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Создать", callback_data="mco:confirm"),
@@ -1011,15 +1071,18 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     items = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["mco_items"].items()]
     try:
-        await api.courier_create_order({
+        result = await api.courier_create_order({
             "phone": data["mco_phone"],
             "address": data["mco_address"],
             "items": items,
             "payment_method": "cash",
+            "return_bottles_count": data.get("mco_return_bottles", 0),
+            "creator_role": "manager",
         })
-        await call.message.edit_text(f"✅ Заказ создан для клиента {data['mco_phone']}!")
+        oid = result.get("order_id", "?")
+        await call.message.edit_text(f"✅ Заказ #{oid} создан!\nКлиент: {data['mco_phone']}")
     except Exception:
-        await call.message.edit_text("❌ Ошибка при создании заказа.")
+        await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
     await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb())
