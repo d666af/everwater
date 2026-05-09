@@ -266,11 +266,12 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   const [looked, setLooked] = useState(false)
   const [address, setAddress] = useState('')
   const [products, setProducts] = useState([])
-  const [selected, setSelected] = useState({}) // { productId: qty }
+  const [selected, setSelected] = useState({})
+  const [returnBottles, setReturnBottles] = useState(0)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    getProducts().then(p => setProducts(p || [])).catch(() => {})
+    getProducts().then(p => setProducts((p || []).filter(x => x.is_active !== false))).catch(() => {})
   }, [])
 
   const doLookup = async () => {
@@ -292,17 +293,24 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
     return n
   })
 
+  const effPrice = (p) => p.effective_price ?? p.price
+
   const total = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
-    return sum + (p ? p.price * qty : 0)
+    return sum + (p ? effPrice(p) * qty : 0)
   }, 0)
 
   const items = Object.entries(selected)
     .filter(([, qty]) => qty > 0)
     .map(([id, qty]) => {
       const p = products.find(p => p.id === Number(id))
-      return p ? { product_id: p.id, quantity: qty, price: p.price } : null
+      return p ? { product_id: p.id, quantity: qty, price: effPrice(p) } : null
     }).filter(Boolean)
+
+  const hasDepositItems = items.some(item => {
+    const p = products.find(p => p.id === item.product_id)
+    return p?.has_bottle_deposit
+  })
 
   const canSave = phone.trim() && address.trim() && items.length > 0
 
@@ -317,9 +325,12 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         items,
         courier_id: courierId,
         user_id: client?.id || null,
+        return_bottles_count: hasDepositItems ? returnBottles : 0,
+        courier_telegram_id: courierId,
+        creator_role: 'courier',
       })
       onClose()
-    } catch (e) {
+    } catch {
       alert('Ошибка при создании заказа')
     }
     finally { setLoading(false) }
@@ -331,27 +342,24 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         <div style={s.sheetHandle} />
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
 
-        {/* Phone lookup */}
+        {/* Phone */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Телефон клиента</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...s.inp, flex: 1 }} placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
+            <input style={{ ...s.inp, flex: 1 }} placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" onKeyDown={e => e.key === 'Enter' && doLookup()} />
             <button style={{ padding: '0 16px', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }} onClick={doLookup} disabled={lookingUp}>
               {lookingUp ? '...' : 'Найти'}
             </button>
           </div>
-
-          {/* Client info */}
           {looked && client && (
-            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>{client.name}</div>
-              {client.bottles_owed > 0 && (
-                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>Долг: {client.bottles_owed} бутылок (20л)</div>
-              )}
+            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>✅ {client.name}</div>
+              <div style={{ fontSize: 12, color: '#555' }}>📞 {client.phone}</div>
+              {client.bottles_owed > 0 && <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>⚠️ Долг: {client.bottles_owed} бутылок (19л)</div>}
             </div>
           )}
           {looked && !client && (
-            <div style={{ fontSize: 12, color: TEXT2, fontStyle: 'italic' }}>Клиент не найден — заказ сохранится по номеру</div>
+            <div style={{ fontSize: 12, color: TEXT2, fontStyle: 'italic' }}>Клиент не найден — заказ сохранится по номеру телефона</div>
           )}
         </div>
 
@@ -373,7 +381,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
           <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
         </div>
 
-        {/* Product selection */}
+        {/* Products */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав заказа</div>
           {products.length === 0 ? (
@@ -382,14 +390,20 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
             <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {products.map(p => {
                 const qty = selected[p.id] || 0
+                const price = effPrice(p)
                 return (
                   <div key={p.id} style={{
                     borderRadius: 12, border: qty ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
                     background: qty ? `${C}06` : '#fff', padding: '10px 12px',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}{p.volume ? ` (${p.volume}л)` : ''}</span>
-                      <span style={{ fontSize: 12, color: TEXT2, marginRight: 8 }}>{p.price.toLocaleString()} сум</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}{p.volume ? ` (${p.volume}л)` : ''}</div>
+                        <div style={{ fontSize: 11, color: TEXT2 }}>
+                          {price.toLocaleString()} сум
+                          {p.has_bottle_deposit && p.deposit_price ? <span style={{ color: '#E03131' }}> + {p.deposit_price.toLocaleString()} залог</span> : null}
+                        </div>
+                      </div>
                       {qty === 0 ? (
                         <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: `${C}15`, fontSize: 18, fontWeight: 700, color: CD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => add(p.id)}>+</button>
                       ) : (
@@ -400,7 +414,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
                         </div>
                       )}
                     </div>
-                    {qty > 0 && <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 4, textAlign: 'right' }}>{(p.price * qty).toLocaleString()} сум</div>}
+                    {qty > 0 && <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 4, textAlign: 'right' }}>{(price * qty).toLocaleString()} сум</div>}
                   </div>
                 )
               })}
@@ -408,7 +422,19 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
           )}
         </div>
 
-        {/* Total + payment info */}
+        {/* Bottle return */}
+        {hasDepositItems && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>🪣 Возврат бутылей (19л)</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: '#fff', fontSize: 18, fontWeight: 700, color: C, cursor: 'pointer' }} onClick={() => setReturnBottles(Math.max(0, returnBottles - 1))}>−</button>
+              <span style={{ fontSize: 18, fontWeight: 800, color: TEXT, minWidth: 40, textAlign: 'center' }}>{returnBottles}</span>
+              <button style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: '#fff', fontSize: 18, fontWeight: 700, color: C, cursor: 'pointer' }} onClick={() => setReturnBottles(returnBottles + 1)}>+</button>
+              <span style={{ fontSize: 13, color: TEXT2 }}>шт.</span>
+            </div>
+          </div>
+        )}
+
         {total > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 12, padding: '12px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
             <span style={{ fontSize: 13, color: TEXT2 }}>Итого (наличные)</span>

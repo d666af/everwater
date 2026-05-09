@@ -61,6 +61,13 @@ async def update_user(telegram_id: int, **kwargs):
     return await _patch(f"/users/{telegram_id}", kwargs)
 
 
+async def lookup_user_by_phone(phone: str):
+    try:
+        return await _get("/users/lookup", {"phone": phone})
+    except Exception:
+        return None
+
+
 async def get_users_to_remind():
     try:
         return await _get("/users/unregistered/remind")

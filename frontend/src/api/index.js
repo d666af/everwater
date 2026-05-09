@@ -667,7 +667,7 @@ export const lookupClientByPhone = (phone) =>
     }
   )
 
-// ─── Courier create order ───────────────────────────────────────────────────
+// ─── Courier/manager/admin create order ────────────────────────────────────
 export const courierCreateOrder = (data) =>
   safeCall(
     () => http.post('/couriers/orders', data).then(r => r.data),
