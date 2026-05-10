@@ -174,12 +174,14 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     total_cash = 0.0
     total_card = 0.0
     total_online = 0.0
+    total_delivery_revenue = 0.0
     total_bottles_19l_delivered = 0
     total_bottles_returned = 0
     rating_vals = []
 
     for o in orders:
         total_revenue += float(o.total or 0)
+        total_delivery_revenue += float(o.delivery_fee or 0)
         pm = o.payment_method or "cash"
         if pm == "cash":
             total_cash += float(o.total or 0)
@@ -222,6 +224,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
             "items": items_list,
             "return_bottles": bottles_returned,
             "total": float(o.total or 0),
+            "delivery_fee": float(o.delivery_fee or 0),
             "payment_method": pm,
             "created_at": o.created_at.strftime("%d.%m.%Y %H:%M") if o.created_at else "—",
             "confirmed_at": o.confirmed_at.strftime("%d.%m.%Y %H:%M") if o.confirmed_at else "—",
@@ -234,6 +237,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     return {
         "deliveries": len(orders),
         "total_revenue": round(total_revenue, 2),
+        "total_delivery_revenue": round(total_delivery_revenue, 2),
         "total_cash": round(total_cash, 2),
         "total_card": round(total_card, 2),
         "total_online": round(total_online, 2),

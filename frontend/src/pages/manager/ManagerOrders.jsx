@@ -574,6 +574,7 @@ function PaymentBlock({ order }) {
       {order.payment_method === 'balance' && <Row k="Статус" v="Списано с баланса" accent="#2B8A3E" />}
       {order.bonus_used > 0 && <Row k="Бонусы" v={`-${order.bonus_used} бон.`} />}
       {order.bottle_discount > 0 && <Row k="Скидка" v={`-${(order.bottle_discount).toLocaleString()} сум`} />}
+      {(order.delivery_fee || 0) > 0 && <Row k="Доставка" v={`+${(order.delivery_fee).toLocaleString()} сум`} accent="#1971C2" />}
       <div style={{ display: 'flex', gap: 10, borderTop: `1px solid ${BORDER}`, marginTop: 6, paddingTop: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, minWidth: 90 }}>Итого</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</span>
