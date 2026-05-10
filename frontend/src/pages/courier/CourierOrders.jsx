@@ -169,7 +169,7 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
                 <div key={item.id ?? idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
                   <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
-                  <span style={{ fontWeight: 700, color: TEXT2 }}>x{item.quantity}</span>
+                  <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity}</span>
                 </div>
               ))}
             </div>
