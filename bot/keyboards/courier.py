@@ -17,7 +17,7 @@ def _fmt_sum(v) -> str:
 
 def courier_assignment_text(order: dict) -> str:
     items_text = "\n".join(
-        f"  • {i.get('product_name', '?')} ×{i.get('quantity', 1)}" for i in order.get("items", [])
+        f"  • {i.get('product_name', '?')} {i.get('quantity', 1)} шт." for i in order.get("items", [])
     )
     pay = order.get("payment_method", "cash")
     total = order.get("total") or 0
