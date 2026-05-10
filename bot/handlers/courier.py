@@ -613,7 +613,7 @@ async def courier_done(call: CallbackQuery):
         try:
             await call.bot.send_message(
                 admin_id,
-                f"✔️ Доставлено!\nКурьер: {call.from_user.full_name}\n{brief}",
+                f"✔️ Доставлено!\nКурьер: {order.get('courier_name') or call.from_user.full_name}\n{brief}",
             )
         except Exception:
             pass
