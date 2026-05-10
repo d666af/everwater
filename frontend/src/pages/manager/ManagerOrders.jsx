@@ -530,7 +530,7 @@ function ItemsBlock({ order }) {
         <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, paddingBottom: 6, borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
           <span style={{ flex: 1, color: TEXT }}>{i.product_name}</span>
-          <span style={{ color: TEXT2, flexShrink: 0 }}>× {i.quantity}</span>
+          <span style={{ color: TEXT2, flexShrink: 0 }}>× {i.quantity} шт.</span>
           <span style={{ fontWeight: 700, color: TEXT, flexShrink: 0 }}>{((i.price || 0) * i.quantity).toLocaleString()} сум</span>
         </div>
       ))}

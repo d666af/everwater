@@ -342,7 +342,7 @@ export function SubscriptionModal({ onClose, settings, userStore }) {
           <div style={{ background: '#f8f8fa', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {selectedItems.map(i => (
               <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#3c3c43' }}>
-                <span>{i.name} × {i.qty}</span>
+                <span>{i.name} {i.qty} шт.</span>
                 <span style={{ fontWeight: 700 }}>{(i.price * i.qty).toLocaleString()} сум</span>
               </div>
             ))}

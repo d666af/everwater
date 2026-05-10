@@ -153,7 +153,7 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 8px', background: '#F8F9FA', borderRadius: 8 }}>
                           {o.items.map((item, i) => (
                             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: TEXT }}>
-                              <span>{item.name}{item.volume > 0 ? ` ${item.volume.toFixed(0)}л` : ''} × {item.quantity}</span>
+                              <span>{item.name}{item.volume > 0 ? ` ${item.volume.toFixed(0)}л` : ''} {item.quantity} шт.</span>
                               <span style={{ color: TEXT2, flexShrink: 0, marginLeft: 8 }}>{((item.price || 0) * item.quantity).toLocaleString()} сум</span>
                             </div>
                           ))}

@@ -307,7 +307,7 @@ export default function Checkout() {
         <div style={s.card}>
           {items.map(({ product, quantity }) => (
             <div key={product.id} style={s.orderRow}>
-              <span style={s.orderName}>{product.name} <span style={s.orderQty}>× {quantity}</span></span>
+              <span style={s.orderName}>{product.name} <span style={s.orderQty}>× {quantity} шт.</span></span>
               <span style={s.orderPrice}>{(product.price * quantity).toLocaleString()} сум</span>
             </div>
           ))}

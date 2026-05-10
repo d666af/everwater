@@ -308,7 +308,7 @@ function AssignedOrderRow({ order, onIssue }) {
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: issued ? 0 : 8 }}>
           {order.items.map(it => (
             <span key={it.key || it.short_name} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#F2F2F7', color: TEXT, fontWeight: 600 }}>
-              {it.short_name} × {it.quantity}
+              {it.short_name} {it.quantity} шт.
             </span>
           ))}
           {order.return_bottles_count > 0 && (

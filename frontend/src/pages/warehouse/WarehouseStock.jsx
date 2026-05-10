@@ -273,7 +273,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: CD }}>{ss.total_qty} шт.</div>
-                    {ss.occurrences > 1 && <div style={{ fontSize: 10, color: TEXT2 }}>× {ss.occurrences}</div>}
+                    {ss.occurrences > 1 && <div style={{ fontSize: 10, color: TEXT2 }}>× {ss.occurrences} шт.</div>}
                   </div>
                 </div>
               ))}
