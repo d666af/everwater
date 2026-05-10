@@ -56,8 +56,8 @@ def courier_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📋 Мои заказы"), KeyboardButton(text="📊 Мои отчеты")],
-            [KeyboardButton(text="💧 Мой склад"), KeyboardButton(text="💸 Мои долги")],
-            [KeyboardButton(text="⭐ Мои отзывы"), KeyboardButton(text="📝 Создать заказ")],
+            [KeyboardButton(text="💧 Мой склад"), KeyboardButton(text="⭐ Мои отзывы")],
+            [KeyboardButton(text="📝 Создать заказ")],
         ],
         resize_keyboard=True,
     )
@@ -72,11 +72,6 @@ def courier_order_kb(order_id: int, status: str = "assigned_to_courier") -> Inli
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def courier_debt_kb(debt_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📤 Запросить погашение", callback_data=f"courier:debt_request:{debt_id}")],
-        [InlineKeyboardButton(text="🌐 Статистика на сайте", url=_site("/courier/stats"))],
-    ])
 
 
 def courier_cash_confirm_kb(order_id: int) -> InlineKeyboardMarkup:

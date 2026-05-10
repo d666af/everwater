@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails, getAllCashDebts, approveDebtClearance, rejectDebtClearance } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 
 const C = '#8DC63F'
@@ -50,7 +50,7 @@ function AddCourierModal({ onClose, onSave }) {
   )
 }
 
-function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, onDebtAction }) {
+function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
   const [expanded, setExpanded] = useState(false)
   const [details, setDetails] = useState(null)
   const [loadingD, setLoadingD] = useState(false)
@@ -58,9 +58,6 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
   const [phoneModal, setPhoneModal] = useState(null)
 
   const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
-  const myDebts = debts.filter(d => d.courier_id === c.id && d.clearance_status !== 'approved')
-  const totalDebt = myDebts.reduce((s, d) => s + (d.amount || 0), 0)
-  const pendingRequests = myDebts.filter(d => d.clearance_status === 'pending')
 
   const toggleExpand = () => {
     if (!expanded && !details) {
@@ -159,29 +156,6 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
             </div>
           )}
 
-          {/* Cash debt */}
-          {myDebts.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Наличные · долг {totalDebt.toLocaleString()} сум</div>
-              {myDebts.map(d => (
-                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: TEXT }}>#{d.order_id}</span>
-                  <span style={{ color: TEXT2, flex: 1 }}>{(d.amount || 0).toLocaleString()} сум</span>
-                  {d.clearance_status === 'pending' ? (
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button style={{ padding: '4px 10px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }} onClick={() => onDebtAction('approve', d.id)}>Принять</button>
-                      <button style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(224,49,49,0.3)', background: '#fff', color: '#E03131', fontSize: 11, fontWeight: 700, cursor: 'pointer' }} onClick={() => onDebtAction('reject', d.id)}>Отклонить</button>
-                    </div>
-                  ) : d.clearance_status === 'approved' ? (
-                    <span style={{ fontSize: 11, color: '#2B8A3E', fontWeight: 700 }}>Погашен</span>
-                  ) : (
-                    <span style={{ fontSize: 11, color: '#E03131', fontWeight: 700 }}>Не погашен</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
           <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
             {c.is_active ? (
               !confirming ? (
@@ -208,17 +182,15 @@ function CourierCard({ courier: c, allOrders, debts, onDeactivate, onActivate, o
 export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры' }) {
   const [couriers, setCouriers] = useState([])
   const [allOrders, setAllOrders] = useState([])
-  const [debts, setDebts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
   const load = () => {
     setLoading(true)
-    Promise.allSettled([getAdminCouriers(), getOrders(), getAllCashDebts()])
-      .then(([c, o, d]) => {
+    Promise.allSettled([getAdminCouriers(), getOrders()])
+      .then(([c, o]) => {
         if (c.status === 'fulfilled') setCouriers(c.value || [])
         if (o.status === 'fulfilled') setAllOrders(o.value || [])
-        if (d.status === 'fulfilled') setDebts(d.value || [])
       })
       .finally(() => setLoading(false))
   }
@@ -230,13 +202,6 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
   const handleActivate = async (id) => {
     setCouriers(prev => prev.map(c => c.id === id ? { ...c, is_active: true } : c))
   }
-  const handleDebtAction = async (action, debtId) => {
-    try {
-      if (action === 'approve') await approveDebtClearance(debtId)
-      else await rejectDebtClearance(debtId)
-      load()
-    } catch { alert('Ошибка') }
-  }
 
   const active = couriers.filter(c => c.is_active)
   const deactivated = couriers.filter(c => !c.is_active)
@@ -247,28 +212,14 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
       {/* Stats — full width */}
-      {(() => {
-        const totalDebtAll = debts.filter(d => d.clearance_status !== 'approved').reduce((s, d) => s + (d.amount || 0), 0)
-        const pendingCount = debts.filter(d => d.clearance_status === 'pending').length
-        return (
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'В пути'], [active.length, 'Активных'],
-              [totalDebtAll > 0 ? `${Math.round(totalDebtAll / 1000)}к` : '0', 'Долг (сум)', totalDebtAll > 0 ? '#E03131' : undefined]
-            ].map(([v, l, clr]) => (
-              <div key={l} style={{ flex: 1, minWidth: 70, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: clr || TEXT }}>{v}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
-              </div>
-            ))}
-            {pendingCount > 0 && (
-              <div style={{ flex: 1, minWidth: 70, background: '#FFF8E6', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: '#E67700' }}>{pendingCount}</div>
-                <div style={{ fontSize: 10, color: '#E67700', marginTop: 3, fontWeight: 500 }}>Запросов</div>
-              </div>
-            )}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'В пути'], [active.length, 'Активных']].map(([v, l]) => (
+          <div key={l} style={{ flex: 1, minWidth: 70, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
           </div>
-        )
-      })()}
+        ))}
+      </div>
 
       {/* Add button — under stats */}
       <button style={{
@@ -296,13 +247,13 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
           {active.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Активные · {active.length}</div>
-              {active.map(c => <CourierCard key={c.id} courier={c} allOrders={allOrders} debts={debts} onDeactivate={handleDeactivate} onActivate={handleActivate} onDebtAction={handleDebtAction} />)}
+              {active.map(c => <CourierCard key={c.id} courier={c} allOrders={allOrders} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
             </div>
           )}
           {deactivated.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Деактивированные · {deactivated.length}</div>
-              {deactivated.map(c => <CourierCard key={c.id} courier={c} allOrders={[]} debts={[]} onDeactivate={handleDeactivate} onActivate={handleActivate} onDebtAction={handleDebtAction} />)}
+              {deactivated.map(c => <CourierCard key={c.id} courier={c} allOrders={[]} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
             </div>
           )}
         </>

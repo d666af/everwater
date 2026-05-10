@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.admin import (
     admin_menu_kb, order_confirm_kb, courier_select_kb,
-    stats_period_kb, admin_user_kb, admin_debt_kb, broadcast_target_kb,
+    stats_period_kb, admin_user_kb, broadcast_target_kb,
     product_list_kb, product_edit_kb, subs_menu_kb, subs_list_kb,
 )
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
@@ -296,29 +296,6 @@ async def admin_text_products(message: Message):
         await message.answer("Товаров нет.", reply_markup=kb)
         return
     await message.answer("📦 <b>Товары:</b>", reply_markup=product_list_kb(products), parse_mode="HTML")
-
-
-@router.message(F.text == "💸 Долги")
-async def admin_text_debts(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    debts = await api.get_cash_debts_admin(status="requested")
-    if not debts:
-        await message.answer("Нет запросов на погашение долгов.")
-        return
-    couriers = await api.get_couriers()
-    courier_map = {c["id"]: c for c in couriers}
-    for d in debts[:10]:
-        c = courier_map.get(d.get("courier_id"), {})
-        courier_name = c.get("name") or f"ID {d.get('courier_id')}"
-        text = (
-            f"💸 <b>Долг курьера</b>\n"
-            f"Курьер: {courier_name}\n"
-            f"Сумма: {fmt(d['amount'])}\n"
-            f"Заказ: #{d.get('order_id') or '—'}\n"
-            f"Заметка: {d.get('note') or '—'}"
-        )
-        await message.answer(text, reply_markup=admin_debt_kb(d["id"]), parse_mode="HTML")
 
 
 @router.message(F.text == "🧑‍💼 Менеджеры")
@@ -994,59 +971,6 @@ async def admin_mgr_phone(message: Message, state: FSMContext):
         )
     except Exception:
         pass
-
-
-# ─── Cash debts ───────────────────────────────────────────────────────────────
-
-@router.callback_query(F.data == "admin:cash_debts")
-async def admin_cash_debts(call: CallbackQuery):
-    if not is_admin(call.from_user.id):
-        return
-    debts = await api.get_cash_debts_admin(status="requested")
-    if not debts:
-        await call.message.answer("Нет запросов на погашение долгов.")
-        await call.answer()
-        return
-    couriers = await api.get_couriers()
-    courier_map = {c["id"]: c for c in couriers}
-    for d in debts[:10]:
-        c = courier_map.get(d.get("courier_id"), {})
-        courier_name = c.get("name") or f"ID {d.get('courier_id')}"
-        text = (
-            f"💸 <b>Долг курьера</b>\n"
-            f"Курьер: {courier_name}\n"
-            f"Сумма: {fmt(d['amount'])}\n"
-            f"Заказ: #{d.get('order_id') or '—'}\n"
-            f"Заметка: {d.get('note') or '—'}"
-        )
-        await call.message.answer(text, reply_markup=admin_debt_kb(d["id"]), parse_mode="HTML")
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("admin:debt:"))
-async def admin_debt_decide(call: CallbackQuery):
-    if not is_admin(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    action, debt_id = parts[2], int(parts[3])
-    debts_all = await api.get_cash_debts_admin()
-    debt = next((d for d in debts_all if d["id"] == debt_id), None)
-    await api.decide_cash_debt(debt_id, action)
-    label = "✅ Одобрено" if action == "approve" else "❌ Отклонено"
-    await call.message.edit_text(f"{label}: долг #{debt_id}")
-    # Notify courier
-    if debt:
-        couriers = await api.get_couriers()
-        c = next((x for x in couriers if x["id"] == debt.get("courier_id")), None)
-        if c and c.get("telegram_id"):
-            msg = (f"✅ Ваш запрос на погашение долга одобрен! Сумма: {fmt(debt['amount'])}"
-                   if action == "approve"
-                   else f"❌ Ваш запрос на погашение долга отклонён. Сумма: {fmt(debt['amount'])}")
-            try:
-                await call.bot.send_message(c["telegram_id"], msg)
-            except Exception:
-                pass
-    await call.answer()
 
 
 # ─── Warehouse overview ───────────────────────────────────────────────────────
