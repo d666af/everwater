@@ -151,6 +151,12 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
                   {deliveryInfo}
                 </div>
               )}
+              {order.eta_human && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: order.eta_human === 'уже должны были' ? '#E03131' : '#1971C2', fontWeight: 600 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 2v10l4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6"/></svg>
+                  ETA: {order.eta_human}
+                </div>
+              )}
               {order.latitude && (
                 <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, background: '#111827', color: '#fff', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, textDecoration: 'none', WebkitTapHighlightColor: 'transparent' }}>

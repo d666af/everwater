@@ -109,9 +109,19 @@ export const uploadProductPhoto = (file) => {
 }
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
-export const createOrder = (data) =>
-  safeCall(
-    () => http.post('/orders/', data).then(r => r.data),
+const _IDEM_KEY = 'order_idempotency_key'
+
+export const createOrder = (data) => {
+  let idemKey = sessionStorage.getItem(_IDEM_KEY)
+  if (!idemKey) {
+    idemKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+    sessionStorage.setItem(_IDEM_KEY, idemKey)
+  }
+  return safeCall(
+    () => http.post('/orders/', data, { headers: { 'X-Idempotency-Key': idemKey } }).then(r => {
+      sessionStorage.removeItem(_IDEM_KEY)
+      return r.data
+    }),
     () => {
       // Compute total from actual cart items (use product price from data if available)
       const total = Math.max(
@@ -141,10 +151,12 @@ export const createOrder = (data) =>
         })),
         ...data,
       }
+      sessionStorage.removeItem(_IDEM_KEY)
       mockOrdersStore = [newOrder, ...mockOrdersStore]
       return newOrder
     }
   )
+}
 
 export const getOrder = (orderId) =>
   safeCall(
@@ -291,10 +303,16 @@ export const uploadReviewPhoto = (reviewId, file) => {
   }).then(r => r.data)
 }
 
-export const getReviews = (approvedOnly = false) =>
+export const getReviews = (approvedOnly = false, filters = {}) =>
   safeCall(
-    () => http.get('/orders/reviews/', { params: { approved_only: approvedOnly } }).then(r => r.data),
+    () => http.get('/orders/reviews/', { params: { approved_only: approvedOnly, ...filters } }).then(r => r.data),
     () => []
+  )
+
+export const repeatOrder = (orderId) =>
+  safeCall(
+    () => http.post(`/orders/${orderId}/repeat`).then(r => r.data),
+    () => null
   )
 
 export const approveReview = (reviewId) =>

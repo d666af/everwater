@@ -126,10 +126,11 @@ export default function Checkout() {
     return c * Number(settings.bottle_discount_value)
   })()
   const afterBottle = subtotal - bottleDiscount
-  const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
-  const bonusMax = Math.min(availableBonus, afterBottle)
-
   const deliveryFee = Number(settings.delivery_price || 0)
+  const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
+  const bonusLimitPct = (Number(settings.bonus_limit_percent) || 30) / 100
+  const bonusMaxByPct = Math.floor((subtotal + deliveryFee) * bonusLimitPct)
+  const bonusMax = Math.min(availableBonus, afterBottle, bonusMaxByPct)
   const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
   const finalTotal = afterBonus + deliveryFee
 
@@ -421,6 +422,14 @@ export default function Checkout() {
         />
       )}
 
+      {/* 19L bottle deposit explanation */}
+      {deposit19L && discountPerBottle > 0 && (
+        <div style={{ background: '#EBF4FF', borderRadius: 14, padding: '12px 14px', fontSize: 13, color: '#1971C2', lineHeight: 1.5, marginBottom: 4 }}>
+          🫙 <b>Первый раз:</b> {deposit19L.price.toLocaleString()} сум = {(deposit19L.price - discountPerBottle).toLocaleString()} вода + {discountPerBottle.toLocaleString()} залог.<br/>
+          При возврате бутылки — скидка {discountPerBottle.toLocaleString()} сум.
+        </div>
+      )}
+
       {/* Bonus */}
       {bonusMax > 0 && (
         <div style={s.section}>
@@ -430,6 +439,9 @@ export default function Checkout() {
               <div>
                 <div style={s.discountName}>Бонусные баллы</div>
                 <div style={s.discountAvail}>Доступно: {availableBonus.toLocaleString()} сум</div>
+                <div style={{ fontSize: 11, color: '#8e8e93', marginTop: 2 }}>
+                  Максимум: {bonusMaxByPct.toLocaleString()} сум ({Math.round(bonusLimitPct * 100)}% от суммы)
+                </div>
               </div>
               <button
                 style={Number(form.bonusUsed) > 0 ? { ...s.useBtn, ...s.useBtnActive } : s.useBtn}
@@ -482,6 +494,11 @@ export default function Checkout() {
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>
         </div>
+        {new Date().getHours() >= 18 && (
+          <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
+            ⚠️ Заказы после 18:00 могут быть доставлены на следующий день.
+          </div>
+        )}
         {error && <div style={s.errorBox}>{error}</div>}
         <button style={s.primaryBtn} onClick={submitOrder} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Оформить заказ'}

@@ -25,6 +25,7 @@ DEFAULTS: dict[str, Any] = {
     # Bonus system
     "bonus_per_bottle": 100,           # сум за каждую доставленную 19л бутылку
     "bonus_expiry_days": 60,           # срок жизни бонусов в днях (0 = бессрочно)
+    "bonus_limit_percent": 30,         # максимум бонусов = X% от суммы заказа
     # Cancellation
     "cancellation_penalty_pct": 10,    # % от суммы заказа списывается из бонусов при поздней отмене
     # Late order warning

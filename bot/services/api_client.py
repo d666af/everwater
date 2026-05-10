@@ -474,6 +474,13 @@ async def get_courier_reviews(telegram_id: int):
         return []
 
 
+async def get_user_reviews(user_id: int):
+    try:
+        return await _get(f"/orders/reviews/", params={"user_id": user_id})
+    except Exception:
+        return []
+
+
 async def get_courier_water(courier_id: int):
     try:
         return await _get(f"/couriers/{courier_id}/water")

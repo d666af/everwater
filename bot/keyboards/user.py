@@ -15,7 +15,7 @@ def main_menu_kb(show_role_switch: bool = False) -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🛒 Заказать")],
         [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
         [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="🎁 Бонусы")],
-        [KeyboardButton(text="💬 Поддержка")],
+        [KeyboardButton(text="⭐ Мои отзывы"), KeyboardButton(text="💬 Поддержка")],
     ]
     if show_role_switch:
         keyboard.append([KeyboardButton(text="🔄 Роль")])

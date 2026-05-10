@@ -65,6 +65,7 @@ export default function OrderHistory() {
   const [dismissedIds, setDismissedIds] = useState(new Set())
   const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
+  const clearCart = useCartStore(s => s.clearCart)
   const { orders, setOrders, loaded } = useOrdersStore()
 
   const handleOrderUpdate = (orderId, newStatus) => {
@@ -100,9 +101,11 @@ export default function OrderHistory() {
 
   const repeatOrder = (order) => {
     if (!order.items?.length) return
+    clearCart()
     order.items.forEach(item => {
-      addToCart({ id: item.id || item.product_id, name: item.product_name, price: item.price, volume: item.volume || 0 })
+      addToCart({ id: item.product_id || item.id, name: item.product_name, price: item.price, volume: item.volume || 0 })
     })
+    navigate('/checkout')
   }
 
   const handleReviewDone = (orderId) => {
