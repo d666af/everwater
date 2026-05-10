@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
 import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -22,6 +23,8 @@ const RANGES = [
 ]
 
 export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Склад' }) {
+  const { user } = useAuthStore()
+  const actor = user?.name || null
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
   const [timeFrom, setTimeFrom] = useState('')
@@ -81,9 +84,9 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   return (
     <Layout title={title}>
-      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty); load() }} />}
-      {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note); load() }} />}
+      {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
+      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty, actor); load() }} />}
+      {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note, actor); load() }} />}
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}

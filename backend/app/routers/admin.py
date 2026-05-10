@@ -194,6 +194,34 @@ async def create_courier(data: CourierCreate, db: AsyncSession = Depends(get_db)
     return courier
 
 
+@router.get("/couriers/{courier_id}/details")
+async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+
+    today_q = await db.execute(
+        select(func.count(Order.id)).where(
+            and_(Order.courier_id == courier_id,
+                 Order.status == OrderStatus.DELIVERED,
+                 func.date(Order.delivered_at) == func.current_date())
+        )
+    )
+    today_deliveries = today_q.scalar() or 0
+
+    return {
+        "courier_id": courier.id,
+        "name": courier.name,
+        "phone": courier.phone,
+        "total_deliveries": courier.total_deliveries,
+        "today_deliveries": today_deliveries,
+        "total_revenue": courier.total_earnings,
+        "avg_rating": courier.avg_rating if courier.avg_rating else None,
+        "rating_count": courier.rating_count,
+    }
+
+
 @router.delete("/couriers/{courier_id}")
 async def deactivate_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Courier).where(Courier.id == courier_id))

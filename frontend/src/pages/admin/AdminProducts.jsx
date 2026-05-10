@@ -196,19 +196,25 @@ export default function AdminProducts() {
 
   const active = products.filter(p => p.is_active).length
 
+  const duplicate = (p) => {
+    setForm({ name: p.name + ' (копия)', description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: false, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, deposit_price: p.deposit_price || null, cost_price: p.cost_price || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+    setEditing('new'); setError('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
     <AdminLayout title="Товары">
       {/* Top bar */}
       <div style={s.topBar}>
         <div style={s.counts}>
           <span style={s.countChip}>{products.length} всего</span>
-          <span style={{ ...s.countChip, background: '#EBFBEE', color: '#2B8A3E' }}>{active} активных</span>
+          <span style={{ ...s.countChip, background: '#EBFBEE', color: '#2B8A3E', border: '1px solid rgba(43,138,62,0.15)' }}>{active} активных</span>
         </div>
         <button style={s.addBtn} onClick={openNew}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
           </svg>
-          Добавить товар
+          Добавить
         </button>
       </div>
 
@@ -261,6 +267,12 @@ export default function AdminProducts() {
                       <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                     </svg>
                     Изменить
+                  </button>
+                  <button style={s.dupBtn} onClick={() => duplicate(p)} title="Дублировать">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
                   </button>
                   <button style={s.deleteBtn} onClick={() => remove(p.id)}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -374,9 +386,15 @@ const s = {
     background: '#fff', color: TEXT, fontSize: 12, cursor: 'pointer', fontWeight: 600,
     WebkitTapHighlightColor: 'transparent',
   },
+  dupBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '8px 10px', border: `1.5px solid ${BORDER}`, borderRadius: 10,
+    background: '#F0F4FF', color: '#3B5BDB', cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
   deleteBtn: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '8px 12px', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10,
+    padding: '8px 10px', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10,
     background: '#FFF5F5', color: '#E03131', cursor: 'pointer',
     WebkitTapHighlightColor: 'transparent',
   },

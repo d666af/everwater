@@ -238,11 +238,11 @@ const s = {
   cardTitle: { fontSize: 14, fontWeight: 800, color: TEXT },
   linkBtn: { background: 'none', border: 'none', color: C, fontSize: 12, fontWeight: 700, cursor: 'pointer' },
   idBadge: { fontSize: 11, fontWeight: 800, color: TEXT2, background: '#F2F2F7', padding: '3px 8px', borderRadius: 8, flexShrink: 0 },
-  shortcutGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 },
+  shortcutGrid: { display: 'flex', flexDirection: 'column', gap: 8 },
   shortcutBtn: {
-    background: '#fff', border: 'none', borderRadius: 16, padding: '14px 14px',
-    display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, cursor: 'pointer',
+    background: '#fff', border: 'none', borderRadius: 16, padding: '13px 16px',
+    display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 14, cursor: 'pointer',
     boxShadow: '0 1px 4px rgba(0,0,0,0.04)', WebkitTapHighlightColor: 'transparent',
-    textAlign: 'left',
+    textAlign: 'left', width: '100%',
   },
 }

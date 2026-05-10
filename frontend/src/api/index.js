@@ -704,9 +704,9 @@ export const getWarehouseStock = () =>
     })
   )
 
-export const addProduction = (productId, quantity, note, productNameHint) =>
+export const addProduction = (productId, quantity, note, productNameHint, performedBy) =>
   safeCall(
-    () => http.post('/warehouse/production', { product_id: productId, product_name: productNameHint, quantity, note }).then(r => r.data),
+    () => http.post('/warehouse/production', { product_id: productId, product_name: productNameHint, quantity, note, performed_by: performedBy || undefined }).then(r => r.data),
     () => {
       const name = productNameHint || String(productId)
       const item = findOrCreateStockRow(name)
@@ -742,9 +742,9 @@ const normalizeCourierWater = (courierId) => {
   MOCK_WAREHOUSE.courier_water[courierId] = next
 }
 
-export const issueWaterToCourier = (courierId, courierName, productName, quantity) =>
+export const issueWaterToCourier = (courierId, courierName, productName, quantity, performedBy) =>
   safeCall(
-    () => http.post('/warehouse/issue', { courier_id: courierId, product_name: productName, quantity }).then(r => r.data),
+    () => http.post('/warehouse/issue', { courier_id: courierId, product_name: productName, quantity, performed_by: performedBy || undefined }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)
       if (item) item.quantity = Math.max(0, item.quantity - quantity)
@@ -757,9 +757,9 @@ export const issueWaterToCourier = (courierId, courierName, productName, quantit
     }
   )
 
-export const returnWaterFromCourier = (courierId, courierName, productName, quantity) =>
+export const returnWaterFromCourier = (courierId, courierName, productName, quantity, performedBy) =>
   safeCall(
-    () => http.post('/warehouse/return', { courier_id: courierId, product_name: productName, quantity }).then(r => r.data),
+    () => http.post('/warehouse/return', { courier_id: courierId, product_name: productName, quantity, performed_by: performedBy || undefined }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)
       if (item) item.quantity += quantity
@@ -1231,9 +1231,9 @@ export const getProductionPlan = () =>
   )
 
 // ─── Warehouse stock adjustment ────────────────────────────────────────────────
-export const adjustStock = (productName, delta, type, note) =>
+export const adjustStock = (productName, delta, type, note, performedBy) =>
   safeCall(
-    () => http.post('/warehouse/stock/adjust', { product_name: productName, delta, type, note }).then(r => r.data),
+    () => http.post('/warehouse/stock/adjust', { product_name: productName, delta, type, note, performed_by: performedBy || undefined }).then(r => r.data),
     () => {
       const item = MOCK_WAREHOUSE.stock.find(s => shortProductName(s.product_name) === productName || s.product_name === productName)
       if (item) item.quantity = Math.max(0, item.quantity + delta)

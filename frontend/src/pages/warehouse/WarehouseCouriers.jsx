@@ -4,6 +4,7 @@ import {
   getWarehouseCourierStats, getWarehouseStock, getProducts,
   issueWaterToCourier, returnWaterFromCourier, issueOrderToCourier,
 } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -13,6 +14,8 @@ const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
 export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Курьеры' }) {
+  const { user } = useAuthStore()
+  const actor = user?.name || null
   const [couriers, setCouriers] = useState([])
   const [stock, setStock] = useState([])
   const [allProducts, setAllProducts] = useState([])
@@ -39,13 +42,13 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
 
   const issueBatch = async (courierId, courierName, items) => {
     for (const [product, qty] of Object.entries(items)) {
-      await issueWaterToCourier(courierId, courierName, product, qty)
+      await issueWaterToCourier(courierId, courierName, product, qty, actor)
     }
     load()
   }
   const returnBatch = async (courierId, courierName, items) => {
     for (const [product, qty] of Object.entries(items)) {
-      await returnWaterFromCourier(courierId, courierName, product, qty)
+      await returnWaterFromCourier(courierId, courierName, product, qty, actor)
     }
     load()
   }
