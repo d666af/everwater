@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from pydantic import BaseModel
 from sqlalchemy import update as sa_update, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -163,7 +163,21 @@ def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
 
 
 @router.post("/", response_model=OrderOut)
-async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
+async def create_order(
+    data: OrderCreate,
+    db: AsyncSession = Depends(get_db),
+    x_idempotency_key: str | None = Header(default=None),
+):
+    # Idempotency: return existing order if key already used
+    if x_idempotency_key:
+        from sqlalchemy import text as _text
+        idem_row = (await db.execute(
+            _text("SELECT order_id FROM idempotency_keys WHERE key = :k"),
+            {"k": x_idempotency_key},
+        )).fetchone()
+        if idem_row:
+            return _order_to_out(await _get_order(idem_row[0], db))
+
     result = await db.execute(select(User).where(User.id == data.user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -185,7 +199,9 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
         calc_bottle_discount(data.return_bottles_count, subtotal, cfg)
 
     delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0)
-    bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0), subtotal)
+    bonus_limit_pct = float(cfg.get("bonus_limit_percent") or 30) / 100
+    max_bonus_by_pct = (subtotal + delivery_fee) * bonus_limit_pct
+    bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0), subtotal, max_bonus_by_pct)
     balance_used = min(float(data.balance_used or 0), float(user.balance or 0),
                        max(0.0, subtotal - bottle_discount - bonus_used))
     total = max(0.0, subtotal - bottle_discount - bonus_used - balance_used + delivery_fee)
@@ -220,6 +236,13 @@ async def create_order(data: OrderCreate, db: AsyncSession = Depends(get_db)):
         user.bonus_points = max(0.0, user.bonus_points - bonus_used)
     if balance_used > 0:
         user.balance = max(0.0, user.balance - balance_used)
+
+    if x_idempotency_key:
+        from sqlalchemy import text as _text
+        await db.execute(
+            _text("INSERT INTO idempotency_keys (key, order_id, created_at) VALUES (:k, :oid, NOW()) ON CONFLICT (key) DO NOTHING"),
+            {"k": x_idempotency_key, "oid": order.id},
+        )
 
     await db.commit()
     await db.refresh(order)
@@ -751,7 +774,15 @@ async def upload_review_photo(review_id: int, file: UploadFile = File(...),
 
 
 @router.get("/reviews/")
-async def list_reviews(approved_only: bool = False, db: AsyncSession = Depends(get_db)):
+async def list_reviews(
+    approved_only: bool = False,
+    rating: int | None = None,
+    courier_id: int | None = None,
+    user_id: int | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     q = (
         select(Review)
         .options(
@@ -763,6 +794,22 @@ async def list_reviews(approved_only: bool = False, db: AsyncSession = Depends(g
     )
     if approved_only:
         q = q.where(Review.is_approved == True)
+    if rating:
+        q = q.where(Review.rating == rating)
+    if courier_id:
+        q = q.where(Review.courier_id == courier_id)
+    if user_id:
+        q = q.where(Review.user_id == user_id)
+    if from_date:
+        try:
+            q = q.where(Review.created_at >= datetime.fromisoformat(from_date))
+        except ValueError:
+            pass
+    if to_date:
+        try:
+            q = q.where(Review.created_at <= datetime.fromisoformat(to_date + "T23:59:59"))
+        except ValueError:
+            pass
     result = await db.execute(q)
     reviews = result.scalars().all()
     out = []
@@ -957,6 +1004,26 @@ async def get_queue_position(order_id: int, db: AsyncSession = Depends(get_db)):
     return {"order_id": order_id, "queue_position": position, "message": message}
 
 
+@router.post("/{order_id}/repeat")
+async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Return items of an existing order ready to populate a new cart."""
+    order = await _get_order(order_id, db)
+    return {
+        "items": [
+            {
+                "product_id": i.product_id,
+                "quantity": i.quantity,
+                "price": i.price,
+                "product_name": i.product.name if i.product else None,
+                "volume": float(getattr(i.product, "volume", 0) or 0) if i.product else 0,
+            }
+            for i in order.items
+        ],
+        "address": order.address,
+        "recipient_phone": order.recipient_phone,
+    }
+
+
 async def _get_order(order_id: int, db: AsyncSession) -> Order:
     result = await db.execute(
         select(Order)
@@ -967,6 +1034,19 @@ async def _get_order(order_id: int, db: AsyncSession) -> Order:
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+def _eta_human(dt) -> str | None:
+    if not dt:
+        return None
+    diff = dt - datetime.utcnow()
+    mins = int(diff.total_seconds() / 60)
+    if mins <= 0:
+        return "уже должны были"
+    if mins < 60:
+        return f"~{mins} мин"
+    h, m = divmod(mins, 60)
+    return f"~{h} ч {m} мин" if m else f"~{h} ч"
 
 
 def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pending: int = 0) -> OrderOut:
@@ -1017,4 +1097,5 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         notification_msg_ids=order.notification_msg_ids,
         client_bottles_owed=client_bottles_owed,
         client_bottles_pending=client_bottles_pending,
+        eta_human=_eta_human(order.delivery_expected_at),
     )

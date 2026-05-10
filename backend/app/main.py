@@ -117,6 +117,13 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TYPE orderstatus ADD VALUE IF NOT EXISTS 'cancellation_requested'"
         ))
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS idempotency_keys ("
+            "key VARCHAR(64) PRIMARY KEY, "
+            "order_id INTEGER NOT NULL, "
+            "created_at TIMESTAMP DEFAULT NOW()"
+            ")"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)

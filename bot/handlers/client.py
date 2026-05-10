@@ -753,17 +753,22 @@ async def co_phone(message: Message, state: FSMContext):
 
 
 def _deposit_hint_for_cart(cart: dict, cfg: dict) -> str:
-    """Return a one-line deposit price hint if cart has deposit items, else empty string."""
+    """Return 19L bottle deposit explanation if cart has deposit items."""
     deposit_items = [v for v in cart.values() if v.get("has_bottle_deposit")]
     if not deposit_items:
         return ""
-    disc_val = float(cfg.get("bottle_discount_value") or 0)
-    disc_type = cfg.get("bottle_discount_type", "fixed")
     hints = []
     for item in deposit_items:
-        ep = _item_eff_price(item)
-        if ep < item["price"]:
-            hints.append(f"<i>Со сдачей бутылки: {fmt(ep)} (без возврата: {fmt(item['price'])})</i>")
+        full_price = item["price"]
+        water_price = item.get("deposit_price") or full_price
+        deposit_amount = full_price - water_price
+        if deposit_amount > 0:
+            hints.append(
+                f"🫙 <b>19л тара:</b> первый раз {fmt(full_price)} = {fmt(water_price)} вода + {fmt(deposit_amount)} залог.\n"
+                f"   При возврате бутылки — скидка {fmt(deposit_amount)} сум."
+            )
+        else:
+            hints.append(f"🫙 <i>Цена со сдачей бутылки: {fmt(_item_eff_price(item))}</i>")
     return "\n".join(hints)
 
 
@@ -870,7 +875,7 @@ async def _show_summary(message: Message, state: FSMContext):
             late_warning = f"\n⚠️ <b>Внимание:</b> Заказы после {late_hour}:00 могут быть доставлены на следующий день.\n"
         delivery_fee = int(cfg.get("delivery_price") or 0)
     except Exception:
-        pass
+        cfg = {}
     pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
     lines = ["<b>📋 Подтверждение заказа</b>\n", "<b>Товары:</b>"]
     total = 0
@@ -878,6 +883,9 @@ async def _show_summary(message: Message, state: FSMContext):
         s = item["price"] * item["qty"]
         total += s
         lines.append(f"  • {item['name']} {item['qty']} шт. — {fmt(s)}")
+    deposit_hint = _deposit_hint_for_cart(cart, cfg)
+    if deposit_hint:
+        lines.append(f"\n{deposit_hint}")
     geo = "✅ указана" if data.get("co_lat") else "—"
     if delivery_fee > 0:
         lines += [
@@ -1528,9 +1536,32 @@ async def support_quick(call: CallbackQuery):
     await call.answer()
 
 
+@router.message(F.text == "⭐ Мои отзывы")
+async def my_reviews(message: Message):
+    user = await api.get_user_by_telegram(message.from_user.id)
+    if not user:
+        await message.answer("Профиль не найден.")
+        return
+    reviews = await api.get_user_reviews(user["id"])
+    if not reviews:
+        await message.answer("У вас пока нет отзывов. Они появятся после первой доставки.")
+        return
+    for r in reviews[:5]:
+        stars = "⭐" * int(r.get("rating") or 0)
+        comment = r.get("comment") or ""
+        order_id = r.get("order_id") or "—"
+        courier = r.get("courier_name") or ""
+        courier_line = f"\nКурьер: {courier}" if courier else ""
+        comment_line = f"\n{comment}" if comment else ""
+        await message.answer(
+            f"{stars} Заказ #{order_id}{courier_line}{comment_line}",
+            parse_mode="HTML",
+        )
+
+
 _MENU_TEXTS = {
     "🛒 Заказать", "📦 Мои заказы", "👤 Профиль",
-    "📋 Подписки", "🎁 Бонусы", "💬 Поддержка", "🔄 Роль",
+    "📋 Подписки", "🎁 Бонусы", "💬 Поддержка", "🔄 Роль", "⭐ Мои отзывы",
 }
 
 
