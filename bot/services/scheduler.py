@@ -11,7 +11,6 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 # Track already-notified IDs between runs to avoid spam.
 # None = first run (pre-populate without notifying to avoid re-notifying on restart).
 _notified_new_orders: set[int] | None = None
-_notified_cash_debts: set[int] = set()
 
 
 async def send_registration_reminders(bot):
@@ -117,31 +116,6 @@ async def notify_new_orders(bot):
                     pass
 
 
-async def notify_cash_debt_requests(bot):
-    """Уведомляет админов о новых запросах на погашение долгов."""
-    global _notified_cash_debts
-    debts = await api.get_cash_debts_admin(status="requested")
-    couriers = await api.get_couriers()
-    courier_map = {c["id"]: c for c in couriers}
-
-    for d in debts:
-        did = d["id"]
-        if did in _notified_cash_debts:
-            continue
-        _notified_cash_debts.add(did)
-        c = courier_map.get(d.get("courier_id"), {})
-        text = (
-            f"💸 Курьер {c.get('name', '—')} запрашивает погашение долга #{did}\n"
-            f"Сумма: {int(d['amount']):,} сум\n"
-            f"Заказ: #{d.get('order_id') or '—'}"
-        )
-        for admin_id in settings.ADMIN_IDS:
-            try:
-                await bot.send_message(admin_id, text)
-            except Exception:
-                pass
-
-
 async def notify_low_stock(bot):
     """Alert admins, managers and warehouse staff about genuinely low stock.
 
@@ -205,6 +179,5 @@ def setup_scheduler(bot):
     scheduler.add_job(check_delivery_reminders, "interval", minutes=5, args=[bot])
     scheduler.add_job(deliver_support_replies, "interval", seconds=30, args=[bot])
     scheduler.add_job(notify_new_orders, "interval", minutes=1, args=[bot])
-    scheduler.add_job(notify_cash_debt_requests, "interval", minutes=2, args=[bot])
     scheduler.add_job(notify_low_stock, "interval", hours=4, args=[bot])
     scheduler.start()

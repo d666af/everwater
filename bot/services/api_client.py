@@ -481,35 +481,6 @@ async def get_courier_water(courier_id: int):
         return []
 
 
-async def get_courier_cash_debts(courier_id: int):
-    try:
-        return await _get(f"/couriers/{courier_id}/cash_debts")
-    except Exception:
-        return {"total_pending": 0, "debts": []}
-
-
-async def request_cash_clearance(debt_id: int, note: str = None):
-    try:
-        return await _post(f"/couriers/cash_debts/{debt_id}/request_clearance", {"note": note})
-    except Exception:
-        return {}
-
-
-async def get_cash_debts_admin(status: str = None):
-    try:
-        params = {"status": status} if status else None
-        return await _get("/couriers/admin/cash_debts", params)
-    except Exception:
-        return []
-
-
-async def decide_cash_debt(debt_id: int, action: str, note: str = None):
-    try:
-        return await _post(f"/couriers/admin/cash_debts/{debt_id}/decide", {"action": action, "note": note})
-    except Exception:
-        return {}
-
-
 async def courier_create_order(data: dict):
     return await _post("/couriers/orders", data)
 

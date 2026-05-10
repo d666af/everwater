@@ -12,7 +12,7 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
             [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
-            [KeyboardButton(text="📦 Товары"), KeyboardButton(text="💸 Долги")],
+            [KeyboardButton(text="📦 Товары")],
             [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="🧑‍💼 Менеджеры")],
             [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📣 Рассылка")],
             [KeyboardButton(text="🔄 Роль")],
@@ -60,14 +60,6 @@ def admin_user_kb(user_id: int, tg_id: int | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def admin_debt_kb(debt_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"admin:debt:approve:{debt_id}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:debt:reject:{debt_id}"),
-        ],
-        [InlineKeyboardButton(text="🌐 Курьеры на сайте", url=_site("/admin/couriers"))],
-    ])
 
 
 def broadcast_target_kb() -> InlineKeyboardMarkup:

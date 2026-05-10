@@ -12,7 +12,7 @@ def manager_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
             [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="💬 Поддержка")],
-            [KeyboardButton(text="💸 Долги курьеров"), KeyboardButton(text="📝 Создать заказ")],
+            [KeyboardButton(text="📝 Создать заказ")],
         ],
         resize_keyboard=True,
     )
@@ -86,14 +86,6 @@ def mgr_topup_presets_kb(user_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def mgr_debt_kb(debt_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mgr:debt:approve:{debt_id}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"mgr:debt:reject:{debt_id}"),
-        ],
-        [InlineKeyboardButton(text="🌐 Курьеры на сайте", url=_site("/manager/couriers"))],
-    ])
 
 
 def mgr_support_chat_kb(chat_id: int) -> InlineKeyboardMarkup:

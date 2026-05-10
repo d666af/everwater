@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { getAdminStats, getOrders, getAdminCouriers, getAllCashDebts, getWarehouseCourierStats } from '../../api'
+import { getAdminStats, getOrders, getAdminCouriers, getWarehouseCourierStats } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -58,8 +58,6 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
   const [couriersTotal, setCouriersTotal] = useState(0)
-  const [pendingDebts, setPendingDebts] = useState(0)
-  const [totalDebtAmt, setTotalDebtAmt] = useState(0)
   const [bottlesOwed, setBottlesOwed] = useState(0)
   const [loading, setLoading] = useState(true)
 
@@ -69,16 +67,12 @@ export default function AdminDashboard() {
       getAdminStats(period),
       getOrders({}),
       getAdminCouriers(),
-      getAllCashDebts().catch(() => []),
       getWarehouseCourierStats().catch(() => []),
     ])
-      .then(([st, orders, couriers, debts, wcs]) => {
+      .then(([st, orders, couriers, wcs]) => {
         setStats(st)
         setRecent(orders.slice(0, 5))
         setCouriersTotal(couriers.filter(c => c.is_active).length)
-        const pending = debts.filter(d => d.clearance_status === 'pending')
-        setPendingDebts(pending.length)
-        setTotalDebtAmt(debts.filter(d => d.clearance_status !== 'approved').reduce((s, d) => s + (d.amount || 0), 0))
         setBottlesOwed(wcs.reduce((s, c) => s + Math.max(0, (c.bottles_must_return || 0) - (c.bottles_returned_today || 0)), 0))
       })
       .catch(console.error)
@@ -119,33 +113,9 @@ export default function AdminDashboard() {
             <Kpi accent="#6741D9" bg="#F3F0FF" label="Курьеров" value={couriersTotal} />
           </div>
 
-          {/* Alerts row — debts + bottles */}
-          {(pendingDebts > 0 || bottlesOwed > 0 || totalDebtAmt > 0) && (
+          {/* Alerts row — bottles */}
+          {bottlesOwed > 0 && (
             <div style={s.alertsRow}>
-              {pendingDebts > 0 && (
-                <button style={{ ...s.alertCard, background: '#FFF8E6', borderColor: '#FFE0A3' }}
-                  onClick={() => navigate('/admin/couriers')}>
-                  <div style={{ ...s.alertIcon, background: '#E67700' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.7-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                  </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: '#874D00' }}>{pendingDebts} запрос{pendingDebts === 1 ? '' : pendingDebts < 5 ? 'а' : 'ов'}</div>
-                    <div style={{ fontSize: 11, color: '#A66500', marginTop: 2 }}>На погашение долга</div>
-                  </div>
-                </button>
-              )}
-              {totalDebtAmt > 0 && (
-                <button style={{ ...s.alertCard, background: '#FFF5F5', borderColor: '#FFCCCC' }}
-                  onClick={() => navigate('/admin/couriers')}>
-                  <div style={{ ...s.alertIcon, background: '#E03131' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                  </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: '#8B0000' }}>{Math.round(totalDebtAmt / 1000)}к сум</div>
-                    <div style={{ fontSize: 11, color: '#A62020', marginTop: 2 }}>Долг по наличке</div>
-                  </div>
-                </button>
-              )}
               {bottlesOwed > 0 && (
                 <button style={{ ...s.alertCard, background: '#E8F4FD', borderColor: '#A8CFF0' }}
                   onClick={() => navigate('/admin/warehouse')}>

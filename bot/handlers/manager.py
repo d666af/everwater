@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.manager import (
     manager_menu_kb, mgr_order_kb, mgr_courier_select_kb,
-    mgr_stats_period_kb, mgr_client_kb, mgr_debt_kb,
+    mgr_stats_period_kb, mgr_client_kb,
     mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
@@ -577,42 +577,6 @@ async def mgr_stats(call: CallbackQuery):
         f"🔄 Повторных клиентов: {stats.get('repeat_customers', 0)}"
     )
     await call.message.edit_text(text, parse_mode="HTML")
-    await call.answer()
-
-
-# ─── Cash debts ───────────────────────────────────────────────────────────────
-
-@router.message(F.text == "💸 Долги курьеров")
-async def mgr_cash_debts(message: Message):
-    if not await is_manager(message.from_user.id):
-        return
-    debts = await api.get_cash_debts_admin(status="requested")
-    if not debts:
-        await message.answer("Нет запросов на погашение долгов.")
-        return
-    couriers = await api.get_couriers()
-    courier_map = {c["id"]: c["name"] for c in couriers}
-    for d in debts[:10]:
-        name = courier_map.get(d.get("courier_id"), f"ID {d.get('courier_id')}")
-        text = (
-            f"💸 Запрос от <b>{name}</b>\n"
-            f"Сумма: {fmt(d['amount'])}\n"
-            f"Заказ: #{d.get('order_id') or '—'}\n"
-            f"Заметка: {d.get('note') or '—'}"
-        )
-        await message.answer(text, reply_markup=mgr_debt_kb(d["id"]), parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("mgr:debt:"))
-async def mgr_debt_decide(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    action = parts[2]
-    debt_id = int(parts[3])
-    await api.decide_cash_debt(debt_id, action)
-    result_text = "✅ Одобрено" if action == "approve" else "❌ Отклонено"
-    await call.message.edit_text(f"{result_text}: долг #{debt_id}")
     await call.answer()
 
 
