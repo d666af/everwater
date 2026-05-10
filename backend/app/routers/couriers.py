@@ -7,10 +7,14 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import io, csv
+from io import BytesIO
+from pathlib import Path
+from fpdf import FPDF
+import fpdf as _fpdf_module
 
 from app.database import get_db
 from app.models.courier import Courier
-from app.models.order import Order, OrderStatus, Review
+from app.models.order import Order, OrderItem, OrderStatus, Review
 
 from app.models.warehouse import CourierWater
 from app.models.product import Product
@@ -145,47 +149,96 @@ async def get_courier_water(telegram_id: int, db: AsyncSession = Depends(get_db)
 # ─── Report ───────────────────────────────────────────────────────────────────
 
 async def _courier_report_data(courier_id: int, date_from: date, date_to: date, db: AsyncSession) -> dict:
-    """Aggregate delivered orders for a courier in [date_from, date_to] inclusive."""
     dt_from = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0)
     dt_to   = datetime(date_to.year,   date_to.month,   date_to.day,   23, 59, 59)
 
     orders_q = await db.execute(
-        select(Order).where(
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.user),
+            selectinload(Order.review),
+        )
+        .where(
             Order.courier_id == courier_id,
             Order.status == OrderStatus.DELIVERED,
             Order.delivered_at >= dt_from,
             Order.delivered_at <= dt_to,
-        ).order_by(Order.delivered_at)
+        )
+        .order_by(Order.delivered_at)
     )
     orders = orders_q.scalars().all()
 
-    reviews_q = await db.execute(
-        select(Review).where(Review.courier_id == courier_id)
-    )
-    reviews = reviews_q.scalars().all()
-    review_map = {r.order_id: r.rating for r in reviews}
-
     rows = []
     total_revenue = 0.0
+    total_cash = 0.0
+    total_card = 0.0
+    total_online = 0.0
+    total_bottles_19l_delivered = 0
+    total_bottles_returned = 0
+    rating_vals = []
+
     for o in orders:
         total_revenue += float(o.total or 0)
+        pm = o.payment_method or "cash"
+        if pm == "cash":
+            total_cash += float(o.total or 0)
+        elif pm == "card":
+            total_card += float(o.total or 0)
+        else:
+            total_online += float(o.total or 0)
+
+        bottles_returned = o.return_bottles_count or 0
+        total_bottles_returned += bottles_returned
+
+        items_list = []
+        for item in (o.items or []):
+            prod = item.product
+            vol = float(getattr(prod, 'volume', 0) or 0)
+            qty = item.quantity or 0
+            if vol >= 19.0:
+                total_bottles_19l_delivered += qty
+            items_list.append({
+                "name": prod.name if prod else "—",
+                "quantity": qty,
+                "price": float(item.price or 0),
+                "volume": vol,
+            })
+
+        rating = None
+        if o.review:
+            rating = o.review.rating
+            rating_vals.append(rating)
+
+        user_name = None
+        if o.user:
+            user_name = o.user.name
+
         rows.append({
             "order_id": o.id,
-            "delivered_at": o.delivered_at.strftime("%d.%m.%Y %H:%M") if o.delivered_at else "—",
+            "client_phone": o.recipient_phone or "—",
+            "client_name": user_name or "—",
             "address": o.address or "—",
+            "items": items_list,
+            "return_bottles": bottles_returned,
             "total": float(o.total or 0),
-            "payment_method": o.payment_method or "—",
-            "return_bottles": o.return_bottles_count or 0,
-            "rating": review_map.get(o.id, "—"),
+            "payment_method": pm,
+            "created_at": o.created_at.strftime("%d.%m.%Y %H:%M") if o.created_at else "—",
+            "confirmed_at": o.confirmed_at.strftime("%d.%m.%Y %H:%M") if o.confirmed_at else "—",
+            "delivered_at": o.delivered_at.strftime("%d.%m.%Y %H:%M") if o.delivered_at else "—",
+            "rating": rating,
         })
 
-    rating_vals = [r.rating for r in reviews
-                   if r.rating and any(o.id == r.order_id for o in orders)]
     avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
 
     return {
         "deliveries": len(orders),
         "total_revenue": round(total_revenue, 2),
+        "total_cash": round(total_cash, 2),
+        "total_card": round(total_card, 2),
+        "total_online": round(total_online, 2),
+        "total_bottles_19l_delivered": total_bottles_19l_delivered,
+        "total_bottles_returned": total_bottles_returned,
         "avg_rating": avg_rating,
         "orders": rows,
     }
@@ -238,6 +291,114 @@ async def download_courier_report_csv(
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/{courier_id}/report/pdf")
+async def download_courier_report_pdf(
+    courier_id: int,
+    date_from: date,
+    date_to: date,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(404, "Courier not found")
+    data = await _courier_report_data(courier.id, date_from, date_to, db)
+
+    pay_labels = {"cash": "Наличные", "card": "Карта", "online": "Онлайн", "balance": "Баланс", "balance_card": "Баланс+Карта"}
+
+    _FONT_DIR = Path(_fpdf_module.__file__).parent / "fonts"
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.add_font("DejaVu", "", str(_FONT_DIR / "DejaVuSans.ttf"))
+    pdf.add_font("DejaVu", "B", str(_FONT_DIR / "DejaVuSans-Bold.ttf"))
+
+    def h1(text):
+        pdf.set_font("DejaVu", "B", 16)
+        pdf.cell(0, 10, text, ln=True)
+
+    def h2(text):
+        pdf.set_font("DejaVu", "B", 12)
+        pdf.cell(0, 8, text, ln=True)
+
+    def body(text, indent=0):
+        pdf.set_font("DejaVu", "", 10)
+        if indent:
+            pdf.set_x(pdf.l_margin + indent)
+        pdf.multi_cell(0, 6, text)
+
+    def line():
+        pdf.ln(2)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+        pdf.ln(3)
+
+    # ── Header
+    h1(f"Отчёт по курьеру: {courier.name}")
+    body(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}")
+    from datetime import datetime as dt_
+    body(f"Сформирован: {dt_.now().strftime('%d.%m.%Y %H:%M')}")
+    line()
+
+    if not data["orders"]:
+        body("За указанный период доставок не найдено.")
+    else:
+        for o in data["orders"]:
+            h2(f"Заказ №{o['order_id']}  —  {o['delivered_at']}")
+            body(f"Клиент: {o['client_phone']}" + (f" ({o['client_name']})" if o['client_name'] != '—' else ""))
+            body(f"Адрес: {o['address']}")
+            body(f"Оформлен: {o['created_at']}  |  Подтверждён: {o['confirmed_at']}  |  Доставлен: {o['delivered_at']}")
+
+            if o["items"]:
+                body("Товары:")
+                for item in o["items"]:
+                    vol_str = f" {item['volume']:.0f}л" if item["volume"] > 0 else ""
+                    subtotal = item["price"] * item["quantity"]
+                    body(f"  • {item['name']}{vol_str} × {item['quantity']} = {subtotal:,.0f} сум", indent=4)
+
+            if o["return_bottles"] > 0:
+                body(f"Возврат 19л бутылок: {o['return_bottles']} шт.")
+
+            pay_label = pay_labels.get(o["payment_method"], o["payment_method"])
+            body(f"Оплата: {pay_label} — {o['total']:,.0f} сум")
+
+            if o["rating"] is not None:
+                stars = "★" * o["rating"] + "☆" * (5 - o["rating"])
+                body(f"Оценка: {stars} ({o['rating']}/5)")
+
+            line()
+
+    # ── Summary
+    pdf.add_page()
+    h1("Итоги за период")
+    line()
+    body(f"Всего доставок: {data['deliveries']}")
+    if data["total_cash"] > 0:
+        body(f"Наличные: {data['total_cash']:,.0f} сум")
+    if data["total_card"] > 0:
+        body(f"Карта: {data['total_card']:,.0f} сум")
+    if data["total_online"] > 0:
+        body(f"Онлайн: {data['total_online']:,.0f} сум")
+    pdf.set_font("DejaVu", "B", 12)
+    pdf.cell(0, 8, f"ИТОГО: {data['total_revenue']:,.0f} сум", ln=True)
+    pdf.set_font("DejaVu", "", 10)
+    pdf.ln(4)
+    body(f"Бутылок 19л доставлено: {data['total_bottles_19l_delivered']} шт.")
+    body(f"Бутылок 19л возвращено: {data['total_bottles_returned']} шт.")
+    if data["avg_rating"] is not None:
+        body(f"Средний рейтинг: {data['avg_rating']:.1f} / 5.0")
+
+    pdf_bytes = bytes(pdf.output())
+
+    fname = f"courier_{courier_id}_{date_from}_{date_to}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 

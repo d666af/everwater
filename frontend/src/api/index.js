@@ -467,6 +467,9 @@ export const getCourierReport = (courierId, dateFrom, dateTo) =>
 export const getCourierReportCsvUrl = (courierId, dateFrom, dateTo) =>
   `${http.defaults.baseURL}/couriers/${courierId}/report/csv?date_from=${dateFrom}&date_to=${dateTo}`
 
+export const getCourierReportPdfUrl = (courierId, dateFrom, dateTo) =>
+  `${http.defaults.baseURL}/couriers/${courierId}/report/pdf?date_from=${dateFrom}&date_to=${dateTo}`
+
 // ─── Notifications ────────────────────────────────────────────────────────────
 let mockNotifications = [...MOCK_NOTIFICATIONS]
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getCourierReport, getCourierReportCsvUrl } from '../api'
+import { getCourierReport, getCourierReportPdfUrl } from '../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -36,10 +36,10 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
     setLoading(false)
   }
 
-  const downloadCsv = () => {
-    const url = getCourierReportCsvUrl(courierId, dateFrom, dateTo)
+  const downloadPdf = () => {
+    const url = getCourierReportPdfUrl(courierId, dateFrom, dateTo)
     const a = document.createElement('a')
-    a.href = url; a.download = `courier_${courierId}_${dateFrom}_${dateTo}.csv`
+    a.href = url; a.download = `courier_${courierId}_${dateFrom}_${dateTo}.pdf`
     a.click()
   }
 
@@ -107,9 +107,9 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
               </div>
 
               {/* Download button */}
-              <button onClick={downloadCsv}
+              <button onClick={downloadPdf}
                 style={{ width: '100%', padding: '11px', borderRadius: 12, border: `1.5px solid ${C}`, background: '#EBFBEE', color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                ⬇️ Скачать CSV
+                ⬇️ Скачать PDF
               </button>
 
               {/* Orders table */}
