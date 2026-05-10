@@ -22,7 +22,11 @@ def courier_assignment_text(order: dict) -> str:
     pay = order.get("payment_method", "cash")
     total = order.get("total") or 0
     delivery_fee = order.get("delivery_fee") or 0
-    delivery_line = f"\nДоставка: +{_fmt_sum(delivery_fee)}" if delivery_fee > 0 else ""
+    if delivery_fee > 0:
+        subtotal = total - delivery_fee
+        delivery_line = f"\nТовары: {_fmt_sum(subtotal)}\nДоставка: +{_fmt_sum(delivery_fee)}"
+    else:
+        delivery_line = ""
     cash_line = f"\nПолучить от клиента: {_fmt_sum(total)}" if pay == "cash" else ""
     time_str = order.get("delivery_time") or "—"
     manager_phone = order.get("manager_phone") or ""

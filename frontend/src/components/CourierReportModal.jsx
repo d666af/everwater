@@ -93,17 +93,23 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
           {loaded && data && (
             <>
               {/* Summary cards */}
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[
                   [data.deliveries, 'Доставок'],
                   [`${Math.round((data.total_revenue || 0) / 1000)}к`, 'Выручка (сум)'],
                   [data.avg_rating != null ? `${data.avg_rating}⭐` : '—', 'Рейтинг'],
                 ].map(([v, l]) => (
-                  <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
+                  <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid ${BORDER}`, minWidth: 80 }}>
                     <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>{v}</div>
                     <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>{l}</div>
                   </div>
                 ))}
+                {(data.total_delivery_revenue || 0) > 0 && (
+                  <div style={{ flex: 1, background: '#EBF4FF', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid #BFDBFE`, minWidth: 80 }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1.1 }}>{Math.round(data.total_delivery_revenue / 1000)}к</div>
+                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Доставки (сум)</div>
+                  </div>
+                )}
               </div>
 
               {/* Download button */}
@@ -131,6 +137,11 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <span style={{ fontWeight: 800, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</span>
                           <span style={{ fontSize: 10, color: TEXT2, marginLeft: 3 }}>сум</span>
+                          {(o.delivery_fee || 0) > 0 && (
+                            <div style={{ fontSize: 10, color: '#1971C2', fontWeight: 600 }}>
+                              +{(o.delivery_fee).toLocaleString()} доставка
+                            </div>
+                          )}
                         </div>
                       </div>
                       {/* Row 2: address | payment + stars */}
