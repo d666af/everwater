@@ -80,6 +80,10 @@ export default function AdminDashboard() {
   }, [period])
 
   const byStatusTotal = stats?.by_status ? Object.values(stats.by_status).reduce((a, b) => a + b, 0) : 0
+  const allStatusRows = Object.entries(STATUS_LABELS).map(([status]) => ({
+    status,
+    count: stats?.by_status?.[status] ?? 0,
+  })).sort((a, b) => b.count - a.count)
 
   return (
     <AdminLayout title="Панель">
@@ -104,13 +108,12 @@ export default function AdminDashboard() {
         <>
           {/* Top KPI row */}
           <div style={s.kpiGrid}>
-            <Kpi accent="#2B8A3E" bg="#EBFBEE" label="Заказов" value={stats?.order_count ?? 0} />
-            <Kpi accent={CD} bg="#F4FAE9" label="Выручка"
-              value={stats?.revenue != null ? `${Math.round(stats.revenue / 1000)}к` : '—'}
-              sub={stats?.revenue != null ? `${Number(stats.revenue).toLocaleString('ru-RU')} сум` : null} />
-            <Kpi accent="#1971C2" bg="#E8F4FD" label="Ср. чек"
+            <Kpi accent="#2B8A3E" label="Заказов" value={stats?.order_count ?? 0} />
+            <Kpi accent={CD} label="Выручка"
+              value={stats?.revenue != null ? `${Math.round(stats.revenue / 1000)}к` : '—'} />
+            <Kpi accent="#1971C2" label="Ср. чек"
               value={stats?.avg_check != null ? `${Math.round(stats.avg_check / 1000)}к` : '—'} />
-            <Kpi accent="#6741D9" bg="#F3F0FF" label="Курьеров" value={couriersTotal} />
+            <Kpi accent="#6741D9" label="Курьеров" value={couriersTotal} />
           </div>
 
           {/* Alerts row — bottles */}
@@ -124,7 +127,7 @@ export default function AdminDashboard() {
                   </div>
                   <div style={{ textAlign: 'left' }}>
                     <div style={{ fontWeight: 800, fontSize: 15, color: '#0B3A66' }}>{bottlesOwed} шт.</div>
-                    <div style={{ fontSize: 11, color: '#155388', marginTop: 2 }}>20л бутылей у курьеров</div>
+                    <div style={{ fontSize: 11, color: '#155388', marginTop: 2 }}>19л бутылок у курьеров</div>
                   </div>
                 </button>
               )}
@@ -132,28 +135,26 @@ export default function AdminDashboard() {
           )}
 
           {/* Status breakdown */}
-          {stats?.by_status && Object.keys(stats.by_status).length > 0 && (
-            <div style={s.card}>
-              <div style={s.cardTitle}>Заказы по статусам</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {Object.entries(stats.by_status).sort(([, a], [, b]) => b - a).map(([status, count]) => {
-                  const pct = byStatusTotal ? Math.round(count / byStatusTotal * 100) : 0
-                  const st = STATUS_STYLE[status] || { bg: '#F2F2F7', color: TEXT2 }
-                  return (
-                    <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 120, fontSize: 12, color: TEXT, fontWeight: 600 }}>{STATUS_LABELS[status] || status}</div>
-                      <div style={{ flex: 1, height: 8, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: st.color, borderRadius: 99, transition: 'width .5s' }} />
-                      </div>
-                      <div style={{ minWidth: 52, textAlign: 'right', fontSize: 13, fontWeight: 800, color: st.color }}>
-                        {count} <span style={{ fontSize: 10, color: TEXT2, fontWeight: 500 }}>{pct}%</span>
-                      </div>
+          <div style={s.card}>
+            <div style={s.cardTitle}>Заказы по статусам</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {allStatusRows.map(({ status, count }) => {
+                const pct = byStatusTotal ? Math.round(count / byStatusTotal * 100) : 0
+                const st = STATUS_STYLE[status] || { bg: '#F2F2F7', color: TEXT2 }
+                return (
+                  <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 120, fontSize: 12, color: TEXT, fontWeight: 600 }}>{STATUS_LABELS[status]}</div>
+                    <div style={{ flex: 1, height: 8, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: st.color, borderRadius: 99, transition: 'width .5s' }} />
                     </div>
-                  )
-                })}
-              </div>
+                    <div style={{ minWidth: 52, textAlign: 'right', fontSize: 13, fontWeight: 800, color: count > 0 ? st.color : TEXT2 }}>
+                      {count} <span style={{ fontSize: 10, color: TEXT2, fontWeight: 500 }}>{count > 0 ? `${pct}%` : ''}</span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )}
+          </div>
 
           {/* Shortcuts */}
           <div style={{ ...s.cardTitle, margin: '4px 2px 10px' }}>Управление</div>
@@ -206,15 +207,11 @@ export default function AdminDashboard() {
   )
 }
 
-function Kpi({ accent, bg, label, value, sub }) {
+function Kpi({ accent, label, value }) {
   return (
     <div style={{ background: '#fff', borderRadius: 16, padding: '14px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
-        {label[0]}
-      </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent, lineHeight: 1.1 }}>{value}</div>
       <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: TEXT2, opacity: 0.75 }}>{sub}</div>}
     </div>
   )
 }
@@ -224,10 +221,10 @@ const s = {
   center: { display: 'flex', justifyContent: 'center', padding: 60 },
   spinner: { width: 30, height: 30, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' },
   kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 },
-  alertsRow: { display: 'flex', gap: 8, marginBottom: 12, overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
+  alertsRow: { display: 'flex', gap: 8, marginBottom: 12 },
   alertCard: {
     display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
-    borderRadius: 14, border: '1.5px solid', cursor: 'pointer', minWidth: 200, flexShrink: 0,
+    borderRadius: 14, border: '1.5px solid', cursor: 'pointer', flex: 1,
     WebkitTapHighlightColor: 'transparent',
   },
   alertIcon: { width: 32, height: 32, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },

@@ -298,18 +298,19 @@ async def download_courier_report_csv(
 def _find_dejavu_fonts() -> tuple[str, str]:
     """Return (regular_path, bold_path) for DejaVu Sans, trying multiple locations."""
     candidates = [
-        # System fonts (installed via fonts-dejavu-core)
         Path("/usr/share/fonts/truetype/dejavu"),
         Path("/usr/share/fonts/dejavu"),
-        # fpdf2 bundled fonts
         Path(_fpdf_module.__file__).parent / "fonts",
+        Path(_fpdf_module.__file__).parent / "font",
     ]
     for d in candidates:
         r = d / "DejaVuSans.ttf"
         b = d / "DejaVuSans-Bold.ttf"
         if r.exists() and b.exists():
             return str(r), str(b)
-    raise FileNotFoundError("DejaVu fonts not found. Install fonts-dejavu-core or fpdf2.")
+    raise FileNotFoundError(
+        f"DejaVu fonts not found. Searched: {[str(d) for d in candidates]}"
+    )
 
 
 @router.get("/{courier_id}/report/pdf")
@@ -333,87 +334,91 @@ async def download_courier_report_pdf(
     except FileNotFoundError as e:
         raise HTTPException(500, f"Font error: {e}")
 
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.add_font("DejaVu", "",  font_regular)
-    pdf.add_font("DejaVu", "B", font_bold)
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.add_font("DejaVu", "",  font_regular)
+        pdf.add_font("DejaVu", "B", font_bold)
 
-    def txt(text, bold=False, size=10, indent=0):
-        pdf.set_font("DejaVu", "B" if bold else "", size)
-        if indent:
-            pdf.set_x(pdf.l_margin + indent)
-        pdf.multi_cell(0, size * 0.55 + 2, str(text or ""))
+        def txt(text, bold=False, size=10, indent=0):
+            pdf.set_font("DejaVu", "B" if bold else "", size)
+            if indent:
+                pdf.set_x(pdf.l_margin + indent)
+            pdf.multi_cell(0, size * 0.55 + 2, str(text or ""))
 
-    def sep():
+        def sep():
+            pdf.ln(2)
+            pdf.set_draw_color(200, 200, 200)
+            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+            pdf.ln(3)
+
+        # ── Header
+        txt(f"Otchet po kur'eru: {courier.name}", bold=True, size=16)
+        txt(f"Period: {date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}", size=10)
+        txt(f"Sformirovan: {datetime.now().strftime('%d.%m.%Y %H:%M')}", size=9)
+        sep()
+
+        if not data["orders"]:
+            txt("Za ukazannyy period dostavok ne naydeno.")
+        else:
+            for o in data["orders"]:
+                txt(f"Zakaz #{o['order_id']}  -  {o['delivered_at']}", bold=True, size=11)
+                phone = str(o.get('client_phone') or '-')
+                oname = str(o.get('client_name') or '')
+                client_line = phone + (f" ({oname})" if oname and oname != '-' else "")
+                txt(f"Klient: {client_line}")
+                txt(f"Adres: {str(o.get('address') or '-')}")
+                txt(f"Oformlen: {o['created_at']}  /  Dostavlen: {o['delivered_at']}")
+                pdf.ln(1)
+
+                if o.get("items"):
+                    txt("Tovary:", bold=True, size=10)
+                    for item in o["items"]:
+                        vol = float(item.get("volume") or 0)
+                        vol_str = f" {vol:.0f}l" if vol > 0 else ""
+                        qty = int(item.get("quantity") or 0)
+                        price = float(item.get("price") or 0)
+                        iname = str(item.get("name") or "-")
+                        subtotal = price * qty
+                        txt(f"  {iname}{vol_str} x{qty} = {int(subtotal):,} sum", indent=4)
+
+                if (o.get("return_bottles") or 0) > 0:
+                    txt(f"Vozvrat 19l butylok: {o['return_bottles']} sht.")
+
+                pay_label = pay_labels.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "-"))
+                txt(f"Oplata: {pay_label}  -  {int(float(o.get('total') or 0)):,} sum")
+
+                if o.get("rating") is not None:
+                    r_val = int(o["rating"])
+                    txt(f"Ocenka: {r_val}/5")
+
+                sep()
+
+        # ── Summary page
+        pdf.add_page()
+        txt("Itogi za period", bold=True, size=16)
+        sep()
+        txt(f"Vsego dostavok: {data['deliveries']}", size=11)
         pdf.ln(2)
-        pdf.set_draw_color(200, 200, 200)
-        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
-        pdf.ln(3)
+        if data.get("total_cash", 0) > 0:
+            txt(f"Nalichnye: {int(data['total_cash']):,} sum")
+        if data.get("total_card", 0) > 0:
+            txt(f"Karta: {int(data['total_card']):,} sum")
+        if data.get("total_online", 0) > 0:
+            txt(f"Onlayn: {int(data['total_online']):,} sum")
+        pdf.ln(2)
+        txt(f"ITOGO: {int(data['total_revenue']):,} sum", bold=True, size=13)
+        pdf.ln(4)
+        txt(f"Butylok 19l dostavleno: {data.get('total_bottles_19l_delivered', 0)} sht.")
+        txt(f"Butylok 19l vozvrashcheno: {data.get('total_bottles_returned', 0)} sht.")
+        if data.get("avg_rating") is not None:
+            txt(f"Sredniy reyting: {data['avg_rating']:.1f} / 5.0")
 
-    # ── Header
-    txt(f"Отчёт по курьеру: {courier.name}", bold=True, size=16)
-    txt(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}", size=10)
-    txt(f"Сформирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}", size=9)
-    sep()
-
-    if not data["orders"]:
-        txt("За указанный период доставок не найдено.")
-    else:
-        for o in data["orders"]:
-            txt(f"Заказ №{o['order_id']}  —  {o['delivered_at']}", bold=True, size=11)
-            phone = str(o.get('client_phone') or '—')
-            name  = str(o.get('client_name') or '')
-            client_line = phone + (f" ({name})" if name and name != '—' else "")
-            txt(f"Клиент: {client_line}")
-            txt(f"Адрес: {str(o.get('address') or '—')}")
-            txt(f"Оформлен: {o['created_at']}  /  Доставлен: {o['delivered_at']}")
-            pdf.ln(1)
-
-            if o.get("items"):
-                txt("Товары:", bold=True, size=10)
-                for item in o["items"]:
-                    vol = float(item.get("volume") or 0)
-                    vol_str = f" {vol:.0f}л" if vol > 0 else ""
-                    qty = int(item.get("quantity") or 0)
-                    price = float(item.get("price") or 0)
-                    name_str = str(item.get("name") or "—")
-                    subtotal = price * qty
-                    txt(f"  {name_str}{vol_str} x{qty} = {int(subtotal):,} сум", indent=4)
-
-            if (o.get("return_bottles") or 0) > 0:
-                txt(f"Возврат 19л бутылок: {o['return_bottles']} шт.")
-
-            pay_label = pay_labels.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "—"))
-            txt(f"Оплата: {pay_label}  —  {int(float(o.get('total') or 0)):,} сум")
-
-            if o.get("rating") is not None:
-                r = int(o["rating"])
-                txt(f"Оценка: {r}/5  ({'*' * r}{'-' * (5 - r)})")
-
-            sep()
-
-    # ── Summary page
-    pdf.add_page()
-    txt("Итоги за период", bold=True, size=16)
-    sep()
-    txt(f"Всего доставок: {data['deliveries']}", size=11)
-    pdf.ln(2)
-    if data.get("total_cash", 0) > 0:
-        txt(f"Наличные: {int(data['total_cash']):,} сум")
-    if data.get("total_card", 0) > 0:
-        txt(f"Карта: {int(data['total_card']):,} сум")
-    if data.get("total_online", 0) > 0:
-        txt(f"Онлайн: {int(data['total_online']):,} сум")
-    pdf.ln(2)
-    txt(f"ИТОГО: {int(data['total_revenue']):,} сум", bold=True, size=13)
-    pdf.ln(4)
-    txt(f"Бутылок 19л доставлено: {data.get('total_bottles_19l_delivered', 0)} шт.")
-    txt(f"Бутылок 19л возвращено: {data.get('total_bottles_returned', 0)} шт.")
-    if data.get("avg_rating") is not None:
-        txt(f"Средний рейтинг: {data['avg_rating']:.1f} / 5.0")
-
-    pdf_bytes = bytes(pdf.output())
+        pdf_bytes = bytes(pdf.output())
+    except Exception as exc:
+        import traceback
+        raise HTTPException(500, f"{type(exc).__name__}: {exc} | {traceback.format_exc()}")
 
     fname = f"courier_{courier_id}_{date_from}_{date_to}.pdf"
     return StreamingResponse(

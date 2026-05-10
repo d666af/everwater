@@ -102,17 +102,19 @@ export default function AdminLayout({ children, noPadding = false, title }) {
         </div>
       </div>
 
-      <button style={{ ...s.logoutFab, top: isSubPage && !noPadding ? 60 : 16 }} onClick={() => { logout(); navigate('/login') }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-        Выйти
-      </button>
+      {!(isSubPage && !noPadding) && (
+        <button style={s.logoutFab} onClick={() => { logout(); navigate('/login') }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Выйти
+        </button>
+      )}
 
-      {hasMultipleRoles && (
-        <button style={{ ...s.switchFab, top: isSubPage && !noPadding ? 60 : 16 }} onClick={switchRole}>
+      {hasMultipleRoles && !(isSubPage && !noPadding) && (
+        <button style={s.switchFab} onClick={switchRole}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M4 4v6h6M20 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M20 10a8 8 0 00-8-8 8 8 0 00-5.7 2.3M4 14a8 8 0 008 8 8 8 0 005.7-2.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
