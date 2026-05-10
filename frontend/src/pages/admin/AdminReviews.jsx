@@ -10,9 +10,8 @@ const BORDER = 'rgba(60,60,67,0.08)'
 export default function AdminReviews() {
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
-
   const [filterCourier, setFilterCourier] = useState('all')
-  const [filterRating, setFilterRating] = useState(0)   // 0 = all
+  const [filterRating, setFilterRating] = useState(0)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [productSearch, setProductSearch] = useState('')
@@ -27,52 +26,56 @@ export default function AdminReviews() {
     return names.sort()
   }, [reviews])
 
-  const visible = useMemo(() => {
-    return reviews.filter(r => {
-      if (filterCourier !== 'all' && r.courier_name !== filterCourier) return false
-      if (filterRating > 0 && r.rating !== filterRating) return false
-      if (dateFrom) {
-        const d = new Date(r.created_at)
-        if (d < new Date(dateFrom)) return false
-      }
-      if (dateTo) {
-        const d = new Date(r.created_at)
-        if (d > new Date(dateTo + 'T23:59:59')) return false
-      }
-      if (productSearch.trim()) {
-        const q = productSearch.trim().toLowerCase()
-        if (!(r.order_items || '').toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-  }, [reviews, filterCourier, filterRating, dateFrom, dateTo, productSearch])
-
-  const clearFilters = () => {
-    setFilterCourier('all')
-    setFilterRating(0)
-    setDateFrom('')
-    setDateTo('')
-    setProductSearch('')
-  }
+  const visible = useMemo(() => reviews.filter(r => {
+    if (filterCourier !== 'all' && r.courier_name !== filterCourier) return false
+    if (filterRating > 0 && r.rating !== filterRating) return false
+    if (dateFrom && new Date(r.created_at) < new Date(dateFrom)) return false
+    if (dateTo && new Date(r.created_at) > new Date(dateTo + 'T23:59:59')) return false
+    if (productSearch.trim() && !(r.order_items || '').toLowerCase().includes(productSearch.trim().toLowerCase())) return false
+    return true
+  }), [reviews, filterCourier, filterRating, dateFrom, dateTo, productSearch])
 
   const hasFilter = filterCourier !== 'all' || filterRating > 0 || dateFrom || dateTo || productSearch.trim()
 
   return (
     <AdminLayout title="Отзывы">
-      {/* Filters */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
 
-        {/* Courier chips */}
+      {/* Filter card */}
+      <div style={s.filterCard}>
+
+        {/* Rating row */}
+        <div style={s.filterRow}>
+          <span style={s.filterLabel}>Оценка</span>
+          <div style={s.chipRow}>
+            {[0,5,4,3,2,1].map(n => (
+              <button key={n}
+                onClick={() => setFilterRating(filterRating === n ? 0 : n)}
+                style={{
+                  ...s.ratingBtn,
+                  ...(filterRating === n
+                    ? (n === 0 ? s.ratingBtnActiveNeutral : s.ratingBtnActiveStar)
+                    : {}),
+                }}>
+                {n === 0 ? 'Все' : '★'.repeat(n)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Courier row */}
         {couriers.length > 0 && (
-          <div>
-            <div style={s.filterLabel}>Курьер</div>
-            <div style={s.chipRow}>
-              <button style={{ ...s.chip, ...(filterCourier === 'all' ? s.chipActive : {}) }}
-                onClick={() => setFilterCourier('all')}>Все</button>
+          <div style={s.filterRow}>
+            <span style={s.filterLabel}>Курьер</span>
+            <div style={{ ...s.chipRow, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setFilterCourier('all')}
+                style={{ ...s.pill, ...(filterCourier === 'all' ? s.pillActive : {}) }}>
+                Все
+              </button>
               {couriers.map(name => (
                 <button key={name}
-                  style={{ ...s.chip, ...(filterCourier === name ? s.chipActive : {}) }}
-                  onClick={() => setFilterCourier(filterCourier === name ? 'all' : name)}>
+                  onClick={() => setFilterCourier(filterCourier === name ? 'all' : name)}
+                  style={{ ...s.pill, ...(filterCourier === name ? s.pillActive : {}) }}>
                   {name}
                 </button>
               ))}
@@ -80,49 +83,36 @@ export default function AdminReviews() {
           </div>
         )}
 
-        {/* Rating chips */}
-        <div>
-          <div style={s.filterLabel}>Оценка</div>
-          <div style={s.chipRow}>
-            <button style={{ ...s.chip, ...(filterRating === 0 ? s.chipActive : {}) }}
-              onClick={() => setFilterRating(0)}>Все</button>
-            {[5, 4, 3, 2, 1].map(n => (
-              <button key={n}
-                style={{ ...s.chip, ...(filterRating === n ? s.chipStar : {}) }}
-                onClick={() => setFilterRating(filterRating === n ? 0 : n)}>
-                {'★'.repeat(n)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Date range */}
-        <div>
-          <div style={s.filterLabel}>Дата</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              style={s.dateInput} placeholder="От" />
-            <span style={{ color: TEXT2, fontSize: 13 }}>—</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              style={s.dateInput} placeholder="До" />
+        {/* Dates row */}
+        <div style={s.filterRow}>
+          <span style={s.filterLabel}>Дата</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={s.dateInput} />
+            <span style={{ color: TEXT2, fontSize: 12, flexShrink: 0 }}>—</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={s.dateInput} />
           </div>
         </div>
 
         {/* Product search */}
-        <div>
-          <div style={s.filterLabel}>Товар</div>
-          <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
-            placeholder="Поиск по товарам..." style={{ ...s.dateInput, width: '100%' }} />
+        <div style={s.filterRow}>
+          <span style={s.filterLabel}>Товар</span>
+          <input
+            type="text" value={productSearch}
+            onChange={e => setProductSearch(e.target.value)}
+            placeholder="Фильтр по товарам…"
+            style={{ ...s.dateInput, flex: 1 }} />
         </div>
 
         {hasFilter && (
-          <button onClick={clearFilters} style={s.clearBtn}>Сбросить фильтры</button>
+          <button onClick={() => { setFilterCourier('all'); setFilterRating(0); setDateFrom(''); setDateTo(''); setProductSearch('') }}
+            style={s.clearBtn}>
+            Сбросить фильтры
+          </button>
         )}
       </div>
 
-      {/* Count */}
-      <div style={{ fontSize: 13, color: TEXT2, marginBottom: 12, fontWeight: 600 }}>
-        Показано: {visible.length} из {reviews.length}
+      <div style={{ fontSize: 12, color: TEXT2, marginBottom: 12, fontWeight: 600 }}>
+        {visible.length} из {reviews.length} отзывов
       </div>
 
       {loading ? (
@@ -130,18 +120,18 @@ export default function AdminReviews() {
       ) : visible.length === 0 ? (
         <div style={{ textAlign: 'center', color: TEXT2, padding: 40 }}>Нет отзывов</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {visible.map(r => (
             <div key={r.id} style={s.card}>
               {/* Stars + date */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ display: 'flex', gap: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 1 }}>
                   {[1,2,3,4,5].map(n => (
-                    <span key={n} style={{ color: n <= r.rating ? '#FFA726' : '#ddd', fontSize: 20 }}>★</span>
+                    <span key={n} style={{ color: n <= r.rating ? '#FFA726' : '#E0E0E0', fontSize: 18, lineHeight: 1 }}>★</span>
                   ))}
                 </div>
                 {r.created_at && (
-                  <span style={{ fontSize: 12, color: TEXT2 }}>
+                  <span style={{ fontSize: 11, color: TEXT2 }}>
                     {new Date(r.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
@@ -150,7 +140,7 @@ export default function AdminReviews() {
               {/* Comment */}
               {r.comment && (
                 <div style={{ fontSize: 14, color: TEXT, marginBottom: 10, lineHeight: 1.5,
-                  background: '#f8f8fa', borderRadius: 10, padding: '10px 12px' }}>
+                  background: '#F8F9FA', borderRadius: 10, padding: '9px 12px' }}>
                   "{r.comment}"
                 </div>
               )}
@@ -158,52 +148,45 @@ export default function AdminReviews() {
               {/* Photo */}
               {r.photo_url && (
                 <img src={r.photo_url} alt="review"
-                  style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 10, marginBottom: 10, display: 'block', cursor: 'pointer' }}
-                  onClick={() => window.open(r.photo_url, '_blank')}
-                />
+                  style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 10, marginBottom: 10, display: 'block', cursor: 'pointer' }}
+                  onClick={() => window.open(r.photo_url, '_blank')} />
               )}
 
-              {/* Client + courier */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+              {/* People */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
                 {r.client_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="8" r="4" stroke={TEXT2} strokeWidth="1.8"/>
-                      <path d="M4 20c0-3 3.6-5 8-5s8 2 8 5" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                    <span style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{r.client_name}</span>
-                    {r.client_phone && <span style={{ fontSize: 12, color: TEXT2 }}>{r.client_phone}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={s.avatar}>{(r.client_name[0] || '?').toUpperCase()}</div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{r.client_name}</div>
+                      {r.client_phone && <div style={{ fontSize: 11, color: TEXT2 }}>{r.client_phone}</div>}
+                    </div>
                   </div>
                 )}
                 {r.courier_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="8" r="4" stroke="#1971C2" strokeWidth="1.8"/>
-                      <path d="M4 20c0-3 3.6-5 8-5s8 2 8 5" stroke="#1971C2" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                    <span style={{ fontSize: 13, color: '#1971C2', fontWeight: 600 }}>Курьер: {r.courier_name}</span>
-                    {r.courier_phone && <span style={{ fontSize: 12, color: TEXT2 }}>{r.courier_phone}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ ...s.avatar, background: '#EDF3FF', color: '#3B5BDB' }}>{(r.courier_name[0] || '?').toUpperCase()}</div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1971C2' }}>{r.courier_name}</div>
+                      {r.courier_phone && <div style={{ fontSize: 11, color: TEXT2 }}>{r.courier_phone}</div>}
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Order info */}
-              <div style={{ background: '#f8f8fa', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: TEXT2 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, color: TEXT }}>Заказ #{r.order_id}</span>
-                  {r.order_total != null && (
-                    <span style={{ fontWeight: 700, color: C }}>{Number(r.order_total).toLocaleString('ru-RU')} сум</span>
-                  )}
-                </div>
-                {r.order_items && (
-                  <div style={{ marginTop: 3, color: TEXT2 }}>{r.order_items}</div>
+              {/* Order chip */}
+              <div style={s.orderRow}>
+                <span style={s.orderBadge}>#{r.order_id}</span>
+                {r.order_total != null && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C }}>{Number(r.order_total).toLocaleString('ru-RU')} сум</span>
                 )}
-                {r.order_address && (
-                  <div style={{ marginTop: 2, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    📍 {r.order_address}
-                  </div>
-                )}
+                {r.order_items && <span style={{ fontSize: 12, color: TEXT2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.order_items}</span>}
               </div>
+              {r.order_address && (
+                <div style={{ fontSize: 11, color: TEXT2, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  📍 {r.order_address}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -213,26 +196,55 @@ export default function AdminReviews() {
 }
 
 const s = {
-  filterLabel: { fontSize: 11, fontWeight: 700, color: TEXT2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${BORDER}`,
-    background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    WebkitTapHighlightColor: 'transparent',
+  filterCard: {
+    background: '#fff', borderRadius: 16, padding: '14px 16px',
+    marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    display: 'flex', flexDirection: 'column', gap: 12,
   },
-  chipActive: { background: C, color: '#fff', border: `1.5px solid ${C}` },
-  chipStar: { background: '#FFF8E6', color: '#E67700', border: '1.5px solid #FFD94A' },
+  filterRow: { display: 'flex', alignItems: 'center', gap: 10 },
+  filterLabel: { fontSize: 12, fontWeight: 700, color: TEXT2, width: 52, flexShrink: 0 },
+  chipRow: { display: 'flex', gap: 5, flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
+  ratingBtn: {
+    padding: '5px 9px', borderRadius: 10,
+    border: `1.5px solid ${BORDER}`, background: 'transparent',
+    color: TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+    flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+  },
+  ratingBtnActiveNeutral: { background: C, color: '#fff', borderColor: C },
+  ratingBtnActiveStar: { background: '#FFF8E6', color: '#E67700', borderColor: '#FFD94A' },
+  pill: {
+    padding: '5px 11px', borderRadius: 20,
+    border: `1.5px solid ${BORDER}`, background: 'transparent',
+    color: TEXT2, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+  },
+  pillActive: { background: C, color: '#fff', borderColor: C },
   dateInput: {
-    padding: '8px 12px', borderRadius: 10, border: `1.5px solid ${BORDER}`,
-    fontSize: 13, color: TEXT, background: '#fff', outline: 'none',
+    padding: '6px 10px', borderRadius: 10,
+    border: `1.5px solid ${BORDER}`, fontSize: 12,
+    color: TEXT, background: '#F8F9FA', outline: 'none',
+    flex: 1, minWidth: 0,
   },
   clearBtn: {
-    padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
-    background: '#FFF5F5', color: '#E03131', fontSize: 13, fontWeight: 700,
+    alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 10,
+    border: 'none', cursor: 'pointer',
+    background: '#FFF5F5', color: '#E03131',
+    fontSize: 12, fontWeight: 700,
     WebkitTapHighlightColor: 'transparent',
   },
   card: {
-    background: '#fff', borderRadius: 16, padding: 16,
+    background: '#fff', borderRadius: 16, padding: '14px 16px',
     boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+  },
+  avatar: {
+    width: 28, height: 28, borderRadius: 9,
+    background: '#F2F2F7', color: TEXT2,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 12, fontWeight: 800, flexShrink: 0,
+  },
+  orderRow: { display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' },
+  orderBadge: {
+    fontSize: 11, fontWeight: 800, color: TEXT2,
+    background: '#F2F2F7', padding: '3px 8px', borderRadius: 8, flexShrink: 0,
   },
 }
