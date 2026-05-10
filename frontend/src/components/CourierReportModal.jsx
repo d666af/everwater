@@ -119,19 +119,32 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                     Доставки ({data.orders.length})
                   </div>
                   {data.orders.map(o => (
-                    <div key={o.order_id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: TEXT2, background: '#F2F2F7', padding: '3px 8px', borderRadius: 7, flexShrink: 0 }}>#{o.order_id}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
-                        <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
-                          {o.delivered_at}
-                          {o.return_bottles > 0 && ` · ♻ ${o.return_bottles} бут.`}
-                          {o.rating !== '—' && ` · ${o.rating}⭐`}
+                    <div key={o.order_id} style={{ padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ fontWeight: 700, fontSize: 11, color: TEXT2, background: '#F2F2F7', padding: '2px 7px', borderRadius: 6, flexShrink: 0 }}>#{o.order_id}</span>
+                          {o.client_phone && o.client_phone !== '—' && (
+                            <span style={{ fontSize: 12, color: TEXT, fontWeight: 600, flexShrink: 0 }}>{o.client_phone}</span>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</span>
+                          <span style={{ fontSize: 10, color: TEXT2, marginLeft: 4 }}>сум</span>
                         </div>
                       </div>
-                      <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</div>
-                        <div style={{ fontSize: 10, color: TEXT2 }}>{payLabel[o.payment_method] || o.payment_method}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
+                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{o.delivered_at}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: CD, background: '#F0FFF4', padding: '1px 7px', borderRadius: 6 }}>
+                            {payLabel[o.payment_method] || o.payment_method}
+                          </span>
+                          {o.rating != null && (
+                            <span style={{ fontSize: 11, color: '#E67700' }}>{'★'.repeat(o.rating)}{'☆'.repeat(5 - o.rating)}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
