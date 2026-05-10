@@ -39,6 +39,9 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     revenue = sum(o.total for o in orders)
     avg_check = revenue / len(orders) if orders else 0
     bottles_returned = sum(o.return_bottles_count for o in orders)
+    delivery_revenue = sum(o.delivery_fee for o in orders if (o.delivery_fee or 0) > 0)
+    delivery_orders_count = sum(1 for o in orders if (o.delivery_fee or 0) > 0)
+    free_delivery_count = len(orders) - delivery_orders_count
 
     cancelled_q = await db.execute(
         select(func.count(Order.id)).where(
@@ -72,6 +75,9 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "cancelled": cancelled,
         "repeat_customers": repeat_customers,
         "by_status": by_status,
+        "delivery_revenue": round(delivery_revenue, 2),
+        "delivery_orders_count": delivery_orders_count,
+        "free_delivery_count": free_delivery_count,
     }
 
 

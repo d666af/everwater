@@ -232,61 +232,99 @@ function RevenueContext({ stats, period }) {
       : '—'
 
   return (
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: 18,
-        padding: '18px 20px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-        marginTop: 12,
-      }}
-    >
-      <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
-        Выручка {periodLabel}
-      </div>
+    <>
       <div
         style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: 8,
-          marginBottom: 6,
+          background: '#fff',
+          borderRadius: 18,
+          padding: '18px 20px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          marginTop: 12,
         }}
       >
-        <span style={{ fontSize: 32, fontWeight: 800, color: TEXT }}>
-          {stats.revenue.toLocaleString('ru-RU')}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 500, color: TEXT2 }}>сум</span>
-      </div>
-      <div
-        style={{
-          height: 6,
-          borderRadius: 999,
-          background: GRAD,
-          marginBottom: 12,
-          opacity: 0.7,
-        }}
-      />
-      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Заказов</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>
-            {stats.order_count ?? '—'}
-          </div>
+        <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
+          Выручка {periodLabel}
         </div>
-        <div>
-          <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Средний на заказ</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{avgPerOrder} сум</div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            marginBottom: 6,
+          }}
+        >
+          <span style={{ fontSize: 32, fontWeight: 800, color: TEXT }}>
+            {stats.revenue.toLocaleString('ru-RU')}
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 500, color: TEXT2 }}>сум</span>
         </div>
-        {stats.cancelled > 0 && (
+        <div
+          style={{
+            height: 6,
+            borderRadius: 999,
+            background: GRAD,
+            marginBottom: 12,
+            opacity: 0.7,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Потеряно (отмены)</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: '#E03131' }}>
-              {stats.cancelled}
+            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Заказов</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>
+              {stats.order_count ?? '—'}
             </div>
           </div>
-        )}
+          <div>
+            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Средний на заказ</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{avgPerOrder} сум</div>
+          </div>
+          {stats.cancelled > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Потеряно (отмены)</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#E03131' }}>
+                {stats.cancelled}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {(stats.delivery_revenue > 0 || stats.delivery_orders_count > 0) && (
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 18,
+            padding: '18px 20px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+            marginTop: 12,
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
+            🚚 Доставка {periodLabel}
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
+              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Выручка с доставки</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2' }}>
+                {(stats.delivery_revenue || 0).toLocaleString('ru-RU')} сум
+              </div>
+            </div>
+            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
+              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Платных доставок</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#6741D9' }}>
+                {stats.delivery_orders_count ?? 0}
+              </div>
+            </div>
+            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
+              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Бесплатных</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#12B886' }}>
+                {stats.free_delivery_count ?? 0}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

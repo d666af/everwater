@@ -21,6 +21,8 @@ def courier_assignment_text(order: dict) -> str:
     )
     pay = order.get("payment_method", "cash")
     total = order.get("total") or 0
+    delivery_fee = order.get("delivery_fee") or 0
+    delivery_line = f"\nДоставка: +{_fmt_sum(delivery_fee)}" if delivery_fee > 0 else ""
     cash_line = f"\nПолучить от клиента: {_fmt_sum(total)}" if pay == "cash" else ""
     time_str = order.get("delivery_time") or "—"
     manager_phone = order.get("manager_phone") or ""
@@ -32,6 +34,7 @@ def courier_assignment_text(order: dict) -> str:
         f"{manager_line}\n"
         f"Время: {time_str}\n"
         f"Товары:\n{items_text}"
+        f"{delivery_line}"
         f"{cash_line}\n"
         f"Возврат бутылок: {order.get('return_bottles_count') or 0} шт."
     )
