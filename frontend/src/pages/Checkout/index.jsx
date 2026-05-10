@@ -424,9 +424,11 @@ export default function Checkout() {
 
       {/* 19L bottle deposit explanation */}
       {deposit19L && discountPerBottle > 0 && (
-        <div style={{ background: '#EBF4FF', borderRadius: 14, padding: '12px 14px', fontSize: 13, color: '#1971C2', lineHeight: 1.5, marginBottom: 4 }}>
-          🫙 <b>Первый раз:</b> {deposit19L.price.toLocaleString()} сум = {(deposit19L.price - discountPerBottle).toLocaleString()} вода + {discountPerBottle.toLocaleString()} залог.<br/>
-          При возврате бутылки — скидка {discountPerBottle.toLocaleString()} сум.
+        <div style={s.section}>
+          <div style={{ background: '#EBF4FF', borderRadius: 14, padding: '12px 14px', fontSize: 13, color: '#1971C2', lineHeight: 1.5 }}>
+            🫙 <b>Первый раз:</b> {deposit19L.price.toLocaleString()} сум = {(deposit19L.price - discountPerBottle).toLocaleString()} вода + {discountPerBottle.toLocaleString()} залог.<br/>
+            При возврате бутылки — скидка {discountPerBottle.toLocaleString()} сум.
+          </div>
         </div>
       )}
 
