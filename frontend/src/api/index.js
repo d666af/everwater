@@ -1188,9 +1188,20 @@ export const getWarehouseCourierStats = () =>
   )
 
 // Filtered warehouse history — uses same period/time range semantics as overview
-export const getWarehouseHistory = (filters = {}) =>
-  safeCall(
-    () => http.get('/warehouse/history', { params: filters }).then(r => r.data),
+export const getWarehouseHistory = (filters = {}) => {
+  const { period = 'all', type, product, courier_id, customDate, timeFrom, timeTo } = filters
+  const params = { period, limit: 200 }
+  if (type && type !== 'all') params.type = type
+  if (product && product !== 'all') params.product = product
+  if (courier_id) params.courier_id = courier_id
+  if (period === 'custom' && customDate) {
+    params.date = customDate instanceof Date ? customDate.toISOString() : String(customDate)
+  }
+  if (timeFrom) params.time_from = timeFrom
+  if (timeTo) params.time_to = timeTo
+
+  return safeCall(
+    () => http.get('/warehouse/history', { params }).then(r => r.data),
     () => {
       const { period = 'all', type, product, courier_id, customDate, timeFrom, timeTo } = filters
       let list = MOCK_WAREHOUSE.history
@@ -1221,6 +1232,7 @@ export const getWarehouseHistory = (filters = {}) =>
       return list.sort((a, b) => new Date(b.date) - new Date(a.date))
     }
   )
+}
 
 // Production planning based on subscriptions + active orders
 export const getProductionPlan = () =>

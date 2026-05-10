@@ -911,13 +911,19 @@ async def get_couriers_water(db: AsyncSession = Depends(get_db)):
 
 @router.get("/history")
 async def get_history(
-    limit: int = 50,
+    limit: int = 200,
     offset: int = 0,
-    tx_type: str | None = None,
-    product_id: int | None = None,
+    type: str | None = None,
+    product: str | None = None,
     courier_id: int | None = None,
+    period: str = "all",
+    date: str | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    since, until = _period_range(period, date, time_from, time_to)
+
     q = (
         select(WaterTransaction)
         .options(
@@ -926,12 +932,24 @@ async def get_history(
         )
         .order_by(WaterTransaction.created_at.desc())
     )
-    if tx_type:
-        q = q.where(WaterTransaction.transaction_type == tx_type)
-    if product_id:
-        q = q.where(WaterTransaction.product_id == product_id)
+
+    if period != "all":
+        q = q.where(WaterTransaction.created_at >= since)
+        q = q.where(WaterTransaction.created_at <= until)
+
+    if type and type != "all":
+        q = q.where(WaterTransaction.transaction_type == type)
+
+    if product and product != "all":
+        all_prods = (await db.execute(select(Product).where(Product.is_active == True))).scalars().all()
+        matched_ids = [p.id for p in all_prods if _short_name(p.volume, p.type) == product or p.name == product]
+        if not matched_ids:
+            return []
+        q = q.where(WaterTransaction.product_id.in_(matched_ids))
+
     if courier_id:
         q = q.where(WaterTransaction.courier_id == courier_id)
+
     q = q.offset(offset).limit(limit)
     result = await db.execute(q)
     txs = result.scalars().all()
