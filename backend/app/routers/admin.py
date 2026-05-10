@@ -255,6 +255,14 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
     bottle_row = bottles_q.scalar_one_or_none()
     bottles_owed = bottle_row.count if bottle_row else 0
 
+    pending_return = int((await db.execute(
+        select(func.sum(Order.return_bottles_count)).where(
+            Order.user_id == user_id,
+            Order.status.in_([OrderStatus.CONFIRMED, OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY]),
+            Order.return_bottles_count > 0,
+        )
+    )).scalar() or 0)
+
     orders_q = await db.execute(
         select(Order).where(Order.user_id == user_id).order_by(Order.created_at.desc()).limit(20)
     )
@@ -276,6 +284,8 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
         "addresses": addresses,
         "subscriptions": subscriptions,
         "bottles_owed": bottles_owed,
+        "pending_return": pending_return,
+        "available_bottles": max(0, bottles_owed - pending_return),
         "recent_orders": orders,
         "coolers": [],
     }

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from sqlalchemy import update as sa_update
+from sqlalchemy import update as sa_update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -255,7 +255,20 @@ async def get_order(order_id: int, db: AsyncSession = Depends(get_db)):
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return _order_to_out(order)
+    # Enrich with client bottle debt info
+    bottles_owed = 0
+    bottles_pending = 0
+    if order.user_id:
+        debt_row = (await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))).scalar_one_or_none()
+        bottles_owed = debt_row.count if debt_row else 0
+        bottles_pending = int((await db.execute(
+            select(func.sum(Order.return_bottles_count)).where(
+                Order.user_id == order.user_id,
+                Order.status.in_([OrderStatus.CONFIRMED, OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY]),
+                Order.return_bottles_count > 0,
+            )
+        )).scalar() or 0)
+    return _order_to_out(order, client_bottles_owed=bottles_owed, client_bottles_pending=bottles_pending)
 
 
 @router.get("/user/{user_id}", response_model=list[OrderOut])
@@ -964,7 +977,7 @@ async def _get_order(order_id: int, db: AsyncSession) -> Order:
     return order
 
 
-def _order_to_out(order: Order) -> OrderOut:
+def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pending: int = 0) -> OrderOut:
     from app.schemas.order import OrderItemOut
     items = [
         OrderItemOut(
@@ -1010,4 +1023,6 @@ def _order_to_out(order: Order) -> OrderOut:
         manager_phone=order.manager_phone,
         review_id=order.review.id if order.review else None,
         notification_msg_ids=order.notification_msg_ids,
+        client_bottles_owed=client_bottles_owed,
+        client_bottles_pending=client_bottles_pending,
     )

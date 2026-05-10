@@ -533,6 +533,8 @@ async def profile(message: Message, state: FSMContext):
         return
     bottles = await api.get_bottles_owed(user["id"])
     bottle_count = bottles.get("count", 0)
+    pending = bottles.get("pending_return", 0)
+    available = bottles.get("available", bottle_count)
     subs = await api.get_subscriptions(user["id"])
     active_subs = [s for s in subs if s.get("status") == "active"]
 
@@ -543,7 +545,14 @@ async def profile(message: Message, state: FSMContext):
         f"⭐ Бонусы: <b>{fmt(user.get('bonus_points', 0))}</b>\n"
     )
     if bottle_count > 0:
-        text += f"🫙 Бутылок к возврату: <b>{bottle_count} шт.</b>\n"
+        if pending > 0:
+            text += (
+                f"🫙 Долг по бутылкам: <b>{bottle_count} шт.</b>\n"
+                f"  ↩️ В процессе возврата: <b>{pending} шт.</b>\n"
+                f"  ✅ Доступно к возврату: <b>{available} шт.</b>\n"
+            )
+        else:
+            text += f"🫙 Бутылок к возврату: <b>{bottle_count} шт.</b>\n"
     if active_subs:
         text += f"📋 Активных подписок: <b>{len(active_subs)}</b>\n"
 

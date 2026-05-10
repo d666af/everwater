@@ -460,7 +460,17 @@ async def courier_co_phone(message: Message, state: FSMContext):
     await state.set_state(CourierOrderCreate.choosing_product)
 
     if client:
-        info = (f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}")
+        bottles_owed = client.get('bottles_owed', 0)
+        pending = client.get('pending_return', 0)
+        available = client.get('available_bottles', bottles_owed)
+        if bottles_owed > 0:
+            if pending > 0:
+                bottle_line = f"\n  🫙 Долг: {bottles_owed} бут. | В процессе: {pending} | Доступно: {available}"
+            else:
+                bottle_line = f"\n  🫙 Долг по бутылкам: {bottles_owed} шт."
+        else:
+            bottle_line = ""
+        info = f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}{bottle_line}"
     else:
         info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"
 
