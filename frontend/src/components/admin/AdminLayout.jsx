@@ -43,7 +43,9 @@ const NAV = [
   },
 ]
 
-export default function AdminLayout({ children, noPadding = false }) {
+const MAIN_PATHS = new Set(['/admin', '/admin/reviews', '/admin/orders', '/admin/stats'])
+
+export default function AdminLayout({ children, noPadding = false, title }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
@@ -76,12 +78,24 @@ export default function AdminLayout({ children, noPadding = false }) {
     }
   }, [location.pathname]) // eslint-disable-line
 
+  const isSubPage = !MAIN_PATHS.has(location.pathname)
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {isSubPage && !noPadding && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 150, background: '#fff', borderBottom: '1px solid rgba(60,60,67,0.08)', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            <button onClick={() => navigate('/admin')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: C, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Назад
+            </button>
+            {title && <span style={{ fontSize: 16, fontWeight: 800, color: '#1C1C1E', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>}
+          </div>
+        )}
         <div style={{
           ...s.content,
           paddingBottom: 100,
+          paddingTop: isSubPage && !noPadding ? 72 : 60,
           ...(noPadding ? { padding: 0, paddingBottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}),
         }}>
           {children}

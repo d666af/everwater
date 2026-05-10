@@ -308,91 +308,90 @@ async def download_courier_report_pdf(
         raise HTTPException(404, "Courier not found")
     data = await _courier_report_data(courier.id, date_from, date_to, db)
 
-    pay_labels = {"cash": "Наличные", "card": "Карта", "online": "Онлайн", "balance": "Баланс", "balance_card": "Баланс+Карта"}
+    pay_labels = {"cash": "Наличные", "card": "Карта", "online": "Онлайн",
+                  "balance": "Баланс", "balance_card": "Баланс+Карта"}
 
     _FONT_DIR = Path(_fpdf_module.__file__).parent / "fonts"
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.add_font("DejaVu", "", str(_FONT_DIR / "DejaVuSans.ttf"))
-    pdf.add_font("DejaVu", "B", str(_FONT_DIR / "DejaVuSans-Bold.ttf"))
+    pdf.add_font("DejaVu",  "",  str(_FONT_DIR / "DejaVuSans.ttf"))
+    pdf.add_font("DejaVu",  "B", str(_FONT_DIR / "DejaVuSans-Bold.ttf"))
 
-    NL = {"new_x": "LMARGIN", "new_y": "NEXT"}
-
-    def h1(text):
-        pdf.set_font("DejaVu", "B", 16)
-        pdf.cell(0, 10, text, **NL)
-
-    def h2(text):
-        pdf.set_font("DejaVu", "B", 12)
-        pdf.cell(0, 8, text, **NL)
-
-    def body(text, indent=0):
-        pdf.set_font("DejaVu", "", 10)
+    def txt(text, bold=False, size=10, indent=0):
+        pdf.set_font("DejaVu", "B" if bold else "", size)
         if indent:
             pdf.set_x(pdf.l_margin + indent)
-        pdf.multi_cell(0, 6, text)
+        pdf.multi_cell(0, size * 0.6 + 2, str(text or ""))
 
     def sep():
-        pdf.ln(2)
+        pdf.ln(1)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(3)
 
     # ── Header
-    h1(f"Отчёт по курьеру: {courier.name}")
-    body(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}")
-    body(f"Сформирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    txt(f"Отчёт по курьеру: {courier.name}", bold=True, size=16)
+    txt(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}", size=10)
+    txt(f"Сформирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}", size=9)
     sep()
 
     if not data["orders"]:
-        body("За указанный период доставок не найдено.")
+        txt("За указанный период доставок не найдено.")
     else:
         for o in data["orders"]:
-            h2(f"Заказ №{o['order_id']}  —  {o['delivered_at']}")
-            body(f"Клиент: {o['client_phone']}" + (f" ({o['client_name']})" if o['client_name'] != '—' else ""))
-            body(f"Адрес: {o['address']}")
-            body(f"Оформлен: {o['created_at']}  |  Подтверждён: {o['confirmed_at']}  |  Доставлен: {o['delivered_at']}")
+            txt(f"Заказ №{o['order_id']}  —  {o['delivered_at']}", bold=True, size=12)
+            phone = o['client_phone'] or '—'
+            name  = o['client_name']
+            client_line = phone + (f" ({name})" if name and name != '—' else "")
+            txt(f"Клиент: {client_line}")
+            txt(f"Адрес: {o['address'] or '—'}")
+            txt(f"Оформлен: {o['created_at']}   Подтверждён: {o['confirmed_at']}   Доставлен: {o['delivered_at']}")
+            pdf.ln(1)
 
-            if o["items"]:
-                body("Товары:")
+            if o.get("items"):
+                txt("Товары:", bold=True, size=10)
                 for item in o["items"]:
-                    vol_str = f" {item['volume']:.0f}л" if item["volume"] > 0 else ""
-                    subtotal = item["price"] * item["quantity"]
-                    body(f"  • {item['name']}{vol_str} × {item['quantity']} = {subtotal:,.0f} сум", indent=4)
+                    vol = float(item.get("volume") or 0)
+                    vol_str = f" {vol:.0f}л" if vol > 0 else ""
+                    qty = int(item.get("quantity") or 0)
+                    price = float(item.get("price") or 0)
+                    name_str = str(item.get("name") or "—")
+                    subtotal = price * qty
+                    txt(f"• {name_str}{vol_str}  ×{qty}  =  {subtotal:,.0f} сум", indent=5)
 
-            if o["return_bottles"] > 0:
-                body(f"Возврат 19л бутылок: {o['return_bottles']} шт.")
+            if (o.get("return_bottles") or 0) > 0:
+                txt(f"Возврат 19л бутылок: {o['return_bottles']} шт.")
 
-            pay_label = pay_labels.get(o["payment_method"], o["payment_method"])
-            body(f"Оплата: {pay_label} — {o['total']:,.0f} сум")
+            pay_label = pay_labels.get(o.get("payment_method", ""), o.get("payment_method", "—"))
+            txt(f"Оплата: {pay_label}  —  {float(o.get('total') or 0):,.0f} сум")
 
-            if o["rating"] is not None:
-                stars = "★" * o["rating"] + "☆" * (5 - o["rating"])
-                body(f"Оценка: {stars} ({o['rating']}/5)")
+            if o.get("rating") is not None:
+                r = int(o["rating"])
+                txt(f"Оценка: {'★' * r}{'☆' * (5 - r)}  ({r}/5)")
 
             sep()
 
-    # ── Summary
+    # ── Summary page
     pdf.add_page()
-    h1("Итоги за период")
+    txt("Итоги за период", bold=True, size=16)
     sep()
-    body(f"Всего доставок: {data['deliveries']}")
-    if data["total_cash"] > 0:
-        body(f"Наличные: {data['total_cash']:,.0f} сум")
-    if data["total_card"] > 0:
-        body(f"Карта: {data['total_card']:,.0f} сум")
-    if data["total_online"] > 0:
-        body(f"Онлайн: {data['total_online']:,.0f} сум")
-    pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, f"ИТОГО: {data['total_revenue']:,.0f} сум", **NL)
-    pdf.set_font("DejaVu", "", 10)
+    txt(f"Всего доставок: {data['deliveries']}", size=11)
+    pdf.ln(2)
+    if data.get("total_cash", 0) > 0:
+        txt(f"Наличные: {data['total_cash']:,.0f} сум")
+    if data.get("total_card", 0) > 0:
+        txt(f"Карта: {data['total_card']:,.0f} сум")
+    if data.get("total_online", 0) > 0:
+        txt(f"Онлайн: {data['total_online']:,.0f} сум")
+    pdf.ln(2)
+    txt(f"ИТОГО: {data['total_revenue']:,.0f} сум", bold=True, size=13)
     pdf.ln(4)
-    body(f"Бутылок 19л доставлено: {data['total_bottles_19l_delivered']} шт.")
-    body(f"Бутылок 19л возвращено: {data['total_bottles_returned']} шт.")
-    if data["avg_rating"] is not None:
-        body(f"Средний рейтинг: {data['avg_rating']:.1f} / 5.0")
+    txt(f"Бутылок 19л доставлено: {data.get('total_bottles_19l_delivered', 0)} шт.")
+    txt(f"Бутылок 19л возвращено: {data.get('total_bottles_returned', 0)} шт.")
+    if data.get("avg_rating") is not None:
+        txt(f"Средний рейтинг: {data['avg_rating']:.1f} / 5.0")
 
     pdf_bytes = bytes(pdf.output())
 

@@ -120,22 +120,24 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                   </div>
                   {data.orders.map(o => (
                     <div key={o.order_id} style={{ padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+                      {/* Row 1: id + phone | amount */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ fontWeight: 700, fontSize: 11, color: TEXT2, background: '#F2F2F7', padding: '2px 7px', borderRadius: 6, flexShrink: 0 }}>#{o.order_id}</span>
                           {o.client_phone && o.client_phone !== '—' && (
-                            <span style={{ fontSize: 12, color: TEXT, fontWeight: 600, flexShrink: 0 }}>{o.client_phone}</span>
+                            <span style={{ fontSize: 12, color: TEXT, fontWeight: 600 }}>{o.client_phone}</span>
                           )}
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <span style={{ fontWeight: 800, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</span>
-                          <span style={{ fontSize: 10, color: TEXT2, marginLeft: 4 }}>сум</span>
+                          <span style={{ fontSize: 10, color: TEXT2, marginLeft: 3 }}>сум</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      {/* Row 2: address | payment + stars */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
-                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{o.delivered_at}</div>
+                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{o.delivered_at}</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
                           <span style={{ fontSize: 11, fontWeight: 600, color: CD, background: '#F0FFF4', padding: '1px 7px', borderRadius: 6 }}>
@@ -146,6 +148,20 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                           )}
                         </div>
                       </div>
+                      {/* Row 3: items */}
+                      {o.items?.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 8px', background: '#F8F9FA', borderRadius: 8 }}>
+                          {o.items.map((item, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: TEXT }}>
+                              <span>{item.name}{item.volume > 0 ? ` ${item.volume.toFixed(0)}л` : ''} × {item.quantity}</span>
+                              <span style={{ color: TEXT2, flexShrink: 0, marginLeft: 8 }}>{((item.price || 0) * item.quantity).toLocaleString()} сум</span>
+                            </div>
+                          ))}
+                          {(o.return_bottles || 0) > 0 && (
+                            <div style={{ fontSize: 11, color: '#1971C2', marginTop: 2 }}>Возврат 19л: {o.return_bottles} шт.</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

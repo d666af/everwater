@@ -156,12 +156,15 @@ export default function AdminDashboard() {
           )}
 
           {/* Shortcuts */}
-          <div style={{ ...s.cardTitle, margin: '4px 2px 8px' }}>Управление</div>
+          <div style={{ ...s.cardTitle, margin: '4px 2px 10px' }}>Управление</div>
           <div style={s.shortcutGrid}>
             {SHORTCUTS.map(sc => (
               <button key={sc.path} onClick={() => navigate(sc.path)} style={s.shortcutBtn}>
-                <div style={{ ...s.shortcutIcon, background: sc.bg, color: sc.accent }}>{sc.icon}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, textAlign: 'center', lineHeight: 1.3, height: '2.6em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{sc.label}</div>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: sc.bg, color: sc.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{sc.icon}</div>
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, lineHeight: 1.2 }}>{sc.label}</div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.3 }}><path d="M9 18l6-6-6-6" stroke={TEXT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
             ))}
           </div>
@@ -235,11 +238,11 @@ const s = {
   cardTitle: { fontSize: 14, fontWeight: 800, color: TEXT },
   linkBtn: { background: 'none', border: 'none', color: C, fontSize: 12, fontWeight: 700, cursor: 'pointer' },
   idBadge: { fontSize: 11, fontWeight: 800, color: TEXT2, background: '#F2F2F7', padding: '3px 8px', borderRadius: 8, flexShrink: 0 },
-  shortcutGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
+  shortcutGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 },
   shortcutBtn: {
-    background: '#fff', border: 'none', borderRadius: 16, padding: '14px 8px',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer',
+    background: '#fff', border: 'none', borderRadius: 16, padding: '14px 14px',
+    display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, cursor: 'pointer',
     boxShadow: '0 1px 4px rgba(0,0,0,0.04)', WebkitTapHighlightColor: 'transparent',
+    textAlign: 'left',
   },
-  shortcutIcon: { width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' },
 }
