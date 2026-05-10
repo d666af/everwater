@@ -89,6 +89,13 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     )
     today_count = today_q.scalar() or 0
 
+    delivery_rev_q = await db.execute(
+        select(func.sum(Order.delivery_fee)).where(
+            and_(Order.courier_id == courier.id, Order.status == OrderStatus.DELIVERED)
+        )
+    )
+    total_delivery_revenue = float(delivery_rev_q.scalar() or 0)
+
     return {
         "courier_id": courier.id,
         "name": courier.name,
@@ -97,6 +104,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
         "today_count": today_count,
         "earnings": round(total_revenue, 2),
         "total_revenue": round(total_revenue, 2),
+        "total_delivery_revenue": round(total_delivery_revenue, 2),
         "rating": round(float(avg_rating or 0), 2),
         "avg_rating": round(float(avg_rating or 0), 2),
         "review_count": review_count or 0,
@@ -283,13 +291,13 @@ async def download_courier_report_csv(
     w.writerow([f"Отчёт курьера: {courier.name}"])
     w.writerow([f"Период: {date_from} — {date_to}"])
     w.writerow([])
-    w.writerow(["Доставок", "Выручка (сум)", "Средний рейтинг"])
-    w.writerow([data["deliveries"], data["total_revenue"], data["avg_rating"] or "—"])
+    w.writerow(["Доставок", "Выручка (сум)", "в т.ч. доставки (сум)", "Средний рейтинг"])
+    w.writerow([data["deliveries"], data["total_revenue"], data["total_delivery_revenue"], data["avg_rating"] or "—"])
     w.writerow([])
-    w.writerow(["№ заказа", "Дата доставки", "Адрес", "Сумма (сум)", "Оплата", "Возврат бутылок", "Оценка"])
+    w.writerow(["№ заказа", "Дата доставки", "Адрес", "Сумма (сум)", "Доставка (сум)", "Оплата", "Возврат бутылок", "Оценка"])
     for r in data["orders"]:
         w.writerow([r["order_id"], r["delivered_at"], r["address"],
-                    r["total"], r["payment_method"], r["return_bottles"], r["rating"]])
+                    r["total"], r["delivery_fee"], r["payment_method"], r["return_bottles"], r["rating"]])
 
     fname = f"courier_{courier_id}_{date_from}_{date_to}.csv"
     return StreamingResponse(
@@ -469,7 +477,12 @@ async def download_courier_report_pdf(
                 pay = pay_abbr.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "—"))
                 ret = f"{o['return_bottles']} шт." if o.get("return_bottles") else "—"
                 rating_str = f"{int(o['rating'])}/5" if o.get("rating") is not None else "—"
-                total_str = f"{int(float(o.get('total', 0))):,}"
+                delivery_fee_val = float(o.get("delivery_fee") or 0)
+                total_val = float(o.get("total") or 0)
+                if delivery_fee_val > 0:
+                    total_str = f"{int(total_val):,} (+{int(delivery_fee_val):,})"
+                else:
+                    total_str = f"{int(total_val):,}"
 
                 orders_row([
                     str(idx + 1),
@@ -561,6 +574,8 @@ async def download_courier_report_pdf(
             body(line, size=10, lh=6)
         pdf.ln(3)
         body(f"ИТОГО ВЫРУЧКА: {int(data['total_revenue']):,} сум", bold=True, size=13, lh=8)
+        if data.get("total_delivery_revenue", 0) > 0:
+            body(f"  в т.ч. оплата за доставку: {int(data['total_delivery_revenue']):,} сум", size=10, lh=6)
 
         pdf_bytes = bytes(pdf.output())
     except Exception as exc:

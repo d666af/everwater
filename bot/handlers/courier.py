@@ -259,10 +259,13 @@ async def courier_report(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="📊 Открыть подробный отчёт", web_app=WebAppInfo(url=site_url))
     ]])
+    delivery_rev = stats.get('total_delivery_revenue', 0) or 0
+    delivery_rev_line = f"\n🚚 Доставки (итого): {fmt(delivery_rev)}" if delivery_rev > 0 else ""
     await message.answer(
         f"📊 <b>Ваша статистика:</b>\n\n"
         f"✔️ Выполнено доставок: {stats.get('total_deliveries', 0)}\n"
-        f"💰 Общая выручка: {fmt(stats.get('total_revenue', 0))}\n"
+        f"💰 Общая выручка: {fmt(stats.get('total_revenue', 0))}"
+        f"{delivery_rev_line}\n"
         f"⭐ Средний рейтинг: {float(avg):.1f} {stars}\n"
         f"📝 Отзывов: {stats.get('review_count', 0)}\n"
         f"🚴 Активных заказов: {stats.get('active_orders', 0)}",
