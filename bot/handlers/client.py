@@ -763,9 +763,10 @@ def _deposit_hint_for_cart(cart: dict, cfg: dict) -> str:
         water_price = item.get("deposit_price") or full_price
         deposit_amount = full_price - water_price
         if deposit_amount > 0:
+            n = lambda x: f"{int(x):,}".replace(",", " ")
             hints.append(
-                f"🫙 <b>19л тара:</b> первый раз {fmt(full_price)} = {fmt(water_price)} вода + {fmt(deposit_amount)} залог.\n"
-                f"   При возврате бутылки — скидка {fmt(deposit_amount)} сум."
+                f"🫙 <b>Первый раз:</b> {fmt(full_price)} = {n(water_price)} вода + {n(deposit_amount)} залог.\n"
+                f"При возврате бутылки — скидка {fmt(deposit_amount)}."
             )
         else:
             hints.append(f"🫙 <i>Цена со сдачей бутылки: {fmt(_item_eff_price(item))}</i>")
