@@ -220,6 +220,10 @@ async def create_review(user_id: int, order_id: int, rating: int, comment: str =
     })
 
 
+async def update_review_comment(order_id: int, comment: str):
+    return await _patch(f"/orders/reviews/by_order/{order_id}/comment", {"comment": comment})
+
+
 # ─── Settings ─────────────────────────────────────────────────────────────────
 
 async def get_settings():

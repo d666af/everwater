@@ -668,6 +668,23 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
     return {"ok": True, "id": review.id}
 
 
+class ReviewCommentUpdate(BaseModel):
+    comment: str
+
+
+@router.patch("/reviews/by_order/{order_id}/comment")
+async def update_review_comment(order_id: int, body: ReviewCommentUpdate,
+                                db: AsyncSession = Depends(get_db)):
+    """Add/update comment on an existing review without re-notifying admins."""
+    result = await db.execute(select(Review).where(Review.order_id == order_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.comment = body.comment
+    await db.commit()
+    return {"ok": True}
+
+
 async def _notify_review(db: AsyncSession, review: Review, rating: int, comment: str | None,
                           order_id: int | None, order=None):
     """Send new review notification to all admins and managers."""
