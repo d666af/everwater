@@ -14,7 +14,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.client_data import BottleDebt
-from app.models.cash_debt import CashDebt
+
 from app.schemas.order import OrderCreate, OrderOut, ReviewCreate
 from app.services.settings_service import get_all_settings
 
@@ -582,14 +582,7 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             courier = result.scalar_one_or_none()
             if courier:
                 courier.total_deliveries += 1
-                # Track cash debt when payment is by cash
-                if order.payment_method == "cash":
-                    db.add(CashDebt(
-                        courier_id=courier.id,
-                        order_id=order.id,
-                        amount=order.total,
-                        status="pending",
-                    ))
+
 
         await db.commit()
 

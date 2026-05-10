@@ -458,6 +458,15 @@ export const getCourierStats = (telegramId) =>
     }
   )
 
+export const getCourierReport = (courierId, dateFrom, dateTo) =>
+  safeCall(
+    () => http.get(`/couriers/${courierId}/report`, { params: { date_from: dateFrom, date_to: dateTo } }).then(r => r.data),
+    () => ({ deliveries: 0, total_revenue: 0, avg_rating: null, orders: [] })
+  )
+
+export const getCourierReportCsvUrl = (courierId, dateFrom, dateTo) =>
+  `${http.defaults.baseURL}/couriers/${courierId}/report/csv?date_from=${dateFrom}&date_to=${dateTo}`
+
 // ─── Notifications ────────────────────────────────────────────────────────────
 let mockNotifications = [...MOCK_NOTIFICATIONS]
 
@@ -558,52 +567,6 @@ export const confirmTopup = (userId, amount) =>
   safeCall(
     () => http.post(`/admin/users/${userId}/topup`, { amount }).then(r => r.data),
     () => ({ ok: true, new_balance: 100000 })
-  )
-
-// ─── Cash debt tracking ─────────────────────────────────────────────────────
-let mockCashDebts = [...MOCK_CASH_DEBTS]
-
-// Backend returns `status`; normalise to `clearance_status` for UI consistency
-const _normDebt = (d) => ({ ...d, clearance_status: d.clearance_status ?? d.status })
-const _normDebts = (arr) => (arr || []).map(_normDebt)
-
-export const getCashDebts = (courierId) =>
-  safeCall(
-    () => http.get(`/couriers/${courierId}/cash_debts`).then(r => _normDebts(r.data)),
-    () => mockCashDebts.filter(d => d.courier_id === courierId && d.clearance_status !== 'approved')
-  )
-
-export const getAllCashDebts = () =>
-  safeCall(
-    () => http.get('/couriers/admin/cash_debts').then(r => _normDebts(r.data)),
-    () => mockCashDebts
-  )
-
-export const requestDebtClearance = (debtId) =>
-  safeCall(
-    () => http.post(`/couriers/cash_debts/${debtId}/request_clearance`).then(r => r.data),
-    () => {
-      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'pending' } : d)
-      return { ok: true }
-    }
-  )
-
-export const approveDebtClearance = (debtId) =>
-  safeCall(
-    () => http.post(`/couriers/admin/cash_debts/${debtId}/decide`, { action: 'approve' }).then(r => r.data),
-    () => {
-      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'approved' } : d)
-      return { ok: true }
-    }
-  )
-
-export const rejectDebtClearance = (debtId) =>
-  safeCall(
-    () => http.post(`/couriers/admin/cash_debts/${debtId}/decide`, { action: 'reject' }).then(r => r.data),
-    () => {
-      mockCashDebts = mockCashDebts.map(d => d.id === debtId ? { ...d, clearance_status: 'rejected' } : d)
-      return { ok: true }
-    }
   )
 
 // ─── Bottle debt / survey ────────────────────────────────────────────────────

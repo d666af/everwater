@@ -1,15 +1,17 @@
-"""Courier-specific endpoints: stats, reviews, water inventory, cash debts."""
-from datetime import datetime
+"""Courier-specific endpoints: stats, reviews, water inventory, reports."""
+from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+import io, csv
 
 from app.database import get_db
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, Review
-from app.models.cash_debt import CashDebt
+
 from app.models.warehouse import CourierWater
 from app.models.product import Product
 from app.models.user import User
@@ -140,86 +142,104 @@ async def get_courier_water(telegram_id: int, db: AsyncSession = Depends(get_db)
     }
 
 
-# ─── Cash debts ───────────────────────────────────────────────────────────────
+# ─── Report ───────────────────────────────────────────────────────────────────
 
-@router.get("/{telegram_id}/cash_debts")
-async def get_cash_debts(telegram_id: int, db: AsyncSession = Depends(get_db)):
-    courier = await _get_courier_by_telegram(telegram_id, db)
-    result = await db.execute(
-        select(CashDebt).where(CashDebt.courier_id == courier.id)
-        .order_by(CashDebt.created_at.desc())
+async def _courier_report_data(courier_id: int, date_from: date, date_to: date, db: AsyncSession) -> dict:
+    """Aggregate delivered orders for a courier in [date_from, date_to] inclusive."""
+    dt_from = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0)
+    dt_to   = datetime(date_to.year,   date_to.month,   date_to.day,   23, 59, 59)
+
+    orders_q = await db.execute(
+        select(Order).where(
+            Order.courier_id == courier_id,
+            Order.status == OrderStatus.DELIVERED,
+            Order.delivered_at >= dt_from,
+            Order.delivered_at <= dt_to,
+        ).order_by(Order.delivered_at)
     )
-    debts = result.scalars().all()
-    total = sum(d.amount for d in debts if d.status == "pending")
+    orders = orders_q.scalars().all()
+
+    reviews_q = await db.execute(
+        select(Review).where(Review.courier_id == courier_id)
+    )
+    reviews = reviews_q.scalars().all()
+    review_map = {r.order_id: r.rating for r in reviews}
+
+    rows = []
+    total_revenue = 0.0
+    for o in orders:
+        total_revenue += float(o.total or 0)
+        rows.append({
+            "order_id": o.id,
+            "delivered_at": o.delivered_at.strftime("%d.%m.%Y %H:%M") if o.delivered_at else "—",
+            "address": o.address or "—",
+            "total": float(o.total or 0),
+            "payment_method": o.payment_method or "—",
+            "return_bottles": o.return_bottles_count or 0,
+            "rating": review_map.get(o.id, "—"),
+        })
+
+    rating_vals = [r.rating for r in reviews
+                   if r.rating and any(o.id == r.order_id for o in orders)]
+    avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
+
     return {
-        "total_pending": total,
-        "debts": [
-            {"id": d.id, "amount": d.amount, "status": d.status,
-             "order_id": d.order_id, "note": d.note,
-             "created_at": d.created_at.isoformat()}
-            for d in debts
-        ],
+        "deliveries": len(orders),
+        "total_revenue": round(total_revenue, 2),
+        "avg_rating": avg_rating,
+        "orders": rows,
     }
 
 
-class DebtClearBody(BaseModel):
-    note: str | None = None
+@router.get("/{courier_id}/report")
+async def get_courier_report(
+    courier_id: int,
+    date_from: date,
+    date_to: date,
+    db: AsyncSession = Depends(get_db),
+):
+    """Courier stats report by DB id for a date range."""
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(404, "Courier not found")
+    data = await _courier_report_data(courier.id, date_from, date_to, db)
+    return {"courier_id": courier_id, "courier_name": courier.name, **data}
 
 
-@router.post("/cash_debts/{debt_id}/request_clearance")
-async def request_debt_clearance(debt_id: int, body: DebtClearBody = DebtClearBody(),
-                                 db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(CashDebt).where(CashDebt.id == debt_id))
-    debt = result.scalar_one_or_none()
-    if not debt:
-        raise HTTPException(status_code=404, detail="Debt not found")
-    debt.status = "requested"
-    if body.note:
-        debt.note = body.note
-    await db.commit()
-    return {"ok": True}
+@router.get("/{courier_id}/report/csv")
+async def download_courier_report_csv(
+    courier_id: int,
+    date_from: date,
+    date_to: date,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(404, "Courier not found")
+    data = await _courier_report_data(courier.id, date_from, date_to, db)
 
+    buf = io.StringIO()
+    buf.write(f"﻿")  # UTF-8 BOM for Excel
+    w = csv.writer(buf, delimiter=";")
+    w.writerow([f"Отчёт курьера: {courier.name}"])
+    w.writerow([f"Период: {date_from} — {date_to}"])
+    w.writerow([])
+    w.writerow(["Доставок", "Выручка (сум)", "Средний рейтинг"])
+    w.writerow([data["deliveries"], data["total_revenue"], data["avg_rating"] or "—"])
+    w.writerow([])
+    w.writerow(["№ заказа", "Дата доставки", "Адрес", "Сумма (сум)", "Оплата", "Возврат бутылок", "Оценка"])
+    for r in data["orders"]:
+        w.writerow([r["order_id"], r["delivered_at"], r["address"],
+                    r["total"], r["payment_method"], r["return_bottles"], r["rating"]])
 
-# ─── Admin: cash debt approval ────────────────────────────────────────────────
-
-@router.get("/admin/cash_debts")
-async def list_all_cash_debts(status: str | None = None, db: AsyncSession = Depends(get_db)):
-    q = select(CashDebt).order_by(CashDebt.created_at.desc())
-    if status:
-        q = q.where(CashDebt.status == status)
-    result = await db.execute(q)
-    debts = result.scalars().all()
-    return [
-        {"id": d.id, "courier_id": d.courier_id, "amount": d.amount,
-         "status": d.status, "order_id": d.order_id, "note": d.note,
-         "created_at": d.created_at.isoformat()}
-        for d in debts
-    ]
-
-
-class DebtDecisionBody(BaseModel):
-    action: str  # "approve" | "reject"
-    note: str | None = None
-
-
-@router.post("/admin/cash_debts/{debt_id}/decide")
-async def decide_debt(debt_id: int, body: DebtDecisionBody, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(CashDebt).where(CashDebt.id == debt_id))
-    debt = result.scalar_one_or_none()
-    if not debt:
-        raise HTTPException(status_code=404, detail="Debt not found")
-    if body.action == "approve":
-        debt.status = "approved"
-        debt.resolved_at = datetime.utcnow()
-    elif body.action == "reject":
-        debt.status = "rejected"
-        debt.resolved_at = datetime.utcnow()
-    else:
-        raise HTTPException(status_code=400, detail="action must be approve or reject")
-    if body.note:
-        debt.note = body.note
-    await db.commit()
-    return {"ok": True, "status": debt.status}
+    fname = f"courier_{courier_id}_{date_from}_{date_to}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 # ─── Courier creates order ────────────────────────────────────────────────────

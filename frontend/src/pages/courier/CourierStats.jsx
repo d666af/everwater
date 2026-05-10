@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
 import { getCourierStats, getCourierOrders, getCourierWater } from '../../api'
 import { useAuthStore } from '../../store/auth'
+import CourierReportModal from '../../components/CourierReportModal'
 
 const tg = window.Telegram?.WebApp
 
@@ -16,6 +17,7 @@ export default function CourierStats() {
   const [recent, setRecent] = useState([])
   const [water, setWater] = useState({})
   const [loading, setLoading] = useState(true)
+  const [showReport, setShowReport] = useState(false)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id || user?.id
@@ -53,6 +55,15 @@ export default function CourierStats() {
         </div>
       ) : (
         <>
+          {/* Report button */}
+          {stats?.courier_id && (
+            <button onClick={() => setShowReport(true)}
+              style={{ width: '100%', padding: '13px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #8DC63F, #6CA32F)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></svg>
+              Мой отчёт
+            </button>
+          )}
+
           {/* KPI grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <StatCard label="Всего доставок" value={stats.delivery_count ?? '—'} accent="#2B8A3E" icon={
@@ -128,6 +139,14 @@ export default function CourierStats() {
                 ))}
               </div>
             </div>
+          )}
+
+          {showReport && stats?.courier_id && (
+            <CourierReportModal
+              courierId={stats.courier_id}
+              courierName={stats.name || 'Курьер'}
+              onClose={() => setShowReport(false)}
+            />
           )}
         </>
       )}
