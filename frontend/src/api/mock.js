@@ -331,13 +331,6 @@ export const MOCK_COURIER_DETAILS = {
   },
 }
 
-// ─── Cash debt tracking ─────────────────────────────────────────────────────
-// clearance_status: 'none' | 'pending' | 'approved' | 'rejected'
-export const MOCK_CASH_DEBTS = [
-  { id: 1, courier_id: 1, order_id: 1006, amount: 50000, clearance_status: 'none', client_name: 'Алишер Каримов', created_at: '2026-04-07T14:00:00' },
-  { id: 2, courier_id: 1, order_id: 1007, amount: 25000, clearance_status: 'pending', client_name: 'Нодир Хасанов', created_at: '2026-04-08T11:00:00' },
-]
-
 // ─── Cooler management ──────────────────────────────────────────────────────
 export const MOCK_COOLERS = {
   1: [

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails, getCourierReport, getCourierReportCsvUrl } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
+import CourierReportModal from '../../components/CourierReportModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -56,6 +57,7 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
   const [loadingD, setLoadingD] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
+  const [showReport, setShowReport] = useState(false)
 
   const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
 
@@ -156,7 +158,12 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
             </div>
           )}
 
-          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button style={{ background: `linear-gradient(135deg, ${C}, ${CD})`, border: 'none', color: '#fff', padding: '9px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', width: '100%' }}
+              onClick={() => setShowReport(true)}>
+              📊 Отчёт по курьеру
+            </button>
+            {showReport && <CourierReportModal courierId={c.id} courierName={c.name} onClose={() => setShowReport(false)} />}
             {c.is_active ? (
               !confirming ? (
                 <button style={{ background: 'none', border: '1.5px solid rgba(224,49,49,0.4)', color: '#E03131', padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setConfirming(true)}>Деактивировать</button>
