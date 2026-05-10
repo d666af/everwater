@@ -126,6 +126,8 @@ def _order_detail_text(order: dict) -> str:
     time_str = order.get("delivery_time") or "—"
     pay = order.get('payment_method', 'cash')
     total = order.get('total') or 0
+    delivery_fee = order.get('delivery_fee') or 0
+    delivery_line = f"\nДоставка: +{fmt(delivery_fee)}" if delivery_fee > 0 else ""
     cash_line = f"\nПолучить от клиента: {fmt(total)}" if pay == 'cash' else ""
     manager_phone = order.get("manager_phone") or ""
     from keyboards.courier import _is_phone as _ip
@@ -137,6 +139,7 @@ def _order_detail_text(order: dict) -> str:
         f"{manager_line}\n"
         f"Время: {time_str}\n"
         f"Товары:\n{items_text}"
+        f"{delivery_line}"
         f"{cash_line}\n"
         f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт."
     )

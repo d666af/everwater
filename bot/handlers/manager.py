@@ -95,7 +95,9 @@ def _mgr_order_text(o: dict) -> str:
     ]
     if o.get("extra_info"):
         lines.append(f"Доп.: {o['extra_info']}")
-    lines += [f"\nТовары:\n{items_text}", f"\nСумма: {fmt(o['total'])}  |  {pay}"]
+    delivery_fee = o.get('delivery_fee') or 0
+    delivery_part = f" (вкл. доставка {fmt(delivery_fee)})" if delivery_fee > 0 else ""
+    lines += [f"\nТовары:\n{items_text}", f"\nСумма: {fmt(o['total'])}{delivery_part}  |  {pay}"]
     if o.get("courier_name"):
         courier_phone = o.get("courier_phone", "")
         phone_part = f"  |  {courier_phone}" if courier_phone else ""
@@ -190,13 +192,15 @@ async def mgr_pending_orders(message: Message):
         return
     for o in orders[:5]:
         items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
+        delfee = o.get('delivery_fee') or 0
+        delfee_part = f" (вкл. доставка {fmt(delfee)})" if delfee > 0 else ""
         text = (
             f"📦 <b>Заказ #{o['id']}</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
             f"Телефон: {o.get('recipient_phone', '—')}\n"
             f"Адрес: {o['address']}\n"
             f"Товары:\n{items_text}\n"
-            f"Сумма: {fmt(o['total'])}\n"
+            f"Сумма: {fmt(o['total'])}{delfee_part}\n"
             f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
             f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
         )

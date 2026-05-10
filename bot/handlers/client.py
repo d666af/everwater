@@ -861,12 +861,14 @@ async def _show_summary(message: Message, state: FSMContext):
 
     # Late order warning
     late_warning = ""
+    delivery_fee = 0
     try:
         cfg = await api.get_settings()
         late_hour = int(cfg.get("late_order_hour") or 18)
         now_h = datetime.utcnow().hour + 5  # UTC+5 approximate
         if now_h >= late_hour:
             late_warning = f"\n⚠️ <b>Внимание:</b> Заказы после {late_hour}:00 могут быть доставлены на следующий день.\n"
+        delivery_fee = int(cfg.get("delivery_price") or 0)
     except Exception:
         pass
     pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
@@ -877,10 +879,15 @@ async def _show_summary(message: Message, state: FSMContext):
         total += s
         lines.append(f"  • {item['name']} {item['qty']} шт. — {fmt(s)}")
     geo = "✅ указана" if data.get("co_lat") else "—"
-    lines += [
-        f"\nСумма: {fmt(total)}",
-        f"Адрес: {data.get('co_address', '—')}",
-    ]
+    if delivery_fee > 0:
+        lines += [
+            f"\nТовары: {fmt(total)}",
+            f"Доставка: +{fmt(delivery_fee)}",
+            f"<b>Итого: {fmt(total + delivery_fee)}</b>",
+        ]
+    else:
+        lines.append(f"\nСумма: {fmt(total)}")
+    lines.append(f"Адрес: {data.get('co_address', '—')}")
     if data.get("co_extra"):
         lines.append(f"Ориентир: {data['co_extra']}")
     lines += [
