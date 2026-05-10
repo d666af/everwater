@@ -632,7 +632,7 @@ async def create_order_from_sub(sub_id: int, db: AsyncSession = Depends(get_db))
 
     await db.commit()
 
-    items_text = ", ".join(f"{p.name} ×{q}" for p, q in items_data)
+    items_text = ", ".join(f"{p.name} {q} шт." for p, q in items_data)
     return {
         "order_id": order.id,
         "total": subtotal,

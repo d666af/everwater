@@ -662,8 +662,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     await db.commit()
 
     oid = order.id
-    items_text = ", ".join(f"{p.name} x{q}" for p, q in items_data) if items_data else "—"
-    items_lines = "\n".join(f"  • {p.name} ×{q}" for p, q in items_data) if items_data else "  —"
+    items_text = ", ".join(f"{p.name} {q} шт." for p, q in items_data) if items_data else "—"
+    items_lines = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
     total_int = int(total)
 
     client_tg = user.telegram_id if user else None
