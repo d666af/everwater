@@ -22,7 +22,7 @@ def fmt(amount):
 
 
 def _cart_summary(cart: dict) -> str:
-    parts = [f"{v['name']} ×{v['qty']}" for v in list(cart.values())[:3]]
+    parts = [f"{v['name']} {v['qty']} шт." for v in list(cart.values())[:3]]
     extra = f" +ещё {len(cart) - 3}" if len(cart) > 3 else ""
     total = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
     return f"{', '.join(parts)}{extra} · {fmt(total)}"
@@ -271,7 +271,7 @@ def _catalog_kb(products: list, cart: dict, ftype: str = "all",
         else:
             buttons.append([
                 InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"),
-                InlineKeyboardButton(text=f"×{qty}  {sname}", callback_data="noop"),
+                InlineKeyboardButton(text=f"{qty} шт.  {sname}", callback_data="noop"),
                 InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"),
             ])
 
@@ -362,7 +362,7 @@ def _sub_catalog_kb(products: list, cart: dict, ftype: str = "all",
         else:
             buttons.append([
                 InlineKeyboardButton(text="➖", callback_data=f"scr:{pid}"),
-                InlineKeyboardButton(text=f"×{qty}  {sname}", callback_data="noop"),
+                InlineKeyboardButton(text=f"{qty} шт.  {sname}", callback_data="noop"),
                 InlineKeyboardButton(text="➕", callback_data=f"sca:{pid}"),
             ])
     if cart:
@@ -475,7 +475,7 @@ def _cart_kb(cart: dict) -> InlineKeyboardMarkup:
     rows = []
     for pid, item in cart.items():
         rows.append([InlineKeyboardButton(
-            text=f"❌ {item['name']} × {item['qty']}",
+            text=f"❌ {item['name']} {item['qty']} шт.",
             callback_data=f"cd:{pid}",
         )])
     rows.append([
@@ -502,7 +502,7 @@ async def show_cart(target, state: FSMContext):
             s = ep * item["qty"]
             total += s
             deposit_note = " ♻" if item.get("has_bottle_deposit") and item.get("deposit_price") else ""
-            lines.append(f"• {item['name']} × {item['qty']} — {fmt(s)}{deposit_note}")
+            lines.append(f"• {item['name']} {item['qty']} шт. — {fmt(s)}{deposit_note}")
         lines.append(f"\n<b>Итого: {fmt(total)}</b>")
         lines.append("\n(Нажмите на товар, чтобы удалить)")
         text = "\n".join(lines)
@@ -875,7 +875,7 @@ async def _show_summary(message: Message, state: FSMContext):
     for item in cart.values():
         s = item["price"] * item["qty"]
         total += s
-        lines.append(f"  • {item['name']} × {item['qty']} — {fmt(s)}")
+        lines.append(f"  • {item['name']} {item['qty']} шт. — {fmt(s)}")
     geo = "✅ указана" if data.get("co_lat") else "—"
     lines += [
         f"\nСумма: {fmt(total)}",
@@ -1363,7 +1363,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         await call.answer("Пользователь не найден")
         return
     cart = data.get("sub_cart", {})
-    water_parts = [f"{v['name']} ×{v['qty']}" for v in cart.values() if v.get("qty", 0) > 0]
+    water_parts = [f"{v['name']} {v['qty']} шт." for v in cart.values() if v.get("qty", 0) > 0]
     water_summary = ", ".join(water_parts)
     await state.update_data(sub_water_summary=water_summary, sub_payment_method=method)
 
