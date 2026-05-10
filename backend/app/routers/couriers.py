@@ -318,13 +318,15 @@ async def download_courier_report_pdf(
     pdf.add_font("DejaVu", "", str(_FONT_DIR / "DejaVuSans.ttf"))
     pdf.add_font("DejaVu", "B", str(_FONT_DIR / "DejaVuSans-Bold.ttf"))
 
+    NL = {"new_x": "LMARGIN", "new_y": "NEXT"}
+
     def h1(text):
         pdf.set_font("DejaVu", "B", 16)
-        pdf.cell(0, 10, text, ln=True)
+        pdf.cell(0, 10, text, **NL)
 
     def h2(text):
         pdf.set_font("DejaVu", "B", 12)
-        pdf.cell(0, 8, text, ln=True)
+        pdf.cell(0, 8, text, **NL)
 
     def body(text, indent=0):
         pdf.set_font("DejaVu", "", 10)
@@ -332,18 +334,17 @@ async def download_courier_report_pdf(
             pdf.set_x(pdf.l_margin + indent)
         pdf.multi_cell(0, 6, text)
 
-    def line():
+    def sep():
         pdf.ln(2)
         pdf.set_draw_color(200, 200, 200)
-        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(3)
 
     # ── Header
     h1(f"Отчёт по курьеру: {courier.name}")
     body(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}")
-    from datetime import datetime as dt_
-    body(f"Сформирован: {dt_.now().strftime('%d.%m.%Y %H:%M')}")
-    line()
+    body(f"Сформирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    sep()
 
     if not data["orders"]:
         body("За указанный период доставок не найдено.")
@@ -371,12 +372,12 @@ async def download_courier_report_pdf(
                 stars = "★" * o["rating"] + "☆" * (5 - o["rating"])
                 body(f"Оценка: {stars} ({o['rating']}/5)")
 
-            line()
+            sep()
 
     # ── Summary
     pdf.add_page()
     h1("Итоги за период")
-    line()
+    sep()
     body(f"Всего доставок: {data['deliveries']}")
     if data["total_cash"] > 0:
         body(f"Наличные: {data['total_cash']:,.0f} сум")
@@ -385,7 +386,7 @@ async def download_courier_report_pdf(
     if data["total_online"] > 0:
         body(f"Онлайн: {data['total_online']:,.0f} сум")
     pdf.set_font("DejaVu", "B", 12)
-    pdf.cell(0, 8, f"ИТОГО: {data['total_revenue']:,.0f} сум", ln=True)
+    pdf.cell(0, 8, f"ИТОГО: {data['total_revenue']:,.0f} сум", **NL)
     pdf.set_font("DejaVu", "", 10)
     pdf.ln(4)
     body(f"Бутылок 19л доставлено: {data['total_bottles_19l_delivered']} шт.")

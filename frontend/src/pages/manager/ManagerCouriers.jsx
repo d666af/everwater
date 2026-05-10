@@ -97,13 +97,13 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
             </button>
           )}
           <button
-            style={{ width: 40, height: 40, borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            style={{ height: 36, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, flexShrink: 0 }}
             onClick={e => { e.stopPropagation(); setShowReport(true) }}
-            title="Отчёт по курьеру"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
             </svg>
+            Отчёт
           </button>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}><path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
