@@ -103,7 +103,7 @@ async def admin_panel(message: Message):
 
 def _admin_order_text(o: dict) -> str:
     st = STATUS_RU.get(o["status"], o["status"])
-    items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+    items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
     lines = [
         f"📦 <b>{st}</b>",
@@ -208,7 +208,7 @@ async def admin_text_pending(message: Message):
         await message.answer("Нет заказов, ожидающих подтверждения.")
         return
     for o in orders[:5]:
-        items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+        items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
         text = (
             f"📦 <b>Новый заказ</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
@@ -418,7 +418,7 @@ async def admin_pending_orders(call: CallbackQuery):
         await call.answer()
         return
     for o in orders[:5]:
-        items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+        items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
         text = (
             f"📦 <b>Новый заказ</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
