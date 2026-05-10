@@ -22,10 +22,9 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 def _order_items_text(items) -> str:
-    """Build a human-readable order summary from items, e.g. 'Вода 19л x2, Кулер x1'."""
     if not items:
         return "—"
-    parts = [f"{i.product.name} x{i.quantity}" for i in items if i.product]
+    parts = [f"{i.product.name} {i.quantity} шт." for i in items if i.product]
     return ", ".join(parts) if parts else "—"
 
 
