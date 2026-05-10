@@ -326,93 +326,237 @@ async def download_courier_report_pdf(
         raise HTTPException(404, "Courier not found")
     data = await _courier_report_data(courier.id, date_from, date_to, db)
 
-    pay_labels = {"cash": "Наличные", "card": "Карта", "online": "Онлайн",
-                  "balance": "Баланс", "balance_card": "Баланс+Карта"}
-
     try:
         font_regular, font_bold = _find_dejavu_fonts()
     except FileNotFoundError as e:
         raise HTTPException(500, f"Font error: {e}")
 
     try:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_margins(8, 10, 8)
+        pdf.set_auto_page_break(auto=True, margin=12)
         pdf.add_page()
-        pdf.add_font("DejaVu", "",  font_regular)
-        pdf.add_font("DejaVu", "B", font_bold)
+        pdf.add_font("DJ", "",  font_regular)
+        pdf.add_font("DJ", "B", font_bold)
 
-        def txt(text, bold=False, size=10, indent=0):
-            pdf.set_font("DejaVu", "B" if bold else "", size)
-            pdf.set_x(pdf.l_margin + indent)
-            pdf.multi_cell(0, size * 0.55 + 2, str(text or ""))
+        # Usable page width: 210 - 8 - 8 = 194 mm
+        PW = pdf.w - pdf.l_margin - pdf.r_margin
 
-        def sep():
-            pdf.ln(2)
-            pdf.set_draw_color(200, 200, 200)
-            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        # ── Helpers ─────────────────────────────────────────────────────────
+
+        def body(text, bold=False, size=10, lh=5.5):
+            """Block of text that wraps; always starts at left margin."""
+            pdf.set_font("DJ", "B" if bold else "", size)
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(PW, lh, str(text or ""))
+
+        def rule():
+            pdf.set_draw_color(190, 190, 190)
+            pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + PW, pdf.get_y())
             pdf.ln(3)
 
-        # ── Header
-        txt(f"Otchet po kur'eru: {courier.name}", bold=True, size=16)
-        txt(f"Period: {date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}", size=10)
-        txt(f"Sformirovan: {datetime.now().strftime('%d.%m.%Y %H:%M')}", size=9)
-        sep()
+        def clip(text, max_w, size=8, bold=False):
+            """Return text truncated to fit in max_w mm; uses current font size for measurement."""
+            pdf.set_font("DJ", "B" if bold else "", size)
+            t = str(text or "")
+            if pdf.get_string_width(t) <= max_w - 1.5:
+                return t
+            while t and pdf.get_string_width(t + "…") > max_w - 1.5:
+                t = t[:-1]
+            return (t + "…") if t else ""
+
+        # Orders table: №|Дата|Телефон|Адрес|Товары|Оплата|Возврат|Оц.|Сумма
+        # Widths must sum to PW (194)
+        O_COLS   = [7,  22,  26,  40,  36,  18,  14,  12,  19]
+        O_ALIGNS = ['C','C', 'L', 'L', 'L', 'C', 'C', 'C', 'R']
+        O_HDRS   = ['№','Дата','Телефон','Адрес','Товары','Оплата','Возврат','Оц.','Сумма']
+        ROW_H = 6
+        HDR_H = 7
+
+        pay_abbr = {
+            "cash": "Нал.", "card": "Карта", "online": "Онлайн",
+            "balance": "Баланс", "balance_card": "Бал+Кар",
+        }
+        pay_full = {
+            "cash": "Наличные", "card": "Карта", "online": "Онлайн / перевод",
+            "balance": "Баланс", "balance_card": "Баланс + Карта",
+        }
+
+        def orders_header():
+            pdf.set_fill_color(230, 243, 215)
+            pdf.set_draw_color(170, 200, 140)
+            pdf.set_font("DJ", "B", 8)
+            x0, y0 = pdf.l_margin, pdf.get_y()
+            for h_txt, w, al in zip(O_HDRS, O_COLS, O_ALIGNS):
+                pdf.set_xy(x0, y0)
+                pdf.cell(w, HDR_H, h_txt, border=1, fill=True, align=al)
+                x0 += w
+            pdf.set_xy(pdf.l_margin, y0 + HDR_H)
+
+        def orders_row(cells, zebra=False):
+            pdf.set_fill_color(249, 253, 244) if zebra else pdf.set_fill_color(255, 255, 255)
+            pdf.set_draw_color(210, 210, 210)
+            x0, y0 = pdf.l_margin, pdf.get_y()
+            for c_txt, w, al in zip(cells, O_COLS, O_ALIGNS):
+                t = clip(c_txt, w, size=8)
+                pdf.set_font("DJ", "", 8)
+                pdf.set_xy(x0, y0)
+                pdf.cell(w, ROW_H, t, border=1, fill=zebra, align=al)
+                x0 += w
+            pdf.set_xy(pdf.l_margin, y0 + ROW_H)
+
+        def generic_header(hdrs, cols, aligns):
+            pdf.set_fill_color(230, 243, 215)
+            pdf.set_draw_color(170, 200, 140)
+            x0, y0 = pdf.l_margin, pdf.get_y()
+            for h_txt, w, al in zip(hdrs, cols, aligns):
+                pdf.set_font("DJ", "B", 9)
+                pdf.set_xy(x0, y0)
+                pdf.cell(w, HDR_H, h_txt, border=1, fill=True, align=al)
+                x0 += w
+            pdf.set_xy(pdf.l_margin, y0 + HDR_H)
+
+        def generic_row(cells, cols, aligns, zebra=False, bold=False, h=ROW_H, size=9, total_row=False):
+            if total_row:
+                pdf.set_fill_color(210, 236, 185)
+                pdf.set_draw_color(170, 200, 140)
+            elif zebra:
+                pdf.set_fill_color(249, 253, 244)
+                pdf.set_draw_color(210, 210, 210)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+                pdf.set_draw_color(210, 210, 210)
+            x0, y0 = pdf.l_margin, pdf.get_y()
+            for c_txt, w, al in zip(cells, cols, aligns):
+                t = clip(c_txt, w, size=size, bold=bold or total_row)
+                pdf.set_font("DJ", "B" if (bold or total_row) else "", size)
+                pdf.set_xy(x0, y0)
+                pdf.cell(w, h, t, border=1, fill=(zebra or total_row), align=al)
+                x0 += w
+            pdf.set_xy(pdf.l_margin, y0 + h)
+
+        # ════════════════════════════════════════════════════════════════════
+        # PAGE 1 — HEADER + ORDERS TABLE
+        # ════════════════════════════════════════════════════════════════════
+        body(f"ОТЧЁТ ПО КУРЬЕРУ: {courier.name.upper()}", bold=True, size=14, lh=8)
+        body(f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}", size=10)
+        body(f"Сформирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}  •  Доставок: {data['deliveries']}",
+             size=9)
+        pdf.ln(3)
+        rule()
 
         if not data["orders"]:
-            txt("Za ukazannyy period dostavok ne naydeno.")
+            body("За указанный период доставок не найдено.", size=11)
         else:
-            for o in data["orders"]:
-                txt(f"Zakaz #{o['order_id']}  -  {o['delivered_at']}", bold=True, size=11)
-                phone = str(o.get('client_phone') or '-')
-                oname = str(o.get('client_name') or '')
-                client_line = phone + (f" ({oname})" if oname and oname != '-' else "")
-                txt(f"Klient: {client_line}")
-                txt(f"Adres: {str(o.get('address') or '-')}")
-                txt(f"Oformlen: {o['created_at']}  /  Dostavlen: {o['delivered_at']}")
-                pdf.ln(1)
+            body("Список доставок", bold=True, size=11, lh=7)
+            pdf.ln(2)
+            orders_header()
 
-                if o.get("items"):
-                    txt("Tovary:", bold=True, size=10)
-                    for item in o["items"]:
-                        vol = float(item.get("volume") or 0)
-                        vol_str = f" {vol:.0f}l" if vol > 0 else ""
-                        qty = int(item.get("quantity") or 0)
-                        price = float(item.get("price") or 0)
-                        iname = str(item.get("name") or "-")
-                        subtotal = price * qty
-                        txt(f"  {iname}{vol_str} x{qty} = {int(subtotal):,} sum", indent=4)
+            for idx, o in enumerate(data["orders"]):
+                if pdf.get_y() + ROW_H > pdf.h - pdf.b_margin - 4:
+                    pdf.add_page()
+                    orders_header()
 
-                if (o.get("return_bottles") or 0) > 0:
-                    txt(f"Vozvrat 19l butylok: {o['return_bottles']} sht.")
+                items_str = "; ".join(
+                    f"{it['name']} ×{it['quantity']}"
+                    for it in (o.get("items") or [])
+                )
+                dt_str = str(o["delivered_at"])[:16]
+                pay = pay_abbr.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "—"))
+                ret = f"{o['return_bottles']} шт." if o.get("return_bottles") else "—"
+                rating_str = f"{int(o['rating'])}/5" if o.get("rating") is not None else "—"
+                total_str = f"{int(float(o.get('total', 0))):,}"
 
-                pay_label = pay_labels.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "-"))
-                txt(f"Oplata: {pay_label}  -  {int(float(o.get('total') or 0)):,} sum")
+                orders_row([
+                    str(idx + 1),
+                    dt_str,
+                    str(o.get("client_phone") or "—"),
+                    str(o.get("address") or "—"),
+                    items_str or "—",
+                    pay, ret, rating_str, total_str,
+                ], zebra=idx % 2 == 0)
 
-                if o.get("rating") is not None:
-                    r_val = int(o["rating"])
-                    txt(f"Ocenka: {r_val}/5")
-
-                sep()
-
-        # ── Summary page
+        # ════════════════════════════════════════════════════════════════════
+        # PAGE 2 — ИТОГИ
+        # ════════════════════════════════════════════════════════════════════
         pdf.add_page()
-        txt("Itogi za period", bold=True, size=16)
-        sep()
-        txt(f"Vsego dostavok: {data['deliveries']}", size=11)
-        pdf.ln(2)
-        if data.get("total_cash", 0) > 0:
-            txt(f"Nalichnye: {int(data['total_cash']):,} sum")
-        if data.get("total_card", 0) > 0:
-            txt(f"Karta: {int(data['total_card']):,} sum")
-        if data.get("total_online", 0) > 0:
-            txt(f"Onlayn: {int(data['total_online']):,} sum")
-        pdf.ln(2)
-        txt(f"ITOGO: {int(data['total_revenue']):,} sum", bold=True, size=13)
-        pdf.ln(4)
-        txt(f"Butylok 19l dostavleno: {data.get('total_bottles_19l_delivered', 0)} sht.")
-        txt(f"Butylok 19l vozvrashcheno: {data.get('total_bottles_returned', 0)} sht.")
+        body(f"ИТОГИ ЗА ПЕРИОД", bold=True, size=14, lh=8)
+        body(f"Курьер: {courier.name}  •  {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}",
+             size=10)
+        pdf.ln(3)
+        rule()
+
+        # ── Aggregated products ────────────────────────────────────────────
+        prod_agg: dict = {}
+        for o in data["orders"]:
+            for it in (o.get("items") or []):
+                nm = it.get("name") or "—"
+                qty = int(it.get("quantity") or 0)
+                subtotal = float(it.get("price") or 0) * qty
+                if nm not in prod_agg:
+                    prod_agg[nm] = {"qty": 0, "total": 0.0}
+                prod_agg[nm]["qty"] += qty
+                prod_agg[nm]["total"] += subtotal
+
+        body("Доставленные товары:", bold=True, size=11, lh=7)
+        pdf.ln(1)
+
+        P_COLS   = [PW - 40 - 40, 40, 40]   # name | qty | sum  (= 194)
+        P_ALIGNS = ['L', 'C', 'R']
+        P_HDRS   = ["Товар", "Количество", "Сумма (сум)"]
+        generic_header(P_HDRS, P_COLS, P_ALIGNS)
+
+        total_prod_qty = 0
+        for i, (pname, pvals) in enumerate(sorted(prod_agg.items(), key=lambda x: -x[1]["total"])):
+            total_prod_qty += pvals["qty"]
+            generic_row(
+                [pname, f"{pvals['qty']} шт.", f"{int(pvals['total']):,}"],
+                P_COLS, P_ALIGNS, zebra=i % 2 == 0,
+            )
+        generic_row(
+            ["ИТОГО", f"{total_prod_qty} шт.", f"{int(data['total_revenue']):,}"],
+            P_COLS, P_ALIGNS, total_row=True, h=HDR_H,
+        )
+        pdf.ln(5)
+
+        # ── Payment breakdown ──────────────────────────────────────────────
+        body("Разбивка по способу оплаты:", bold=True, size=11, lh=7)
+        pdf.ln(1)
+
+        pay_rows = [
+            (pay_full.get(pm, pm), amt)
+            for pm, amt in [
+                ("cash",   data.get("total_cash",   0)),
+                ("card",   data.get("total_card",   0)),
+                ("online", data.get("total_online", 0)),
+            ]
+            if amt > 0
+        ]
+
+        PAY_COLS   = [PW - 52, 52]
+        PAY_ALIGNS = ['L', 'R']
+        generic_header(["Способ оплаты", "Сумма (сум)"], PAY_COLS, PAY_ALIGNS)
+        for i, (lbl, amt) in enumerate(pay_rows):
+            generic_row([lbl, f"{int(amt):,}"], PAY_COLS, PAY_ALIGNS, zebra=i % 2 == 0)
+        generic_row(
+            ["ИТОГО", f"{int(data['total_revenue']):,}"],
+            PAY_COLS, PAY_ALIGNS, total_row=True, h=HDR_H,
+        )
+        pdf.ln(5)
+
+        # ── Summary stats ──────────────────────────────────────────────────
+        rule()
+        stat_lines = [
+            f"Всего доставок: {data['deliveries']}",
+            f"Бутылок 19л доставлено клиентам: {data.get('total_bottles_19l_delivered', 0)} шт.",
+            f"Бутылок 19л возвращено от клиентов: {data.get('total_bottles_returned', 0)} шт.",
+        ]
         if data.get("avg_rating") is not None:
-            txt(f"Sredniy reyting: {data['avg_rating']:.1f} / 5.0")
+            stat_lines.append(f"Средний рейтинг: {data['avg_rating']:.1f} / 5.0")
+        for line in stat_lines:
+            body(line, size=10, lh=6)
+        pdf.ln(3)
+        body(f"ИТОГО ВЫРУЧКА: {int(data['total_revenue']):,} сум", bold=True, size=13, lh=8)
 
         pdf_bytes = bytes(pdf.output())
     except Exception as exc:
