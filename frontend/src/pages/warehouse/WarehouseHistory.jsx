@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getCatalogProducts, getInvoiceUrl } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, shortProductName, isWarehouseProduct, getInvoiceUrl } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -40,15 +40,22 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [courierId, setCourierId] = useState(null)
 
   const [couriers, setCouriers] = useState([])
+  const [catalog, setCatalog] = useState([])
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const catalog = useMemo(() => getCatalogProducts(), [])
-
-  // Load couriers dropdown once
+  // Load couriers and products once
   useEffect(() => {
     getAdminCouriers()
       .then(cs => setCouriers(cs.filter(c => c.is_active)))
+      .catch(console.error)
+    getProducts()
+      .then(prods => {
+        const filtered = (Array.isArray(prods) ? prods : [])
+          .filter(p => p.is_active && isWarehouseProduct(p.name))
+          .map(p => ({ short_name: shortProductName(p.name) }))
+        setCatalog(filtered)
+      })
       .catch(console.error)
   }, [])
 
