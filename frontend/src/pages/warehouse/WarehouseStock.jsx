@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -39,6 +39,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [showIssue, setShowIssue] = useState(false)
   const [couriers, setCouriers] = useState([])
   const [adjustProduct, setAdjustProduct] = useState(null)
+  const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
 
   const load = () => {
     setLoading(true)
@@ -85,8 +86,19 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty) => { await issueWaterToCourier(courierId, courierName, name, qty, actor); load() }} />}
+      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty, vt, vp) => {
+        const res = await issueWaterToCourier(courierId, courierName, name, qty, actor, vt, vp)
+        if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
+        load()
+      }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note, actor); load() }} />}
+      {invoiceModal && (
+        <InvoiceSuccessModal
+          batchId={invoiceModal.batchId}
+          courierName={invoiceModal.courierName}
+          onClose={() => setInvoiceModal(null)}
+        />
+      )}
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
@@ -417,11 +429,20 @@ function IssueToCourierModal({ couriers, products, onClose, onSave }) {
   const [qty, setQty] = useState('')
   const [loading, setLoading] = useState(false)
   const courier = couriers.find(c => c.id === courierId)
+
+  const [vehicleType, setVehicleType] = useState('')
+  const [vehiclePlate, setVehiclePlate] = useState('')
+  // When the courier changes, prefill from their saved vehicle
+  useEffect(() => {
+    setVehicleType(courier?.vehicle_type || '')
+    setVehiclePlate(courier?.vehicle_plate || '')
+  }, [courierId]) // eslint-disable-line
+
   const dis = !qty || Number(qty) <= 0 || !courierId || !name
   const handle = async () => {
     if (dis) return
     setLoading(true)
-    try { await onSave(courierId, courier?.name || '', name, Number(qty)); onClose() }
+    try { await onSave(courierId, courier?.name || '', name, Number(qty), vehicleType.trim() || null, vehiclePlate.trim() || null); onClose() }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }
@@ -461,11 +482,50 @@ function IssueToCourierModal({ couriers, products, onClose, onSave }) {
             {Number(qty) > 0 && <button onClick={() => setQty('')} style={st.presetBtnReset}>✕</button>}
           </div>
           <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
+
+          {/* Vehicle for the invoice */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>Транспорт (для накладной)</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Тип машины" />
+            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="Госномер" />
+          </div>
         </div>
         <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
           {loading ? 'Выдаю...' : `Выдать ${qty || 0} шт. → ${courier?.name || '?'}`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+/* Success modal — same as in WarehouseCouriers */
+function InvoiceSuccessModal({ batchId, courierName, onClose }) {
+  const url = getInvoiceUrl(batchId)
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={st.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: '#EBFBEE', color: '#2B8A3E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Накладная создана</div>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', marginTop: -4 }}>
+          Курьер: <b style={{ color: TEXT }}>{courierName}</b><br/>
+          Отправлена администратору в Telegram
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 12, padding: 8 }}>
+          <img src={url} alt="накладная" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+        </div>
+        <a href={url} download={`nakladnaya_${batchId.slice(0, 8)}.png`}
+           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', textDecoration: 'none', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
+          Скачать накладную
+        </a>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
+          Закрыть
+        </button>
       </div>
     </div>
   )

@@ -16,6 +16,8 @@ class Courier(Base):
     total_earnings: Mapped[float] = mapped_column(Float, default=0.0)
     avg_rating: Mapped[float] = mapped_column(Float, default=0.0)
     rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    vehicle_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vehicle_plate: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     orders: Mapped[list["Order"]] = relationship("Order", back_populates="courier")  # noqa: F821

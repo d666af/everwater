@@ -232,6 +232,30 @@ async def deactivate_courier(courier_id: int, db: AsyncSession = Depends(get_db)
     return {"ok": True}
 
 
+class CourierUpdate(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
+
+
+@router.patch("/couriers/{courier_id}")
+async def update_courier(courier_id: int, data: CourierUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier = result.scalar_one_or_none()
+    if not courier:
+        raise HTTPException(404, "Courier not found")
+    payload = data.model_dump(exclude_unset=True)
+    for k, v in payload.items():
+        setattr(courier, k, v)
+    await db.commit()
+    await db.refresh(courier)
+    return {
+        "id": courier.id, "name": courier.name, "phone": courier.phone,
+        "vehicle_type": courier.vehicle_type, "vehicle_plate": courier.vehicle_plate,
+    }
+
+
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 @router.get("/users")

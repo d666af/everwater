@@ -1,16 +1,22 @@
 """Warehouse management: stock tracking, production, issue, returns."""
+import uuid
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from io import BytesIO
 
 from app.database import get_db
 from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
+from app.config import settings as app_settings
+from app.services.invoice import generate_invoice_png
+from app.services.tg_notify import tg_send_photo
 
 router = APIRouter(prefix="/warehouse", tags=["warehouse"])
 
@@ -42,6 +48,7 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "type": tx.transaction_type,
         "quantity": tx.quantity,
         "note": tx.note,
+        "batch_id": tx.batch_id,
         "created_at": tx.created_at.isoformat(),
     }
 
@@ -309,6 +316,94 @@ class IssueBody(BaseModel):
     order_id: int | None = None
     note: str | None = None
     performed_by: str | None = None
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
+
+
+async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
+                                 vtype: str | None, vplate: str | None) -> Courier | None:
+    """Persist last-used vehicle info on the courier record (best-effort)."""
+    if not (vtype or vplate):
+        c_q = await db.execute(select(Courier).where(Courier.id == courier_id))
+        return c_q.scalar_one_or_none()
+    c_q = await db.execute(select(Courier).where(Courier.id == courier_id))
+    c = c_q.scalar_one_or_none()
+    if c:
+        if vtype:
+            c.vehicle_type = vtype
+        if vplate:
+            c.vehicle_plate = vplate
+    return c
+
+
+async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: list[dict],
+                                    batch_id: str, performed_by: str | None):
+    """Push the invoice PNG to all admin chat IDs."""
+    when_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+    total = sum(int(round(float(it.get("sum") or 0))) for it in items_summary)
+    actor_line = f"\nВыдал: <b>{performed_by}</b>" if performed_by else ""
+    qty_total = sum(int(it.get("qty") or 0) for it in items_summary)
+    caption = (
+        f"📋 <b>Накладная — выдача со склада</b>\n"
+        f"Курьер: <b>{courier.name}</b>"
+        f"{f' · {courier.phone}' if courier.phone else ''}\n"
+        f"Позиций: <b>{len(items_summary)}</b> · {qty_total} шт. · {total:,} сум".replace(",", " ")
+        + f"\nВремя: {when_str}{actor_line}"
+    )
+    for aid in app_settings.ADMIN_IDS:
+        try:
+            await tg_send_photo(aid, png, caption=caption,
+                                 filename=f"nakladnaya_{batch_id[:8]}.png")
+        except Exception:
+            pass
+
+
+async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[bytes, Courier, list[dict]]:
+    """Reconstruct the invoice PNG from stored transactions sharing batch_id."""
+    tx_q = await db.execute(
+        select(WaterTransaction)
+        .options(selectinload(WaterTransaction.product),
+                 selectinload(WaterTransaction.courier))
+        .where(WaterTransaction.batch_id == batch_id)
+        .order_by(WaterTransaction.id)
+    )
+    txs = tx_q.scalars().all()
+    if not txs:
+        raise HTTPException(404, "Накладная не найдена")
+    courier = next((t.courier for t in txs if t.courier), None)
+    if not courier:
+        raise HTTPException(404, "Курьер не найден для накладной")
+
+    # Aggregate same-product transactions defensively
+    by_product: dict[int, dict] = {}
+    for t in txs:
+        if t.transaction_type != "issue" or not t.product:
+            continue
+        key = t.product_id
+        price = float(t.product.price or 0)
+        if key not in by_product:
+            by_product[key] = {
+                "name":  t.product.name,
+                "unit":  "Шт",
+                "qty":   0,
+                "bonus": 0,
+                "price": price,
+                "sum":   0,
+            }
+        by_product[key]["qty"] += int(t.quantity or 0)
+        by_product[key]["sum"] += int(t.quantity or 0) * price
+
+    items = list(by_product.values())
+    when = txs[0].created_at if txs else datetime.now()
+    png = generate_invoice_png(
+        items=items,
+        courier_name=courier.name,
+        courier_phone=courier.phone,
+        vehicle_type=courier.vehicle_type,
+        vehicle_plate=courier.vehicle_plate,
+        when=when,
+    )
+    return png, courier, items
 
 
 @router.post("/issue")
@@ -333,6 +428,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
     cw.quantity += body.quantity
     cw.issued_today += body.quantity
 
+    batch_id = str(uuid.uuid4())
     db.add(WaterTransaction(
         product_id=product.id,
         courier_id=body.courier_id,
@@ -340,14 +436,137 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         transaction_type="issue",
         quantity=body.quantity,
         note=_note_with_actor(body.note, body.performed_by),
+        batch_id=batch_id,
     ))
+    courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
-    return {"ok": True, "new_stock": stock.quantity}
+
+    # Generate invoice + send to admins (best-effort, post-commit)
+    if courier:
+        items = [{
+            "name":  product.name,
+            "unit":  "Шт",
+            "qty":   body.quantity,
+            "bonus": 0,
+            "price": float(product.price or 0),
+            "sum":   body.quantity * float(product.price or 0),
+        }]
+        try:
+            png = generate_invoice_png(
+                items=items,
+                courier_name=courier.name,
+                courier_phone=courier.phone,
+                vehicle_type=courier.vehicle_type,
+                vehicle_plate=courier.vehicle_plate,
+                when=datetime.now(),
+            )
+            await _send_invoice_to_admins(png, courier, items, batch_id, body.performed_by)
+        except Exception:
+            pass
+
+    return {"ok": True, "new_stock": stock.quantity, "batch_id": batch_id}
+
+
+# ── Multi-product batch issue (главная операция «Доп. выдача») ────────────────
+
+class BatchIssueItem(BaseModel):
+    product_id: int | None = None
+    product_name: str | None = None
+    quantity: int
+
+
+class BatchIssueBody(BaseModel):
+    courier_id: int
+    items: list[BatchIssueItem]
+    note: str | None = None
+    performed_by: str | None = None
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
+
+
+@router.post("/issue_batch")
+async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
+    """Issue several products to a courier in one transaction; produce one invoice."""
+    if not body.items:
+        raise HTTPException(400, "items is empty")
+
+    # Resolve all products + validate stock up-front (atomic check)
+    resolved: list[tuple[Product, int]] = []
+    for it in body.items:
+        if it.quantity <= 0:
+            continue
+        prod = await _resolve_product(db, it.product_id, it.product_name)
+        stock = await _ensure_stock(db, prod.id)
+        if stock.quantity < it.quantity:
+            raise HTTPException(400, f"Не хватает на складе: {prod.name} (есть {stock.quantity})")
+        resolved.append((prod, it.quantity))
+    if not resolved:
+        raise HTTPException(400, "Все позиции имеют нулевое количество")
+
+    batch_id = str(uuid.uuid4())
+    invoice_items: list[dict] = []
+
+    for prod, qty in resolved:
+        stock = await _ensure_stock(db, prod.id)
+        stock.quantity -= qty
+
+        cw_q = await db.execute(
+            select(CourierWater).where(
+                and_(CourierWater.courier_id == body.courier_id, CourierWater.product_id == prod.id)
+            )
+        )
+        cw = cw_q.scalar_one_or_none()
+        if not cw:
+            cw = CourierWater(courier_id=body.courier_id, product_id=prod.id, quantity=0, issued_today=0)
+            db.add(cw)
+        cw.quantity += qty
+        cw.issued_today += qty
+
+        db.add(WaterTransaction(
+            product_id=prod.id,
+            courier_id=body.courier_id,
+            order_id=None,
+            transaction_type="issue",
+            quantity=qty,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+        ))
+        price = float(prod.price or 0)
+        invoice_items.append({
+            "name":  prod.name,
+            "unit":  "Шт",
+            "qty":   qty,
+            "bonus": 0,
+            "price": price,
+            "sum":   qty * price,
+        })
+
+    courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
+    await db.commit()
+
+    if courier:
+        try:
+            png = generate_invoice_png(
+                items=invoice_items,
+                courier_name=courier.name,
+                courier_phone=courier.phone,
+                vehicle_type=courier.vehicle_type,
+                vehicle_plate=courier.vehicle_plate,
+                when=datetime.now(),
+            )
+            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by)
+        except Exception:
+            pass
+
+    return {"ok": True, "batch_id": batch_id}
 
 
 class IssueOrderBody(BaseModel):
     order_id: int
     courier_id: int | None = None
+    performed_by: str | None = None
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
 
 
 @router.post("/issue_order")
@@ -364,10 +583,13 @@ async def issue_for_order(body: IssueOrderBody, db: AsyncSession = Depends(get_d
     if not courier_id:
         raise HTTPException(status_code=400, detail="No courier assigned to this order")
 
+    batch_id = str(uuid.uuid4())
+    invoice_items: list[dict] = []
+
     for item in order.items:
         stock = await _ensure_stock(db, item.product_id)
         if stock.quantity < item.quantity:
-            continue  # skip if not enough stock for this item
+            continue
         stock.quantity -= item.quantity
 
         cw_q = await db.execute(
@@ -388,10 +610,96 @@ async def issue_for_order(body: IssueOrderBody, db: AsyncSession = Depends(get_d
             order_id=body.order_id,
             transaction_type="issue",
             quantity=item.quantity,
-            note=f"Auto-issue for order #{body.order_id}",
+            note=_note_with_actor(f"Заказ #{body.order_id}", body.performed_by),
+            batch_id=batch_id,
         ))
+        if item.product:
+            price = float(item.product.price or 0)
+            invoice_items.append({
+                "name":  item.product.name,
+                "unit":  "Шт",
+                "qty":   item.quantity,
+                "bonus": 0,
+                "price": price,
+                "sum":   item.quantity * price,
+            })
+
+    courier = await _save_courier_vehicle(db, courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
-    return {"ok": True}
+
+    if courier and invoice_items:
+        try:
+            png = generate_invoice_png(
+                items=invoice_items,
+                courier_name=courier.name,
+                courier_phone=courier.phone,
+                vehicle_type=courier.vehicle_type,
+                vehicle_plate=courier.vehicle_plate,
+                when=datetime.now(),
+            )
+            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by)
+        except Exception:
+            pass
+
+    return {"ok": True, "batch_id": batch_id}
+
+
+# ─── Invoice download (mini-app) ──────────────────────────────────────────────
+
+@router.get("/invoice/{batch_id}.png")
+async def download_invoice(batch_id: str, db: AsyncSession = Depends(get_db)):
+    """Render and stream the invoice PNG for a given batch_id."""
+    png, _, _ = await _build_invoice_for_batch(db, batch_id)
+    return StreamingResponse(
+        BytesIO(png),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="invoice_{batch_id[:8]}.png"'},
+    )
+
+
+@router.get("/invoices")
+async def list_invoices(
+    limit: int = 50,
+    offset: int = 0,
+    courier_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """List invoice batches (one row per batch_id) for the mini-app history."""
+    q = (
+        select(
+            WaterTransaction.batch_id,
+            WaterTransaction.courier_id,
+            func.min(WaterTransaction.created_at).label("ts"),
+            func.sum(WaterTransaction.quantity).label("qty_total"),
+            func.count(WaterTransaction.id).label("lines"),
+        )
+        .where(WaterTransaction.batch_id.is_not(None))
+        .where(WaterTransaction.transaction_type == "issue")
+        .group_by(WaterTransaction.batch_id, WaterTransaction.courier_id)
+        .order_by(func.min(WaterTransaction.created_at).desc())
+        .limit(limit).offset(offset)
+    )
+    if courier_id:
+        q = q.where(WaterTransaction.courier_id == courier_id)
+    rows = (await db.execute(q)).all()
+    if not rows:
+        return []
+
+    # Resolve courier names
+    cids = list({r.courier_id for r in rows if r.courier_id})
+    couriers = {}
+    if cids:
+        c_q = await db.execute(select(Courier).where(Courier.id.in_(cids)))
+        couriers = {c.id: c for c in c_q.scalars().all()}
+
+    return [{
+        "batch_id":     r.batch_id,
+        "courier_id":   r.courier_id,
+        "courier_name": couriers.get(r.courier_id).name if couriers.get(r.courier_id) else None,
+        "created_at":   r.ts.isoformat() if r.ts else None,
+        "items_count":  r.lines,
+        "qty_total":    r.qty_total,
+    } for r in rows]
 
 
 # ─── Return from courier ──────────────────────────────────────────────────────
@@ -580,7 +888,10 @@ async def get_couriers_water(db: AsyncSession = Depends(get_db)):
             "courier_id": c.id,
             "name": c.name,
             "courier_name": c.name,
+            "phone": c.phone,
             "telegram_id": c.telegram_id,
+            "vehicle_type": c.vehicle_type,
+            "vehicle_plate": c.vehicle_plate,
             "on_hand": on_hand_total,
             "issued_today": issued_today_count,
             "returned_today": returned_today_count,

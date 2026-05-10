@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getCatalogProducts } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getCatalogProducts, getInvoiceUrl } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -181,6 +181,9 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             const subline = isProd
               ? (h.note || 'Производство')
               : isIssue ? `Выдано · ${h.courier_name || '—'}` : `Возврат · ${h.courier_name || '—'}`
+            // Use both `date` (legacy mock) and `created_at` (backend) for the timestamp
+            const ts = h.created_at || h.date
+            const showInvoice = isIssue && h.batch_id
             return (
               <div key={h.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -196,11 +199,19 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                     {subline}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color }}>{sign}{h.quantity}</div>
                   <div style={{ fontSize: 10, color: TEXT2 }}>
-                    {new Date(h.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · {new Date(h.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · {new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </div>
+                  {showInvoice && (
+                    <a href={getInvoiceUrl(h.batch_id)} target="_blank" rel="noreferrer"
+                       download={`nakladnaya_${String(h.batch_id).slice(0, 8)}.png`}
+                       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#1971C2', background: '#E8F4FD', padding: '3px 8px', borderRadius: 999, textDecoration: 'none' }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      Накладная
+                    </a>
+                  )}
                 </div>
               </div>
             )
