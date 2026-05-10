@@ -583,11 +583,15 @@ function PaymentBlock({ order }) {
 }
 
 function BottlesBlock({ order }) {
-  if (!order.bottles_owed && !order.return_bottles_count) return null
+  if (!order.client_bottles_owed && !order.return_bottles_count) return null
+  const pending = order.client_bottles_pending || 0
+  const available = order.client_bottles_owed != null ? Math.max(0, order.client_bottles_owed - pending) : null
   return (
     <Section title="Бутылки">
-      {order.bottles_owed > 0 && <Row k="Долг" v={`${order.bottles_owed} бут.`} accent="#E03131" />}
-      {order.return_bottles_count > 0 && <Row k="Возврат" v={`${order.return_bottles_count} бут.`} accent={CD} />}
+      {order.client_bottles_owed > 0 && <Row k="Долг клиента" v={`${order.client_bottles_owed} бут.`} accent="#E03131" />}
+      {pending > 0 && <Row k="В процессе возврата" v={`${pending} бут.`} accent="#E67700" />}
+      {available != null && pending > 0 && <Row k="Доступно к возврату" v={`${available} бут.`} />}
+      {order.return_bottles_count > 0 && <Row k="Возврат в этом заказе" v={`${order.return_bottles_count} бут.`} accent={CD} />}
     </Section>
   )
 }
@@ -732,7 +736,12 @@ function CreateOrderModal({ onClose, onSave }) {
               {client.balance > 0 && <div style={{ fontSize: 12, color: '#555' }}>💰 Баланс: {client.balance?.toLocaleString()} сум</div>}
               {client.bonus_points > 0 && <div style={{ fontSize: 12, color: '#555' }}>🎁 Бонусы: {client.bonus_points?.toLocaleString()} сум</div>}
               {client.order_count != null && <div style={{ fontSize: 12, color: '#555' }}>📦 Заказов: {client.order_count}</div>}
-              {client.bottles_owed > 0 && <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>⚠️ Долг: {client.bottles_owed} бутылок (19л)</div>}
+              {client.bottles_owed > 0 && (
+                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>
+                  ⚠️ Долг: {client.bottles_owed} бут.
+                  {client.pending_return > 0 && ` | В возврате: ${client.pending_return} | Доступно: ${client.available_bottles ?? Math.max(0, client.bottles_owed - client.pending_return)}`}
+                </div>
+              )}
             </div>
           )}
           {looked && !client && (

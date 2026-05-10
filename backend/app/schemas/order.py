@@ -72,6 +72,8 @@ class OrderOut(BaseModel):
     review_id: int | None = None
     queue_position: int | None = None
     notification_msg_ids: str | None = None
+    client_bottles_owed: int = 0
+    client_bottles_pending: int = 0
 
     model_config = {"from_attributes": True}
 

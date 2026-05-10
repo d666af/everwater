@@ -356,7 +356,12 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
             <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>✅ {client.name}</div>
               <div style={{ fontSize: 12, color: '#555' }}>📞 {client.phone}</div>
-              {client.bottles_owed > 0 && <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>⚠️ Долг: {client.bottles_owed} бутылок (19л)</div>}
+              {client.bottles_owed > 0 && (
+                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>
+                  ⚠️ Долг: {client.bottles_owed} бут.
+                  {client.pending_return > 0 && ` | В возврате: ${client.pending_return} | Доступно: ${client.available_bottles ?? Math.max(0, client.bottles_owed - client.pending_return)}`}
+                </div>
+              )}
             </div>
           )}
           {looked && !client && (

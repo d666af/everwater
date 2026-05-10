@@ -77,6 +77,14 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
     debt_row = (await db.execute(select(BottleDebt).where(BottleDebt.user_id == user.id))).scalar_one_or_none()
     bottles_owed = debt_row.count if debt_row else 0
 
+    pending_return = int((await db.execute(
+        select(sqlfunc.sum(Order.return_bottles_count)).where(
+            Order.user_id == user.id,
+            Order.status.in_([OrderStatus.CONFIRMED, OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY]),
+            Order.return_bottles_count > 0,
+        )
+    )).scalar() or 0)
+
     order_count = (await db.execute(
         select(sqlfunc.count(Order.id)).where(
             Order.user_id == user.id, Order.status == OrderStatus.DELIVERED
@@ -95,6 +103,8 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
         "is_registered": user.is_registered,
         "order_count": order_count,
         "bottles_owed": bottles_owed,
+        "pending_return": pending_return,
+        "available_bottles": max(0, bottles_owed - pending_return),
         "addresses": [
             {"id": i, "address": a.get("address", ""), "label": a.get("label", "")}
             for i, a in enumerate(addresses)

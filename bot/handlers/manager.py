@@ -682,11 +682,19 @@ async def mgr_client_bottles(call: CallbackQuery):
     user_id = int(call.data.split(":")[2])
     bottles = await api.get_bottles_owed(user_id)
     count = bottles.get("count", 0)
+    pending = bottles.get("pending_return", 0)
+    available = bottles.get("available", count)
     await call.answer()
-    await call.message.answer(
-        f"🫙 <b>Бутылки клиента</b>\n\nК возврату: <b>{count} шт.</b>",
-        parse_mode="HTML",
-    )
+    if pending > 0:
+        text = (
+            f"🫙 <b>Бутылки клиента</b>\n\n"
+            f"Долг: <b>{count} шт.</b>\n"
+            f"В процессе возврата: <b>{pending} шт.</b>\n"
+            f"Доступно к возврату: <b>{available} шт.</b>"
+        )
+    else:
+        text = f"🫙 <b>Бутылки клиента</b>\n\nК возврату: <b>{count} шт.</b>"
+    await call.message.answer(text, parse_mode="HTML")
 
 
 # ─── Support chat ──────────────────────────────────────────────────────────────
@@ -904,11 +912,21 @@ async def mgr_co_phone(message: Message, state: FSMContext):
         balance_line = f"\n  💰 Баланс: {fmt(client['balance'])}" if client.get("balance", 0) else ""
         bonus_line = f"\n  🎁 Бонусы: {fmt(client['bonus_points'])}" if client.get("bonus_points", 0) else ""
         orders_line = f"\n  📦 Заказов: {client.get('order_count', '—')}" if client.get("order_count") is not None else ""
+        bottles_owed = client.get('bottles_owed', 0)
+        pending = client.get('pending_return', 0)
+        available = client.get('available_bottles', bottles_owed)
+        if bottles_owed > 0:
+            if pending > 0:
+                bottle_line = f"\n  🫙 Долг: {bottles_owed} бут. | В процессе: {pending} | Доступно: {available}"
+            else:
+                bottle_line = f"\n  🫙 Долг по бутылкам: {bottles_owed} шт."
+        else:
+            bottle_line = ""
         info = (
             f"✅ <b>Клиент найден</b>\n"
             f"  👤 {client.get('name', '—')}\n"
             f"  📞 {client.get('phone', phone)}"
-            f"{balance_line}{bonus_line}{orders_line}"
+            f"{balance_line}{bonus_line}{orders_line}{bottle_line}"
         )
     else:
         info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"

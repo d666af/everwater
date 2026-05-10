@@ -4,13 +4,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.client_data import BottleDebt, SavedAddress, Subscription
 from app.models.user import User
 from app.models.support import SupportChat, SupportMessage
+from app.models.order import Order, OrderStatus
 
 router = APIRouter(prefix="/client", tags=["client"])
 
@@ -200,11 +201,37 @@ class BottleDeltaBody(BaseModel):
     delta: int  # positive = more bottles owed, negative = returned
 
 
+_ACTIVE_STATUSES = [
+    OrderStatus.CONFIRMED,
+    OrderStatus.ASSIGNED_TO_COURIER,
+    OrderStatus.IN_DELIVERY,
+]
+
+
+async def _pending_return(user_id: int, db: AsyncSession) -> int:
+    """Sum of return_bottles_count on active (not yet delivered) orders."""
+    q = await db.execute(
+        select(func.sum(Order.return_bottles_count)).where(
+            Order.user_id == user_id,
+            Order.status.in_(_ACTIVE_STATUSES),
+            Order.return_bottles_count > 0,
+        )
+    )
+    return int(q.scalar() or 0)
+
+
 @router.get("/{user_id}/bottles_owed")
 async def get_debt(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user_id))
     row = result.scalar_one_or_none()
-    return {"count": row.count if row else 0, "survey_done": row.survey_done if row else False}
+    count = row.count if row else 0
+    pending = await _pending_return(user_id, db)
+    return {
+        "count": count,
+        "pending_return": pending,
+        "available": max(0, count - pending),
+        "survey_done": row.survey_done if row else False,
+    }
 
 
 @router.post("/{user_id}/bottles_owed")

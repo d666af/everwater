@@ -119,7 +119,7 @@ function ClientDetail({ user, onClose, onTopup }) {
           ['Telegram ID', user.telegram_id || '—'],
           ['Баланс', `${(user.balance || 0).toLocaleString()} сум`],
           ['Бонусы', `${Math.round(user.bonus_points || 0)}`],
-          ['Задолженность', details ? `${details.bottles_owed} бутылок` : '...'],
+          ['Задолженность', details ? (details.pending_return > 0 ? `${details.bottles_owed} бут. (в возврате: ${details.pending_return})` : `${details.bottles_owed} бутылок`) : '...'],
         ].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontSize: 14, color: TEXT2 }}>{k}</span>
@@ -213,6 +213,12 @@ function ClientDetail({ user, onClose, onTopup }) {
         <div style={{ textAlign: 'center', padding: '16px 0' }}>
           <div style={{ fontSize: 48, fontWeight: 900, color: details?.bottles_owed > 0 ? '#E03131' : '#2B8A3E' }}>{details?.bottles_owed || 0}</div>
           <div style={{ fontSize: 14, color: TEXT2, marginTop: 4 }}>бутылок задолженность</div>
+          {details?.pending_return > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 13, color: '#E67700' }}>↩️ В процессе возврата: <b>{details.pending_return} шт.</b></div>
+              <div style={{ fontSize: 13, color: '#2B8A3E' }}>✅ Доступно к возврату: <b>{details.available_bottles ?? Math.max(0, details.bottles_owed - details.pending_return)} шт.</b></div>
+            </div>
+          )}
         </div>
         {!details?.bottles_history?.length ? <Empty text="Нет истории" /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
