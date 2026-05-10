@@ -49,7 +49,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
 
     repeat_q = await db.execute(
         select(Order.user_id, func.count(Order.id).label("cnt"))
-        .where(Order.status == OrderStatus.DELIVERED)
+        .where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
         .group_by(Order.user_id)
         .having(func.count(Order.id) > 1)
     )
@@ -63,11 +63,6 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     by_status = {str(row[0]).replace("OrderStatus.", "").lower(): row[1]
                  for row in by_status_q.fetchall()}
 
-    status_map = {}
-    for k, v in by_status.items():
-        clean = k.split(".")[-1] if "." in k else k
-        status_map[clean] = v
-
     return {
         "period": period,
         "order_count": len(orders),
@@ -76,7 +71,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bottles_returned": bottles_returned,
         "cancelled": cancelled,
         "repeat_customers": repeat_customers,
-        "by_status": status_map,
+        "by_status": by_status,
     }
 
 
