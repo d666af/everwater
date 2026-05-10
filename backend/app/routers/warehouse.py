@@ -266,11 +266,20 @@ async def get_overview(
 
 # ─── Production ───────────────────────────────────────────────────────────────
 
+def _note_with_actor(note: str | None, performed_by: str | None) -> str | None:
+    """Prepend actor name to note if provided."""
+    if performed_by:
+        base = f"[{performed_by}]"
+        return f"{base} {note}" if note else base
+    return note
+
+
 class ProductionBody(BaseModel):
     product_id: int | None = None
     product_name: str | None = None
     quantity: int
     note: str | None = None
+    performed_by: str | None = None
 
 
 @router.post("/production")
@@ -284,7 +293,7 @@ async def add_production(body: ProductionBody, db: AsyncSession = Depends(get_db
         product_id=product.id,
         transaction_type="production",
         quantity=body.quantity,
-        note=body.note,
+        note=_note_with_actor(body.note, body.performed_by),
     ))
     await db.commit()
     return {"ok": True, "new_quantity": stock.quantity}
@@ -299,6 +308,7 @@ class IssueBody(BaseModel):
     quantity: int
     order_id: int | None = None
     note: str | None = None
+    performed_by: str | None = None
 
 
 @router.post("/issue")
@@ -329,7 +339,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         order_id=body.order_id,
         transaction_type="issue",
         quantity=body.quantity,
-        note=body.note,
+        note=_note_with_actor(body.note, body.performed_by),
     ))
     await db.commit()
     return {"ok": True, "new_stock": stock.quantity}
@@ -392,6 +402,7 @@ class ReturnBody(BaseModel):
     product_name: str | None = None
     quantity: int
     note: str | None = None
+    performed_by: str | None = None
 
 
 @router.post("/return")
@@ -416,7 +427,7 @@ async def return_from_courier(body: ReturnBody, db: AsyncSession = Depends(get_d
         courier_id=body.courier_id,
         transaction_type="return",
         quantity=body.quantity,
-        note=body.note,
+        note=_note_with_actor(body.note, body.performed_by),
     ))
     await db.commit()
     return {"ok": True, "new_stock": stock.quantity}
@@ -431,6 +442,7 @@ class AdjustBody(BaseModel):
     delta: int | None = None      # relative change (frontend: positive = add, negative = remove)
     type: str | None = None       # accepted but unused
     note: str | None = None
+    performed_by: str | None = None
 
 
 @router.post("/stock/adjust")
@@ -450,7 +462,7 @@ async def adjust_stock(body: AdjustBody, db: AsyncSession = Depends(get_db)):
         product_id=product.id,
         transaction_type="adjustment",
         quantity=diff,
-        note=body.note or f"Manual adjustment: {old} → {new_qty}",
+        note=_note_with_actor(body.note or f"Manual adjustment: {old} → {new_qty}", body.performed_by),
     ))
     await db.commit()
     return {"ok": True, "quantity": new_qty}

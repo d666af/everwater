@@ -295,6 +295,23 @@ async def download_courier_report_csv(
     )
 
 
+def _find_dejavu_fonts() -> tuple[str, str]:
+    """Return (regular_path, bold_path) for DejaVu Sans, trying multiple locations."""
+    candidates = [
+        # System fonts (installed via fonts-dejavu-core)
+        Path("/usr/share/fonts/truetype/dejavu"),
+        Path("/usr/share/fonts/dejavu"),
+        # fpdf2 bundled fonts
+        Path(_fpdf_module.__file__).parent / "fonts",
+    ]
+    for d in candidates:
+        r = d / "DejaVuSans.ttf"
+        b = d / "DejaVuSans-Bold.ttf"
+        if r.exists() and b.exists():
+            return str(r), str(b)
+    raise FileNotFoundError("DejaVu fonts not found. Install fonts-dejavu-core or fpdf2.")
+
+
 @router.get("/{courier_id}/report/pdf")
 async def download_courier_report_pdf(
     courier_id: int,
@@ -311,22 +328,25 @@ async def download_courier_report_pdf(
     pay_labels = {"cash": "Наличные", "card": "Карта", "online": "Онлайн",
                   "balance": "Баланс", "balance_card": "Баланс+Карта"}
 
-    _FONT_DIR = Path(_fpdf_module.__file__).parent / "fonts"
+    try:
+        font_regular, font_bold = _find_dejavu_fonts()
+    except FileNotFoundError as e:
+        raise HTTPException(500, f"Font error: {e}")
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.add_font("DejaVu",  "",  str(_FONT_DIR / "DejaVuSans.ttf"))
-    pdf.add_font("DejaVu",  "B", str(_FONT_DIR / "DejaVuSans-Bold.ttf"))
+    pdf.add_font("DejaVu", "",  font_regular)
+    pdf.add_font("DejaVu", "B", font_bold)
 
     def txt(text, bold=False, size=10, indent=0):
         pdf.set_font("DejaVu", "B" if bold else "", size)
         if indent:
             pdf.set_x(pdf.l_margin + indent)
-        pdf.multi_cell(0, size * 0.6 + 2, str(text or ""))
+        pdf.multi_cell(0, size * 0.55 + 2, str(text or ""))
 
     def sep():
-        pdf.ln(1)
+        pdf.ln(2)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(3)
@@ -341,13 +361,13 @@ async def download_courier_report_pdf(
         txt("За указанный период доставок не найдено.")
     else:
         for o in data["orders"]:
-            txt(f"Заказ №{o['order_id']}  —  {o['delivered_at']}", bold=True, size=12)
-            phone = o['client_phone'] or '—'
-            name  = o['client_name']
+            txt(f"Заказ №{o['order_id']}  —  {o['delivered_at']}", bold=True, size=11)
+            phone = str(o.get('client_phone') or '—')
+            name  = str(o.get('client_name') or '')
             client_line = phone + (f" ({name})" if name and name != '—' else "")
             txt(f"Клиент: {client_line}")
-            txt(f"Адрес: {o['address'] or '—'}")
-            txt(f"Оформлен: {o['created_at']}   Подтверждён: {o['confirmed_at']}   Доставлен: {o['delivered_at']}")
+            txt(f"Адрес: {str(o.get('address') or '—')}")
+            txt(f"Оформлен: {o['created_at']}  /  Доставлен: {o['delivered_at']}")
             pdf.ln(1)
 
             if o.get("items"):
@@ -359,17 +379,17 @@ async def download_courier_report_pdf(
                     price = float(item.get("price") or 0)
                     name_str = str(item.get("name") or "—")
                     subtotal = price * qty
-                    txt(f"• {name_str}{vol_str}  ×{qty}  =  {subtotal:,.0f} сум", indent=5)
+                    txt(f"  {name_str}{vol_str} x{qty} = {int(subtotal):,} сум", indent=4)
 
             if (o.get("return_bottles") or 0) > 0:
                 txt(f"Возврат 19л бутылок: {o['return_bottles']} шт.")
 
-            pay_label = pay_labels.get(o.get("payment_method", ""), o.get("payment_method", "—"))
-            txt(f"Оплата: {pay_label}  —  {float(o.get('total') or 0):,.0f} сум")
+            pay_label = pay_labels.get(str(o.get("payment_method") or ""), str(o.get("payment_method") or "—"))
+            txt(f"Оплата: {pay_label}  —  {int(float(o.get('total') or 0)):,} сум")
 
             if o.get("rating") is not None:
                 r = int(o["rating"])
-                txt(f"Оценка: {'★' * r}{'☆' * (5 - r)}  ({r}/5)")
+                txt(f"Оценка: {r}/5  ({'*' * r}{'-' * (5 - r)})")
 
             sep()
 
@@ -380,13 +400,13 @@ async def download_courier_report_pdf(
     txt(f"Всего доставок: {data['deliveries']}", size=11)
     pdf.ln(2)
     if data.get("total_cash", 0) > 0:
-        txt(f"Наличные: {data['total_cash']:,.0f} сум")
+        txt(f"Наличные: {int(data['total_cash']):,} сум")
     if data.get("total_card", 0) > 0:
-        txt(f"Карта: {data['total_card']:,.0f} сум")
+        txt(f"Карта: {int(data['total_card']):,} сум")
     if data.get("total_online", 0) > 0:
-        txt(f"Онлайн: {data['total_online']:,.0f} сум")
+        txt(f"Онлайн: {int(data['total_online']):,} сум")
     pdf.ln(2)
-    txt(f"ИТОГО: {data['total_revenue']:,.0f} сум", bold=True, size=13)
+    txt(f"ИТОГО: {int(data['total_revenue']):,} сум", bold=True, size=13)
     pdf.ln(4)
     txt(f"Бутылок 19л доставлено: {data.get('total_bottles_19l_delivered', 0)} шт.")
     txt(f"Бутылок 19л возвращено: {data.get('total_bottles_returned', 0)} шт.")

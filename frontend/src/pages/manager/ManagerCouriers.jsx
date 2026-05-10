@@ -119,45 +119,57 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
             </div>
           ) : details ? (
             <>
-              <div style={{ display: 'flex', gap: 8 }}>
+              {/* Stats row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {[
-                  [details.total_deliveries || 0, 'Всего доставок'],
+                  [details.total_deliveries || 0, 'Всего'],
                   [details.today_deliveries || 0, 'Сегодня'],
-                  [myActiveOrders.length, 'Осталось'],
+                  [myActiveOrders.length, 'В работе'],
                 ].map(([v, l]) => (
-                  <div key={l} style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{v}</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{l}</div>
+                  <div key={l} style={{ background: '#F8F9FA', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{v}</div>
+                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>{l}</div>
                   </div>
                 ))}
               </div>
 
-              {details.recent_deliveries?.length > 0 && (
+              {/* Rating & earnings */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {details.avg_rating > 0 && (
+                  <div style={{ flex: 1, background: '#FFFBEE', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(230,119,0,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>⭐</span>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>{Number(details.avg_rating).toFixed(1)}</div>
+                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>Рейтинг ({details.rating_count || 0} отзывов)</div>
+                    </div>
+                  </div>
+                )}
+                {(details.total_revenue || 0) > 0 && (
+                  <div style={{ flex: 1, background: '#F0FFF4', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(43,138,62,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>💰</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>{Math.round((details.total_revenue || 0) / 1000)}к</div>
+                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>Выручка всего</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Active orders list */}
+              {myActiveOrders.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Последние доставки</div>
-                  {details.recent_deliveries.map((d, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 13 }}>
-                      <span style={{ fontWeight: 700, color: TEXT }}>#{d.order_id}</span>
-                      <span style={{ color: TEXT2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.address}</span>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Текущие заказы ({myActiveOrders.length})</div>
+                  {myActiveOrders.map(o => (
+                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 10, background: '#F8F9FA', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 11, color: TEXT2, background: '#fff', padding: '2px 6px', borderRadius: 6, flexShrink: 0 }}>#{o.id}</span>
+                      <span style={{ color: TEXT, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: CD, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</span>
                     </div>
                   ))}
                 </div>
               )}
             </>
           ) : null}
-
-          {myActiveOrders.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Текущие заказы</div>
-              {myActiveOrders.map(o => (
-                <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, paddingBottom: 5 }}>
-                  <span style={{ fontWeight: 700, color: TEXT }}>#{o.id}</span>
-                  <span style={{ color: TEXT2, flex: 1, marginLeft: 8 }}>{o.address}</span>
-                  <span style={{ fontSize: 12, color: TEXT2 }}>{(o.total || 0).toLocaleString()} сум</span>
-                </div>
-              ))}
-            </div>
-          )}
 
           <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {c.is_active ? (
