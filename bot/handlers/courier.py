@@ -31,7 +31,7 @@ def fmt(v):
 
 def _order_brief(order: dict) -> str:
     items = order.get("items", [])
-    parts = [f"{i.get('product_name', '?')} ×{i.get('quantity', 1)}" for i in items[:3]]
+    parts = [f"{i.get('product_name', '?')} {i.get('quantity', 1)} шт." for i in items[:3]]
     extra = f" +{len(items) - 3} ещё" if len(items) > 3 else ""
     total = fmt(order.get("total", 0))
     return f"{', '.join(parts)}{extra} · {total}" if parts else total
@@ -119,7 +119,7 @@ def _orders_list_kb(orders: list, tab: str) -> InlineKeyboardMarkup:
 
 def _order_detail_text(order: dict) -> str:
     items_text = "\n".join(
-        f"  • {i['product_name']} ×{i['quantity']}" for i in order.get("items", [])
+        f"  • {i['product_name']} {i['quantity']} шт." for i in order.get("items", [])
     )
     status = STATUS_RU.get(order["status"], order["status"])
     urgency = _urgency_suffix(order)
@@ -335,7 +335,7 @@ def _cco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
         else:
             rows.append([
                 InlineKeyboardButton(text="➖", callback_data=f"cco:rem:{p['id']}"),
-                InlineKeyboardButton(text=f"{label} ×{qty}", callback_data="cco:noop"),
+                InlineKeyboardButton(text=f"{label} {qty} шт.", callback_data="cco:noop"),
                 InlineKeyboardButton(text="➕", callback_data=f"cco:add:{p['id']}"),
             ])
     total_qty = sum(items.values())
@@ -359,7 +359,7 @@ def _cco_catalog_text(items: dict, products: list) -> str:
         s = ep * qty
         total += s
         dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep_hint}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -500,7 +500,7 @@ async def courier_co_address(message: Message, state: FSMContext):
         s = ep * qty
         total += s
         dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep_hint}")
     if bottles > 0:
         lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
@@ -569,6 +569,13 @@ async def courier_in_delivery(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     await api.start_delivery(order_id, from_bot=True)
     order = await api.get_order(order_id)
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            brief = _order_brief(order)
+            await call.bot.send_message(client_tg, f"🚴 Курьер выехал к вам!\n{brief}")
+        except Exception:
+            pass
     try:
         await call.message.edit_text(
             _order_detail_text(order),

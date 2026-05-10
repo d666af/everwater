@@ -458,7 +458,7 @@ async def download_courier_report_pdf(
                     orders_header()
 
                 items_str = "; ".join(
-                    f"{it['name']} ×{it['quantity']}"
+                    f"{it['name']} {it['quantity']} шт."
                     for it in (o.get("items") or [])
                 )
                 dt_str = str(o["delivered_at"])[:16]

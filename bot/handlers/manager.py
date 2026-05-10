@@ -86,7 +86,7 @@ async def manager_panel(message: Message):
 
 def _mgr_order_text(o: dict) -> str:
     st = STATUS_RU.get(o["status"], o["status"])
-    items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+    items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
     lines = [
         f"📦 <b>{st}</b>",
@@ -189,7 +189,7 @@ async def mgr_pending_orders(message: Message):
         await message.answer("Нет заказов, ожидающих подтверждения.")
         return
     for o in orders[:5]:
-        items_text = "\n".join(f"  • {i['product_name']} ×{i['quantity']}" for i in o.get("items", []))
+        items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
         text = (
             f"📦 <b>Заказ #{o['id']}</b>\n"
             f"Клиент: {o.get('client_name', '—')}\n"
@@ -920,7 +920,7 @@ def _mco_catalog_kb(products: list, items: dict) -> InlineKeyboardMarkup:
         fp = _mco_full_price(p)
         dep_mark = " ♻" if p.get("has_bottle_deposit") and ep < fp else ""
         price_label = f"{fmt(ep)}{dep_mark}"
-        qty_label = f" ×{qty}" if qty else ""
+        qty_label = f" {qty} шт." if qty else ""
         rows.append([
             InlineKeyboardButton(text=f"{p['name']}{qty_label} ({price_label})", callback_data="mco:noop"),
             InlineKeyboardButton(text="−", callback_data=f"mco:rem:{p['id']}"),
@@ -946,7 +946,7 @@ def _mco_catalog_text(items: dict, products: list) -> str:
         s = ep * qty
         total += s
         dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep_hint}")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
     return "\n".join(lines)
 
@@ -1044,7 +1044,7 @@ async def mgr_co_address(message: Message, state: FSMContext):
         s = ep * qty
         total += s
         dep_hint = f" ♻ (без возврата: {fmt(fp)})" if p.get("has_bottle_deposit") and ep < fp else ""
-        lines.append(f"  • {p.get('name', pid)} ×{qty} — {fmt(s)}{dep_hint}")
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep_hint}")
     if bottles > 0:
         lines.append(f"\n🪣 Возврат бутылей: {bottles} шт.")
     lines.append(f"\n<b>Итого: {fmt(total)}</b>")
