@@ -641,7 +641,7 @@ async def issue_for_order(body: IssueOrderBody, db: AsyncSession = Depends(get_d
         except Exception:
             pass
 
-    return {"ok": True, "batch_id": batch_id}
+    return {"ok": True, "batch_id": batch_id if invoice_items else None}
 
 
 # ─── Invoice download (mini-app) ──────────────────────────────────────────────
