@@ -43,12 +43,12 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   info "Репозиторий уже скачан — обновляю..."
   cd "$INSTALL_DIR"
   git fetch origin
-  git reset --hard origin/claude/telegram-water-delivery-bot-FXOGT
+  git reset --hard origin/claude/sync-bot-website-backend-44Xpf
 else
   info "Клонирую репозиторий в $INSTALL_DIR..."
   git clone "$REPO_URL" "$INSTALL_DIR"
   cd "$INSTALL_DIR"
-  git checkout claude/telegram-water-delivery-bot-FXOGT
+  git checkout claude/sync-bot-website-backend-44Xpf
 fi
 
 # ── 4. .env файл ─────────────────────────────────────────────────────────────

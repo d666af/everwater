@@ -444,7 +444,7 @@ export const getCourierStats = (telegramId) =>
     () => http.get(`/couriers/${telegramId}/stats`).then(r => r.data),
     () => {
       // Base mock stats
-      const base = { delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, review_count: 12, recent: MOCK_ORDERS.slice(0, 3) }
+      const base = { courier_id: 1, delivery_count: 47, today_count: 3, earnings: 9400, rating: 4.8, review_count: 12, recent: MOCK_ORDERS.slice(0, 3) }
       // If any reviews were submitted for this courier, incorporate them
       const courierReviews = mockReviews.filter(r => !r.courier_id || r.courier_id === telegramId || r.courier_id === Number(telegramId))
       if (courierReviews.length > 0) {
