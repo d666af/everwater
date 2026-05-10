@@ -343,8 +343,7 @@ async def download_courier_report_pdf(
 
         def txt(text, bold=False, size=10, indent=0):
             pdf.set_font("DejaVu", "B" if bold else "", size)
-            if indent:
-                pdf.set_x(pdf.l_margin + indent)
+            pdf.set_x(pdf.l_margin + indent)
             pdf.multi_cell(0, size * 0.55 + 2, str(text or ""))
 
         def sep():
