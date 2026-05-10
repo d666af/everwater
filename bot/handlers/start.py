@@ -670,22 +670,33 @@ async def process_review_rating(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
 
-    await state.update_data(review_order_id=order_id, review_rating=rating)
+    # Save rating immediately — no comment required
+    user = await api.get_user(call.from_user.id)
+    await api.create_review(user_id=user["id"], order_id=order_id, rating=rating)
+
+    stars = "⭐" * rating
+    comment_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💬 Оставить комментарий", callback_data=f"review_comment:{order_id}")
+    ]])
+    await call.message.edit_text(
+        f"Спасибо за оценку! {stars}",
+        reply_markup=comment_kb,
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("review_comment:"))
+async def process_review_comment_prompt(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[1])
+    await state.update_data(review_order_id=order_id)
     await state.set_state(ReviewState.waiting_comment)
-    await call.message.answer(f"Вы поставили {rating}⭐. Добавьте комментарий (или напишите «нет»):")
+    await call.message.edit_text("Напишите ваш комментарий:")
     await call.answer()
 
 
 @router.message(ReviewState.waiting_comment)
 async def process_review_comment(message: Message, state: FSMContext):
     data = await state.get_data()
-    comment = message.text if message.text.lower() != "нет" else None
-    user = await api.get_user(message.from_user.id)
-    await api.create_review(
-        user_id=user["id"],
-        order_id=data["review_order_id"],
-        rating=data["review_rating"],
-        comment=comment,
-    )
+    await api.update_review_comment(order_id=data["review_order_id"], comment=message.text)
     await state.clear()
     await message.answer("Спасибо за отзыв! 🙏")
