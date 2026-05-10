@@ -90,6 +90,8 @@ class CourierCreate(BaseModel):
     telegram_id: int
     name: str
     phone: str | None = None
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
 
 
 class CourierOut(BaseModel):
@@ -101,5 +103,7 @@ class CourierOut(BaseModel):
     total_deliveries: int
     avg_rating: float = 0.0
     rating_count: int = 0
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
 
     model_config = {"from_attributes": True}

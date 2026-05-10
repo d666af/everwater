@@ -23,6 +23,27 @@ async def tg_send_capture(chat_id: int, text: str, reply_markup=None) -> dict | 
     return None
 
 
+async def tg_send_photo(chat_id: int, photo_bytes: bytes, caption: str | None = None,
+                        filename: str = "invoice.png") -> bool:
+    """Send a photo (PNG bytes) with optional HTML caption. Returns True on success."""
+    if not chat_id or not photo_bytes:
+        return False
+    url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendPhoto"
+    form = aiohttp.FormData()
+    form.add_field("chat_id", str(chat_id))
+    if caption:
+        form.add_field("caption", caption)
+        form.add_field("parse_mode", "HTML")
+    form.add_field("photo", photo_bytes, filename=filename, content_type="image/png")
+    try:
+        async with aiohttp.ClientSession() as s:
+            r = await s.post(url, data=form, timeout=aiohttp.ClientTimeout(total=15))
+            data = await r.json()
+            return bool(data.get("ok"))
+    except Exception:
+        return False
+
+
 async def tg_edit_msg(chat_id: int, message_id: int, text: str) -> None:
     url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/editMessageText"
     try:

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import {
   getWarehouseCourierStats, getWarehouseStock, getProducts,
-  issueWaterToCourier, returnWaterFromCourier, issueOrderToCourier,
+  issueBatchToCourier, returnWaterFromCourier, issueOrderToCourier,
+  getInvoiceUrl,
 } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
@@ -22,6 +23,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [loading, setLoading] = useState(true)
   const [showManual, setShowManual] = useState(null)   // { courier, mode: 'issue'|'return' }
   const [expanded, setExpanded] = useState(null)
+  const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
 
   const catalog = useMemo(() =>
     allProducts.filter(p => p.is_active).map(p => ({ id: p.id, short_name: p.name })),
@@ -40,10 +42,10 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const stockMap = {}
   stock.forEach(s => { stockMap[s.product_name] = s.quantity })
 
-  const issueBatch = async (courierId, courierName, items) => {
-    for (const [product, qty] of Object.entries(items)) {
-      await issueWaterToCourier(courierId, courierName, product, qty, actor)
-    }
+  const issueBatch = async (courierId, courierName, items, vehicleType, vehiclePlate) => {
+    const payload = Object.entries(items).map(([product_name, quantity]) => ({ product_name, quantity }))
+    const res = await issueBatchToCourier(courierId, payload, actor, vehicleType, vehiclePlate)
+    if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
     load()
   }
   const returnBatch = async (courierId, courierName, items) => {
@@ -52,8 +54,9 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     }
     load()
   }
-  const issueOrder = async (orderId, courierId, courierName) => {
-    await issueOrderToCourier(orderId, courierId, courierName)
+  const issueOrder = async (orderId, courierId, courierName, vehicleType, vehiclePlate) => {
+    const res = await issueOrderToCourier(orderId, courierId, courierName, actor, vehicleType, vehiclePlate)
+    if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
     load()
   }
 
@@ -73,9 +76,17 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           stockMap={stockMap}
           courierWater={showManual.courier.water || {}}
           onClose={() => setShowManual(null)}
-          onSave={(items) => (showManual.mode === 'issue'
-            ? issueBatch(showManual.courier.id, showManual.courier.name, items)
+          onSave={(items, vt, vp) => (showManual.mode === 'issue'
+            ? issueBatch(showManual.courier.id, showManual.courier.name, items, vt, vp)
             : returnBatch(showManual.courier.id, showManual.courier.name, items))}
+        />
+      )}
+
+      {invoiceModal && (
+        <InvoiceSuccessModal
+          batchId={invoiceModal.batchId}
+          courierName={invoiceModal.courierName}
+          onClose={() => setInvoiceModal(null)}
         />
       )}
 
@@ -185,7 +196,7 @@ function CourierCard({ c, expanded, onToggle, onIssueOrder, onManualIssue, onMan
                   <AssignedOrderRow
                     key={o.id}
                     order={o}
-                    onIssue={() => onIssueOrder(o.id, c.id, c.name)}
+                    onIssue={() => onIssueOrder(o.id, c.id, c.name, c.vehicle_type, c.vehicle_plate)}
                   />
                 ))}
               </div>
@@ -331,6 +342,8 @@ function AssignedOrderRow({ order, onIssue }) {
 function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, onSave }) {
   const [items, setItems] = useState({})
   const [loading, setLoading] = useState(false)
+  const [vehicleType, setVehicleType] = useState(courier?.vehicle_type || '')
+  const [vehiclePlate, setVehiclePlate] = useState(courier?.vehicle_plate || '')
   const isReturn = mode === 'return'
 
   const available = isReturn
@@ -351,7 +364,7 @@ function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, o
   const handle = async () => {
     if (totalQty <= 0) return
     setLoading(true)
-    try { await onSave(items); onClose() }
+    try { await onSave(items, vehicleType.trim() || null, vehiclePlate.trim() || null); onClose() }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }
@@ -417,6 +430,34 @@ function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, o
           })}
         </div>
 
+        {/* Vehicle info — only for issue (накладная) */}
+        {!isReturn && totalQty > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA', borderRadius: 12, padding: '12px 14px', border: `1.5px solid ${BORDER}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              Транспорт (для накладной)
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={vehicleType}
+                onChange={e => setVehicleType(e.target.value)}
+                placeholder="Тип машины"
+                style={{ flex: 1, border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, minWidth: 0 }}
+              />
+              <input
+                value={vehiclePlate}
+                onChange={e => setVehiclePlate(e.target.value.toUpperCase())}
+                placeholder="Госномер"
+                style={{ flex: 1, border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, minWidth: 0 }}
+              />
+            </div>
+            {(courier?.vehicle_type || courier?.vehicle_plate) && (
+              <div style={{ fontSize: 11, color: TEXT2 }}>
+                Из профиля курьера. При изменении значение сохранится.
+              </div>
+            )}
+          </div>
+        )}
+
         {totalQty > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isReturn ? '#F0F4FF' : '#F0FFF0', borderRadius: 12, padding: '12px 14px' }}>
             <span style={{ fontSize: 13, color: TEXT2 }}>Итого</span>
@@ -438,6 +479,38 @@ function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, o
           {loading ? 'Обработка...' : isReturn ? `Принять ${totalQty} шт.` : `Выдать ${totalQty} шт.`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+/* Success modal shown after issuance — shows invoice preview + download/share */
+function InvoiceSuccessModal({ batchId, courierName, onClose }) {
+  const url = getInvoiceUrl(batchId)
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={st.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: '#EBFBEE', color: '#2B8A3E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Накладная создана</div>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', marginTop: -4 }}>
+          Курьер: <b style={{ color: TEXT }}>{courierName}</b><br/>
+          Отправлена администратору в Telegram
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 12, padding: 8 }}>
+          <img src={url} alt="накладная" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+        </div>
+        <a href={url} download={`nakladnaya_${batchId.slice(0, 8)}.png`}
+           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', textDecoration: 'none', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
+          Скачать накладную
+        </a>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
+          Закрыть
+        </button>
       </div>
     </div>
   )

@@ -742,9 +742,14 @@ const normalizeCourierWater = (courierId) => {
   MOCK_WAREHOUSE.courier_water[courierId] = next
 }
 
-export const issueWaterToCourier = (courierId, courierName, productName, quantity, performedBy) =>
+export const issueWaterToCourier = (courierId, courierName, productName, quantity, performedBy, vehicleType, vehiclePlate) =>
   safeCall(
-    () => http.post('/warehouse/issue', { courier_id: courierId, product_name: productName, quantity, performed_by: performedBy || undefined }).then(r => r.data),
+    () => http.post('/warehouse/issue', {
+      courier_id: courierId, product_name: productName, quantity,
+      performed_by: performedBy || undefined,
+      vehicle_type: vehicleType || undefined,
+      vehicle_plate: vehiclePlate || undefined,
+    }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)
       if (item) item.quantity = Math.max(0, item.quantity - quantity)
@@ -753,8 +758,48 @@ export const issueWaterToCourier = (courierId, courierName, productName, quantit
       if (!MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId] = {}
       normalizeCourierWater(courierId)
       MOCK_WAREHOUSE.courier_water[courierId][short] = (MOCK_WAREHOUSE.courier_water[courierId][short] || 0) + quantity
-      return { ok: true }
+      return { ok: true, batch_id: 'mock-' + Date.now() }
     }
+  )
+
+// Issue several products in one transaction (returns one invoice batch_id)
+export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, vehiclePlate, note) =>
+  safeCall(
+    () => http.post('/warehouse/issue_batch', {
+      courier_id: courierId,
+      items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
+      performed_by: performedBy || undefined,
+      vehicle_type: vehicleType || undefined,
+      vehicle_plate: vehiclePlate || undefined,
+      note: note || undefined,
+    }).then(r => r.data),
+    () => {
+      const fakeBatch = 'mock-' + Date.now()
+      items.forEach(it => {
+        const row = findOrCreateStockRow(it.product_name)
+        if (row) row.quantity = Math.max(0, row.quantity - it.quantity)
+        const short = shortProductName(it.product_name)
+        MOCK_WAREHOUSE.history.unshift({
+          id: Date.now() + Math.random(), type: 'issued', product_name: short,
+          quantity: it.quantity, date: new Date().toISOString(),
+          courier_id: courierId, batch_id: fakeBatch,
+        })
+        if (!MOCK_WAREHOUSE.courier_water[courierId]) MOCK_WAREHOUSE.courier_water[courierId] = {}
+        normalizeCourierWater(courierId)
+        MOCK_WAREHOUSE.courier_water[courierId][short] = (MOCK_WAREHOUSE.courier_water[courierId][short] || 0) + it.quantity
+      })
+      return { ok: true, batch_id: fakeBatch }
+    }
+  )
+
+// URL for downloading the invoice PNG (used by mini-app & history page)
+export const getInvoiceUrl = (batchId) =>
+  `${http.defaults.baseURL}/warehouse/invoice/${batchId}.png`
+
+export const updateCourier = (courierId, data) =>
+  safeCall(
+    () => http.patch(`/admin/couriers/${courierId}`, data).then(r => r.data),
+    () => ({ ok: true, ...data })
   )
 
 export const returnWaterFromCourier = (courierId, courierName, productName, quantity, performedBy) =>
@@ -781,9 +826,14 @@ export const getCourierWater = (courierId) =>
   )
 
 // Issue all items of a specific order to a courier in one shot
-export const issueOrderToCourier = (orderId, courierId, courierName) =>
+export const issueOrderToCourier = (orderId, courierId, courierName, performedBy, vehicleType, vehiclePlate) =>
   safeCall(
-    () => http.post(`/warehouse/issue_order`, { order_id: orderId, courier_id: courierId }).then(r => r.data),
+    () => http.post(`/warehouse/issue_order`, {
+      order_id: orderId, courier_id: courierId,
+      performed_by: performedBy || undefined,
+      vehicle_type: vehicleType || undefined,
+      vehicle_plate: vehiclePlate || undefined,
+    }).then(r => r.data),
     async () => {
       const order = mockOrdersStore.find(o => o.id === orderId)
       if (!order) return { ok: false }
@@ -791,7 +841,7 @@ export const issueOrderToCourier = (orderId, courierId, courierName) =>
         await issueWaterToCourier(courierId, courierName, it.product_name, it.quantity)
       }
       order.water_issued = true
-      return { ok: true }
+      return { ok: true, batch_id: 'mock-' + Date.now() }
     }
   )
 
