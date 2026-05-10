@@ -87,16 +87,6 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
                 {myActiveOrders.length} в работе
               </span>
             )}
-            {totalDebt > 0 && (
-              <span style={{ fontSize: 11, background: '#FFF5F5', color: '#E03131', padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-                Долг: {totalDebt.toLocaleString()} сум
-              </span>
-            )}
-            {pendingRequests.length > 0 && (
-              <span style={{ fontSize: 11, background: '#FFF8E6', color: '#E67700', padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-                {pendingRequests.length} запрос
-              </span>
-            )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

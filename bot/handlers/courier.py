@@ -3,7 +3,7 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery, ReplyKeyboardRemove,
-    InlineKeyboardMarkup, InlineKeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
 )
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -248,6 +248,10 @@ async def courier_report(message: Message):
     stats = await api.get_courier_stats(message.from_user.id)
     avg = stats.get("avg_rating", 0)
     stars = "⭐" * round(float(avg)) if avg else "—"
+    site_url = settings.MINI_APP_URL.rstrip("/") + "/courier/stats"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📊 Открыть подробный отчёт", web_app=WebAppInfo(url=site_url))
+    ]])
     await message.answer(
         f"📊 <b>Ваша статистика:</b>\n\n"
         f"✔️ Выполнено доставок: {stats.get('total_deliveries', 0)}\n"
@@ -256,6 +260,7 @@ async def courier_report(message: Message):
         f"📝 Отзывов: {stats.get('review_count', 0)}\n"
         f"🚴 Активных заказов: {stats.get('active_orders', 0)}",
         parse_mode="HTML",
+        reply_markup=kb,
     )
 
 
