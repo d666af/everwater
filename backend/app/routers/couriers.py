@@ -241,11 +241,13 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         })
 
     avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
+    paid_delivery_orders = sum(1 for r in rows if r["delivery_fee"] > 0)
 
     return {
         "deliveries": len(orders),
         "total_revenue": round(total_revenue, 2),
         "total_delivery_revenue": round(total_delivery_revenue, 2),
+        "paid_delivery_orders": paid_delivery_orders,
         "total_cash": round(total_cash, 2),
         "total_card": round(total_card, 2),
         "total_online": round(total_online, 2),
@@ -377,11 +379,11 @@ async def download_courier_report_pdf(
                 t = t[:-1]
             return (t + "…") if t else ""
 
-        # Orders table: №|Дата|Телефон|Адрес|Товары|Оплата|Возврат|Оц.|Сумма
-        # Widths must sum to PW (194)
-        O_COLS   = [7,  22,  26,  40,  36,  18,  14,  12,  19]
-        O_ALIGNS = ['C','C', 'L', 'L', 'L', 'C', 'C', 'C', 'R']
-        O_HDRS   = ['№','Дата','Телефон','Адрес','Товары','Оплата','Возврат','Оц.','Сумма']
+        # Orders table: №|Дата|Телефон|Адрес|Товары|Оплата|Возврат|Оц.|Доставка|Сумма
+        # Widths must sum to PW (194): 7+22+22+33+29+18+14+12+18+19 = 194
+        O_COLS   = [7,  22,  22,  33,  29,  18,  14,  12,  18,  19]
+        O_ALIGNS = ['C','C', 'L', 'L', 'L', 'C', 'C', 'C', 'R', 'R']
+        O_HDRS   = ['№','Дата','Телефон','Адрес','Товары','Оплата','Возврат','Оц.','Доставка','Сумма']
         ROW_H = 6
         HDR_H = 7
 
@@ -479,10 +481,8 @@ async def download_courier_report_pdf(
                 rating_str = f"{int(o['rating'])}/5" if o.get("rating") is not None else "—"
                 delivery_fee_val = float(o.get("delivery_fee") or 0)
                 total_val = float(o.get("total") or 0)
-                if delivery_fee_val > 0:
-                    total_str = f"{int(total_val):,} (+{int(delivery_fee_val):,})"
-                else:
-                    total_str = f"{int(total_val):,}"
+                delivery_str = f"{int(delivery_fee_val):,}" if delivery_fee_val > 0 else "—"
+                total_str = f"{int(total_val):,}"
 
                 orders_row([
                     str(idx + 1),
@@ -490,7 +490,7 @@ async def download_courier_report_pdf(
                     str(o.get("client_phone") or "—"),
                     str(o.get("address") or "—"),
                     items_str or "—",
-                    pay, ret, rating_str, total_str,
+                    pay, ret, rating_str, delivery_str, total_str,
                 ], zebra=idx % 2 == 0)
 
         # ════════════════════════════════════════════════════════════════════
@@ -535,6 +535,23 @@ async def download_courier_report_pdf(
             P_COLS, P_ALIGNS, total_row=True, h=HDR_H,
         )
         pdf.ln(5)
+
+        # ── Delivery breakdown ─────────────────────────────────────────────
+        if data.get("total_delivery_revenue", 0) > 0:
+            body("Платная доставка:", bold=True, size=11, lh=7)
+            pdf.ln(1)
+            D_COLS   = [PW - 52 - 52, 52, 52]
+            D_ALIGNS = ['L', 'C', 'R']
+            generic_header(["Услуга", "Кол-во заказов", "Сумма (сум)"], D_COLS, D_ALIGNS)
+            generic_row(
+                ["Доставка", f"{data['paid_delivery_orders']} шт.", f"{int(data['total_delivery_revenue']):,}"],
+                D_COLS, D_ALIGNS, zebra=True,
+            )
+            generic_row(
+                ["ИТОГО", f"{data['paid_delivery_orders']} шт.", f"{int(data['total_delivery_revenue']):,}"],
+                D_COLS, D_ALIGNS, total_row=True, h=HDR_H,
+            )
+            pdf.ln(5)
 
         # ── Payment breakdown ──────────────────────────────────────────────
         body("Разбивка по способу оплаты:", bold=True, size=11, lh=7)

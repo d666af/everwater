@@ -105,10 +105,16 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                   </div>
                 ))}
                 {(data.total_delivery_revenue || 0) > 0 && (
-                  <div style={{ flex: 1, background: '#EBF4FF', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid #BFDBFE`, minWidth: 80 }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#1971C2', lineHeight: 1.1 }}>{(data.total_delivery_revenue || 0).toLocaleString()}</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Итого доставки</div>
-                  </div>
+                  <>
+                    <div style={{ flex: 1, background: '#EBF4FF', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid #BFDBFE`, minWidth: 80 }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1.1 }}>{data.paid_delivery_orders || 0}</div>
+                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Платных дост.</div>
+                    </div>
+                    <div style={{ flex: 1, background: '#EBF4FF', borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid #BFDBFE`, minWidth: 80 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#1971C2', lineHeight: 1.1 }}>{(data.total_delivery_revenue || 0).toLocaleString()}</div>
+                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Итого доставки</div>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -136,12 +142,14 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           {(o.delivery_fee || 0) > 0 && (
-                            <div style={{ fontSize: 10, color: TEXT2, marginBottom: 1 }}>
-                              {((o.total || 0) - (o.delivery_fee || 0)).toLocaleString()} + {(o.delivery_fee || 0).toLocaleString()} дост.
+                            <div style={{ fontSize: 10, color: '#1971C2', fontWeight: 600, marginBottom: 2 }}>
+                              Доставка: {(o.delivery_fee || 0).toLocaleString()} сум
                             </div>
                           )}
-                          <span style={{ fontWeight: 800, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</span>
-                          <span style={{ fontSize: 10, color: TEXT2, marginLeft: 3 }}>сум</span>
+                          <div>
+                            <span style={{ fontWeight: 800, fontSize: 13, color: TEXT }}>{(o.total || 0).toLocaleString()}</span>
+                            <span style={{ fontSize: 10, color: TEXT2, marginLeft: 3 }}>сум</span>
+                          </div>
                         </div>
                       </div>
                       {/* Row 2: address | payment + stars */}
