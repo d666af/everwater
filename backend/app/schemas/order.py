@@ -62,6 +62,7 @@ class OrderOut(BaseModel):
     cancellation_reason: str | None = None
     cancellation_penalty: float = 0.0
     created_at: datetime
+    delivered_at: datetime | None = None
     items: list[OrderItemOut] = []
     # Denormalized convenience fields
     client_name: str | None = None

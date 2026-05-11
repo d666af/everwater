@@ -840,6 +840,7 @@ async def list_reviews(
             "order_total": order.total if order else None,
             "order_address": order.address if order else None,
             "order_items": _order_items_text(order.items) if order else None,
+            "order_delivered_at": order.delivered_at.isoformat() if order and order.delivered_at else None,
         })
     return out
 
@@ -1093,6 +1094,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         cancellation_reason=order.cancellation_reason,
         cancellation_penalty=order.cancellation_penalty or 0.0,
         created_at=order.created_at,
+        delivered_at=order.delivered_at,
         items=items,
         client_name=order.user.name if order.user else None,
         client_telegram_id=order.user.telegram_id if order.user else None,
