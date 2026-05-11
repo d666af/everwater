@@ -1089,6 +1089,37 @@ async def co_cancel(call: CallbackQuery, state: FSMContext):
 
 # ─── Subscriptions ────────────────────────────────────────────────────────────
 
+_PLAN_LABEL = {
+    "weekly": "Еженедельная",
+    "biweekly": "Каждые 2 нед.",
+    "ten_days": "Каждые 10 дн.",
+    "monthly": "Ежемесячная",
+}
+_PAY_LABEL = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+_SUB_STATUS = {"active": "✅ Активна", "paused": "⏸ На паузе", "cancelled": "❌ Отменена"}
+
+
+def _sub_card(s: dict) -> str:
+    plan = _PLAN_LABEL.get(s.get("plan", ""), s.get("plan", ""))
+    status = _SUB_STATUS.get(s.get("status", ""), s.get("status", ""))
+    pay = _PAY_LABEL.get(s.get("payment_method", ""), s.get("payment_method", ""))
+    total = int(s.get("total") or 0)
+    lines = [
+        f"<b>Подписка #{s['id']}</b>  {status}",
+        f"📦 {plan} · {s.get('water_summary', '')} ({s.get('qty', '—')} шт.)",
+    ]
+    if s.get("day"):
+        lines.append(f"📅 День доставки: {s['day']}")
+    if s.get("time_slot"):
+        lines.append(f"🕐 Время: {s['time_slot']}")
+    lines.append(f"📍 {s.get('address', '—')}")
+    if total > 0:
+        lines.append(f"💰 Сумма: {total:,} сум · {pay}".replace(",", " "))
+    elif pay:
+        lines.append(f"💳 Оплата: {pay}")
+    return "\n".join(lines)
+
+
 @router.message(F.text == "📋 Подписки")
 async def subscriptions(message: Message, state: FSMContext):
     await state.clear()
@@ -1097,33 +1128,34 @@ async def subscriptions(message: Message, state: FSMContext):
         return
     await state.update_data(sub_user=user)
     subs = await api.get_subscriptions(user["id"]) or []
-    active = [s for s in subs if s.get("status") == "active"]
+    active = [s for s in subs if s.get("status") in ("active", "paused")]
 
-    plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
-    if active:
-        lines = ["<b>📋 Активные подписки:</b>\n"]
-        for s in active:
-            lines.append(
-                f"• {plan_label.get(s.get('plan', ''), s.get('plan', ''))}"
-                f" | {s.get('water_summary', '')} | {s.get('qty', '')} шт.\n"
-                f"  День: {s.get('day', '—')} | Адрес: {s.get('address', '—')}"
-            )
-        rows = [[InlineKeyboardButton(text="➕ Добавить подписку", callback_data="sub_new")]]
-        for s in active:
-            rows.append([InlineKeyboardButton(
-                text=f"❌ Отменить #{s['id']}",
-                callback_data=f"sub_del:{s['id']}",
-            )])
-        await message.answer("\n".join(lines),
-                             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-                             parse_mode="HTML")
-    else:
+    if not active:
         await message.answer(
-            "У вас нет активных подписок.",
+            "📋 <b>Подписки</b>\n\nУ вас нет активных подписок.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="➕ Оформить подписку", callback_data="sub_new")
             ]]),
+            parse_mode="HTML",
         )
+        return
+
+    text = "📋 <b>Мои подписки</b>\n"
+    for s in active:
+        text += "\n" + _sub_card(s) + "\n"
+
+    rows = [[InlineKeyboardButton(text="➕ Добавить подписку", callback_data="sub_new")]]
+    for s in active:
+        sub_id = s["id"]
+        row = []
+        if s.get("status") == "paused":
+            row.append(InlineKeyboardButton(text=f"▶ Возобновить #{sub_id}", callback_data=f"sub_resume:{sub_id}"))
+        else:
+            row.append(InlineKeyboardButton(text=f"⏸ Пауза #{sub_id}", callback_data=f"sub_pause:{sub_id}"))
+        row.append(InlineKeyboardButton(text=f"❌ Отменить #{sub_id}", callback_data=f"sub_del:{sub_id}"))
+        rows.append(row)
+
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("sub_del:"))
@@ -1537,33 +1569,15 @@ async def support_quick(call: CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text == "⭐ Мои отзывы")
-async def my_reviews(message: Message):
-    user = await api.get_user_by_telegram(message.from_user.id)
-    if not user:
-        await message.answer("Профиль не найден.")
-        return
-    reviews = await api.get_user_reviews(user["id"])
-    if not reviews:
-        await message.answer("У вас пока нет отзывов. Они появятся после первой доставки.")
-        return
-    for r in reviews[:5]:
-        stars = "⭐" * int(r.get("rating") or 0)
-        comment = r.get("comment") or ""
-        order_id = r.get("order_id") or "—"
-        courier = r.get("courier_name") or ""
-        courier_line = f"\nКурьер: {courier}" if courier else ""
-        comment_line = f"\n{comment}" if comment else ""
-        await message.answer(
-            f"{stars} Заказ #{order_id}{courier_line}{comment_line}",
-            parse_mode="HTML",
-        )
-
-
 _MENU_TEXTS = {
-    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль",
+    "🛒 Заказать", "🧺 Корзина", "📦 Мои заказы", "👤 Профиль",
     "📋 Подписки", "🎁 Бонусы", "💬 Поддержка", "🔄 Роль", "⭐ Мои отзывы",
 }
+
+
+@router.message(F.text == "🧺 Корзина")
+async def cart_menu(message: Message, state: FSMContext):
+    await show_cart(message, state)
 
 
 @router.message(F.text & ~F.text.startswith("/") & ~F.text.in_(_MENU_TEXTS))

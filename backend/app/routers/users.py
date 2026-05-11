@@ -41,6 +41,7 @@ def _build_full_user(telegram_id: int, user, courier, manager) -> dict:
         "bonus_points": float(user.bonus_points) if user else 0.0,
         "is_registered": user.is_registered if user else True,
         "saved_addresses": json.loads(user.saved_addresses) if user and user.saved_addresses else [],
+        "created_at": user.created_at.isoformat() if user and user.created_at else None,
     }
 
 

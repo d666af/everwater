@@ -40,6 +40,9 @@ export default function AdminSettings() {
     cancellation_penalty_pct: 10,
     late_order_hour: 18,
     late_order_warning_enabled: true,
+    delivery_eta_hours: 2,
+    delivery_reminder_enabled: true,
+    delivery_reminder_2_delay: 10,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -467,6 +470,70 @@ export default function AdminSettings() {
             {form.late_order_warning_enabled
               ? <>Предупреждение о позднем заказе после <b>{form.late_order_hour}:00</b>.</>
               : <span style={{ color: TEXT2 }}>Предупреждение о позднем заказе отключено.</span>}
+          </div>
+        </Section>
+
+        {/* ETA & delivery reminders */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#1971C2" strokeWidth="1.8"/>
+              <path d="M12 7v5l3 3" stroke="#1971C2" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="ETA и напоминания курьеру"
+          hint="Расчётное время доставки и автоуведомления при задержке"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Окно доставки (часов)</div>
+              <input style={{ ...s.input, maxWidth: 180 }} type="number" min="1" max="24" {...f('delivery_eta_hours')} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>2-е напоминание (мин после 1-го)</div>
+              <input
+                style={{ ...s.input, maxWidth: 180, opacity: form.delivery_reminder_enabled ? 1 : 0.4 }}
+                type="number" min="1" max="120"
+                {...f('delivery_reminder_2_delay')}
+                disabled={!form.delivery_reminder_enabled}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Уведомления при просрочке ETA</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.delivery_reminder_enabled
+                  ? `Курьер получит напоминание когда ETA пройдёт, и повторное через ${form.delivery_reminder_2_delay} мин`
+                  : 'Уведомления отключены — курьер не будет оповещён о задержке'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, delivery_reminder_enabled: !p.delivery_reminder_enabled }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.delivery_reminder_enabled ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.delivery_reminder_enabled ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            ETA: <b>{form.delivery_eta_hours} ч</b> после назначения.{' '}
+            {form.delivery_reminder_enabled
+              ? <>Напоминания включены: 1-е при просрочке, 2-е через <b>{form.delivery_reminder_2_delay} мин</b>.</>
+              : <span style={{ color: TEXT2 }}>Напоминания отключены.</span>}
           </div>
         </Section>
 
