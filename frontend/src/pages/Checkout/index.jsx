@@ -59,6 +59,11 @@ export default function Checkout() {
   const [success, setSuccess] = useState(false)
   const [surveyDone, setSurveyDone] = useState(true) // default true to avoid flash
   const [surveyCount, setSurveyCount] = useState(0)  // count selected in inline survey
+  const [currentHour, setCurrentHour] = useState(new Date().getHours())
+  useEffect(() => {
+    const t = setInterval(() => setCurrentHour(new Date().getHours()), 60_000)
+    return () => clearInterval(t)
+  }, [])
 
   useEffect(() => {
     const tgUser = tg?.initDataUnsafe?.user
@@ -496,7 +501,12 @@ export default function Checkout() {
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>
         </div>
-        {new Date().getHours() >= 18 && (
+        {currentHour === 17 && (
+          <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
+            ⏰ До конца приёма заказов осталось меньше часа — оформите до 18:00.
+          </div>
+        )}
+        {currentHour >= 18 && (
           <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
             ⚠️ Заказы после 18:00 могут быть доставлены на следующий день.
           </div>

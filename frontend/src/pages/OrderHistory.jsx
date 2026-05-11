@@ -63,6 +63,7 @@ export default function OrderHistory() {
   const [reviewOrder, setReviewOrder] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
   const [dismissedIds, setDismissedIds] = useState(new Set())
+  const [autoPopupDone, setAutoPopupDone] = useState(false)
   const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
   const clearCart = useCartStore(s => s.clearCart)
@@ -111,15 +112,17 @@ export default function OrderHistory() {
   const handleReviewDone = (orderId) => {
     setReviewedIds(s => new Set([...s, orderId]))
     setReviewOrder(null)
+    setAutoPopupDone(true)
   }
 
   const handleReviewDismiss = (orderId) => {
     setDismissedIds(s => new Set([...s, orderId]))
     setReviewOrder(null)
+    setAutoPopupDone(true)
   }
 
-  // Auto-popup for newly delivered orders
-  const autoReviewOrder = orders.find(o =>
+  // Auto-popup: only for the first unreviewed delivered order, fires at most once per session
+  const autoReviewOrder = !autoPopupDone && orders.find(o =>
     o.status === 'delivered' && !reviewedIds.has(o.id) && !dismissedIds.has(o.id) && !o.review_id
   )
   const showAutoReview = autoReviewOrder && !reviewOrder
@@ -172,8 +175,12 @@ export default function OrderHistory() {
       {(reviewOrder || showAutoReview) && (
         <ReviewModal
           order={reviewOrder || autoReviewOrder}
-          autoPopup={!reviewOrder && showAutoReview}
-          onClose={() => reviewOrder ? setReviewOrder(null) : handleReviewDismiss(autoReviewOrder.id)}
+          autoPopup={!reviewOrder && !!showAutoReview}
+          onClose={() => {
+            const id = (reviewOrder || autoReviewOrder)?.id
+            if (id) handleReviewDismiss(id)
+            else setReviewOrder(null)
+          }}
           onDone={() => handleReviewDone((reviewOrder || autoReviewOrder).id)} />
       )}
       <div style={{ height: 100 }} />
