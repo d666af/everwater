@@ -627,3 +627,42 @@ async def send_manager_support_reply(chat_id: int, text: str):
         return await _post(f"/admin/support/chats/{chat_id}/reply", {"text": text})
     except Exception:
         return {}
+
+
+# ─── Cron helpers ─────────────────────────────────────────────────────────────
+
+async def get_delivery_eta_orders():
+    try:
+        return await _get("/admin/cron/delivery-eta")
+    except Exception:
+        return []
+
+async def mark_delivery_reminder(order_id: int, reminder_num: int):
+    try:
+        return await _post("/admin/cron/mark-delivery-reminder", {"order_id": order_id, "reminder_num": reminder_num})
+    except Exception:
+        return {}
+
+async def expire_bonuses_cron():
+    try:
+        return await _post("/admin/cron/expire-bonuses")
+    except Exception:
+        return []
+
+async def get_bonus_warnings():
+    try:
+        return await _get("/admin/cron/bonus-warnings")
+    except Exception:
+        return []
+
+async def get_subscription_reminders():
+    try:
+        return await _get("/admin/cron/subscription-reminders")
+    except Exception:
+        return []
+
+async def mark_subscription_reminded(sub_id: int):
+    try:
+        return await _post("/admin/cron/mark-subscription-reminded", {"sub_id": sub_id})
+    except Exception:
+        return {}

@@ -174,10 +174,110 @@ async def notify_low_stock(bot):
             pass
 
 
+async def check_delivery_eta(bot):
+    """Notify courier when ETA passes (1st reminder) and again at ETA+10min (2nd + admin alert)."""
+    orders = await api.get_delivery_eta_orders()
+    now = datetime.utcnow()
+    for order in orders:
+        expected_str = order.get("delivery_expected_at")
+        if not expected_str:
+            continue
+        expected_dt = datetime.fromisoformat(expected_str.replace("Z", ""))
+        courier_tg = order.get("courier_telegram_id")
+        order_id = order["order_id"]
+
+        if not order.get("delivery_reminder_sent") and now >= expected_dt:
+            if courier_tg:
+                try:
+                    await bot.send_message(
+                        courier_tg,
+                        f"⏰ Заказ #{order_id}: расчётное время доставки прошло. Всё в порядке?",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+            await api.mark_delivery_reminder(order_id, 1)
+
+        elif (order.get("delivery_reminder_sent")
+              and not order.get("delivery_reminder_2_sent")
+              and now >= expected_dt + timedelta(minutes=10)):
+            if courier_tg:
+                try:
+                    await bot.send_message(
+                        courier_tg,
+                        f"⚠️ Заказ #{order_id}: прошло 10+ минут после расчётного времени. Нужна помощь?",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+            for admin_id in settings.ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"⚠️ Заказ #{order_id} — доставка задерживается более 10 минут!",
+                    )
+                except Exception:
+                    pass
+            await api.mark_delivery_reminder(order_id, 2)
+
+
+async def expire_bonuses(bot):
+    """Expire overdue bonuses and notify users. Also warn users whose bonuses expire in 7 days."""
+    expired = await api.expire_bonuses_cron()
+    for u in (expired or []):
+        tg_id = u.get("telegram_id")
+        pts = int(u.get("bonus_points") or 0)
+        if tg_id:
+            try:
+                await bot.send_message(
+                    tg_id,
+                    f"💔 Ваши бонусы ({pts:,} сум) сгорели — истёк срок действия.",
+                )
+            except Exception:
+                pass
+
+    warnings = await api.get_bonus_warnings()
+    for u in (warnings or []):
+        tg_id = u.get("telegram_id")
+        pts = int(u.get("bonus_points") or 0)
+        if tg_id:
+            try:
+                await bot.send_message(
+                    tg_id,
+                    f"⚠️ Ваши бонусы ({pts:,} сум) сгорят через 7 дней!\n"
+                    f"Сделайте заказ, чтобы не потерять их.",
+                )
+            except Exception:
+                pass
+
+
+async def subscription_reminders(bot):
+    """Remind users about upcoming subscription deliveries 24h in advance."""
+    subs = await api.get_subscription_reminders()
+    for sub in (subs or []):
+        tg_id = sub.get("telegram_id")
+        if not tg_id:
+            continue
+        water = sub.get("water_summary") or "вода"
+        try:
+            await bot.send_message(
+                tg_id,
+                f"🔔 Завтра ваша плановая доставка:\n<b>{water}</b>\n\n"
+                f"Напишите нам, если хотите перенести или отменить.",
+                parse_mode="HTML",
+            )
+            await api.mark_subscription_reminded(sub["sub_id"])
+        except Exception:
+            pass
+
+
 def setup_scheduler(bot):
     scheduler.add_job(send_registration_reminders, "interval", minutes=5, args=[bot])
     scheduler.add_job(check_delivery_reminders, "interval", minutes=5, args=[bot])
+    scheduler.add_job(check_delivery_eta, "interval", minutes=5, args=[bot])
     scheduler.add_job(deliver_support_replies, "interval", seconds=30, args=[bot])
     scheduler.add_job(notify_new_orders, "interval", minutes=1, args=[bot])
     scheduler.add_job(notify_low_stock, "interval", hours=4, args=[bot])
+    scheduler.add_job(expire_bonuses, "interval", hours=1, args=[bot])
+    scheduler.add_job(subscription_reminders, "interval", hours=1, args=[bot])
     scheduler.start()

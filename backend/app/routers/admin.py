@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.database import get_db
@@ -1001,5 +1001,132 @@ async def mark_message_delivered(msg_id: int, db: AsyncSession = Depends(get_db)
     msg = result.scalar_one_or_none()
     if msg:
         msg.delivered = True
+        await db.commit()
+    return {"ok": True}
+
+
+# ─── Cron helpers ──────────────────────────────────────────────────────────────
+
+@router.get("/cron/delivery-eta")
+async def cron_delivery_eta(db: AsyncSession = Depends(get_db)):
+    """Returns in_delivery orders with ETA info and courier telegram_id."""
+    result = await db.execute(
+        select(Order, Courier.telegram_id.label("courier_tg_id"))
+        .join(Courier, Order.courier_id == Courier.id, isouter=True)
+        .where(
+            Order.status == OrderStatus.IN_DELIVERY,
+            Order.delivery_expected_at.isnot(None),
+        )
+    )
+    rows = result.all()
+    return [
+        {
+            "order_id": order.id,
+            "delivery_expected_at": order.delivery_expected_at.isoformat(),
+            "delivery_reminder_sent": order.delivery_reminder_sent,
+            "delivery_reminder_2_sent": order.delivery_reminder_2_sent,
+            "courier_telegram_id": courier_tg_id,
+        }
+        for order, courier_tg_id in rows
+    ]
+
+
+class MarkReminderBody(BaseModel):
+    order_id: int
+    reminder_num: int  # 1 or 2
+
+
+@router.post("/cron/mark-delivery-reminder")
+async def cron_mark_delivery_reminder(body: MarkReminderBody, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Order).where(Order.id == body.order_id))
+    order = result.scalar_one_or_none()
+    if order:
+        if body.reminder_num == 1:
+            order.delivery_reminder_sent = True
+        else:
+            order.delivery_reminder_2_sent = True
+        await db.commit()
+    return {"ok": True}
+
+
+@router.post("/cron/expire-bonuses")
+async def cron_expire_bonuses(db: AsyncSession = Depends(get_db)):
+    """Expire bonuses for users past their expiry date. Returns list for bot notifications."""
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(User).where(
+            User.bonus_expires_at <= now,
+            User.bonus_points > 0,
+            User.telegram_id.isnot(None),
+        )
+    )
+    users = result.scalars().all()
+    expired = [{"telegram_id": u.telegram_id, "bonus_points": u.bonus_points} for u in users]
+    for u in users:
+        u.bonus_points = 0.0
+        u.bonus_expires_at = None
+    if expired:
+        await db.commit()
+    return expired
+
+
+@router.get("/cron/bonus-warnings")
+async def cron_bonus_warnings(db: AsyncSession = Depends(get_db)):
+    """Users whose bonuses expire in the next 7-day window (1-hour slot to avoid duplicate sends)."""
+    now = datetime.utcnow()
+    window_end = now + timedelta(days=7)
+    window_start = window_end - timedelta(hours=1)
+    result = await db.execute(
+        select(User).where(
+            User.bonus_expires_at >= window_start,
+            User.bonus_expires_at < window_end,
+            User.bonus_points > 0,
+            User.telegram_id.isnot(None),
+        )
+    )
+    users = result.scalars().all()
+    return [{"telegram_id": u.telegram_id, "bonus_points": u.bonus_points} for u in users]
+
+
+@router.get("/cron/subscription-reminders")
+async def cron_subscription_reminders(db: AsyncSession = Depends(get_db)):
+    """Active subscriptions with next delivery in <24h that haven't been reminded yet."""
+    now = datetime.utcnow()
+    tomorrow = now + timedelta(hours=24)
+    result = await db.execute(
+        select(Subscription, User.telegram_id.label("tg_id"))
+        .join(User, Subscription.user_id == User.id)
+        .where(
+            Subscription.status == "active",
+            Subscription.next_delivery_date.between(now, tomorrow),
+            or_(
+                Subscription.reminder_sent_at.is_(None),
+                Subscription.reminder_sent_at < Subscription.next_delivery_date - timedelta(hours=24),
+            ),
+            User.telegram_id.isnot(None),
+        )
+    )
+    rows = result.all()
+    return [
+        {
+            "sub_id": sub.id,
+            "telegram_id": tg_id,
+            "next_delivery_date": sub.next_delivery_date.isoformat() if sub.next_delivery_date else None,
+            "water_summary": sub.water_summary,
+        }
+        for sub, tg_id in rows
+    ]
+
+
+class MarkSubRemindedBody(BaseModel):
+    sub_id: int
+
+
+@router.post("/cron/mark-subscription-reminded")
+async def cron_mark_subscription_reminded(body: MarkSubRemindedBody, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Subscription).where(Subscription.id == body.sub_id))
+    sub = result.scalar_one_or_none()
+    if sub:
+        sub.reminder_sent_at = datetime.utcnow()
         await db.commit()
     return {"ok": True}

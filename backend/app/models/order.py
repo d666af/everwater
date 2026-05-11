@@ -74,6 +74,7 @@ class Order(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     delivery_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    delivery_reminder_2_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     delivery_expected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="orders")  # noqa: F821
