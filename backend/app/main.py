@@ -124,6 +124,9 @@ async def lifespan(app: FastAPI):
             "created_at TIMESTAMP DEFAULT NOW()"
             ")"
         ))
+        await conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_reminder_2_sent BOOLEAN DEFAULT FALSE"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)
