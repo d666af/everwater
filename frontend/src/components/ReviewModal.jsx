@@ -5,11 +5,12 @@ const C = '#8DC63F'
 const CD = '#6CA32F'
 
 export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup = false }) {
-  // Support both old calling style (orderId only) and new (full order)
   const id = order?.id || orderId
   const courier = order?.courier_name
   const courierId = order?.courier_id
 
+  // autoPopup starts with a gentle "ask" step; manual open goes straight to form
+  const [step, setStep] = useState(autoPopup ? 'ask' : 'form')
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
@@ -43,16 +44,38 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
 
   const ratingText = ['', 'Ужасно', 'Плохо', 'Нормально', 'Хорошо', 'Отлично'][rating] || ''
 
+  // ── Step 1: ask ──────────────────────────────────────────────────────────────
+  if (step === 'ask') {
+    return (
+      <div style={s.overlay} onClick={onClose}>
+        <div style={s.askSheet} onClick={e => e.stopPropagation()}>
+          <div style={s.handle} />
+          <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+            <div style={{ fontSize: 40, lineHeight: 1, marginBottom: 12 }}>🎉</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: '#111', letterSpacing: -0.3 }}>Заказ доставлен!</div>
+            {courier && (
+              <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 4 }}>Курьер: <b style={{ color: '#3c3c43' }}>{courier}</b></div>
+            )}
+            <div style={{ fontSize: 14, color: '#8e8e93', marginTop: 8, lineHeight: 1.5 }}>
+              Хотите оставить отзыв?<br/>Это займёт меньше минуты.
+            </div>
+          </div>
+          <button style={s.submitBtn} onClick={() => setStep('form')}>
+            ⭐ Оценить доставку
+          </button>
+          <button style={s.cancelBtn} onClick={onClose}>
+            Позже
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Step 2: form ─────────────────────────────────────────────────────────────
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.sheet} onClick={e => e.stopPropagation()}>
         <div style={s.handle} />
-        {autoPopup && (
-          <div style={{ background: 'linear-gradient(135deg,#A8D86D,#7EC840)', borderRadius: 12, padding: '10px 14px', textAlign: 'center', marginBottom: -6 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>Заказ доставлен!</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>Оцените доставку ниже</div>
-          </div>
-        )}
         <h3 style={s.title}>Как прошла доставка?</h3>
 
         {courier && (
@@ -85,7 +108,6 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
           rows={3}
         />
 
-        {/* Photo upload */}
         <div>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
           {photoPreview ? (
@@ -125,20 +147,31 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
 const s = {
   overlay: {
     position: 'fixed', inset: 0, zIndex: 999,
-    background: 'rgba(0,0,0,0.35)',
+    background: 'rgba(0,0,0,0.45)',
     display: 'flex', alignItems: 'flex-end',
     backdropFilter: 'blur(4px)',
   },
+  // Small sheet for the "ask" step
+  askSheet: {
+    width: '100%', background: '#fff',
+    borderRadius: '20px 20px 0 0',
+    padding: '8px 20px 40px',
+    display: 'flex', flexDirection: 'column', gap: 12,
+    animation: 'slideUp 0.25s ease',
+  },
+  // Full form sheet with maxHeight so overlay is always clickable above
   sheet: {
     width: '100%', background: '#fff',
     borderRadius: '20px 20px 0 0',
     padding: '8px 20px 36px',
     display: 'flex', flexDirection: 'column', gap: 14,
     animation: 'slideUp 0.25s ease',
+    maxHeight: '88vh', overflowY: 'auto',
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
     background: '#e0e0e0', margin: '4px auto 6px',
+    flexShrink: 0,
   },
   title: {
     fontSize: 20, fontWeight: 700, textAlign: 'center',
@@ -171,10 +204,12 @@ const s = {
     width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
     background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 700,
     cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.35)',
+    flexShrink: 0,
   },
   cancelBtn: {
     width: '100%', padding: '12px 0', borderRadius: 14,
     border: 'none', background: '#f2f2f3',
     fontSize: 15, fontWeight: 600, cursor: 'pointer', color: '#888',
+    flexShrink: 0,
   },
 }
