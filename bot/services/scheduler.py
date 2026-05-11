@@ -273,7 +273,8 @@ async def subscription_reminders(bot):
 
 def setup_scheduler(bot):
     scheduler.add_job(send_registration_reminders, "interval", minutes=5, args=[bot])
-    scheduler.add_job(check_delivery_reminders, "interval", minutes=5, args=[bot])
+    # check_delivery_eta supersedes check_delivery_reminders (handles both courier and admin alerts,
+    # and correctly marks delivery_reminder_sent / delivery_reminder_2_sent)
     scheduler.add_job(check_delivery_eta, "interval", minutes=5, args=[bot])
     scheduler.add_job(deliver_support_replies, "interval", seconds=30, args=[bot])
     scheduler.add_job(notify_new_orders, "interval", minutes=1, args=[bot])
