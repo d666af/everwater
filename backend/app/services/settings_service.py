@@ -30,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
     "cancellation_penalty_pct": 10,    # % от суммы заказа списывается из бонусов при поздней отмене
     # Late order warning
     "late_order_hour": 18,             # после этого часа — предупреждение о переносе доставки
+    "late_order_warning_enabled": True, # показывать предупреждение о позднем заказе
 }
 
 
