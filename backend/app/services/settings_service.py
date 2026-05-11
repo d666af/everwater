@@ -31,6 +31,10 @@ DEFAULTS: dict[str, Any] = {
     # Late order warning
     "late_order_hour": 18,             # после этого часа — предупреждение о переносе доставки
     "late_order_warning_enabled": True, # показывать предупреждение о позднем заказе
+    # ETA / delivery reminders
+    "delivery_eta_hours": 2,           # окно доставки в часах после назначения курьера
+    "delivery_reminder_enabled": True,  # включить уведомления курьеру при просрочке ETA
+    "delivery_reminder_2_delay": 10,   # минут после первого напоминания для второго
 }
 
 

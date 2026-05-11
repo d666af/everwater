@@ -468,10 +468,14 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     courier_name = courier.name
     oid = order.id
 
+    cfg = await get_all_settings(db)
+    eta_hours = float(cfg.get("delivery_eta_hours") or 2)
+
     order.courier_id = courier_id
     order.status = OrderStatus.ASSIGNED_TO_COURIER
-    if not order.delivery_expected_at:
-        order.delivery_expected_at = datetime.utcnow() + timedelta(hours=2)
+    order.delivery_expected_at = datetime.utcnow() + timedelta(hours=eta_hours)
+    order.delivery_reminder_sent = False
+    order.delivery_reminder_2_sent = False
 
     # Store which manager assigned this courier
     if body.manager_telegram_id:
@@ -500,10 +504,12 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     shortage_suffix = ("\n\n⚠️ Нехватка на складе:\n" + "\n".join(shortage_lines)) if shortage_lines else ""
 
     if not from_bot:
+        eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
         await _tg(courier_tg,
                   f"🚴 Вам назначен заказ!\n\n"
                   f"Адрес: {order_address}\nТелефон: {order_phone}\n"
-                  f"Время: {order_time}\nТовары:\n{items}\n"
+                  f"Время: {order_time}\n{eta_text}"
+                  f"Товары:\n{items}\n"
                   f"Сумма: {order_total:,} сум"
                   + shortage_suffix)
         text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."

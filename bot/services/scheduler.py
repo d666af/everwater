@@ -175,7 +175,12 @@ async def notify_low_stock(bot):
 
 
 async def check_delivery_eta(bot):
-    """Notify courier when ETA passes (1st reminder) and again at ETA+10min (2nd + admin alert)."""
+    """Notify courier when ETA passes (1st reminder) and again at ETA+delay (2nd + admin alert)."""
+    cfg = await api.get_settings()
+    if not cfg.get("delivery_reminder_enabled", True):
+        return
+
+    delay_min = int(cfg.get("delivery_reminder_2_delay") or 10)
     orders = await api.get_delivery_eta_orders()
     now = datetime.utcnow()
     for order in orders:
@@ -194,31 +199,34 @@ async def check_delivery_eta(bot):
                         f"⏰ Заказ #{order_id}: расчётное время доставки прошло. Всё в порядке?",
                         parse_mode="HTML",
                     )
+                    await api.mark_delivery_reminder(order_id, 1)
                 except Exception:
                     pass
-            await api.mark_delivery_reminder(order_id, 1)
 
         elif (order.get("delivery_reminder_sent")
               and not order.get("delivery_reminder_2_sent")
-              and now >= expected_dt + timedelta(minutes=10)):
+              and now >= expected_dt + timedelta(minutes=delay_min)):
+            sent = False
             if courier_tg:
                 try:
                     await bot.send_message(
                         courier_tg,
-                        f"⚠️ Заказ #{order_id}: прошло 10+ минут после расчётного времени. Нужна помощь?",
+                        f"⚠️ Заказ #{order_id}: прошло {delay_min}+ мин после расчётного времени. Нужна помощь?",
                         parse_mode="HTML",
                     )
+                    sent = True
                 except Exception:
                     pass
             for admin_id in settings.ADMIN_IDS:
                 try:
                     await bot.send_message(
                         admin_id,
-                        f"⚠️ Заказ #{order_id} — доставка задерживается более 10 минут!",
+                        f"⚠️ Заказ #{order_id} — доставка задерживается более {delay_min} минут!",
                     )
                 except Exception:
                     pass
-            await api.mark_delivery_reminder(order_id, 2)
+            if sent:
+                await api.mark_delivery_reminder(order_id, 2)
 
 
 async def expire_bonuses(bot):
