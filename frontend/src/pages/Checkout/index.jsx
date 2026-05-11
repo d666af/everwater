@@ -501,16 +501,20 @@ export default function Checkout() {
           <span style={s.totalLabel}>К оплате</span>
           <span style={s.totalAmt}>{finalTotal.toLocaleString()} сум</span>
         </div>
-        {currentHour === 17 && (
-          <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
-            ⏰ До конца приёма заказов осталось меньше часа — оформите до 18:00.
-          </div>
-        )}
-        {currentHour >= 18 && (
-          <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
-            ⚠️ Заказы после 18:00 могут быть доставлены на следующий день.
-          </div>
-        )}
+        {settings.late_order_warning_enabled !== false && (() => {
+          const cutoff = Number(settings.late_order_hour ?? 18)
+          if (currentHour === cutoff - 1) return (
+            <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
+              ⏰ До конца приёма заказов осталось меньше часа — оформите до {cutoff}:00.
+            </div>
+          )
+          if (currentHour >= cutoff) return (
+            <div style={{ background: '#FFF7ED', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#D97706', fontWeight: 500, lineHeight: 1.4 }}>
+              ⚠️ Заказы после {cutoff}:00 могут быть доставлены на следующий день.
+            </div>
+          )
+          return null
+        })()}
         {error && <div style={s.errorBox}>{error}</div>}
         <button style={s.primaryBtn} onClick={submitOrder} disabled={loading}>
           {loading ? <span style={s.spinner} /> : 'Оформить заказ'}

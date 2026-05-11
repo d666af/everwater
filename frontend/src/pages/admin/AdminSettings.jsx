@@ -39,6 +39,7 @@ export default function AdminSettings() {
     bonus_expiry_days: 60,
     cancellation_penalty_pct: 10,
     late_order_hour: 18,
+    late_order_warning_enabled: true,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -428,16 +429,44 @@ export default function AdminSettings() {
             </div>
             <div style={s.field}>
               <div style={s.label}>Поздний заказ с (час, 0–23)</div>
-              <input style={s.input} type="number" min="0" max="23" {...f('late_order_hour')} />
+              <input style={{ ...s.input, opacity: form.late_order_warning_enabled ? 1 : 0.4 }}
+                type="number" min="0" max="23" {...f('late_order_hour')}
+                disabled={!form.late_order_warning_enabled} />
             </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Предупреждение о позднем заказе</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                Показывать клиентам предупреждение при оформлении после {form.late_order_hour}:00
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, late_order_warning_enabled: !p.late_order_warning_enabled }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.late_order_warning_enabled ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.late_order_warning_enabled ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
           </div>
           <div style={s.preview}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            При отмене после назначения курьера — штраф <b>{form.cancellation_penalty_pct}%</b>.
-            Предупреждение о позднем заказе после <b>{form.late_order_hour}:00</b>.
+            При отмене после назначения курьера — штраф <b>{form.cancellation_penalty_pct}%</b>.{' '}
+            {form.late_order_warning_enabled
+              ? <>Предупреждение о позднем заказе после <b>{form.late_order_hour}:00</b>.</>
+              : <span style={{ color: TEXT2 }}>Предупреждение о позднем заказе отключено.</span>}
           </div>
         </Section>
 
