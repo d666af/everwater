@@ -12,8 +12,14 @@ from app.models.client_data import BottleDebt, SavedAddress, Subscription
 from app.models.user import User
 from app.models.support import SupportChat, SupportMessage
 from app.models.order import Order, OrderStatus
+from app.services.settings_service import is_subscriptions_enabled
 
 router = APIRouter(prefix="/client", tags=["client"])
+
+
+async def _ensure_subs_enabled(db: AsyncSession) -> None:
+    if not await is_subscriptions_enabled(db):
+        raise HTTPException(status_code=403, detail="Subscriptions are disabled")
 
 
 # ─── Saved addresses ─────────────────────────────────────────────────────────
@@ -97,6 +103,8 @@ class SubscriptionOut(BaseModel):
 
 @router.get("/{user_id}/subscriptions", response_model=list[SubscriptionOut])
 async def list_subs(user_id: int, db: AsyncSession = Depends(get_db)):
+    if not await is_subscriptions_enabled(db):
+        return []
     result = await db.execute(select(Subscription).where(Subscription.user_id == user_id).order_by(Subscription.created_at.desc()))
     return result.scalars().all()
 
@@ -107,6 +115,7 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
     from app.config import settings as cfg
     from app.models.manager import Manager
 
+    await _ensure_subs_enabled(db)
     payment_confirmed = body.payment_method != "card"
     sub = Subscription(user_id=user_id, payment_confirmed=payment_confirmed, **body.model_dump(by_alias=False))
     db.add(sub)
@@ -149,6 +158,7 @@ async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_d
     from app.models.manager import Manager
     from app.services.tg_notify import notify_all
 
+    # Cancellation is always allowed (even after the module is turned off) so users can clean up.
     result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
     if not sub:
@@ -170,6 +180,7 @@ async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_d
 
 @router.post("/{user_id}/subscriptions/{sub_id}/pause")
 async def pause_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
+    await _ensure_subs_enabled(db)
     result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
     if not sub:
@@ -184,6 +195,7 @@ async def pause_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db
 
 @router.post("/{user_id}/subscriptions/{sub_id}/resume")
 async def resume_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
+    await _ensure_subs_enabled(db)
     result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
     if not sub:
