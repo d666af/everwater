@@ -4,6 +4,58 @@ import { createReview, uploadReviewPhoto } from '../api'
 const C = '#8DC63F'
 const CD = '#6CA32F'
 
+function formatDate(raw) {
+  if (!raw) return ''
+  try {
+    const d = new Date(raw)
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' · ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  } catch { return '' }
+}
+
+function renderOrderItems(order) {
+  const items = order?.items || []
+  if (!items.length) return null
+  const rcount0 = order.return_bottles_count || 0
+  const perUnitDisc = rcount0 > 0 ? (order.bottle_discount || 0) / rcount0 : 0
+  let returnsLeft = rcount0
+  const rows = []
+  items.forEach((i, idx) => {
+    const vol = Number(i.volume || 0)
+    const is19L = vol > 18 && vol < 20
+    if (!is19L) {
+      rows.push(
+        <div key={`${idx}-x`} style={rmS.itemRow}>
+          <span style={rmS.itemName}>{i.product_name}</span>
+          <span style={rmS.itemQty}>{i.quantity} шт. · {(i.price * i.quantity).toLocaleString()} сум</span>
+        </div>
+      )
+      return
+    }
+    const refilled = Math.min(i.quantity, Math.max(0, returnsLeft))
+    const newBottle = i.quantity - refilled
+    returnsLeft -= refilled
+    if (newBottle > 0) {
+      rows.push(
+        <div key={`${idx}-new`} style={rmS.itemRow}>
+          <span style={rmS.itemName}>{i.product_name} + Бутылка</span>
+          <span style={rmS.itemQty}>{newBottle} шт. · {(i.price * newBottle).toLocaleString()} сум</span>
+        </div>
+      )
+    }
+    if (refilled > 0) {
+      const refillUnit = Math.max(0, Math.round(i.price - perUnitDisc))
+      rows.push(
+        <div key={`${idx}-ref`} style={rmS.itemRow}>
+          <span style={rmS.itemName}>{i.product_name}</span>
+          <span style={rmS.itemQty}>{refilled} шт. · {(refillUnit * refilled).toLocaleString()} сум</span>
+        </div>
+      )
+    }
+  })
+  return rows
+}
+
 export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup = false }) {
   const id = order?.id || orderId
   const courier = order?.courier_name
@@ -46,9 +98,12 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
 
   // ── Step 1: ask ──────────────────────────────────────────────────────────────
   if (step === 'ask') {
+    const dateStr = formatDate(order?.delivered_at || order?.created_at)
+    const itemRows = renderOrderItems(order)
+    const rcount = order?.return_bottles_count || 0
     return (
       <div style={s.overlay} onClick={onClose}>
-        <div style={s.askSheet} onClick={e => e.stopPropagation()}>
+        <div style={s.sheet} onClick={e => e.stopPropagation()}>
           <div style={s.handle} />
           <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
             <div style={{ fontSize: 40, lineHeight: 1, marginBottom: 12 }}>🎉</div>
@@ -60,6 +115,34 @@ export default function ReviewModal({ order, orderId, onClose, onDone, autoPopup
               Хотите оставить отзыв?<br/>Это займёт меньше минуты.
             </div>
           </div>
+
+          {order && (
+            <div style={rmS.orderInfo}>
+              {dateStr && <div style={rmS.infoRow}><span>📅</span><span>{dateStr}</span></div>}
+              {order.address && <div style={rmS.infoRow}><span>📍</span><span>{order.address}</span></div>}
+              {order.extra_info && <div style={rmS.infoRow}><span>📝</span><span>{order.extra_info}</span></div>}
+              {order.recipient_phone && <div style={rmS.infoRow}><span>📞</span><span>{order.recipient_phone}</span></div>}
+
+              {itemRows && (
+                <div style={rmS.itemsBox}>
+                  {itemRows}
+                  {rcount > 0 && (
+                    <div style={{ ...rmS.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
+                      <span style={rmS.itemName}>♻️ Возврат тары</span>
+                      <span style={rmS.itemQty}>{rcount} шт.</span>
+                    </div>
+                  )}
+                  <div style={{ ...rmS.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 8, marginTop: 4 }}>
+                    <span style={{ ...rmS.itemName, fontWeight: 700 }}>Итого</span>
+                    <span style={{ ...rmS.itemQty, fontWeight: 700, color: '#111' }}>
+                      {(order.total || 0).toLocaleString()} сум
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button style={s.submitBtn} onClick={() => setStep('form')}>
             ⭐ Оценить доставку
           </button>
@@ -212,4 +295,26 @@ const s = {
     fontSize: 15, fontWeight: 600, cursor: 'pointer', color: '#888',
     flexShrink: 0,
   },
+}
+
+const rmS = {
+  orderInfo: {
+    background: '#f7f7f8', borderRadius: 14,
+    padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8,
+  },
+  infoRow: {
+    display: 'grid', gridTemplateColumns: '22px 1fr', gap: 8,
+    fontSize: 13, color: '#3c3c43', lineHeight: 1.4,
+  },
+  itemsBox: {
+    background: '#fff', borderRadius: 12,
+    padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4,
+    marginTop: 4,
+  },
+  itemRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+    gap: 10, fontSize: 12.5, color: '#3c3c43', padding: '3px 0',
+  },
+  itemName: { fontWeight: 500, color: '#1c1c1e', flex: 1, minWidth: 0 },
+  itemQty: { color: '#3c3c43', flexShrink: 0, whiteSpace: 'nowrap' },
 }

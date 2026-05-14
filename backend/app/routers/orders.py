@@ -657,7 +657,9 @@ async def get_courier_orders(telegram_id: int, db: AsyncSession = Depends(get_db
 
 @router.post("/reviews/")
 async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
-    # Idempotent: update existing review if one already exists for this order
+    # Idempotent: update existing review if one already exists for this order.
+    # Review.order_id is UNIQUE, so concurrent submits would otherwise hit
+    # an IntegrityError and 500 — handle both racing paths the same way.
     if data.order_id:
         existing_q = await db.execute(select(Review).where(Review.order_id == data.order_id))
         existing = existing_q.scalar_one_or_none()
@@ -665,7 +667,6 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
             existing.rating = data.rating
             existing.comment = data.comment
             await db.commit()
-            await _notify_review(db, existing, data.rating, data.comment, data.order_id)
             return {"ok": True, "id": existing.id}
 
     order = None
@@ -696,9 +697,20 @@ async def create_review(data: ReviewCreate, db: AsyncSession = Depends(get_db)):
             courier.avg_rating = (old_avg * old_count + data.rating) / new_count
             courier.rating_count = new_count
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        # Concurrent insert won the race — fall back to the existing row.
+        await db.rollback()
+        existing_q = await db.execute(select(Review).where(Review.order_id == data.order_id))
+        existing = existing_q.scalar_one_or_none()
+        if existing:
+            existing.rating = data.rating
+            existing.comment = data.comment
+            await db.commit()
+            return {"ok": True, "id": existing.id}
+        raise HTTPException(status_code=409, detail="Review conflict")
     await db.refresh(review)
-    await _notify_review(db, review, data.rating, data.comment, data.order_id, order)
     return {"ok": True, "id": review.id}
 
 
@@ -717,41 +729,6 @@ async def update_review_comment(order_id: int, body: ReviewCommentUpdate,
     review.comment = body.comment
     await db.commit()
     return {"ok": True}
-
-
-async def _notify_review(db: AsyncSession, review: Review, rating: int, comment: str | None,
-                          order_id: int | None, order=None):
-    """Send new review notification to all admins and managers."""
-    stars = "⭐" * rating
-    lines = [f"💬 Новый отзыв клиента! {stars}"]
-
-    if order_id:
-        lines.append(f"Заказ: #{order_id}")
-
-    if order is None and order_id:
-        order_q = await db.execute(
-            select(Order).where(Order.id == order_id).options(*_order_opts())
-        )
-        order = order_q.scalar_one_or_none()
-
-    if order:
-        if order.user:
-            lines.append(f"Клиент: {order.user.name or '—'}")
-        if order.courier:
-            lines.append(f"Курьер: {order.courier.name or '—'}")
-        items_txt = _order_items_text(order.items)
-        if items_txt and items_txt != "—":
-            lines.append(f"Состав: {items_txt}")
-
-    if comment:
-        lines.append(f"Комментарий: {comment}")
-
-    if review.photo_url:
-        from app.config import settings as cfg
-        base = cfg.MINI_APP_URL.rstrip("/")
-        lines.append(f"Фото: {base}{review.photo_url}")
-
-    await _notify_admins(db, "\n".join(lines))
 
 
 _REVIEW_UPLOAD_DIR = Path("static/reviews")

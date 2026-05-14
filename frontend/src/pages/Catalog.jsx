@@ -9,22 +9,10 @@ import { useCartStore } from '../store'
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
-const QUICK_CATS = [
-  { key: 'all', label: 'Все' },
-  { key: '19', label: '19л' },
-  { key: '10', label: '10л' },
-  { key: '5', label: '5л' },
-  { key: '1.5', label: '1.5л' },
-  { key: '1', label: '1л' },
-  { key: '0.5', label: '0.5л' },
-  { key: 'carbonated', label: 'Газированная' },
-]
-
 export default function Catalog() {
   const [products, setProducts] = useState([])
   const [settings, setSettings] = useState({ bottle_discount_type: 'fixed', bottle_discount_value: 0 })
   const [loading, setLoading] = useState(true)
-  const [activeCategory, setActiveCategory] = useState('all')
   const navigate = useNavigate()
   const orders = useOrdersStore(s => s.orders)
   const cartItems = useCartStore(s => s.items)
@@ -41,25 +29,7 @@ export default function Catalog() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Only show filter buttons for categories that have at least one product
-  const visibleCats = useMemo(() => {
-    if (!products.length) return QUICK_CATS.slice(0, 1)
-    return QUICK_CATS.filter(({ key }) => {
-      if (key === 'all') return true
-      if (key === 'carbonated') return products.some(p => p.type === 'carbonated')
-      if (key === '19') return products.some(p => p.volume >= 18.9)
-      const vol = parseFloat(key)
-      return products.some(p => Math.abs(p.volume - vol) < 0.1)
-    })
-  }, [products])
-
-  const filtered = useMemo(() => {
-    if (activeCategory === 'all') return products
-    if (activeCategory === 'carbonated') return products.filter(p => p.type === 'carbonated')
-    if (activeCategory === '19') return products.filter(p => p.volume >= 18.9)
-    const vol = parseFloat(activeCategory)
-    return products.filter(p => Math.abs(p.volume - vol) < 0.1)
-  }, [products, activeCategory])
+  const filtered = products
 
   // Compute effective "with return" price — only for products flagged as deposit
   const computeReturnPrice = (product) => {
@@ -75,39 +45,25 @@ export default function Catalog() {
 
   return (
     <div style={s.page}>
-      {/* Active order */}
-      {activeOrders.length > 0 && (
-        <div style={s.activeOrder} onClick={() => navigate('/orders')}>
-          <div style={s.activeOrderLeft}>
-            <div style={s.activeOrderDot} />
-            <div>
-              <div style={s.activeOrderTitle}>
-                {activeOrders.length === 1 ? 'Активный заказ' : `${activeOrders.length} активных заказа`}
-              </div>
-              <div style={s.activeOrderSub}>Нажмите для отслеживания</div>
+      {/* Active orders widget — always visible */}
+      <div style={s.activeOrder} onClick={() => navigate('/orders')}>
+        <div style={s.activeOrderLeft}>
+          <div style={{ ...s.activeOrderDot, ...(activeOrders.length ? {} : { background: '#c7c7cc', animation: 'none' }) }} />
+          <div>
+            <div style={s.activeOrderTitle}>
+              {activeOrders.length === 0
+                ? 'Нет активных заказов'
+                : activeOrders.length === 1 ? 'Активный заказ' : `${activeOrders.length} активных заказа`}
+            </div>
+            <div style={s.activeOrderSub}>
+              {activeOrders.length === 0 ? 'Откройте «Заказы» — там вся история' : 'Нажмите для отслеживания'}
             </div>
           </div>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M9 18l6-6-6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
         </div>
-      )}
-
-      {/* Quick categories */}
-      {visibleCats.length > 1 && (
-        <div style={s.catSection}>
-          <div style={s.catScroll}>
-            {visibleCats.map(({ key, label }) => (
-              <button key={key}
-                style={activeCategory === key ? { ...s.catBtn, ...s.catBtnActive } : s.catBtn}
-                onClick={() => setActiveCategory(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M9 18l6-6-6-6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
 
       {/* Products grid */}
       <div style={s.section}>
