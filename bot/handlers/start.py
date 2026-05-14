@@ -322,6 +322,31 @@ async def my_orders(message: Message, state: FSMContext):
     await message.answer("Ваши заказы:", reply_markup=orders_list_kb(orders))
 
 
+def _format_repeat_item(item: dict, returns_left: int) -> tuple[str, int]:
+    """Render one item line for the repeat-order card; for 19L water mark
+    'с возвратом' / 'без возврата' / mixed based on the order-level
+    return_bottles_count budget (consumed in encounter order)."""
+    name = item.get("product_name") or "Товар"
+    qty = int(item.get("quantity", 1))
+    volume = float(item.get("volume", 0) or 0)
+    is_19l = 18 < volume < 20
+
+    if not is_19l:
+        return f"   • {name} × {qty}", returns_left
+
+    refilled = min(qty, max(0, returns_left))
+    new_bottle = qty - refilled
+    returns_left -= refilled
+
+    if refilled == qty:
+        tag = " · с возвратом тары"
+    elif refilled == 0:
+        tag = " · без возврата (новая баклажка)"
+    else:
+        tag = f" · {refilled} с возвратом, {new_bottle} без"
+    return f"   • {name} × {qty}{tag}", returns_left
+
+
 def _build_repeat_text(pool: list, page: int) -> str:
     total = len(pool)
     pages = max(1, (total + REPEAT_PAGE_SIZE - 1) // REPEAT_PAGE_SIZE)
@@ -330,12 +355,6 @@ def _build_repeat_text(pool: list, page: int) -> str:
     chunk = pool[start:start + REPEAT_PAGE_SIZE]
 
     lines = ["🔁 <b>Повторить прошлый заказ</b>", ""]
-    lines.append(
-        "Выберите заказ кнопкой ниже — товары, адрес, ориентир, "
-        "телефон и точка на карте подтянутся автоматически. "
-        "Останется указать бонусы и способ оплаты."
-    )
-    lines.append("")
 
     for i, o in enumerate(chunk):
         raw_date = o.get("delivered_at") or o.get("created_at") or ""
@@ -346,20 +365,19 @@ def _build_repeat_text(pool: list, page: int) -> str:
         except Exception:
             pass
         total_str = f'{int(o["total"]):,}'.replace(",", " ")
-        addr = o.get("address") or "—"
-        extra = o.get("extra_info") or ""
-        phone = o.get("recipient_phone") or "—"
+        items = o.get("items", [])
+        total_qty = sum(int(it.get("quantity", 1)) for it in items)
+        returns_left = int(o.get("return_bottles_count") or 0)
 
-        lines.append(f"{REPEAT_EMOJI[i]} <b>Заказ #{o['id']}</b> · {total_str} сум")
+        lines.append(f"{REPEAT_EMOJI[i]} <b>{total_qty} шт.</b> · {total_str} сум")
+        for it in items:
+            row, returns_left = _format_repeat_item(it, returns_left)
+            lines.append(row)
         lines.append(f"📅 {date_str}")
-        lines.append(f"📍 {addr}")
-        if extra:
-            lines.append(f"📝 {extra}")
-        lines.append(f"📞 {phone}")
-        for it in o.get("items", []):
-            name = it.get("product_name") or "Товар"
-            qty = int(it.get("quantity", 1))
-            lines.append(f"   • {name} × {qty}")
+        lines.append(f"📍 {o.get('address') or '—'}")
+        if o.get("extra_info"):
+            lines.append(f"📝 {o['extra_info']}")
+        lines.append(f"📞 {o.get('recipient_phone') or '—'}")
         lines.append("")
 
     if pages > 1:
