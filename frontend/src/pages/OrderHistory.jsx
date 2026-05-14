@@ -352,12 +352,52 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
           {order.items?.length > 0 && (
             <div style={{ ...s.itemsBox, background: colors.bg }}>
               <div style={s.itemsLabel}>Состав заказа</div>
-              {order.items.map((i, idx) => (
-                <div key={idx} style={s.itemRow}>
-                  <span style={s.itemName}>{i.product_name}</span>
-                  <span style={s.itemQty}>{i.quantity} x {i.price.toLocaleString()}</span>
+              {(() => {
+                const rcount0 = order.return_bottles_count || 0
+                const perUnitDisc = rcount0 > 0 ? (order.bottle_discount || 0) / rcount0 : 0
+                let returnsLeft = rcount0
+                const rows = []
+                order.items.forEach((i, idx) => {
+                  const vol = Number(i.volume || 0)
+                  const is19L = vol > 18 && vol < 20
+                  if (!is19L) {
+                    rows.push(
+                      <div key={`${idx}-x`} style={s.itemRow}>
+                        <span style={s.itemName}>{i.product_name}</span>
+                        <span style={s.itemQty}>{i.quantity} шт. · {(i.price * i.quantity).toLocaleString()} сум</span>
+                      </div>
+                    )
+                    return
+                  }
+                  const refilled = Math.min(i.quantity, Math.max(0, returnsLeft))
+                  const newBottle = i.quantity - refilled
+                  returnsLeft -= refilled
+                  if (newBottle > 0) {
+                    rows.push(
+                      <div key={`${idx}-new`} style={s.itemRow}>
+                        <span style={s.itemName}>{i.product_name} + Бутылка</span>
+                        <span style={s.itemQty}>{newBottle} шт. · {(i.price * newBottle).toLocaleString()} сум</span>
+                      </div>
+                    )
+                  }
+                  if (refilled > 0) {
+                    const refillUnit = Math.max(0, Math.round(i.price - perUnitDisc))
+                    rows.push(
+                      <div key={`${idx}-ref`} style={s.itemRow}>
+                        <span style={s.itemName}>{i.product_name}</span>
+                        <span style={s.itemQty}>{refilled} шт. · {(refillUnit * refilled).toLocaleString()} сум</span>
+                      </div>
+                    )
+                  }
+                })
+                return rows
+              })()}
+              {(order.return_bottles_count || 0) > 0 && (
+                <div style={{ ...s.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
+                  <span style={s.itemName}>♻️ Возврат тары</span>
+                  <span style={s.itemQty}>{order.return_bottles_count} шт.</span>
                 </div>
-              ))}
+              )}
               {order.delivery_fee > 0 && (
                 <div style={{ ...s.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
                   <span style={s.itemName}>Доставка</span>

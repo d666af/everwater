@@ -322,6 +322,61 @@ async def my_orders(message: Message, state: FSMContext):
     await message.answer("Ваши заказы:", reply_markup=orders_list_kb(orders))
 
 
+def _per_unit_return_discount(order: dict) -> float:
+    """How much each returned 19L bottle saves the customer in this order."""
+    rcount = int(order.get("return_bottles_count") or 0)
+    if rcount <= 0:
+        return 0.0
+    return float(order.get("bottle_discount") or 0) / rcount
+
+
+def _format_items_lines(items: list, order: dict, prefix: str = "   • ") -> list[str]:
+    """Render order items with 19L split into 'X + Бутылка' (new bottle) and
+    'X' (refill) lines at their effective per-unit prices. Distributes the
+    order-level return_bottles_count budget across 19L items in encounter
+    order — matches how the order was actually charged.
+    """
+    lines: list[str] = []
+    returns_left = int(order.get("return_bottles_count") or 0)
+    per_unit_disc = _per_unit_return_discount(order)
+
+    for it in items:
+        name = it.get("product_name") or "Товар"
+        qty = int(it.get("quantity", 1))
+        price = float(it.get("price") or 0)
+        volume = float(it.get("volume", 0) or 0)
+        is_19l = 18 < volume < 20
+
+        if not is_19l:
+            total_line = int(price * qty)
+            lines.append(f"{prefix}{name} × {qty} шт. · {total_line:,} сум".replace(",", " "))
+            continue
+
+        refilled = min(qty, max(0, returns_left))
+        new_bottle = qty - refilled
+        returns_left -= refilled
+
+        if new_bottle > 0:
+            new_unit = int(price)
+            new_total = int(price * new_bottle)
+            lines.append(
+                f"{prefix}{name} + Бутылка × {new_bottle} шт. · "
+                f"{new_total:,} сум".replace(",", " ")
+            )
+        if refilled > 0:
+            refill_unit = max(0, int(price - per_unit_disc))
+            refill_total = refill_unit * refilled
+            lines.append(
+                f"{prefix}{name} × {refilled} шт. · "
+                f"{refill_total:,} сум".replace(",", " ")
+            )
+
+    rcount = int(order.get("return_bottles_count") or 0)
+    if rcount > 0:
+        lines.append(f"   ♻️ Возврат тары: {rcount} шт.")
+    return lines
+
+
 def _build_repeat_text(pool: list, page: int) -> str:
     total = len(pool)
     pages = max(1, (total + REPEAT_PAGE_SIZE - 1) // REPEAT_PAGE_SIZE)
@@ -330,12 +385,6 @@ def _build_repeat_text(pool: list, page: int) -> str:
     chunk = pool[start:start + REPEAT_PAGE_SIZE]
 
     lines = ["🔁 <b>Повторить прошлый заказ</b>", ""]
-    lines.append(
-        "Выберите заказ кнопкой ниже — товары, адрес, ориентир, "
-        "телефон и точка на карте подтянутся автоматически. "
-        "Останется указать бонусы и способ оплаты."
-    )
-    lines.append("")
 
     for i, o in enumerate(chunk):
         raw_date = o.get("delivered_at") or o.get("created_at") or ""
@@ -346,20 +395,16 @@ def _build_repeat_text(pool: list, page: int) -> str:
         except Exception:
             pass
         total_str = f'{int(o["total"]):,}'.replace(",", " ")
-        addr = o.get("address") or "—"
-        extra = o.get("extra_info") or ""
-        phone = o.get("recipient_phone") or "—"
+        items = o.get("items", [])
+        total_qty = sum(int(it.get("quantity", 1)) for it in items)
 
-        lines.append(f"{REPEAT_EMOJI[i]} <b>Заказ #{o['id']}</b> · {total_str} сум")
+        lines.append(f"{REPEAT_EMOJI[i]} <b>{total_qty} шт.</b> · {total_str} сум")
+        lines.extend(_format_items_lines(items, o))
         lines.append(f"📅 {date_str}")
-        lines.append(f"📍 {addr}")
-        if extra:
-            lines.append(f"📝 {extra}")
-        lines.append(f"📞 {phone}")
-        for it in o.get("items", []):
-            name = it.get("product_name") or "Товар"
-            qty = int(it.get("quantity", 1))
-            lines.append(f"   • {name} × {qty}")
+        lines.append(f"📍 {o.get('address') or '—'}")
+        if o.get("extra_info"):
+            lines.append(f"📝 {o['extra_info']}")
+        lines.append(f"📞 {o.get('recipient_phone') or '—'}")
         lines.append("")
 
     if pages > 1:
@@ -638,23 +683,16 @@ async def reorder(call: CallbackQuery, state: FSMContext):
         bottles_owed=0,
     )
 
-    summary = [
-        f"🔁 <b>Повторяем заказ #{order_id}</b>",
-        "",
-        f"📍 {order.get('address') or '—'}",
-    ]
+    summary = ["🔁 <b>Повторяем заказ</b>", ""]
+    summary.append(f"📍 {order.get('address') or '—'}")
     if order.get("extra_info"):
         summary.append(f"📝 {order['extra_info']}")
     summary.append(f"📞 {order.get('recipient_phone') or '—'}")
     if order.get("latitude") is not None and order.get("longitude") is not None:
         summary.append("🗺 Точка на карте сохранена")
     summary.append("")
-    summary.append("<b>Товары:</b>")
-    for item in order.get("items", []):
-        summary.append(f"   • {item.get('product_name', 'Товар')} × {int(item.get('quantity', 1))}")
-    if return_count > 0:
-        summary.append("")
-        summary.append(f"♻️ Возврат тары: {return_count} шт.")
+    summary.append("<b>Состав заказа:</b>")
+    summary.extend(_format_items_lines(order.get("items", []), order))
     summary.append("")
     summary.append("Осталось указать <b>бонусы</b> и <b>способ оплаты</b>.")
 

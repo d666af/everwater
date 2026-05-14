@@ -32,6 +32,7 @@ class OrderItemOut(BaseModel):
     quantity: int
     price: float
     product_name: str | None = None
+    volume: float | None = None  # for 19L deposit-split rendering on client
 
     model_config = {"from_attributes": True}
 

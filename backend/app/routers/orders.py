@@ -1034,6 +1034,7 @@ async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
         "delivery_time": order.delivery_time.isoformat() if order.delivery_time else None,
         "return_bottles_count": order.return_bottles_count or 0,
         "return_bottles_volume": order.return_bottles_volume,
+        "bottle_discount": order.bottle_discount or 0,
     }
 
 
@@ -1071,6 +1072,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
             quantity=i.quantity,
             price=i.price,
             product_name=i.product.name if i.product else None,
+            volume=float(i.product.volume) if i.product and i.product.volume is not None else None,
         )
         for i in order.items
     ]
