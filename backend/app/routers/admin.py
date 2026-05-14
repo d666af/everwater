@@ -702,6 +702,7 @@ async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
 async def reject_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
     from app.services.tg_notify import edit_all_notifications
+    await _ensure_subs_enabled(db)
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:

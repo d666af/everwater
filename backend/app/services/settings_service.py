@@ -2,7 +2,7 @@
 import json
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings as app_cfg
@@ -52,6 +52,12 @@ async def get_all_settings(db: AsyncSession) -> dict[str, Any]:
 
 
 async def update_settings(db: AsyncSession, data: dict[str, Any]) -> dict[str, Any]:
+    # When the module is being switched off, wipe every existing subscription
+    # so paused/active/pending rows don't linger past the toggle.
+    if data.get("subscriptions_enabled") is False:
+        from app.models.client_data import Subscription
+        await db.execute(delete(Subscription))
+
     for key, value in data.items():
         if key not in DEFAULTS:
             continue

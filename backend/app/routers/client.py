@@ -158,7 +158,7 @@ async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_d
     from app.models.manager import Manager
     from app.services.tg_notify import notify_all
 
-    # Cancellation is always allowed (even after the module is turned off) so users can clean up.
+    await _ensure_subs_enabled(db)
     result = await db.execute(select(Subscription).where(Subscription.id == sub_id, Subscription.user_id == user_id))
     sub = result.scalar_one_or_none()
     if not sub:
