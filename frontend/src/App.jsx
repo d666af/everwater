@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTelegramAuth } from './hooks/useTelegramAuth'
 import { useRoleRefresh } from './hooks/useRoleRefresh'
+import { useSubscriptionsEnabled } from './hooks/useSubscriptionsEnabled'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRolePicker from './components/AdminRolePicker'
 import Header from './components/Header'
@@ -56,6 +57,12 @@ import WarehouseHistory from './pages/warehouse/WarehouseHistory'
 import WarehouseProfile from './pages/warehouse/WarehouseProfile'
 import WarehouseSubscriptions from './pages/warehouse/WarehouseSubscriptions'
 
+function SubscriptionsGuard({ children, redirectTo }) {
+  const enabled = useSubscriptionsEnabled()
+  if (enabled === false) return <Navigate to={redirectTo} replace />
+  return children
+}
+
 export default function App() {
   useTelegramAuth()  // Auto-login from Telegram WebApp context on every load
   useRoleRefresh()   // Silently refresh roles for non-Telegram website users
@@ -95,7 +102,7 @@ export default function App() {
         } />
         <Route path="/subscription" element={
           <ProtectedRoute allowedRoles={['client']}>
-            <Subscription />
+            <SubscriptionsGuard redirectTo="/"><Subscription /></SubscriptionsGuard>
           </ProtectedRoute>
         } />
         <Route path="/support" element={
@@ -167,7 +174,7 @@ export default function App() {
         } />
         <Route path="/admin/subscriptions" element={
           <ProtectedRoute allowedRoles={['admin']}>
-            <AdminSubscriptions />
+            <SubscriptionsGuard redirectTo="/admin"><AdminSubscriptions /></SubscriptionsGuard>
           </ProtectedRoute>
         } />
         <Route path="/admin/reviews" element={
@@ -204,7 +211,7 @@ export default function App() {
         } />
         <Route path="/manager/subscriptions" element={
           <ProtectedRoute allowedRoles={['manager']}>
-            <ManagerSubscriptions />
+            <SubscriptionsGuard redirectTo="/manager"><ManagerSubscriptions /></SubscriptionsGuard>
           </ProtectedRoute>
         } />
 
@@ -243,7 +250,7 @@ export default function App() {
         } />
         <Route path="/warehouse/subscriptions" element={
           <ProtectedRoute allowedRoles={['warehouse']}>
-            <WarehouseSubscriptions />
+            <SubscriptionsGuard redirectTo="/warehouse"><WarehouseSubscriptions /></SubscriptionsGuard>
           </ProtectedRoute>
         } />
         <Route path="/warehouse/profile" element={

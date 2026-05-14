@@ -6,17 +6,18 @@ def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-def warehouse_menu_kb() -> ReplyKeyboardMarkup:
+def warehouse_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
     # No role-switch button — warehouse operators stay in warehouse flow
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📦 Остатки"), KeyboardButton(text="➕ Производство")],
-            [KeyboardButton(text="📤 Выдать курьеру"), KeyboardButton(text="📥 Принять возврат")],
-            [KeyboardButton(text="🔧 Корректировка"), KeyboardButton(text="🚴 Склад курьеров")],
-            [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="📜 История")],
-        ],
-        resize_keyboard=True,
-    )
+    rows = [
+        [KeyboardButton(text="📦 Остатки"), KeyboardButton(text="➕ Производство")],
+        [KeyboardButton(text="📤 Выдать курьеру"), KeyboardButton(text="📥 Принять возврат")],
+        [KeyboardButton(text="🔧 Корректировка"), KeyboardButton(text="🚴 Склад курьеров")],
+    ]
+    if subs_enabled:
+        rows.append([KeyboardButton(text="📅 Подписки"), KeyboardButton(text="📜 История")])
+    else:
+        rows.append([KeyboardButton(text="📜 История")])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
 def wh_product_select_kb(products: list, action: str) -> InlineKeyboardMarkup:

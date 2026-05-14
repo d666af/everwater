@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth'
 import { useAdminRoleStore } from '../../store/adminRole'
 import { useState, useRef, useLayoutEffect } from 'react'
+import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -75,6 +76,8 @@ export default function ManagerLayout({ children, noPadding = false }) {
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
   const [ready, setReady] = useState(false)
+  const subsEnabled = useSubscriptionsEnabled()
+  const filteredNav = subsEnabled === false ? NAV.filter(n => n.path !== '/manager/subscriptions') : NAV
 
   const hasMultipleRoles = user?.roles?.length > 1
   const switchRole = () => clearRole()
@@ -83,7 +86,7 @@ export default function ManagerLayout({ children, noPadding = false }) {
     nav.exactMatch ? location.pathname === nav.path : location.pathname.startsWith(nav.path)
 
   useLayoutEffect(() => {
-    const activeNav = NAV.find(n => isActive(n))
+    const activeNav = filteredNav.find(n => isActive(n))
     if (!activeNav) return
     const activeEl = itemRefs.current[activeNav.path]
     const navEl = navRef.current
@@ -97,7 +100,7 @@ export default function ManagerLayout({ children, noPadding = false }) {
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
-  }, [location.pathname]) // eslint-disable-line
+  }, [location.pathname, subsEnabled]) // eslint-disable-line
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>
@@ -143,7 +146,7 @@ export default function ManagerLayout({ children, noPadding = false }) {
                 ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
                 : 'none',
             }} />
-            {NAV.map(nav => {
+            {filteredNav.map(nav => {
               const active = isActive(nav)
               return (
                 <button key={nav.path}

@@ -63,7 +63,8 @@ class AdjustState(StatesGroup):
 async def warehouse_panel(message: Message):
     if not await is_warehouse(message.from_user.id):
         return
-    await message.answer("🏭 Панель склада:", reply_markup=warehouse_menu_kb())
+    subs_on = await api.is_subscriptions_enabled()
+    await message.answer("🏭 Панель склада:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
 
 
 # ─── Stock overview ───────────────────────────────────────────────────────────
@@ -484,6 +485,9 @@ async def _wh_subs_menu(message_or_call, is_call: bool = False):
 async def wh_subs_overview(message: Message):
     if not await is_warehouse(message.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await message.answer("📅 Модуль подписок отключён администратором.")
+        return
     await _wh_subs_menu(message, is_call=False)
 
 
@@ -491,12 +495,18 @@ async def wh_subs_overview(message: Message):
 async def wh_subs_menu_cb(call: CallbackQuery):
     if not await is_warehouse(call.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
+        return
     await _wh_subs_menu(call, is_call=True)
 
 
 @router.callback_query(F.data.startswith("wh:subs:weekly:") | F.data.startswith("wh:subs:monthly:"))
 async def wh_subs_list(call: CallbackQuery):
     if not await is_warehouse(call.from_user.id):
+        return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
         return
     parts = call.data.split(":")
     plan, page = parts[2], int(parts[3])

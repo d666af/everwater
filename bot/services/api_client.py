@@ -237,6 +237,12 @@ async def update_settings(data: dict):
     return await _patch("/admin/settings", data)
 
 
+async def is_subscriptions_enabled() -> bool:
+    """Master switch for the subscriptions module. Defaults to True if backend unreachable."""
+    cfg = await get_settings()
+    return bool(cfg.get("subscriptions_enabled", True))
+
+
 # ─── Client data ──────────────────────────────────────────────────────────────
 
 async def get_addresses(user_id: int):

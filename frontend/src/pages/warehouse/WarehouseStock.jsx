@@ -3,6 +3,7 @@ import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
 import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
 import { useAuthStore } from '../../store/auth'
+import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -23,6 +24,7 @@ const RANGES = [
 ]
 
 export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Склад' }) {
+  const subsEnabled = useSubscriptionsEnabled()
   const { user } = useAuthStore()
   const actor = user?.name || null
   const [period, setPeriod] = useState('today')
@@ -241,7 +243,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </>
       )}
 
-      {/* Subscriptions for period */}
+      {/* Subscriptions for period — hidden when the module is disabled */}
+      {subsEnabled !== false && <>
       <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
         Подписки клиентов · {periodLabel.toLowerCase()}
       </div>
@@ -281,6 +284,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           </>
         )}
       </div>
+      </>}
     </Layout>
   )
 }
