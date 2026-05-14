@@ -702,6 +702,7 @@ async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
 async def reject_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
     from app.services.tg_notify import edit_all_notifications
+    await _ensure_subs_enabled(db)
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:
@@ -1139,6 +1140,8 @@ class MarkSubRemindedBody(BaseModel):
 
 @router.post("/cron/mark-subscription-reminded")
 async def cron_mark_subscription_reminded(body: MarkSubRemindedBody, db: AsyncSession = Depends(get_db)):
+    if not await is_subscriptions_enabled(db):
+        return {"ok": True, "skipped": True}
     result = await db.execute(select(Subscription).where(Subscription.id == body.sub_id))
     sub = result.scalar_one_or_none()
     if sub:

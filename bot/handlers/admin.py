@@ -874,6 +874,9 @@ async def admin_sub_confirm(call: CallbackQuery):
 async def admin_sub_reject(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены администратором", show_alert=True)
+        return
     sub_id = int(call.data.split(":")[1])
     try:
         await api.reject_subscription(sub_id)

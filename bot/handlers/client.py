@@ -1163,6 +1163,9 @@ async def subscriptions(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_del:"))
 async def sub_cancel(call: CallbackQuery, state: FSMContext):
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
+        return
     sub_id = int(call.data.split(":")[1])
     data = await state.get_data()
     user = data.get("sub_user") or await api.get_user(call.from_user.id)
