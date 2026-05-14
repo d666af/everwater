@@ -79,7 +79,8 @@ class MgrOrderCreate(StatesGroup):
 async def manager_panel(message: Message):
     if not await is_manager(message.from_user.id):
         return
-    await message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
+    subs_on = await api.is_subscriptions_enabled()
+    await message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
 
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
@@ -133,12 +134,17 @@ async def mgr_all_orders(message: Message):
     orders = await api.get_all_orders()
     active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
 
-    pending_subs = await api.get_admin_subscriptions(status="pending")
-    active_subs = await api.get_admin_subscriptions(status="active")
-    due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
+    subs_on = await api.is_subscriptions_enabled()
+    if subs_on:
+        pending_subs = await api.get_admin_subscriptions(status="pending")
+        active_subs = await api.get_admin_subscriptions(status="active")
+        due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
+    else:
+        pending_subs = []
+        due_subs = []
 
     if not active and not pending_subs and not due_subs:
-        await message.answer("Нет активных заказов и подписок.")
+        await message.answer("Нет активных заказов и подписок." if subs_on else "Нет активных заказов.")
         return
 
     for o in active[:15]:
@@ -626,6 +632,9 @@ async def mgr_client_tx(call: CallbackQuery):
 async def mgr_client_subs(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
+        return
     user_id = int(call.data.split(":")[2])
     subs = await api.get_subscriptions(user_id)
     active = [s for s in subs if s.get("status") == "active"]
@@ -785,6 +794,9 @@ async def _mgr_subs_menu(message_or_call, is_call: bool = False):
 async def mgr_subs_overview(message: Message):
     if not await is_manager(message.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await message.answer("📅 Модуль подписок отключён администратором.")
+        return
     await _mgr_subs_menu(message, is_call=False)
 
 
@@ -792,12 +804,18 @@ async def mgr_subs_overview(message: Message):
 async def mgr_subs_menu_cb(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
+        return
     await _mgr_subs_menu(call, is_call=True)
 
 
 @router.callback_query(F.data.startswith("mgr:subs:weekly:") | F.data.startswith("mgr:subs:monthly:"))
 async def mgr_subs_list(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
+        return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
         return
     parts = call.data.split(":")
     plan, page = parts[2], int(parts[3])
@@ -826,6 +844,9 @@ async def mgr_subs_list(call: CallbackQuery):
 @router.callback_query(F.data.startswith("mgr:sub_order:"))
 async def mgr_sub_create_order(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
+        return
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
         return
     sub_id = int(call.data.split(":")[2])
     try:
@@ -1081,12 +1102,12 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
-    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb())
+    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
 
 
 @router.callback_query(MgrOrderCreate.confirming, F.data == "mco:cancel")
 async def mgr_co_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("Заказ отменён.")
-    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb())
+    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
     await call.answer()

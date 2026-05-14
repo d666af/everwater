@@ -16,6 +16,7 @@ from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
 from app.config import settings as app_settings
 from app.services.invoice import generate_invoice_png
+from app.services.settings_service import is_subscriptions_enabled
 from app.services.tg_notify import tg_send_photo
 
 router = APIRouter(prefix="/warehouse", tags=["warehouse"])
@@ -967,6 +968,8 @@ async def get_history(
 @router.get("/production_plan")
 async def get_production_plan(db: AsyncSession = Depends(get_db)):
     from app.models.client_data import Subscription
+    if not await is_subscriptions_enabled(db):
+        return {"active_subscriptions": 0, "weekly": 0, "monthly": 0}
     subs_q = await db.execute(select(Subscription).where(Subscription.status == "active"))
     subs = subs_q.scalars().all()
     return {
@@ -989,6 +992,8 @@ async def get_warehouse_subscriptions(
 ):
     from app.models.client_data import Subscription
 
+    if not await is_subscriptions_enabled(db):
+        return []
     today = datetime.utcnow()
     if period == "today":
         targets = [today]

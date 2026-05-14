@@ -68,8 +68,10 @@ async def show_role_menu(target, role: str):
             [InlineKeyboardButton(text="🔄 Сменить роль", callback_data="role:switch")]
         ])
 
+    subs_on = await api.is_subscriptions_enabled()
+
     if role == "client":
-        await send("👤 Режим клиента:", reply_markup=main_menu_kb(show_role_switch=bool(switch_kb)))
+        await send("👤 Режим клиента:", reply_markup=main_menu_kb(show_role_switch=bool(switch_kb), subs_enabled=subs_on))
         try:
             await send("Или откройте сайт:", reply_markup=miniapp_inline_kb("/"))
         except Exception:
@@ -77,13 +79,13 @@ async def show_role_menu(target, role: str):
 
     elif role == "admin":
         from keyboards.admin import admin_menu_kb
-        await send("🔧 Панель администратора:", reply_markup=admin_menu_kb())
+        await send("🔧 Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
         if switch_kb:
             await send("Переключить роль:", reply_markup=switch_kb)
 
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb())
+        await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
@@ -107,7 +109,7 @@ async def show_role_menu(target, role: str):
 
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
-        await send("🏭 Панель склада:", reply_markup=warehouse_menu_kb())
+        await send("🏭 Панель склада:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть склад на сайте", url=_site("/warehouse"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
@@ -139,20 +141,21 @@ async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
     """When user presses a menu button while stuck in an FSM flow, abort flow and restore keyboard."""
     await state.clear()
     role = await get_primary_role(message.from_user.id)
+    subs_on = await api.is_subscriptions_enabled()
     if role == "admin":
         from keyboards.admin import admin_menu_kb
-        await message.answer("Главное меню:", reply_markup=admin_menu_kb())
+        await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await message.answer("Главное меню:", reply_markup=manager_menu_kb())
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
         await message.answer("Главное меню:", reply_markup=courier_menu_kb())
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
-        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb())
+        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
     else:
-        await message.answer("Главное меню:", reply_markup=main_menu_kb())
+        await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
 
 
 # ─── /menu — always restores keyboard regardless of FSM state ────────────────
@@ -161,20 +164,21 @@ async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
 async def cmd_menu(message: Message, state: FSMContext):
     await state.clear()
     role = await get_primary_role(message.from_user.id)
+    subs_on = await api.is_subscriptions_enabled()
     if role == "admin":
         from keyboards.admin import admin_menu_kb
-        await message.answer("Главное меню:", reply_markup=admin_menu_kb())
+        await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await message.answer("Главное меню:", reply_markup=manager_menu_kb())
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
         await message.answer("Главное меню:", reply_markup=courier_menu_kb())
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
-        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb())
+        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
     else:
-        await message.answer("Главное меню:", reply_markup=main_menu_kb())
+        await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
@@ -295,7 +299,7 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
     await state.clear()
     await message.answer(
         f"🎉 Готово, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
-        reply_markup=main_menu_kb(),
+        reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()),
     )
     from handlers.client import start_survey
     await start_survey(message, state)
@@ -530,8 +534,13 @@ async def profile(message: Message, state: FSMContext):
     bottle_count = bottles.get("count", 0)
     pending = bottles.get("pending_return", 0)
     available = bottles.get("available", bottle_count)
-    subs = await api.get_subscriptions(user["id"])
-    active_subs = [s for s in subs if s.get("status") == "active"]
+    subs_on = await api.is_subscriptions_enabled()
+    if subs_on:
+        subs = await api.get_subscriptions(user["id"]) or []
+        active_subs = [s for s in subs if s.get("status") == "active"]
+    else:
+        subs = []
+        active_subs = []
     order_count = user.get("order_count", 0)
 
     reg_date = ""
@@ -563,13 +572,16 @@ async def profile(message: Message, state: FSMContext):
             )
         else:
             text += f"🫙 Бутылок к возврату: <b>{bottle_count} шт.</b>\n"
-    if active_subs:
+    if subs_on and active_subs:
         text += f"\n📋 Активных подписок: <b>{len(active_subs)}</b>\n"
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Мои подписки", callback_data="profile:subs")],
-    ])
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    if subs_on:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Мои подписки", callback_data="profile:subs")],
+        ])
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
 
 
 @router.message(F.text == "🎁 Бонусы")
@@ -614,6 +626,9 @@ async def bonuses_menu(message: Message, state: FSMContext):
 @router.callback_query(F.data == "profile:subs")
 async def profile_subs(call: CallbackQuery, state: FSMContext):
     await call.answer()
+    if not await api.is_subscriptions_enabled():
+        await call.message.answer("📋 Подписки временно недоступны.")
+        return
     user = await api.get_user(call.from_user.id)
     if not user:
         return
@@ -849,4 +864,4 @@ async def process_review_comment(message: Message, state: FSMContext):
     data = await state.get_data()
     await api.update_review_comment(order_id=data["review_order_id"], comment=message.text)
     await state.clear()
-    await message.answer("Спасибо за отзыв! 🙏", reply_markup=main_menu_kb())
+    await message.answer("Спасибо за отзыв! 🙏", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))

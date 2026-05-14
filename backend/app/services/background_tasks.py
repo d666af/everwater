@@ -29,11 +29,15 @@ async def _send_tg(chat_id: int, text: str) -> None:
 
 async def _run_subscription_reminders() -> None:
     """Send 24h reminders for subscriptions due tomorrow."""
+    from app.services.settings_service import is_subscriptions_enabled
+
     now = datetime.utcnow()
     tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_end = tomorrow_start + timedelta(days=1)
 
     async with AsyncSessionLocal() as db:
+        if not await is_subscriptions_enabled(db):
+            return
         q = await db.execute(
             select(Subscription, User)
             .join(User, User.id == Subscription.user_id)

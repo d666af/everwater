@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminUsers, getUserOrders, confirmTopup, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
+import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -86,6 +87,12 @@ function ClientDetail({ user, onClose, onTopup }) {
   const [loadingC, setLoadingC] = useState(true)
   const [showCoolerForm, setShowCoolerForm] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
+  const subsEnabled = useSubscriptionsEnabled()
+  const visibleTabs = TABS.map((label, idx) => ({ label, idx }))
+    .filter(t => !(subsEnabled === false && t.label === 'Подписки'))
+  useEffect(() => {
+    if (subsEnabled === false && TABS[tab] === 'Подписки') setTab(0)
+  }, [subsEnabled, tab])
 
   useEffect(() => {
     getUserOrders(user.id).then(setOrders).catch(() => setOrders([])).finally(() => setLoadingO(false))
@@ -309,8 +316,8 @@ function ClientDetail({ user, onClose, onTopup }) {
           </div>
 
           <div style={{ display: 'flex', gap: 6, padding: '0 20px 10px', overflowX: 'auto', scrollbarWidth: 'none', borderBottom: `1px solid ${BORDER}` }}>
-            {TABS.map((t, i) => (
-              <button key={t} onClick={() => setTab(i)} style={{ padding: '6px 12px', borderRadius: 999, border: tab === i ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: tab === i ? `${C}15` : '#fff', color: tab === i ? CD : TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>{t}</button>
+            {visibleTabs.map(({ label, idx }) => (
+              <button key={label} onClick={() => setTab(idx)} style={{ padding: '6px 12px', borderRadius: 999, border: tab === idx ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: tab === idx ? `${C}15` : '#fff', color: tab === idx ? CD : TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}>{label}</button>
             ))}
           </div>
         </div>
