@@ -778,7 +778,7 @@ async def bonuses_menu(message: Message, state: FSMContext):
     expiry_days = int(cfg.get("bonus_expiry_days") or 60)
     limit_pct = int(cfg.get("bonus_limit_percent") or 30)
 
-    lines = ["🎁 <b>Бонусная программа</b>", ""]
+    lines = ["🎁 <b>Бонусы</b>", ""]
 
     # ─── Balance block ───────────────────────────────────────────────────
     if bonus > 0:
@@ -803,8 +803,6 @@ async def bonuses_menu(message: Message, state: FSMContext):
             else:
                 lines.append(f"💔 Сгорели {abs(days_left)} дн. назад")
 
-        # Quick estimate of what they save
-        approx_off = int(min(bonus, 0))  # placeholder if cart known — we don't have cart here
         lines.append("")
         lines.append("💡 <b>Можно потратить на следующем заказе.</b>")
     else:
@@ -812,20 +810,15 @@ async def bonuses_menu(message: Message, state: FSMContext):
         lines.append("")
         lines.append("Закажите воду — и получите первые бонусы автоматически после доставки.")
 
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("")
-
     # ─── How to earn ─────────────────────────────────────────────────────
+    lines.append("")
     lines.append("✅ <b>Как заработать</b>")
     lines.append(f"• <b>{per_bottle:,}</b> бонусов за каждую доставленную бутылку 19л".replace(",", " "))
-    lines.append("• Начисление автоматически после доставки")
-    lines.append("")
 
     # ─── How to spend ────────────────────────────────────────────────────
+    lines.append("")
     lines.append("💳 <b>Как потратить</b>")
     lines.append(f"• До <b>{limit_pct}%</b> от суммы заказа")
-    lines.append("• Выбор на этапе оплаты — кнопка «Использовать бонусы»")
 
     # ─── Expiry rules ────────────────────────────────────────────────────
     if expiry_days > 0:

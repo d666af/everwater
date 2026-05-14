@@ -697,10 +697,10 @@ export default function Profile() {
       const now = new Date()
       const daysLeft = Math.ceil((exp - now) / 86400000)
       const dateStr = exp.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      if (daysLeft > 7) expiryLine = { color: '#0c8599', text: `⏰ Сгорят ${dateStr} · через ${daysLeft} дн.` }
-      else if (daysLeft > 0) expiryLine = { color: '#e67700', text: `⚠️ Сгорят ${dateStr} · осталось ${daysLeft} дн.` }
-      else if (daysLeft === 0) expiryLine = { color: '#c0392b', text: '🔥 Сгорают сегодня!' }
-      else expiryLine = { color: '#c0392b', text: `💔 Сгорели ${Math.abs(daysLeft)} дн. назад` }
+      if (daysLeft > 7) expiryLine = { color: '#8e8e93', text: `Сгорят ${dateStr} · через ${daysLeft} дн.` }
+      else if (daysLeft > 0) expiryLine = { color: '#e67700', text: `Сгорят ${dateStr} · осталось ${daysLeft} дн.` }
+      else if (daysLeft === 0) expiryLine = { color: '#c0392b', text: 'Сгорают сегодня' }
+      else expiryLine = { color: '#c0392b', text: `Сгорели ${Math.abs(daysLeft)} дн. назад` }
     } catch { /* ignore */ }
   }
 
@@ -726,7 +726,7 @@ export default function Profile() {
               {bonusPoints > 0 ? `${bonusPoints.toLocaleString()} бонусов` : 'Бонусов пока нет'}
             </div>
             {expiryLine ? (
-              <div style={{ fontSize: 12, color: expiryLine.color, marginTop: 2, fontWeight: 600 }}>
+              <div style={{ fontSize: 12, color: expiryLine.color, marginTop: 2, fontWeight: 500 }}>
                 {expiryLine.text}
               </div>
             ) : (
@@ -741,17 +741,37 @@ export default function Profile() {
 
         <div style={s.bonusRules}>
           <div style={s.bonusRule}>
-            <span style={s.bonusRuleEmoji}>✅</span>
-            <span><b>{bonusPerBottle.toLocaleString()}</b> бонусов за каждую доставленную бутылку 19л</span>
+            <span style={s.bonusRuleIcon}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke={C} strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </span>
+            <span style={s.bonusRuleText}>
+              <b style={s.bonusRuleBold}>{bonusPerBottle.toLocaleString()}</b> бонусов за каждую доставленную бутылку 19л
+            </span>
           </div>
           <div style={s.bonusRule}>
-            <span style={s.bonusRuleEmoji}>💳</span>
-            <span>Можно оплатить до <b>{bonusLimitPct}%</b> суммы заказа</span>
+            <span style={s.bonusRuleIcon}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="6" width="20" height="12" rx="2" stroke={C} strokeWidth="1.8"/>
+                <path d="M2 10h20" stroke={C} strokeWidth="1.5"/>
+              </svg>
+            </span>
+            <span style={s.bonusRuleText}>
+              Можно оплатить до <b style={s.bonusRuleBold}>{bonusLimitPct}%</b> суммы заказа
+            </span>
           </div>
           {bonusExpiryDays > 0 && (
             <div style={s.bonusRule}>
-              <span style={s.bonusRuleEmoji}>⏳</span>
-              <span>Срок <b>{bonusExpiryDays} дн.</b> с последнего начисления — любой заказ продлевает</span>
+              <span style={s.bonusRuleIcon}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke={C} strokeWidth="1.8"/>
+                  <path d="M12 7v5l3 3" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+              </span>
+              <span style={s.bonusRuleText}>
+                Срок <b style={s.bonusRuleBold}>{bonusExpiryDays} дн.</b> с последнего начисления — любой заказ продлевает
+              </span>
             </div>
           )}
         </div>
@@ -901,19 +921,24 @@ const s = {
     background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  bonusTitle: { fontSize: 16, fontWeight: 800, color: '#92400E' },
-  bonusDesc: { fontSize: 12, color: '#B45309', marginTop: 2 },
+  bonusTitle: { fontSize: 16, fontWeight: 800, color: '#1a1a1a' },
+  bonusDesc: { fontSize: 12, color: '#8e8e93', marginTop: 2 },
   bonusRules: {
-    display: 'flex', flexDirection: 'column', gap: 8,
+    display: 'flex', flexDirection: 'column', gap: 10,
     paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)',
   },
   bonusRule: {
     display: 'flex', alignItems: 'flex-start', gap: 10,
-    fontSize: 13, color: '#3c3c43', lineHeight: 1.4,
+    fontSize: 13, color: '#3c3c43', lineHeight: 1.45,
   },
-  bonusRuleEmoji: {
-    fontSize: 16, flexShrink: 0, marginTop: 1,
+  bonusRuleIcon: {
+    width: 22, height: 22, borderRadius: 7,
+    background: `${C}15`,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0, marginTop: 1,
   },
+  bonusRuleText: { color: '#3c3c43' },
+  bonusRuleBold: { color: '#1a1a1a', fontWeight: 700 },
 
   /* Subscription */
   subSection: {
