@@ -685,18 +685,27 @@ export default function Profile() {
 
   const initials = (user.name || 'U').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
+  // ── Bonus expiry rendering ──────────────────────────────────────────────────
+  const bonusExpiresAt = user?.bonus_expires_at
+  const bonusExpiryDays = Number(settings?.bonus_expiry_days ?? 60)
+  const bonusPerBottle = Number(settings?.bonus_per_bottle ?? 100)
+  const bonusLimitPct = Number(settings?.bonus_limit_percent ?? 30)
+  let expiryLine = null
+  if (bonusPoints > 0 && bonusExpiresAt) {
+    try {
+      const exp = new Date(bonusExpiresAt)
+      const now = new Date()
+      const daysLeft = Math.ceil((exp - now) / 86400000)
+      const dateStr = exp.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      if (daysLeft > 7) expiryLine = { color: '#0c8599', text: `⏰ Сгорят ${dateStr} · через ${daysLeft} дн.` }
+      else if (daysLeft > 0) expiryLine = { color: '#e67700', text: `⚠️ Сгорят ${dateStr} · осталось ${daysLeft} дн.` }
+      else if (daysLeft === 0) expiryLine = { color: '#c0392b', text: '🔥 Сгорают сегодня!' }
+      else expiryLine = { color: '#c0392b', text: `💔 Сгорели ${Math.abs(daysLeft)} дн. назад` }
+    } catch { /* ignore */ }
+  }
+
   return (
     <div style={s.page}>
-      {/* Order count badge — top right */}
-      <div style={s.orderBadge}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="3" stroke={C} strokeWidth="1.8"/>
-          <path d="M8 8h8M8 12h5" stroke={C} strokeWidth="1.8" strokeLinecap="round"/>
-        </svg>
-        <span style={s.orderBadgeNum}>{orderCount}</span>
-        <span style={s.orderBadgeLabel}>заказов</span>
-      </div>
-
       {/* Avatar + name */}
       <div style={s.profileHeader}>
         <div style={s.avatar}>{initials}</div>
@@ -704,16 +713,47 @@ export default function Profile() {
         <div style={s.profilePhone}>{user.phone}</div>
       </div>
 
-      {/* Bonus card — always visible */}
-      <div style={s.bonusCard}>
-        <div style={s.bonusIcon}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#F59E0B"/>
-          </svg>
+      {/* Bonus card — always visible, with expiry countdown + how-to */}
+      <div style={s.bonusBlock}>
+        <div style={s.bonusBlockHead}>
+          <div style={s.bonusIcon}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#F59E0B"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={s.bonusTitle}>
+              {bonusPoints > 0 ? `${bonusPoints.toLocaleString()} бонусов` : 'Бонусов пока нет'}
+            </div>
+            {expiryLine ? (
+              <div style={{ fontSize: 12, color: expiryLine.color, marginTop: 2, fontWeight: 600 }}>
+                {expiryLine.text}
+              </div>
+            ) : (
+              <div style={s.bonusDesc}>
+                {bonusPoints > 0
+                  ? 'Можно потратить на следующем заказе'
+                  : 'Закажите воду и получите бонусы автоматически'}
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={s.bonusTitle}>{bonusPoints > 0 ? `${bonusPoints.toLocaleString()} бонусов` : 'Нет бонусов'}</div>
-          <div style={s.bonusDesc}>{bonusPoints > 0 ? 'Используйте при оформлении заказа' : 'Бонусы начисляются за каждый заказ'}</div>
+
+        <div style={s.bonusRules}>
+          <div style={s.bonusRule}>
+            <span style={s.bonusRuleEmoji}>✅</span>
+            <span><b>{bonusPerBottle.toLocaleString()}</b> бонусов за каждую доставленную бутылку 19л</span>
+          </div>
+          <div style={s.bonusRule}>
+            <span style={s.bonusRuleEmoji}>💳</span>
+            <span>Можно оплатить до <b>{bonusLimitPct}%</b> суммы заказа</span>
+          </div>
+          {bonusExpiryDays > 0 && (
+            <div style={s.bonusRule}>
+              <span style={s.bonusRuleEmoji}>⏳</span>
+              <span>Срок <b>{bonusExpiryDays} дн.</b> с последнего начисления — любой заказ продлевает</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -849,13 +889,31 @@ const s = {
     display: 'flex', alignItems: 'center', gap: 12,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
+  bonusBlock: {
+    background: '#fff', margin: '0 16px',
+    borderRadius: 18, padding: '14px 16px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    display: 'flex', flexDirection: 'column', gap: 12,
+  },
+  bonusBlockHead: { display: 'flex', alignItems: 'center', gap: 12 },
   bonusIcon: {
     width: 42, height: 42, borderRadius: 14,
     background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  bonusTitle: { fontSize: 15, fontWeight: 700, color: '#92400E' },
+  bonusTitle: { fontSize: 16, fontWeight: 800, color: '#92400E' },
   bonusDesc: { fontSize: 12, color: '#B45309', marginTop: 2 },
+  bonusRules: {
+    display: 'flex', flexDirection: 'column', gap: 8,
+    paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)',
+  },
+  bonusRule: {
+    display: 'flex', alignItems: 'flex-start', gap: 10,
+    fontSize: 13, color: '#3c3c43', lineHeight: 1.4,
+  },
+  bonusRuleEmoji: {
+    fontSize: 16, flexShrink: 0, marginTop: 1,
+  },
 
   /* Subscription */
   subSection: {

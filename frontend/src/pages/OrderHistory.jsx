@@ -62,8 +62,7 @@ export default function OrderHistory() {
   const [expanded, setExpanded] = useState(null)
   const [reviewOrder, setReviewOrder] = useState(null)
   const [reviewedIds, setReviewedIds] = useState(new Set())
-  const [dismissedIds, setDismissedIds] = useState(new Set())
-  const [autoPopupDone, setAutoPopupDone] = useState(false)
+  const [tab, setTab] = useState('active') // 'active' | 'archive'
   const [fetchDone, setFetchDone] = useState(false)
   const addToCart = useCartStore(s => s.addToCart)
   const clearCart = useCartStore(s => s.clearCart)
@@ -122,20 +121,7 @@ export default function OrderHistory() {
   const handleReviewDone = (orderId) => {
     setReviewedIds(s => new Set([...s, orderId]))
     setReviewOrder(null)
-    setAutoPopupDone(true)
   }
-
-  const handleReviewDismiss = (orderId) => {
-    setDismissedIds(s => new Set([...s, orderId]))
-    setReviewOrder(null)
-    setAutoPopupDone(true)
-  }
-
-  // Auto-popup: only for the first unreviewed delivered order, fires at most once per session
-  const autoReviewOrder = !autoPopupDone && orders.find(o =>
-    o.status === 'delivered' && !reviewedIds.has(o.id) && !dismissedIds.has(o.id) && !o.review_id
-  )
-  const showAutoReview = autoReviewOrder && !reviewOrder
 
   if (!fetchDone) return (
     <div style={{ ...s.page, alignItems: 'center', justifyContent: 'center' }}>
@@ -161,37 +147,42 @@ export default function OrderHistory() {
 
   const active = orders.filter(o => ACTIVE.has(o.status))
   const archived = orders.filter(o => !ACTIVE.has(o.status))
+  const list = tab === 'active' ? active : archived
 
   return (
     <div style={s.page}>
-      {active.length > 0 && (
-        <div style={s.sectionLabel}>Активные</div>
+      <div style={s.tabsRow}>
+        <button
+          style={{ ...s.tabBtn, ...(tab === 'active' ? s.tabBtnActive : {}) }}
+          onClick={() => setTab('active')}
+        >
+          Активные{active.length ? ` · ${active.length}` : ''}
+        </button>
+        <button
+          style={{ ...s.tabBtn, ...(tab === 'archive' ? s.tabBtnActive : {}) }}
+          onClick={() => setTab('archive')}
+        >
+          Завершённые{archived.length ? ` · ${archived.length}` : ''}
+        </button>
+      </div>
+
+      {list.length === 0 ? (
+        <div style={s.tabEmpty}>
+          {tab === 'active' ? 'Сейчас нет активных заказов' : 'Завершённых заказов пока нет'}
+        </div>
+      ) : (
+        list.map(order => (
+          <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
+            onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds}
+            isActive={tab === 'active'} navigate={navigate} onOrderUpdate={handleOrderUpdate} />
+        ))
       )}
 
-      {active.map(order => (
-        <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} isActive navigate={navigate} onOrderUpdate={handleOrderUpdate} />
-      ))}
-
-      {archived.length > 0 && (
-        <div style={s.sectionLabel}>Завершённые</div>
-      )}
-
-      {archived.map(order => (
-        <OrderCard key={order.id} order={order} expanded={expanded} setExpanded={setExpanded}
-          onRepeat={repeatOrder} onReview={setReviewOrder} reviewedIds={reviewedIds} navigate={navigate} />
-      ))}
-
-      {(reviewOrder || showAutoReview) && (
+      {reviewOrder && (
         <ReviewModal
-          order={reviewOrder || autoReviewOrder}
-          autoPopup={!reviewOrder && !!showAutoReview}
-          onClose={() => {
-            const id = (reviewOrder || autoReviewOrder)?.id
-            if (id) handleReviewDismiss(id)
-            else setReviewOrder(null)
-          }}
-          onDone={() => handleReviewDone((reviewOrder || autoReviewOrder).id)} />
+          order={reviewOrder}
+          onClose={() => setReviewOrder(null)}
+          onDone={() => handleReviewDone(reviewOrder.id)} />
       )}
       <div style={{ height: 100 }} />
     </div>
@@ -513,6 +504,29 @@ const s = {
     padding: '18px 20px 8px',
     fontSize: 13, fontWeight: 700, color: '#8e8e93',
     letterSpacing: 0.3,
+  },
+
+  /* Tabs at the top of the page */
+  tabsRow: {
+    display: 'flex', gap: 6,
+    padding: '12px 16px 8px',
+    position: 'sticky', top: 0, zIndex: 5,
+    background: '#e4e4e8',
+  },
+  tabBtn: {
+    flex: 1, padding: '10px 0', borderRadius: 12,
+    border: '1.5px solid rgba(60,60,67,0.12)', background: '#fff',
+    color: '#8e8e93', fontSize: 14, fontWeight: 700,
+    cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    transition: 'all 0.15s',
+  },
+  tabBtnActive: {
+    background: GRAD, color: '#fff', border: 'none',
+    boxShadow: '0 3px 10px rgba(141,198,63,0.35)',
+  },
+  tabEmpty: {
+    textAlign: 'center', padding: '60px 24px',
+    color: '#8e8e93', fontSize: 14,
   },
 
   /* Order card */

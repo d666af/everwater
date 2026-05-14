@@ -8,6 +8,7 @@ import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import CartWidget from './components/CartWidget'
 import WelcomeSurvey from './components/WelcomeSurvey'
+import AutoReviewPopup from './components/AutoReviewPopup'
 
 // Auth
 import Login from './pages/Login'
@@ -265,6 +266,7 @@ export default function App() {
       <CartWidget />
       <BottomNav />
       <WelcomeSurvey />
+      <AutoReviewPopup />
     </>
   )
 }
