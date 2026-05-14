@@ -7,7 +7,9 @@ ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_MOCK=$VITE_MOCK
 
 COPY package.json package-lock.json* ./
-RUN npm install
+# npm ci is faster than `npm install` (no resolve step, deterministic)
+# --prefer-offline reuses npm cache between builds; audit/fund add latency.
+RUN npm ci --prefer-offline --no-audit --no-fund
 COPY . .
 RUN rm -f .env.local
 RUN npm run build

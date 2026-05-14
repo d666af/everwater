@@ -29,6 +29,19 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      // Skip gzip-size report — slowest step on weak CPUs and unused in CI.
+      reportCompressedSize: false,
+      // Modern browsers only — lets esbuild skip legacy transforms.
+      target: 'esnext',
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'vendor': ['axios', 'zustand'],
+          },
+        },
+      },
     },
   }
 })
