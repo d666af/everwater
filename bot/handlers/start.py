@@ -329,12 +329,45 @@ async def repeat_order_menu(message: Message, state: FSMContext):
     if not user:
         return
     orders = await api.get_user_orders(user["id"])
-    if not orders:
-        await message.answer("У вас пока нет заказов.\n\nНажмите 🛒 Заказать чтобы сделать первый.")
+    delivered = [o for o in orders if o.get("status") == "delivered"]
+    pool = (delivered or orders)[:8]
+
+    if not pool:
+        await message.answer(
+            "У вас пока нет заказов 🤷\n\n"
+            "Нажмите <b>🛒 Заказать</b> и сделайте первый — потом сможете повторять его в одно касание.",
+            parse_mode="HTML",
+        )
         return
+
+    lines = ["🔁 <b>Повторить прошлый заказ</b>", ""]
+    if delivered:
+        lines.append("Выберите доставленный заказ — все его товары попадут в корзину, и вы сможете оформить заново.")
+    else:
+        lines.append("У вас пока нет завершённых доставок — показываю все ваши заказы.")
+    lines.append("")
+
+    for idx, o in enumerate(pool, start=1):
+        raw_date = o.get("delivered_at") or o.get("created_at") or ""
+        date_str = "—"
+        try:
+            dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
+            date_str = dt.strftime("%d.%m.%Y")
+        except Exception:
+            pass
+        total = f'{int(o["total"]):,}'.replace(",", " ")
+
+        lines.append(f"<b>{idx}.</b> {date_str} — {total} сум")
+        for it in o.get("items", []):
+            name = it.get("product_name") or "Товар"
+            qty = int(it.get("quantity", 1))
+            lines.append(f"   • {name} × {qty}")
+        lines.append("")
+
     await message.answer(
-        "🔁 Выберите заказ, чтобы повторить его — товары будут добавлены в корзину:",
+        "\n".join(lines).rstrip(),
         reply_markup=orders_repeat_kb(orders),
+        parse_mode="HTML",
     )
 
 
@@ -524,6 +557,9 @@ async def noop_cb(call: CallbackQuery):
 async def reorder(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[1])
     order = await api.get_order(order_id)
+    if not order:
+        await call.answer("Заказ не найден", show_alert=True)
+        return
     cart = {}
     for item in order.get("items", []):
         pid = str(item["product_id"])
@@ -535,7 +571,7 @@ async def reorder(call: CallbackQuery, state: FSMContext):
             "product_id": item["product_id"],
         }
     await state.update_data(cart=cart)
-    await call.answer("Товары добавлены в корзину!")
+    await call.answer(f"✅ {len(cart)} позиций добавлено в корзину")
     from handlers.client import show_cart
     await show_cart(call, state)
 

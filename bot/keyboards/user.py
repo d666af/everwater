@@ -15,7 +15,8 @@ def main_menu_kb(show_role_switch: bool = False, subs_enabled: bool = True) -> R
     # subs_enabled kept in signature for back-compat with existing call sites;
     # the Подписки button was removed from the client menu entirely.
     keyboard = [
-        [KeyboardButton(text="🛒 Заказать"), KeyboardButton(text="🔁 Повторить заказ")],
+        [KeyboardButton(text="🛒 Заказать")],
+        [KeyboardButton(text="🔁 Повторить заказ")],
         [KeyboardButton(text="🎁 Бонусы"), KeyboardButton(text="💬 Поддержка")],
     ]
     if show_role_switch:
@@ -120,30 +121,40 @@ def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def _repeat_items_short(items: list, max_chars: int = 38) -> str:
+    """Compact items list for the Повторить-заказ button: 'Вода 19л ×2, Газ 1.5л ×1'."""
+    parts = []
+    for i in items:
+        name = (i.get("product_name") or "Товар").replace("Газ. вода ", "Газ ")
+        qty = int(i.get("quantity", 1))
+        parts.append(f"{name} ×{qty}")
+    text = ", ".join(parts) or "—"
+    if len(text) > max_chars:
+        text = text[: max_chars - 1].rstrip(", ") + "…"
+    return text
+
+
 def orders_repeat_kb(orders: list) -> InlineKeyboardMarkup:
-    """Inline keyboard for the '🔁 Повторить заказ' menu — picks an order to repeat."""
+    """Inline keyboard for the '🔁 Повторить заказ' menu — picks an order to repeat.
+
+    Prefers delivered orders (real reorder); shows up to 8.
+    Each button: 🔁 DD.MM · <items> · <total> сум
+    """
+    delivered = [o for o in orders if o.get("status") == "delivered"]
+    pool = (delivered or orders)[:8]
+
     buttons = []
-    for o in orders[:10]:
-        emoji = _STATUS_MAP.get(o["status"], "📦")
-        label = _STATUS_LABEL.get(o["status"], o["status"])
+    for o in pool:
         total = f'{int(o["total"]):,}'.replace(",", " ")
+        raw_date = o.get("delivered_at") or o.get("created_at") or ""
         date_str = ""
-        raw_date = o.get("delivered_at") or o.get("created_at")
-        if raw_date:
-            try:
-                dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
-                date_str = dt.strftime("%d.%m")
-            except Exception:
-                pass
-        items = o.get("items", [])
-        if items:
-            first = items[0]
-            name_short = (first.get("product_name") or "Товар").split()[0]
-            qty = sum(i.get("quantity", 1) for i in items)
-            items_part = f"{name_short}" + (f" +{len(items)-1}" if len(items) > 1 else "") + f" ×{qty}"
-        else:
-            items_part = "—"
-        text = f"{emoji} {date_str}  {items_part}  {total} сум  {label}"
+        try:
+            dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
+            date_str = dt.strftime("%d.%m")
+        except Exception:
+            pass
+        items_text = _repeat_items_short(o.get("items", []))
+        text = f"🔁 {date_str} · {items_text} · {total} сум"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"reorder:{o['id']}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
