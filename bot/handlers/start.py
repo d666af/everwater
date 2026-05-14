@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from services.roles import get_user_roles, get_primary_role, ROLE_LABELS
-from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, orders_repeat_kb, review_order_select_kb, _site
+from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, orders_repeat_kb, orders_repeat_pool, REPEAT_PAGE_SIZE, REPEAT_EMOJI, review_order_select_kb, _site
 from config import settings
 
 router = Router()
@@ -322,6 +322,52 @@ async def my_orders(message: Message, state: FSMContext):
     await message.answer("Ваши заказы:", reply_markup=orders_list_kb(orders))
 
 
+def _build_repeat_text(pool: list, page: int) -> str:
+    total = len(pool)
+    pages = max(1, (total + REPEAT_PAGE_SIZE - 1) // REPEAT_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    start = page * REPEAT_PAGE_SIZE
+    chunk = pool[start:start + REPEAT_PAGE_SIZE]
+
+    lines = ["🔁 <b>Повторить прошлый заказ</b>", ""]
+    lines.append(
+        "Выберите заказ кнопкой ниже — товары, адрес, ориентир, "
+        "телефон и точка на карте подтянутся автоматически. "
+        "Останется указать бонусы и способ оплаты."
+    )
+    lines.append("")
+
+    for i, o in enumerate(chunk):
+        raw_date = o.get("delivered_at") or o.get("created_at") or ""
+        date_str = "—"
+        try:
+            dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
+            date_str = dt.strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            pass
+        total_str = f'{int(o["total"]):,}'.replace(",", " ")
+        addr = o.get("address") or "—"
+        extra = o.get("extra_info") or ""
+        phone = o.get("recipient_phone") or "—"
+
+        lines.append(f"{REPEAT_EMOJI[i]} <b>Заказ #{o['id']}</b> · {total_str} сум")
+        lines.append(f"📅 {date_str}")
+        lines.append(f"📍 {addr}")
+        if extra:
+            lines.append(f"📝 {extra}")
+        lines.append(f"📞 {phone}")
+        for it in o.get("items", []):
+            name = it.get("product_name") or "Товар"
+            qty = int(it.get("quantity", 1))
+            lines.append(f"   • {name} × {qty}")
+        lines.append("")
+
+    if pages > 1:
+        lines.append(f"Стр. {page + 1} из {pages}")
+
+    return "\n".join(lines).rstrip()
+
+
 @router.message(F.text == "🔁 Повторить заказ")
 async def repeat_order_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -329,8 +375,7 @@ async def repeat_order_menu(message: Message, state: FSMContext):
     if not user:
         return
     orders = await api.get_user_orders(user["id"])
-    delivered = [o for o in orders if o.get("status") == "delivered"]
-    pool = (delivered or orders)[:8]
+    pool = orders_repeat_pool(orders)
 
     if not pool:
         await message.answer(
@@ -340,35 +385,36 @@ async def repeat_order_menu(message: Message, state: FSMContext):
         )
         return
 
-    lines = ["🔁 <b>Повторить прошлый заказ</b>", ""]
-    if delivered:
-        lines.append("Выберите доставленный заказ — все его товары попадут в корзину, и вы сможете оформить заново.")
-    else:
-        lines.append("У вас пока нет завершённых доставок — показываю все ваши заказы.")
-    lines.append("")
-
-    for idx, o in enumerate(pool, start=1):
-        raw_date = o.get("delivered_at") or o.get("created_at") or ""
-        date_str = "—"
-        try:
-            dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
-            date_str = dt.strftime("%d.%m.%Y")
-        except Exception:
-            pass
-        total = f'{int(o["total"]):,}'.replace(",", " ")
-
-        lines.append(f"<b>{idx}.</b> {date_str} — {total} сум")
-        for it in o.get("items", []):
-            name = it.get("product_name") or "Товар"
-            qty = int(it.get("quantity", 1))
-            lines.append(f"   • {name} × {qty}")
-        lines.append("")
-
     await message.answer(
-        "\n".join(lines).rstrip(),
-        reply_markup=orders_repeat_kb(orders),
+        _build_repeat_text(pool, page=0),
+        reply_markup=orders_repeat_kb(orders, page=0),
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data.startswith("reorder_page:"))
+async def reorder_page(call: CallbackQuery, state: FSMContext):
+    page = int(call.data.split(":")[1])
+    user = await api.get_user(call.from_user.id)
+    if not user:
+        await call.answer()
+        return
+    orders = await api.get_user_orders(user["id"])
+    pool = orders_repeat_pool(orders)
+    if not pool:
+        await call.answer("Нет заказов")
+        return
+    text = _build_repeat_text(pool, page=page)
+    try:
+        await call.message.edit_text(text, reply_markup=orders_repeat_kb(orders, page=page), parse_mode="HTML")
+    except Exception:
+        await call.message.answer(text, reply_markup=orders_repeat_kb(orders, page=page), parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data == "noop")
+async def noop_cb(call: CallbackQuery):
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("order_detail:"))
@@ -560,6 +606,11 @@ async def reorder(call: CallbackQuery, state: FSMContext):
     if not order:
         await call.answer("Заказ не найден", show_alert=True)
         return
+    user = await api.get_user(call.from_user.id)
+    if not user:
+        await call.answer("Пользователь не найден", show_alert=True)
+        return
+
     cart = {}
     for item in order.get("items", []):
         pid = str(item["product_id"])
@@ -567,13 +618,52 @@ async def reorder(call: CallbackQuery, state: FSMContext):
             "name": item.get("product_name", f"Товар #{pid}"),
             "price": item["price"],
             "qty": item["quantity"],
-            "volume": 0,
+            "volume": float(item.get("volume", 0) or 0),
             "product_id": item["product_id"],
         }
-    await state.update_data(cart=cart)
-    await call.answer(f"✅ {len(cart)} позиций добавлено в корзину")
-    from handlers.client import show_cart
-    await show_cart(call, state)
+
+    saved = await api.get_user_addresses(user["id"]) or []
+    return_count = int(order.get("return_bottles_count") or 0)
+
+    await state.update_data(
+        cart=cart,
+        co_user=user,
+        saved_addrs=saved,
+        co_address=order.get("address"),
+        co_lat=order.get("latitude"),
+        co_lng=order.get("longitude"),
+        co_extra=order.get("extra_info"),
+        co_phone=order.get("recipient_phone") or user.get("phone"),
+        co_return=return_count,
+        bottles_owed=0,
+    )
+
+    summary = [
+        f"🔁 <b>Повторяем заказ #{order_id}</b>",
+        "",
+        f"📍 {order.get('address') or '—'}",
+    ]
+    if order.get("extra_info"):
+        summary.append(f"📝 {order['extra_info']}")
+    summary.append(f"📞 {order.get('recipient_phone') or '—'}")
+    if order.get("latitude") is not None and order.get("longitude") is not None:
+        summary.append("🗺 Точка на карте сохранена")
+    summary.append("")
+    summary.append("<b>Товары:</b>")
+    for item in order.get("items", []):
+        summary.append(f"   • {item.get('product_name', 'Товар')} × {int(item.get('quantity', 1))}")
+    if return_count > 0:
+        summary.append("")
+        summary.append(f"♻️ Возврат тары: {return_count} шт.")
+    summary.append("")
+    summary.append("Осталось указать <b>бонусы</b> и <b>способ оплаты</b>.")
+
+    await call.message.answer("\n".join(summary), parse_mode="HTML")
+    await call.answer(f"✅ Заказ #{order_id} загружен")
+
+    # Jump straight to bonus step — address, phone, location, landmark already in state
+    from handlers.client import _ask_bonus
+    await _ask_bonus(call.message, state)
 
 
 # ─── Profile ──────────────────────────────────────────────────────────────────
@@ -650,31 +740,66 @@ async def bonuses_menu(message: Message, state: FSMContext):
     expiry_days = int(cfg.get("bonus_expiry_days") or 60)
     limit_pct = int(cfg.get("bonus_limit_percent") or 30)
 
-    text = f"🎁 <b>Бонусная программа</b>\n\n"
-    text += f"Ваш баланс: <b>{fmt(bonus)}</b>\n"
+    lines = ["🎁 <b>Бонусная программа</b>", ""]
 
-    if bonus > 0 and user.get("bonus_expires_at"):
-        try:
-            exp_dt = datetime.fromisoformat(str(user["bonus_expires_at"]).replace("Z", ""))
-            text += f"⏰ Действуют до: <b>{exp_dt.strftime('%d.%m.%Y')}</b>\n"
-        except Exception:
-            pass
+    # ─── Balance block ───────────────────────────────────────────────────
+    if bonus > 0:
+        lines.append(f"💰 Ваш баланс: <b>{fmt(bonus)}</b>")
 
-    text += "\n<b>Как зарабатывать:</b>\n"
-    text += f"• За каждую бутылку 19л при доставке — +{per_bottle:,} бонусов\n"
-    text += "\n<b>Как тратить:</b>\n"
-    text += f"• При оформлении заказа бонусами можно оплатить до {limit_pct}% суммы\n"
-    text += "• Выбирается на этапе оплаты\n"
+        exp_dt = None
+        if user.get("bonus_expires_at"):
+            try:
+                exp_dt = datetime.fromisoformat(str(user["bonus_expires_at"]).replace("Z", ""))
+            except Exception:
+                exp_dt = None
 
-    if expiry_days > 0:
-        text += f"\n⏳ Бонусы сгорают через <b>{expiry_days} дней</b> после последнего начисления\n"
+        if exp_dt:
+            days_left = (exp_dt.date() - datetime.utcnow().date()).days
+            date_str = exp_dt.strftime("%d.%m.%Y")
+            if days_left > 7:
+                lines.append(f"⏰ Сгорят: <b>{date_str}</b> · через {days_left} дн.")
+            elif days_left > 0:
+                lines.append(f"⚠️ Сгорят: <b>{date_str}</b> · осталось <b>{days_left} дн.</b>")
+            elif days_left == 0:
+                lines.append("🔥 Сгорают <b>сегодня</b>!")
+            else:
+                lines.append(f"💔 Сгорели {abs(days_left)} дн. назад")
+
+        # Quick estimate of what they save
+        approx_off = int(min(bonus, 0))  # placeholder if cart known — we don't have cart here
+        lines.append("")
+        lines.append("💡 <b>Можно потратить на следующем заказе.</b>")
     else:
-        text += "\n✅ Бонусы бессрочные — не сгорают\n"
+        lines.append("💰 У вас пока <b>0 бонусов</b>")
+        lines.append("")
+        lines.append("Закажите воду — и получите первые бонусы автоматически после доставки.")
+
+    lines.append("")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("")
+
+    # ─── How to earn ─────────────────────────────────────────────────────
+    lines.append("✅ <b>Как заработать</b>")
+    lines.append(f"• <b>{per_bottle:,}</b> бонусов за каждую доставленную бутылку 19л".replace(",", " "))
+    lines.append("• Начисление автоматически после доставки")
+    lines.append("")
+
+    # ─── How to spend ────────────────────────────────────────────────────
+    lines.append("💳 <b>Как потратить</b>")
+    lines.append(f"• До <b>{limit_pct}%</b> от суммы заказа")
+    lines.append("• Выбор на этапе оплаты — кнопка «Использовать бонусы»")
+
+    # ─── Expiry rules ────────────────────────────────────────────────────
+    if expiry_days > 0:
+        lines.append("")
+        lines.append("⏳ <b>Срок действия</b>")
+        lines.append(f"• Бонусы живут <b>{expiry_days} дн.</b> с момента последнего начисления")
+        lines.append("• Любой новый заказ продлевает срок")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛒 Сделать заказ", callback_data="goto_order")],
     ])
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "profile:subs")
