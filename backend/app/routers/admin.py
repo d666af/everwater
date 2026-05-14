@@ -1139,6 +1139,8 @@ class MarkSubRemindedBody(BaseModel):
 
 @router.post("/cron/mark-subscription-reminded")
 async def cron_mark_subscription_reminded(body: MarkSubRemindedBody, db: AsyncSession = Depends(get_db)):
+    if not await is_subscriptions_enabled(db):
+        return {"ok": True, "skipped": True}
     result = await db.execute(select(Subscription).where(Subscription.id == body.sub_id))
     sub = result.scalar_one_or_none()
     if sub:
