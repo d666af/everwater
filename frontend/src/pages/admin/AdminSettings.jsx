@@ -50,6 +50,15 @@ export default function AdminSettings() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [newBrand, setNewBrand] = useState('')
+  const [confirmSubsOff, setConfirmSubsOff] = useState(false)
+
+  const handleToggleSubs = () => {
+    if (form.subscriptions_enabled) {
+      setConfirmSubsOff(true)
+    } else {
+      setForm(p => ({ ...p, subscriptions_enabled: true }))
+    }
+  }
 
   useEffect(() => {
     getSettings()
@@ -100,11 +109,11 @@ export default function AdminSettings() {
               <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
                 {form.subscriptions_enabled
                   ? 'Клиенты видят страницу подписок, бот показывает кнопку, админ/менеджер/склад работают с подписками'
-                  : 'Подписки скрыты у всех ролей. Существующие подписки сохраняются, но не работают'}
+                  : 'Подписки скрыты у всех ролей. Существующие подписки удалены при выключении'}
               </div>
             </div>
             <button
-              onClick={() => setForm(p => ({ ...p, subscriptions_enabled: !p.subscriptions_enabled }))}
+              onClick={handleToggleSubs}
               style={{
                 width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
                 background: form.subscriptions_enabled ? C : '#ddd',
@@ -601,6 +610,44 @@ export default function AdminSettings() {
           {saving ? 'Сохраняю...' : 'Сохранить настройки'}
         </button>
       </div>
+
+      {confirmSubsOff && (
+        <div
+          style={s.modalOverlay}
+          onClick={e => e.target === e.currentTarget && setConfirmSubsOff(false)}
+        >
+          <div style={s.modalSheet}>
+            <div style={s.modalIcon}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 22h20L12 2z" stroke="#E03131" strokeWidth="1.8" strokeLinejoin="round"/>
+                <path d="M12 10v5M12 18h.01" stroke="#E03131" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div style={s.modalTitle}>Выключить модуль подписок?</div>
+            <div style={s.modalBody}>
+              <b>Все существующие подписки</b> (активные, на паузе, ожидающие подтверждения)
+              будут <b>удалены</b> при сохранении настроек.
+              <div style={{ marginTop: 8, color: '#E03131', fontWeight: 600 }}>
+                Это действие необратимо.
+              </div>
+            </div>
+            <div style={s.modalActions}>
+              <button style={s.modalCancel} onClick={() => setConfirmSubsOff(false)}>
+                Отмена
+              </button>
+              <button
+                style={s.modalConfirm}
+                onClick={() => {
+                  setForm(p => ({ ...p, subscriptions_enabled: false }))
+                  setConfirmSubsOff(false)
+                }}
+              >
+                Выключить и удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   )
 }
@@ -670,6 +717,45 @@ const s = {
     padding: '14px 32px', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
     border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 700, cursor: 'pointer',
     boxShadow: '0 4px 14px rgba(141,198,63,0.35)', alignSelf: 'flex-start',
+    WebkitTapHighlightColor: 'transparent',
+  },
+
+  modalOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000, padding: 16,
+  },
+  modalSheet: {
+    background: '#fff', borderRadius: 20, maxWidth: 420, width: '100%',
+    padding: '24px 22px 20px', display: 'flex', flexDirection: 'column',
+    gap: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+  },
+  modalIcon: {
+    width: 56, height: 56, borderRadius: '50%', background: '#FFF5F5',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  modalTitle: {
+    fontSize: 18, fontWeight: 800, color: TEXT, textAlign: 'center',
+  },
+  modalBody: {
+    fontSize: 14, color: TEXT2, lineHeight: 1.5, textAlign: 'center',
+    padding: '0 4px',
+  },
+  modalActions: {
+    display: 'flex', gap: 8, marginTop: 8,
+  },
+  modalCancel: {
+    flex: 1, padding: '12px 16px', borderRadius: 12,
+    border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT,
+    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  modalConfirm: {
+    flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none',
+    background: '#E03131', color: '#fff',
+    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(224,49,49,0.3)',
     WebkitTapHighlightColor: 'transparent',
   },
 }
