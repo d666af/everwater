@@ -121,31 +121,31 @@ def orders_list_kb(orders: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def _repeat_items_short(items: list, max_chars: int = 38) -> str:
-    """Compact items list for the Повторить-заказ button: 'Вода 19л ×2, Газ 1.5л ×1'."""
-    parts = []
-    for i in items:
-        name = (i.get("product_name") or "Товар").replace("Газ. вода ", "Газ ")
-        qty = int(i.get("quantity", 1))
-        parts.append(f"{name} ×{qty}")
-    text = ", ".join(parts) or "—"
-    if len(text) > max_chars:
-        text = text[: max_chars - 1].rstrip(", ") + "…"
-    return text
+REPEAT_PAGE_SIZE = 4
+REPEAT_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
 
 
-def orders_repeat_kb(orders: list) -> InlineKeyboardMarkup:
-    """Inline keyboard for the '🔁 Повторить заказ' menu — picks an order to repeat.
+def orders_repeat_pool(orders: list) -> list:
+    """Pool of orders eligible for the 'Повторить заказ' picker.
 
-    Prefers delivered orders (real reorder); shows up to 8.
-    Each button: 🔁 DD.MM · <items> · <total> сум
+    Prefers delivered orders; falls back to all if no deliveries yet.
     """
     delivered = [o for o in orders if o.get("status") == "delivered"]
-    pool = (delivered or orders)[:8]
+    return delivered or orders
 
-    buttons = []
-    for o in pool:
-        total = f'{int(o["total"]):,}'.replace(",", " ")
+
+def orders_repeat_kb(orders: list, page: int = 0) -> InlineKeyboardMarkup:
+    """Paginated picker: 2 buttons per row, 4 per page, prev/next at the bottom."""
+    pool = orders_repeat_pool(orders)
+    total = len(pool)
+    pages = max(1, (total + REPEAT_PAGE_SIZE - 1) // REPEAT_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    start = page * REPEAT_PAGE_SIZE
+    chunk = pool[start:start + REPEAT_PAGE_SIZE]
+
+    rows = []
+    pair = []
+    for i, o in enumerate(chunk):
         raw_date = o.get("delivered_at") or o.get("created_at") or ""
         date_str = ""
         try:
@@ -153,10 +153,24 @@ def orders_repeat_kb(orders: list) -> InlineKeyboardMarkup:
             date_str = dt.strftime("%d.%m")
         except Exception:
             pass
-        items_text = _repeat_items_short(o.get("items", []))
-        text = f"🔁 {date_str} · {items_text} · {total} сум"
-        buttons.append([InlineKeyboardButton(text=text, callback_data=f"reorder:{o['id']}")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+        label = f"{REPEAT_EMOJI[i]} {date_str}".strip()
+        pair.append(InlineKeyboardButton(text=label, callback_data=f"reorder:{o['id']}"))
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
+
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"reorder_page:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="noop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"reorder_page:{page + 1}"))
+        rows.append(nav)
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def review_order_select_kb(orders: list) -> InlineKeyboardMarkup:

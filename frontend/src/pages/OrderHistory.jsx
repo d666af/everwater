@@ -106,7 +106,17 @@ export default function OrderHistory() {
     order.items.forEach(item => {
       addToCart({ id: item.product_id || item.id, name: item.product_name, price: item.price, volume: item.volume || 0 })
     })
-    navigate('/checkout')
+    navigate('/checkout', {
+      state: {
+        prefill: {
+          address: order.address,
+          extra_info: order.extra_info,
+          phone: order.recipient_phone,
+          latitude: order.latitude,
+          longitude: order.longitude,
+        },
+      },
+    })
   }
 
   const handleReviewDone = (orderId) => {

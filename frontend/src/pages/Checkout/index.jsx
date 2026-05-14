@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useCartStore } from '../../store'
 import { createOrder, getUserByTelegram, paymentConfirmed, getSettings, getBottlesOwed, answerBottleSurvey } from '../../api'
 import MapPicker from '../../components/MapPicker'
@@ -34,6 +34,8 @@ const PAYMENT_METHODS = [
 export default function Checkout() {
   const { items, total, clearCart } = useCartStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const prefill = location.state?.prefill || null
   const { user: authUser } = useAuthStore()
   const userStore = useUserStore()
   const { addOrder } = useOrdersStore()
@@ -45,8 +47,12 @@ export default function Checkout() {
     bottle_return_buttons_visible: false, bottle_return_mode: 'max',
   })
   const [form, setForm] = useState({
-    phone: '', address: '', extraInfo: '',
-    lat: null, lng: null, geoLoading: false,
+    phone: prefill?.phone || '',
+    address: prefill?.address || '',
+    extraInfo: prefill?.extra_info || '',
+    lat: prefill?.latitude ?? null,
+    lng: prefill?.longitude ?? null,
+    geoLoading: false,
     returnCount: 0, bonusUsed: 0,
     paymentMethod: 'card',
   })
@@ -71,7 +77,8 @@ export default function Checkout() {
       getUserByTelegram(tgUser.id)
         .then(u => {
           setUser(u)
-          setForm(f => ({ ...f, phone: u.phone || '' }))
+          // prefill from a "repeat order" navigation wins over profile phone
+          setForm(f => ({ ...f, phone: f.phone || u.phone || '' }))
           return getBottlesOwed(u.id)
         })
         .then(debt => {
@@ -81,7 +88,7 @@ export default function Checkout() {
         .catch(console.error)
     } else if (authUser) {
       setUser(authUser)
-      setForm(f => ({ ...f, phone: authUser.phone || '' }))
+      setForm(f => ({ ...f, phone: f.phone || authUser.phone || '' }))
       if (!userStore.initialized) userStore.init(authUser)
       getBottlesOwed(authUser.id)
         .then(debt => {

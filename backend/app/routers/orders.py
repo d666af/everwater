@@ -1013,7 +1013,7 @@ async def get_queue_position(order_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{order_id}/repeat")
 async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
-    """Return items of an existing order ready to populate a new cart."""
+    """Return items + delivery details of an existing order, ready to populate a new cart and pre-fill checkout."""
     order = await _get_order(order_id, db)
     return {
         "items": [
@@ -1027,7 +1027,13 @@ async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
             for i in order.items
         ],
         "address": order.address,
+        "extra_info": order.extra_info,
         "recipient_phone": order.recipient_phone,
+        "latitude": order.latitude,
+        "longitude": order.longitude,
+        "delivery_time": order.delivery_time.isoformat() if order.delivery_time else None,
+        "return_bottles_count": order.return_bottles_count or 0,
+        "return_bottles_volume": order.return_bottles_volume,
     }
 
 
