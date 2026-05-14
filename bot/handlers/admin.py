@@ -96,8 +96,7 @@ class AdminProductEdit(StatesGroup):
 async def admin_panel(message: Message):
     if not is_admin(message.from_user.id):
         return
-    subs_on = await api.is_subscriptions_enabled()
-    await message.answer("🔧 Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
+    await message.answer("🔧 Панель администратора:", reply_markup=admin_menu_kb())
 
 
 # ─── ReplyKeyboard text handlers (admin main menu) ────────────────────────────
@@ -149,20 +148,14 @@ async def admin_text_orders(message: Message):
     orders = await api.get_all_orders()
     active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
 
-    subs_on = await api.is_subscriptions_enabled()
-    if subs_on:
-        # Pending subscriptions (awaiting admin confirmation)
-        pending_subs = await api.get_admin_subscriptions(status="pending")
-        # Active subscriptions due today or overdue (need order creation)
-        active_subs = await api.get_admin_subscriptions(status="active")
-        due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
-    else:
-        pending_subs = []
-        due_subs = []
+    # Pending subscriptions (awaiting admin confirmation)
+    pending_subs = await api.get_admin_subscriptions(status="pending")
+    # Active subscriptions due today or overdue (need order creation)
+    active_subs = await api.get_admin_subscriptions(status="active")
+    due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
 
     if not active and not pending_subs and not due_subs:
-        msg = "Нет активных заказов и подписок." if subs_on else "Нет активных заказов."
-        await message.answer(msg)
+        await message.answer("Нет активных заказов и подписок.")
         return
 
     for o in active[:15]:
@@ -854,9 +847,6 @@ async def admin_topup_reject(call: CallbackQuery):
 @router.callback_query(F.data.startswith("admin_sub_confirm:"))
 async def admin_sub_confirm(call: CallbackQuery):
     if not is_admin(call.from_user.id):
-        return
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены администратором", show_alert=True)
         return
     sub_id = int(call.data.split(":")[1])
     try:
@@ -1657,9 +1647,6 @@ async def _admin_subs_menu(message_or_call, is_call: bool = False):
 async def admin_subs_overview(message: Message):
     if not is_admin(message.from_user.id):
         return
-    if not await api.is_subscriptions_enabled():
-        await message.answer("📅 Модуль подписок отключён в настройках администратора.")
-        return
     await _admin_subs_menu(message, is_call=False)
 
 
@@ -1667,18 +1654,12 @@ async def admin_subs_overview(message: Message):
 async def admin_subs_menu_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
-        return
     await _admin_subs_menu(call, is_call=True)
 
 
 @router.callback_query(F.data.startswith("admin:subs:weekly:") | F.data.startswith("admin:subs:monthly:"))
 async def admin_subs_list(call: CallbackQuery):
     if not is_admin(call.from_user.id):
-        return
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
         return
     parts = call.data.split(":")
     plan = parts[2]   # weekly | monthly
@@ -1728,9 +1709,6 @@ async def admin_sub_detail(call: CallbackQuery):
 @router.callback_query(F.data.startswith("admin:sub_order:"))
 async def admin_sub_create_order(call: CallbackQuery):
     if not is_admin(call.from_user.id):
-        return
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
         return
     sub_id = int(call.data.split(":")[2])
     try:

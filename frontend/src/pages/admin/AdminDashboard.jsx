@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getAdminStats, getOrders, getAdminCouriers, getWarehouseCourierStats } from '../../api'
-import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -61,10 +60,6 @@ export default function AdminDashboard() {
   const [couriersTotal, setCouriersTotal] = useState(0)
   const [bottlesOwed, setBottlesOwed] = useState(0)
   const [loading, setLoading] = useState(true)
-  const subsEnabled = useSubscriptionsEnabled()
-  const filteredShortcuts = subsEnabled === false
-    ? SHORTCUTS.filter(sc => sc.path !== '/admin/subscriptions')
-    : SHORTCUTS
 
   useEffect(() => {
     setLoading(true)
@@ -164,7 +159,7 @@ export default function AdminDashboard() {
           {/* Shortcuts */}
           <div style={{ ...s.cardTitle, margin: '4px 2px 10px' }}>Управление</div>
           <div style={s.shortcutGrid}>
-            {filteredShortcuts.map(sc => (
+            {SHORTCUTS.map(sc => (
               <button key={sc.path} onClick={() => navigate(sc.path)} style={s.shortcutBtn}>
                 <div style={{ width: 44, height: 44, borderRadius: 14, background: sc.bg, color: sc.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{sc.icon}</div>
                 <div style={{ flex: 1, textAlign: 'left' }}>

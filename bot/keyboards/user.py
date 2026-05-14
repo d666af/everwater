@@ -11,16 +11,13 @@ def _site(path: str = "") -> str:
     return f"{base}{path}"
 
 
-def main_menu_kb(show_role_switch: bool = False, subs_enabled: bool = True) -> ReplyKeyboardMarkup:
+def main_menu_kb(show_role_switch: bool = False) -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="🛒 Заказать"), KeyboardButton(text="🧺 Корзина")],
         [KeyboardButton(text="📦 Мои заказы"), KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="📋 Подписки"), KeyboardButton(text="🎁 Бонусы")],
+        [KeyboardButton(text="⭐ Мои отзывы"), KeyboardButton(text="💬 Поддержка")],
     ]
-    if subs_enabled:
-        keyboard.append([KeyboardButton(text="📋 Подписки"), KeyboardButton(text="🎁 Бонусы")])
-    else:
-        keyboard.append([KeyboardButton(text="🎁 Бонусы")])
-    keyboard.append([KeyboardButton(text="⭐ Мои отзывы"), KeyboardButton(text="💬 Поддержка")])
     if show_role_switch:
         keyboard.append([KeyboardButton(text="🔄 Роль")])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)

@@ -43,7 +43,6 @@ export default function AdminSettings() {
     delivery_eta_hours: 2,
     delivery_reminder_enabled: true,
     delivery_reminder_2_delay: 10,
-    subscriptions_enabled: true,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -81,55 +80,6 @@ export default function AdminSettings() {
   return (
     <AdminLayout title="Настройки">
       <div style={s.page}>
-
-        {/* Subscriptions module master switch */}
-        <Section
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="4" width="18" height="18" rx="3" stroke="#6741D9" strokeWidth="1.8"/>
-              <path d="M16 2v4M8 2v4M3 10h18" stroke="#6741D9" strokeWidth="1.8" strokeLinecap="round"/>
-              <path d="M8 14h4M8 17h8" stroke="#6741D9" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          }
-          title="Подписки на воду"
-          hint="Модуль регулярной доставки. При выключении: страница и кнопки скрыты, API закрыт, напоминания не уходят."
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Подписки включены</div>
-              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
-                {form.subscriptions_enabled
-                  ? 'Клиенты видят страницу подписок, бот показывает кнопку, админ/менеджер/склад работают с подписками'
-                  : 'Подписки скрыты у всех ролей. Существующие подписки сохраняются, но не работают'}
-              </div>
-            </div>
-            <button
-              onClick={() => setForm(p => ({ ...p, subscriptions_enabled: !p.subscriptions_enabled }))}
-              style={{
-                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
-                background: form.subscriptions_enabled ? C : '#ddd',
-                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-              }}
-            >
-              <div style={{
-                width: 22, height: 22, borderRadius: '50%', background: '#fff',
-                position: 'absolute', top: 3,
-                left: form.subscriptions_enabled ? 25 : 3,
-                transition: 'left 0.2s',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-              }} />
-            </button>
-          </div>
-          <div style={s.preview}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
-              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            {form.subscriptions_enabled
-              ? <>Подписки <b>включены</b> — модуль работает у всех ролей.</>
-              : <span style={{ color: TEXT2 }}>Подписки <b>выключены</b> — пункт меню скрыт, API возвращает 403/пустой список.</span>}
-          </div>
-        </Section>
 
         {/* Payment */}
         <Section

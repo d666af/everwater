@@ -35,14 +35,7 @@ DEFAULTS: dict[str, Any] = {
     "delivery_eta_hours": 2,           # окно доставки в часах после назначения курьера
     "delivery_reminder_enabled": True,  # включить уведомления курьеру при просрочке ETA
     "delivery_reminder_2_delay": 10,   # минут после первого напоминания для второго
-    # Subscriptions module (master switch — hides UI and disables API/scheduler when off)
-    "subscriptions_enabled": True,
 }
-
-
-async def is_subscriptions_enabled(db: AsyncSession) -> bool:
-    cfg = await get_all_settings(db)
-    return bool(cfg.get("subscriptions_enabled", True))
 
 
 async def get_all_settings(db: AsyncSession) -> dict[str, Any]:

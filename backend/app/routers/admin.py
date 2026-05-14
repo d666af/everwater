@@ -12,15 +12,9 @@ from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
 from app.models.client_data import SavedAddress, Subscription, BottleDebt, TopupRequest
 from app.schemas.order import CourierCreate, CourierOut
-from app.services.settings_service import is_subscriptions_enabled
 import aiohttp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-async def _ensure_subs_enabled(db: AsyncSession) -> None:
-    if not await is_subscriptions_enabled(db):
-        raise HTTPException(status_code=403, detail="Subscriptions are disabled")
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
@@ -300,18 +294,15 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
         for a in addrs_q.scalars().all()
     ]
 
-    if await is_subscriptions_enabled(db):
-        subs_q = await db.execute(
-            select(Subscription).where(Subscription.user_id == user_id).order_by(Subscription.created_at.desc())
-        )
-        subscriptions = [
-            {"id": s.id, "plan": s.plan, "water_summary": s.water_summary,
-             "qty": s.qty, "address": s.address, "day": s.day,
-             "status": s.status, "created_at": s.created_at}
-            for s in subs_q.scalars().all()
-        ]
-    else:
-        subscriptions = []
+    subs_q = await db.execute(
+        select(Subscription).where(Subscription.user_id == user_id).order_by(Subscription.created_at.desc())
+    )
+    subscriptions = [
+        {"id": s.id, "plan": s.plan, "water_summary": s.water_summary,
+         "qty": s.qty, "address": s.address, "day": s.day,
+         "status": s.status, "created_at": s.created_at}
+        for s in subs_q.scalars().all()
+    ]
 
     bottles_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user_id))
     bottle_row = bottles_q.scalar_one_or_none()
@@ -572,8 +563,6 @@ async def list_all_subscriptions(
     plan: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    if not await is_subscriptions_enabled(db):
-        return []
     q = select(Subscription, User).join(User, User.id == Subscription.user_id)
     if status == "pending":
         q = q.where(Subscription.payment_confirmed == False)
@@ -593,7 +582,6 @@ async def create_order_from_sub(sub_id: int, db: AsyncSession = Depends(get_db))
     from app.models.order import OrderItem
     from app.routers.warehouse import _resolve_product
 
-    await _ensure_subs_enabled(db)
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:
@@ -666,7 +654,6 @@ async def create_order_from_sub(sub_id: int, db: AsyncSession = Depends(get_db))
 async def confirm_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
     from app.services.tg_notify import edit_all_notifications
-    await _ensure_subs_enabled(db)
     sub_q = await db.execute(select(Subscription).where(Subscription.id == sub_id))
     sub = sub_q.scalar_one_or_none()
     if not sub:
@@ -1104,8 +1091,6 @@ async def cron_bonus_warnings(db: AsyncSession = Depends(get_db)):
 @router.get("/cron/subscription-reminders")
 async def cron_subscription_reminders(db: AsyncSession = Depends(get_db)):
     """Active subscriptions with next delivery in <24h that haven't been reminded yet."""
-    if not await is_subscriptions_enabled(db):
-        return []
     now = datetime.utcnow()
     tomorrow = now + timedelta(hours=24)
     result = await db.execute(

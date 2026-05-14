@@ -133,15 +133,14 @@ async def notify_low_stock(bot):
 
     # Also check subscription shortfall (products we need but don't have enough of)
     shortfall_lines = []
-    if await api.is_subscriptions_enabled():
-        try:
-            overview = await api.get_warehouse_overview("week")
-            for item in overview.get("shortfall_items", []):
-                deficit = item.get("qty", 0)
-                if deficit > 0:
-                    shortfall_lines.append(f"• {item.get('product_name', '—')} — не хватает {deficit} шт. для подписок")
-        except Exception:
-            pass
+    try:
+        overview = await api.get_warehouse_overview("week")
+        for item in overview.get("shortfall_items", []):
+            deficit = item.get("qty", 0)
+            if deficit > 0:
+                shortfall_lines.append(f"• {item.get('product_name', '—')} — не хватает {deficit} шт. для подписок")
+    except Exception:
+        pass
 
     if not low_lines and not shortfall_lines:
         return
@@ -262,8 +261,6 @@ async def expire_bonuses(bot):
 
 async def subscription_reminders(bot):
     """Remind users about upcoming subscription deliveries 24h in advance."""
-    if not await api.is_subscriptions_enabled():
-        return
     subs = await api.get_subscription_reminders()
     for sub in (subs or []):
         tg_id = sub.get("telegram_id")

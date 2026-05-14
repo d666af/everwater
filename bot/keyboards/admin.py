@@ -6,20 +6,19 @@ def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-def admin_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
-    rows = [
-        [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
-        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
-        [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
-        [KeyboardButton(text="📦 Товары")],
-    ]
-    if subs_enabled:
-        rows.append([KeyboardButton(text="📅 Подписки"), KeyboardButton(text="🧑‍💼 Менеджеры")])
-    else:
-        rows.append([KeyboardButton(text="🧑‍💼 Менеджеры")])
-    rows.append([KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📣 Рассылка")])
-    rows.append([KeyboardButton(text="🔄 Роль")])
-    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+def admin_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
+            [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
+            [KeyboardButton(text="📦 Товары")],
+            [KeyboardButton(text="📅 Подписки"), KeyboardButton(text="🧑‍💼 Менеджеры")],
+            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📣 Рассылка")],
+            [KeyboardButton(text="🔄 Роль")],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def order_confirm_kb(order_id: int) -> InlineKeyboardMarkup:

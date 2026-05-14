@@ -1041,7 +1041,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         await call.message.answer("Сохранить этот адрес для следующих заказов?", reply_markup=kb)
     else:
         await state.clear()
-        await call.message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+        await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -1075,7 +1075,7 @@ async def save_addr_cb(call: CallbackQuery, state: FSMContext):
     else:
         await call.message.edit_text("Хорошо, адрес не сохранён.")
     await state.clear()
-    await call.message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -1083,7 +1083,7 @@ async def save_addr_cb(call: CallbackQuery, state: FSMContext):
 async def co_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("Заказ отменён.")
-    await call.message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -1123,9 +1123,6 @@ def _sub_card(s: dict) -> str:
 @router.message(F.text == "📋 Подписки")
 async def subscriptions(message: Message, state: FSMContext):
     await state.clear()
-    if not await api.is_subscriptions_enabled():
-        await message.answer("📋 Модуль подписок временно отключён администратором.")
-        return
     user = await api.get_user(message.from_user.id)
     if not user:
         return
@@ -1174,9 +1171,6 @@ async def sub_cancel(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_pause:"))
 async def sub_pause(call: CallbackQuery, state: FSMContext):
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
-        return
     sub_id = int(call.data.split(":")[1])
     data = await state.get_data()
     user = data.get("sub_user") or await api.get_user(call.from_user.id)
@@ -1188,9 +1182,6 @@ async def sub_pause(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_resume:"))
 async def sub_resume(call: CallbackQuery, state: FSMContext):
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
-        return
     sub_id = int(call.data.split(":")[1])
     data = await state.get_data()
     user = data.get("sub_user") or await api.get_user(call.from_user.id)
@@ -1202,9 +1193,6 @@ async def sub_resume(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "sub_new")
 async def sub_new(call: CallbackQuery, state: FSMContext):
-    if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
-        return
     await state.set_state(SubscriptionState.choosing_plan)
     await call.message.edit_text(
         "Выберите план подписки:",
@@ -1479,7 +1467,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
-    await call.message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -1519,7 +1507,7 @@ async def sub_card_paid(call: CallbackQuery, state: FSMContext):
     else:
         await call.message.edit_text("Ошибка при оформлении подписки. Попробуйте ещё раз.")
     await state.clear()
-    await call.message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer("Главное меню:", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -1601,16 +1589,15 @@ async def forward_to_support(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     name = message.from_user.full_name or str(tg_id)
 
-    subs_on = await api.is_subscriptions_enabled()
     try:
         await api.send_user_support_message(tg_id, name, message.text)
         await message.answer(
             "✉️ Сообщение отправлено. Оператор ответит в ближайшее время.",
-            reply_markup=main_menu_kb(subs_enabled=subs_on),
+            reply_markup=main_menu_kb(),
         )
     except Exception:
         await message.answer(
             "✉️ Не удалось отправить сообщение. Попробуйте позже.",
-            reply_markup=main_menu_kb(subs_enabled=subs_on),
+            reply_markup=main_menu_kb(),
         )
 
