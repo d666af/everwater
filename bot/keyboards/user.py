@@ -146,15 +146,7 @@ def orders_repeat_kb(orders: list, page: int = 0) -> InlineKeyboardMarkup:
     rows = []
     pair = []
     for i, o in enumerate(chunk):
-        raw_date = o.get("delivered_at") or o.get("created_at") or ""
-        date_str = ""
-        try:
-            dt = datetime.fromisoformat(str(raw_date).replace("Z", ""))
-            date_str = dt.strftime("%d.%m")
-        except Exception:
-            pass
-        label = f"{REPEAT_EMOJI[i]} {date_str}".strip()
-        pair.append(InlineKeyboardButton(text=label, callback_data=f"reorder:{o['id']}"))
+        pair.append(InlineKeyboardButton(text=REPEAT_EMOJI[i], callback_data=f"reorder:{o['id']}"))
         if len(pair) == 2:
             rows.append(pair)
             pair = []
