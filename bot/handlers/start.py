@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from services.roles import get_user_roles, get_primary_role, ROLE_LABELS
-from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, review_order_select_kb, _site
+from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, orders_repeat_kb, review_order_select_kb, _site
 from config import settings
 
 router = Router()
@@ -122,7 +122,9 @@ async def show_role_menu(target, role: str):
 
 _ALL_MENU_BUTTONS = frozenset({
     # client
-    "🛒 Заказать", "📦 Мои заказы", "👤 Профиль", "📋 Подписки", "🎁 Бонусы", "💬 Поддержка",
+    "🛒 Заказать", "🔁 Повторить заказ", "🎁 Бонусы", "💬 Поддержка",
+    # client (legacy buttons — kept so cached old keyboards still escape FSM properly)
+    "📦 Мои заказы", "👤 Профиль", "📋 Подписки", "🧺 Корзина", "⭐ Мои отзывы",
     # admin
     "📋 Заказы", "⏳ Новые заказы", "📊 Статистика", "🚴 Курьеры", "👥 Клиенты",
     "🏭 Склад", "📦 Товары", "📅 Подписки", "🧑‍💼 Менеджеры",
@@ -318,6 +320,22 @@ async def my_orders(message: Message, state: FSMContext):
         await message.answer("У вас пока нет заказов.\n\nНажмите 🛒 Заказать чтобы сделать первый заказ!")
         return
     await message.answer("Ваши заказы:", reply_markup=orders_list_kb(orders))
+
+
+@router.message(F.text == "🔁 Повторить заказ")
+async def repeat_order_menu(message: Message, state: FSMContext):
+    await state.clear()
+    user = await api.get_user(message.from_user.id)
+    if not user:
+        return
+    orders = await api.get_user_orders(user["id"])
+    if not orders:
+        await message.answer("У вас пока нет заказов.\n\nНажмите 🛒 Заказать чтобы сделать первый.")
+        return
+    await message.answer(
+        "🔁 Выберите заказ, чтобы повторить его — товары будут добавлены в корзину:",
+        reply_markup=orders_repeat_kb(orders),
+    )
 
 
 @router.callback_query(F.data.startswith("order_detail:"))
