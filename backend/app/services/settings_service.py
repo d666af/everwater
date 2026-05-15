@@ -37,7 +37,16 @@ DEFAULTS: dict[str, Any] = {
     "delivery_reminder_2_delay": 10,   # минут после первого напоминания для второго
     # Subscriptions module (master switch — hides UI and disables API/scheduler when off)
     "subscriptions_enabled": True,
+    # Support chat module — when off, all roles see a static "contacts" text
+    # configured by the admin instead of the chat UI.
+    "support_chat_enabled": True,
+    "support_contacts_text": "📞 Телефон поддержки: +998 90 000-00-00\n📨 Telegram: @everwater_support\n🕐 Часы работы: 09:00–22:00",
 }
+
+
+async def is_support_chat_enabled(db: AsyncSession) -> bool:
+    cfg = await get_all_settings(db)
+    return bool(cfg.get("support_chat_enabled", True))
 
 
 async def is_subscriptions_enabled(db: AsyncSession) -> bool:

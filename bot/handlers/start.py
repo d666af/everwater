@@ -876,6 +876,14 @@ async def profile_subs(call: CallbackQuery, state: FSMContext):
 @router.message(F.text == "💬 Поддержка")
 async def support_start(message: Message, state: FSMContext):
     await state.clear()
+    cfg = await api.get_settings()
+    if not cfg.get("support_chat_enabled", True):
+        contacts = (cfg.get("support_contacts_text") or "").strip()
+        body = ("💬 <b>Поддержка</b>\n\n" + contacts) if contacts else (
+            "💬 <b>Поддержка</b>\n\nКонтактная информация скоро появится."
+        )
+        await message.answer(body, parse_mode="HTML")
+        return
     await message.answer(
         "💬 <b>Поддержка</b>\n\n"
         "Напишите ваш вопрос — оператор ответит в ближайшее время.\n\n"

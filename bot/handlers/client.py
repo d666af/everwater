@@ -1538,6 +1538,14 @@ _QUICK_QUESTIONS = [
 
 @router.message(F.text == "💬 Поддержка")
 async def support_menu(message: Message):
+    cfg = await api.get_settings()
+    if not cfg.get("support_chat_enabled", True):
+        contacts = (cfg.get("support_contacts_text") or "").strip()
+        body = ("💬 <b>Поддержка</b>\n\n" + contacts) if contacts else (
+            "💬 <b>Поддержка</b>\n\nКонтактная информация скоро появится."
+        )
+        await message.answer(body, parse_mode="HTML")
+        return
     user = await api.get_user(message.from_user.id)
     history_text = ""
     if user:
@@ -1604,7 +1612,21 @@ async def forward_to_support(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     name = message.from_user.full_name or str(tg_id)
 
-    subs_on = await api.is_subscriptions_enabled()
+    cfg = await api.get_settings()
+    subs_on = bool(cfg.get("subscriptions_enabled", True))
+
+    # If chat is disabled — show static contacts instead of forwarding
+    if not cfg.get("support_chat_enabled", True):
+        contacts = (cfg.get("support_contacts_text") or "").strip()
+        body = ("💬 <b>Поддержка</b>\n\n" + contacts) if contacts else (
+            "💬 <b>Поддержка</b>\n\nЧат сейчас недоступен."
+        )
+        await message.answer(
+            body, parse_mode="HTML",
+            reply_markup=main_menu_kb(subs_enabled=subs_on),
+        )
+        return
+
     try:
         await api.send_user_support_message(tg_id, name, message.text)
         await message.answer(
