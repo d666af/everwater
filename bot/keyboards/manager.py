@@ -6,15 +6,18 @@ def _site(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-def manager_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
+def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
         [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="📊 Статистика")],
     ]
+    third = []
     if subs_enabled:
-        rows.append([KeyboardButton(text="📅 Подписки"), KeyboardButton(text="💬 Поддержка")])
-    else:
-        rows.append([KeyboardButton(text="💬 Поддержка")])
+        third.append(KeyboardButton(text="📅 Подписки"))
+    if support_enabled:
+        third.append(KeyboardButton(text="💬 Поддержка"))
+    if third:
+        rows.append(third)
     rows.append([KeyboardButton(text="📝 Создать заказ")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 

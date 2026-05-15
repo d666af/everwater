@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getAdminStats, getOrders, getAdminCouriers, getWarehouseCourierStats } from '../../api'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
+import { useSupportChat } from '../../hooks/useSupportChat'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -62,9 +63,12 @@ export default function AdminDashboard() {
   const [bottlesOwed, setBottlesOwed] = useState(0)
   const [loading, setLoading] = useState(true)
   const subsEnabled = useSubscriptionsEnabled()
-  const filteredShortcuts = subsEnabled === false
-    ? SHORTCUTS.filter(sc => sc.path !== '/admin/subscriptions')
-    : SHORTCUTS
+  const support = useSupportChat()
+  const filteredShortcuts = SHORTCUTS.filter(sc => {
+    if (subsEnabled === false && sc.path === '/admin/subscriptions') return false
+    if (support && support.enabled === false && sc.path === '/admin/support') return false
+    return true
+  })
 
   useEffect(() => {
     setLoading(true)

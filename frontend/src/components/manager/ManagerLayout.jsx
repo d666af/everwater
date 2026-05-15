@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/auth'
 import { useAdminRoleStore } from '../../store/adminRole'
 import { useState, useRef, useLayoutEffect } from 'react'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
+import { useSupportChat } from '../../hooks/useSupportChat'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -77,7 +78,12 @@ export default function ManagerLayout({ children, noPadding = false }) {
   const [pillStyle, setPillStyle] = useState({})
   const [ready, setReady] = useState(false)
   const subsEnabled = useSubscriptionsEnabled()
-  const filteredNav = subsEnabled === false ? NAV.filter(n => n.path !== '/manager/subscriptions') : NAV
+  const support = useSupportChat()
+  const filteredNav = NAV.filter(n => {
+    if (subsEnabled === false && n.path === '/manager/subscriptions') return false
+    if (support && support.enabled === false && n.path === '/manager/support') return false
+    return true
+  })
 
   const hasMultipleRoles = user?.roles?.length > 1
   const switchRole = () => clearRole()
@@ -100,7 +106,7 @@ export default function ManagerLayout({ children, noPadding = false }) {
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
-  }, [location.pathname, subsEnabled]) // eslint-disable-line
+  }, [location.pathname, subsEnabled, support?.enabled]) // eslint-disable-line
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: noPadding ? '#fff' : '#e4e4e8' }}>

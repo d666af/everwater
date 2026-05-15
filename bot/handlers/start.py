@@ -69,6 +69,7 @@ async def show_role_menu(target, role: str):
         ])
 
     subs_on = await api.is_subscriptions_enabled()
+    sup_on = await api.is_support_chat_enabled()
 
     if role == "client":
         await send("👤 Режим клиента:", reply_markup=main_menu_kb(show_role_switch=bool(switch_kb), subs_enabled=subs_on))
@@ -85,7 +86,7 @@ async def show_role_menu(target, role: str):
 
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
+        await send("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on))
         site_rows = [[InlineKeyboardButton(text="🌐 Открыть менеджер на сайте", url=_site("/manager"))]]
         if switch_kb:
             site_rows.append(switch_kb.inline_keyboard[0])
@@ -144,12 +145,13 @@ async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
     await state.clear()
     role = await get_primary_role(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
+    sup_on = await api.is_support_chat_enabled()
     if role == "admin":
         from keyboards.admin import admin_menu_kb
         await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on))
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
         await message.answer("Главное меню:", reply_markup=courier_menu_kb())
@@ -167,12 +169,13 @@ async def cmd_menu(message: Message, state: FSMContext):
     await state.clear()
     role = await get_primary_role(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
+    sup_on = await api.is_support_chat_enabled()
     if role == "admin":
         from keyboards.admin import admin_menu_kb
         await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
-        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on))
     elif role == "courier":
         from keyboards.courier import courier_menu_kb
         await message.answer("Главное меню:", reply_markup=courier_menu_kb())
