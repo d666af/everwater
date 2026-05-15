@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getUserByTelegram, getSettings, createSubscription, getProducts, pauseSubscription, resumeSubscription } from '../api'
 import { useAuthStore } from '../store/auth'
 import { useUserStore } from '../store/user'
+import { useSupportChat } from '../hooks/useSupportChat'
 import MapPicker from '../components/MapPicker'
 
 const tg = window.Telegram?.WebApp
@@ -646,6 +647,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [showLogout, setShowLogout] = useState(false)
   const [settings, setSettings] = useState({ payment_card: '', payment_holder: '' })
+  const [showSupportPopup, setShowSupportPopup] = useState(false)
+  const support = useSupportChat()
   const { logout, user: authUser } = useAuthStore()
   const userStore = useUserStore()
   const navigate = useNavigate()
@@ -779,7 +782,13 @@ export default function Profile() {
 
       {/* Menu */}
       <div style={s.menuCard}>
-        <button style={s.menuItem} onClick={() => navigate('/support')}>
+        <button
+          style={s.menuItem}
+          onClick={() => {
+            if (support && support.enabled === false) setShowSupportPopup(true)
+            else navigate('/support')
+          }}
+        >
           <div style={{ ...s.menuIcon, background: `${C}12` }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" stroke={C} strokeWidth="1.7" strokeLinejoin="round"/>
@@ -790,6 +799,31 @@ export default function Profile() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
+
+      {showSupportPopup && (
+        <div
+          style={s.supOverlay}
+          onClick={e => e.target === e.currentTarget && setShowSupportPopup(false)}
+        >
+          <div style={s.supSheet}>
+            <div style={s.supHandle} />
+            <div style={s.supIcon}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  stroke={C} strokeWidth="1.8" strokeLinejoin="round"/>
+                <path d="M8 10h8M8 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div style={s.supTitle}>Связаться с поддержкой</div>
+            <div style={s.supBody}>
+              {support?.contacts?.trim() || 'Контактная информация скоро появится.'}
+            </div>
+            <button style={s.supCloseBtn} onClick={() => setShowSupportPopup(false)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Info */}
       <div style={s.infoCard}>
@@ -1009,6 +1043,41 @@ const s = {
     borderRadius: 18, padding: '14px', fontSize: 15, fontWeight: 600,
     color: '#ef4444', cursor: 'pointer', textAlign: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  },
+
+  /* Support contacts popup (shown when chat is admin-disabled) */
+  supOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    zIndex: 1000,
+  },
+  supSheet: {
+    background: '#fff', width: '100%', maxWidth: 460,
+    borderRadius: '20px 20px 0 0',
+    padding: '8px 22px 28px',
+    display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center',
+    animation: 'slideUp 0.25s ease',
+    boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
+  },
+  supHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    background: '#e0e0e0', margin: '4px auto 8px',
+  },
+  supIcon: {
+    width: 56, height: 56, borderRadius: 18,
+    background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    marginTop: 4,
+  },
+  supTitle: { fontSize: 18, fontWeight: 800, color: '#1a1a1a', textAlign: 'center' },
+  supBody: {
+    fontSize: 14, color: '#3c3c43', lineHeight: 1.6,
+    whiteSpace: 'pre-wrap', textAlign: 'center', padding: '0 4px',
+  },
+  supCloseBtn: {
+    width: '100%', padding: '12px 0', borderRadius: 14,
+    border: 'none', background: '#f2f2f3',
+    fontSize: 15, fontWeight: 600, color: '#666', cursor: 'pointer',
+    marginTop: 4,
   },
   logoutCard: {
     background: '#fff', margin: '0 16px', borderRadius: 18,

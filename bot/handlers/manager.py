@@ -80,7 +80,11 @@ async def manager_panel(message: Message):
     if not await is_manager(message.from_user.id):
         return
     subs_on = await api.is_subscriptions_enabled()
-    await message.answer("🧑‍💼 Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=subs_on))
+    sup_on = await api.is_support_chat_enabled()
+    await message.answer(
+        "🧑‍💼 Панель менеджера:",
+        reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on),
+    )
 
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
@@ -1110,12 +1114,24 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
     await state.clear()
     await call.answer()
-    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer(
+        "Панель менеджера:",
+        reply_markup=manager_menu_kb(
+            subs_enabled=await api.is_subscriptions_enabled(),
+            support_enabled=await api.is_support_chat_enabled(),
+        ),
+    )
 
 
 @router.callback_query(MgrOrderCreate.confirming, F.data == "mco:cancel")
 async def mgr_co_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("Заказ отменён.")
-    await call.message.answer("Панель менеджера:", reply_markup=manager_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+    await call.message.answer(
+        "Панель менеджера:",
+        reply_markup=manager_menu_kb(
+            subs_enabled=await api.is_subscriptions_enabled(),
+            support_enabled=await api.is_support_chat_enabled(),
+        ),
+    )
     await call.answer()

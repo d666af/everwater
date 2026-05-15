@@ -243,6 +243,12 @@ async def is_subscriptions_enabled() -> bool:
     return bool(cfg.get("subscriptions_enabled", True))
 
 
+async def is_support_chat_enabled() -> bool:
+    """Master switch for the support chat. Defaults to True if backend unreachable."""
+    cfg = await get_settings()
+    return bool(cfg.get("support_chat_enabled", True))
+
+
 # ─── Client data ──────────────────────────────────────────────────────────────
 
 async def get_addresses(user_id: int):
