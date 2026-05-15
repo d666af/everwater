@@ -12,7 +12,7 @@ from app.models.client_data import BottleDebt, SavedAddress, Subscription
 from app.models.user import User
 from app.models.support import SupportChat, SupportMessage
 from app.models.order import Order, OrderStatus
-from app.services.settings_service import is_subscriptions_enabled
+from app.services.settings_service import is_subscriptions_enabled, is_support_chat_enabled
 
 router = APIRouter(prefix="/client", tags=["client"])
 
@@ -322,6 +322,8 @@ class ClientMessageBody(BaseModel):
 @router.post("/support/send")
 async def client_send_support(body: ClientMessageBody, db: AsyncSession = Depends(get_db)):
     """Client sends a support message (same as bot's user_message, called from Mini App)."""
+    if not await is_support_chat_enabled(db):
+        raise HTTPException(status_code=403, detail="Support chat is disabled")
     result = await db.execute(select(SupportChat).where(SupportChat.id == body.telegram_id))
     chat = result.scalar_one_or_none()
     now = datetime.utcnow()
@@ -356,6 +358,8 @@ async def client_send_support(body: ClientMessageBody, db: AsyncSession = Depend
 @router.get("/support/messages")
 async def client_get_messages(telegram_id: int, db: AsyncSession = Depends(get_db)):
     """Returns all messages for the client's support chat."""
+    if not await is_support_chat_enabled(db):
+        return []
     result = await db.execute(
         select(SupportMessage)
         .where(SupportMessage.chat_id == telegram_id)

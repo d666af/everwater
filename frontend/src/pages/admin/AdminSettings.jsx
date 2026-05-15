@@ -44,6 +44,8 @@ export default function AdminSettings() {
     delivery_reminder_enabled: true,
     delivery_reminder_2_delay: 10,
     subscriptions_enabled: true,
+    support_chat_enabled: true,
+    support_contacts_text: '',
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -137,6 +139,63 @@ export default function AdminSettings() {
             {form.subscriptions_enabled
               ? <>Подписки <b>включены</b> — модуль работает у всех ролей.</>
               : <span style={{ color: TEXT2 }}>Подписки <b>выключены</b> — пункт меню скрыт, API возвращает 403/пустой список.</span>}
+          </div>
+        </Section>
+
+        {/* Support chat master switch */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                stroke="#1971C2" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M8 10h8M8 14h5" stroke="#1971C2" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          }
+          title="Чат поддержки"
+          hint="Когда выключен — клиенты и сотрудники видят статичный текст с контактами вместо чата."
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Чат поддержки включён</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.support_chat_enabled
+                  ? 'Клиенты пишут в чат, операторы отвечают через бота/сайт'
+                  : 'Чат скрыт у всех ролей. На /поддержка показывается контактный текст ниже'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, support_chat_enabled: !p.support_chat_enabled }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.support_chat_enabled ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.support_chat_enabled ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+          </div>
+
+          <div style={s.field}>
+            <div style={s.label}>Контактный текст (когда чат выключен)</div>
+            <textarea
+              style={{ ...s.input, minHeight: 100, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.4 }}
+              placeholder="📞 Телефон поддержки: +998 90 000-00-00&#10;📨 Telegram: @everwater_support&#10;🕐 Часы работы: 09:00–22:00"
+              value={form.support_contacts_text}
+              onChange={e => setForm(p => ({ ...p, support_contacts_text: e.target.value }))}
+            />
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Эмодзи и переносы строк сохраняются. Используется в боте и на сайте у всех ролей.
           </div>
         </Section>
 

@@ -680,6 +680,14 @@ async def mgr_client_bottles(call: CallbackQuery):
 async def mgr_support(message: Message):
     if not await is_manager(message.from_user.id):
         return
+    cfg = await api.get_settings()
+    if not cfg.get("support_chat_enabled", True):
+        contacts = (cfg.get("support_contacts_text") or "").strip()
+        body = ("💬 <b>Поддержка</b>\n\n" + contacts) if contacts else (
+            "💬 <b>Поддержка</b>\n\nЧат поддержки отключён администратором."
+        )
+        await message.answer(body, parse_mode="HTML")
+        return
     try:
         chats = await api.get_manager_support_chats()
     except Exception:

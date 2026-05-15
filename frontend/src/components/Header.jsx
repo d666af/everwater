@@ -8,6 +8,7 @@ export default function Header() {
     || pathname.startsWith('/manager')
     || pathname.startsWith('/warehouse')
     || pathname.startsWith('/checkout')
+    || pathname === '/profile' // profileHeader already adds enough top room for the FABs
   if (isStaffOrAuth) return null
   // Client pages: reserve room for the top-floating logout/role FABs
   // (they live in BottomNav.jsx with position: fixed; top: 16).

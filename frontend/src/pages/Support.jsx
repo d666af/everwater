@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
-import { clientSendSupport, clientGetSupportMessages } from '../api'
+import { clientSendSupport, clientGetSupportMessages, getSettings } from '../api'
 
 const C = '#8DC63F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
@@ -22,6 +22,7 @@ function formatTime(dateStr) {
 export default function Support() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const [supportSettings, setSupportSettings] = useState(null) // null = loading
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -99,6 +100,54 @@ export default function Support() {
     } finally {
       setSending(false)
     }
+  }
+
+  // Load support module settings on mount
+  useEffect(() => {
+    getSettings()
+      .then(s => setSupportSettings({
+        enabled: s?.support_chat_enabled !== false,
+        contacts: s?.support_contacts_text || '',
+      }))
+      .catch(() => setSupportSettings({ enabled: true, contacts: '' }))
+  }, [])
+
+  // When chat is disabled — show a static info card instead of the chat UI
+  if (supportSettings && !supportSettings.enabled) {
+    return (
+      <div style={s.page}>
+        <div style={s.header}>
+          <button style={s.backBtn} onClick={() => navigate(-1)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M15 18l-6-6 6-6" stroke="#1a1a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <div style={{ flex: 1, padding: '0 12px', fontSize: 17, fontWeight: 700, color: '#1a1a1a' }}>Поддержка</div>
+        </div>
+
+        <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'stretch' }}>
+          <div style={{
+            background: '#fff', borderRadius: 18, padding: '24px 20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', textAlign: 'center',
+          }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 20,
+              background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke={C} strokeWidth="1.8" strokeLinejoin="round"/>
+                <path d="M8 10h8M8 14h5" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: '#1a1a1a' }}>Связаться с поддержкой</div>
+            <div style={{ fontSize: 14, color: '#3c3c43', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+              {supportSettings.contacts || 'Контактная информация скоро появится.'}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

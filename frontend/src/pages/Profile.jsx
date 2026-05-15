@@ -747,7 +747,7 @@ export default function Profile() {
               </svg>
             </span>
             <span style={s.bonusRuleText}>
-              <b style={s.bonusRuleBold}>{bonusPerBottle.toLocaleString()}</b> бонусов за каждую доставленную бутылку 19л
+              <b style={s.bonusRuleBold}>{bonusPerBottle.toLocaleString()}</b> бонусов за каждую 19л
             </span>
           </div>
           <div style={s.bonusRule}>
@@ -770,7 +770,7 @@ export default function Profile() {
                 </svg>
               </span>
               <span style={s.bonusRuleText}>
-                Срок <b style={s.bonusRuleBold}>{bonusExpiryDays} дн.</b> с последнего начисления — любой заказ продлевает
+                Срок <b style={s.bonusRuleBold}>{bonusExpiryDays} дн.</b> с последнего начисления
               </span>
             </div>
           )}
