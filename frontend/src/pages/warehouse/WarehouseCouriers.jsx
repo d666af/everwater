@@ -4,6 +4,7 @@ import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
   issueBatchToCourier, getInvoiceUrl,
+  shortProductName, isWarehouseProduct,
 } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
@@ -20,6 +21,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
 
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
+  const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const [couriers, setCouriers] = useState([])
@@ -31,22 +33,28 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const load = () => {
     setLoading(true)
     const cd = period === 'custom' ? customDate : null
+    const cdTo = period === 'custom' ? customDateTo : null
     Promise.all([
-      getWarehouseCourierStats(period, cd),
+      getWarehouseCourierStats(period, cd, cdTo),
       getProducts(),
     ])
       .then(([cs, prods]) => {
         setCouriers(cs)
-        setCatalog((prods || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
+        setCatalog(
+          (prods || [])
+            .filter(p => p.is_active !== false && isWarehouseProduct(p.name))
+            .map(p => ({ id: p.id, name: shortProductName(p.name) }))
+        )
       })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [period, customDate]) // eslint-disable-line
+  useEffect(load, [period, customDate, customDateTo]) // eslint-disable-line
 
-  const applyCustom = (start) => {
+  const applyCustom = (start, end) => {
     setCustomDate(start)
+    setCustomDateTo(end)
     setPeriod('custom')
   }
 
@@ -56,7 +64,13 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
   }
 
-  const periodLabel = period === 'custom' && customDate ? fmtDateStr(customDate) : 'Сегодня'
+  const periodLabel = period === 'custom'
+    ? (customDate
+        ? (customDateTo && customDateTo !== customDate
+            ? `${fmtDateStr(customDate)} – ${fmtDateStr(customDateTo)}`
+            : fmtDateStr(customDate))
+        : 'Дата')
+    : 'Сегодня'
 
   const issueBatch = async (courierId, courierName, items, bottleReturn, vehicleType, vehiclePlate) => {
     const res = await issueBatchToCourier(courierId, items, actor, vehicleType, vehiclePlate, null, bottleReturn)
@@ -87,8 +101,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
-          initialDateTo={null}
-          onApply={(start) => applyCustom(start)}
+          initialDateTo={customDateTo}
+          onApply={applyCustom}
           onClose={() => setPickerOpen(false)}
         />
       )}
@@ -96,7 +110,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
       {/* Date filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <button
-          onClick={() => { setPeriod('today'); setCustomDate(null) }}
+          onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }}
           style={{
             flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
             background: period === 'today' ? GRAD : '#fff',
@@ -149,15 +163,15 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
 }
 
 function CourierCard({ c, onIssue }) {
-  const issuedCount = c.issued_today || 0
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
+  const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 44, height: 44, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: 42, height: 42, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(c.name || 'К')[0]}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -171,35 +185,43 @@ function CourierCard({ c, onIssue }) {
         <button
           onClick={onIssue}
           style={{
-            flexShrink: 0, padding: '9px 14px', borderRadius: 12, border: 'none',
+            flexShrink: 0, padding: '8px 12px', borderRadius: 12, border: 'none',
             background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 5,
+            display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
           }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать / Вернуть
         </button>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        {/* Issued */}
-        <div style={{ flex: 1, background: issuedCount > 0 ? '#FFF8F0' : '#F8F9FA', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: issuedCount > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{issuedCount}</div>
-          <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Выдано, шт.</div>
-        </div>
-        {/* Bottles */}
-        <div style={{ flex: 2, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '10px 12px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бутылки 19л</div>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{retBottles}</div>
-              <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>вернул</div>
-            </div>
-            <div style={{ width: 1, height: 28, background: mustBottles > 0 ? '#C0D8F0' : BORDER, flexShrink: 0 }} />
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{mustBottles}</div>
-              <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>должен</div>
-            </div>
+      {/* Issued products */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Выдано за период</div>
+        {issuedProducts.length > 0 ? (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {issuedProducts.map(([name, qty]) => (
+              <span key={name} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 999, background: '#FFF3D9', color: '#E67700', fontWeight: 700 }}>
+                {name} · {qty} шт.
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span style={{ fontSize: 12, color: TEXT2 }}>Выдач за период нет</span>
+        )}
+      </div>
+
+      {/* Bottle tracking */}
+      <div style={{ marginTop: 10, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '10px 14px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Бутылки 19л</div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{retBottles}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>вернул</div>
+          </div>
+          <div style={{ width: 1, height: 30, background: mustBottles > 0 ? '#B8D9F5' : BORDER, flexShrink: 0 }} />
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>должен</div>
           </div>
         </div>
       </div>
@@ -253,7 +275,7 @@ function CourierIssueModal({ courier, catalog, onClose, onSave }) {
         <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
           <div style={st.handle} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать / Вернуть</div>
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
           <div style={{ fontSize: 13, color: TEXT2, marginBottom: 10 }}>
@@ -263,7 +285,7 @@ function CourierIssueModal({ courier, catalog, onClose, onSave }) {
         </div>
 
         {/* Scrollable products */}
-        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 280px)', flexShrink: 0 }}>
+        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 290px)', flexShrink: 0 }}>
           {catalog.length === 0 ? (
             <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
           ) : (
@@ -299,8 +321,7 @@ function CourierIssueModal({ courier, catalog, onClose, onSave }) {
 
         {/* Fixed footer */}
         <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Bottle return section */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат · Бутылки 19л</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 10px', borderRadius: 12,

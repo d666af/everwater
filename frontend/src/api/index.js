@@ -1110,9 +1110,9 @@ export const getSubscriptionsByPeriod = (period = 'today', customDate = null) =>
 
 // Per-courier warehouse-relevant stats
 // Includes assigned active orders with items, 20L bottle return tracking, per-product delivered/on-hand/to-pickup
-export const getWarehouseCourierStats = (period = 'today', date = null) =>
+export const getWarehouseCourierStats = (period = 'today', date = null, dateTo = null) =>
   safeCall(
-    () => http.get('/warehouse/couriers', { params: { period, date: date || undefined } }).then(r => r.data),
+    () => http.get('/warehouse/couriers', { params: { period, date: date || undefined, date_to: dateTo || undefined } }).then(r => r.data),
     () => {
       const today = new Date()
       const couriers = MOCK_COURIERS.filter(c => c.is_active)

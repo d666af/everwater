@@ -202,9 +202,13 @@ async def get_overview(
             per_product[s.product_id]["stock"] = s.quantity
 
     # On-hand with couriers
+    product_19l_ids = {p.id for p in products if int(float(p.volume)) == 19}
+    bottles_on_couriers = 0
     for cw in (await db.execute(select(CourierWater))).scalars().all():
         if cw.product_id in per_product:
             per_product[cw.product_id]["on_couriers"] += cw.quantity
+        if cw.product_id in product_19l_ids:
+            bottles_on_couriers += cw.quantity
 
     # Transactions in period (skip "tomorrow" — nothing produced yet)
     bottle_returns_period = 0
@@ -281,6 +285,7 @@ async def get_overview(
         "delivered_orders":    delivered_count,
         "bottles_returned_period": bottles_returned_period,
         "bottle_returns_period":   bottle_returns_period,
+        "bottles_on_couriers": bottles_on_couriers,
         "bottles_owed_total":  0,
     }
     return {"products": products_list, "totals": totals, "shortfall_items": shortfall_items, "period": period}
@@ -883,12 +888,13 @@ async def adjust_stock(body: AdjustBody, db: AsyncSession = Depends(get_db)):
 async def get_couriers_water(
     period: str = "today",
     date: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     couriers_q = await db.execute(select(Courier).where(Courier.is_active == True))
     couriers = couriers_q.scalars().all()
 
-    period_start, period_end = _period_range(period, date, None, None)
+    period_start, period_end = _period_range(period, date, None, None, date_to)
     result = []
 
     for c in couriers:
@@ -900,10 +906,13 @@ async def get_couriers_water(
         )
         water_dict: dict[str, int] = {}
         on_hand_total = 0
+        bottles_must_return = 0
         for cw, prod in cw_q.all():
             short = _short_name(prod.volume, prod.type)
             water_dict[short] = water_dict.get(short, 0) + cw.quantity
             on_hand_total += cw.quantity
+            if int(float(prod.volume)) == 19:
+                bottles_must_return += cw.quantity
 
         # Active orders with items
         act_q = await db.execute(
@@ -930,7 +939,6 @@ async def get_couriers_water(
 
         active_list = []
         to_pickup: dict[str, int] = {}
-        bottles_must_return = 0
         for o in active_orders:
             order_items = []
             for item in o.items:
@@ -956,7 +964,6 @@ async def get_couriers_water(
                 "return_bottles_count": o.return_bottles_count,
                 "items": order_items,
             })
-            bottles_must_return += o.return_bottles_count
 
         # Delivered in period
         del_q = await db.execute(
@@ -975,20 +982,28 @@ async def get_couriers_water(
                 short = _short_name(item.product.volume, item.product.type)
                 delivered_products[short] = delivered_products.get(short, 0) + item.quantity
 
-        # Period transactions for issued/returned counts
+        # Period transactions — join Product for per-product breakdown
         tx_q = await db.execute(
-            select(WaterTransaction)
+            select(WaterTransaction, Product)
+            .outerjoin(Product, WaterTransaction.product_id == Product.id)
             .where(WaterTransaction.courier_id == c.id)
             .where(WaterTransaction.created_at >= period_start)
             .where(WaterTransaction.created_at < period_end)
         )
         issued_today_count = 0
         returned_today_count = 0
-        for tx in tx_q.scalars().all():
+        bottles_returned_period = 0
+        issued_products_period: dict[str, int] = {}
+        for tx, prod in tx_q.all():
             if tx.transaction_type == "issue":
                 issued_today_count += tx.quantity
+                if prod:
+                    short = _short_name(prod.volume, prod.type)
+                    issued_products_period[short] = issued_products_period.get(short, 0) + tx.quantity
             elif tx.transaction_type == "return":
                 returned_today_count += tx.quantity
+            elif tx.transaction_type == "bottle_return":
+                bottles_returned_period += tx.quantity
 
         result.append({
             "id": c.id,
@@ -1007,7 +1022,8 @@ async def get_couriers_water(
             "to_pickup": to_pickup,
             "water": water_dict,
             "bottles_must_return": bottles_must_return,
-            "bottles_returned_today": bottles_returned_today,
+            "bottles_returned_today": bottles_returned_period,
+            "issued_products": issued_products_period,
             # Keep legacy format for bot compatibility
             "active_orders_count": len(active_orders),
         })
