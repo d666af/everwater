@@ -424,6 +424,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [vehicleType, setVehicleType] = useState('')
   const [vehiclePlate, setVehiclePlate] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const courier = couriers.find(c => c.id === courierId)
 
@@ -440,16 +441,40 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     setVehiclePlate(courier?.vehicle_plate || '')
   }, [courierId]) // eslint-disable-line
 
-  const dis = !qty || Number(qty) <= 0 || !courierId || !name
+  const parsedQty = Number(qty)
+  const parsedReturn = Number(bottleReturn) > 0 ? Number(bottleReturn) : 0
+  const hasType = vehicleType.trim().length > 0
+  const hasPlate = vehiclePlate.trim().length > 0
+
+  const validationError = (hasType && !hasPlate)
+    ? 'Укажите госномер или очистите тип машины'
+    : (hasPlate && !hasType)
+      ? 'Укажите тип машины или очистите госномер'
+      : ''
+
+  const dis = !qty || parsedQty <= 0 || !courierId || !name
+
   const handle = async () => {
     if (dis) return
+    if (validationError) { setError(validationError); return }
+    setError('')
     setLoading(true)
     try {
-      await onSave(courierId, courier?.name || '', name, Number(qty), Number(bottleReturn) || 0, vehicleType.trim() || null, vehiclePlate.trim() || null)
+      await onSave(
+        courierId,
+        courier?.name || '',
+        name,
+        parsedQty,
+        parsedReturn,
+        vehicleType.trim() || null,
+        vehiclePlate.trim() || null,
+      )
       onClose()
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка при выдаче')
+    } finally {
+      setLoading(false)
     }
-    catch { alert('Ошибка') }
-    finally { setLoading(false) }
   }
 
   return (
@@ -470,28 +495,53 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
             ))}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {catalog.map(p => (
-              <button key={p.id} onClick={() => setName(p.name)} style={{
-                padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: name === p.name ? GRAD : '#F8F9FA',
-                color: name === p.name ? '#fff' : TEXT,
-                border: name === p.name ? 'none' : `1px solid ${BORDER}`,
-              }}>{p.name}</button>
-            ))}
-          </div>
+          {catalog.length === 0 ? (
+            <div style={{ fontSize: 12, color: TEXT2, padding: '4px 0' }}>Загрузка…</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {catalog.map(p => (
+                <button key={p.id} onClick={() => setName(p.name)} style={{
+                  padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: name === p.name ? GRAD : '#F8F9FA',
+                  color: name === p.name ? '#fff' : TEXT,
+                  border: name === p.name ? 'none' : `1px solid ${BORDER}`,
+                }}>{p.name}</button>
+              ))}
+            </div>
+          )}
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
-          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
+          <input style={st.input} type="number" inputMode="numeric" min="1" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат бутылок (шт.)</div>
-          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={bottleReturn} onChange={e => setBottleReturn(e.target.value)} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Возврат бутылок{' '}
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(не обязательно)</span>
+          </div>
+          <input style={st.input} type="number" inputMode="numeric" min="0" placeholder="0" value={bottleReturn} onChange={e => setBottleReturn(e.target.value)} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транспорт (для накладной)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Транспорт{' '}
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(оба поля или оба пустые)</span>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Тип машины" />
-            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="Госномер" />
+            <input
+              style={{ ...st.input, flex: 1, ...(hasType && !hasPlate ? { border: '1.5px solid #FFB4B4' } : {}) }}
+              value={vehicleType}
+              onChange={e => { setVehicleType(e.target.value); setError('') }}
+              placeholder="Тип машины"
+            />
+            <input
+              style={{ ...st.input, flex: 1, ...(hasPlate && !hasType ? { border: '1.5px solid #FFB4B4' } : {}) }}
+              value={vehiclePlate}
+              onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }}
+              placeholder="Госномер"
+            />
           </div>
         </div>
+        {(error || validationError) && (
+          <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 13, color: '#C92A2A', fontWeight: 600 }}>
+            {error || validationError}
+          </div>
+        )}
         <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
           {loading ? 'Выдаю...' : `Выдать ${qty || 0} шт. → ${courier?.name || '?'}`}
         </button>
