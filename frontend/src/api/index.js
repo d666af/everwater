@@ -782,7 +782,7 @@ export const issueWaterToCourier = (courierId, courierName, productName, quantit
   )
 
 // Issue several products in one transaction (returns one invoice batch_id)
-export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, vehiclePlate, note) =>
+export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, vehiclePlate, note, bottleReturn) =>
   safeCall(
     () => http.post('/warehouse/issue_batch', {
       courier_id: courierId,
@@ -791,6 +791,7 @@ export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, 
       vehicle_type: vehicleType || undefined,
       vehicle_plate: vehiclePlate || undefined,
       note: note || undefined,
+      ...(bottleReturn > 0 ? { bottle_return: bottleReturn } : {}),
     }).then(r => r.data),
     () => {
       const fakeBatch = 'mock-' + Date.now()

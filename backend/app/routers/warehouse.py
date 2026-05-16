@@ -339,22 +339,59 @@ async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
 
 
 async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: list[dict],
-                                    batch_id: str, performed_by: str | None):
-    """Push the invoice PNG to all admin chat IDs."""
+                                    batch_id: str, performed_by: str | None,
+                                    db: AsyncSession | None = None):
+    """Push the invoice PNG to all admins and warehouse staff (deduplicated)."""
     when_str = datetime.now().strftime("%d.%m.%Y %H:%M")
-    total = sum(int(round(float(it.get("sum") or 0))) for it in items_summary)
+
+    regular = [it for it in items_summary if not it.get("is_return")]
+    returns  = [it for it in items_summary if it.get("is_return")]
+
+    lines: list[str] = []
+    grand_total = 0
+    for it in regular:
+        qty = int(it.get("qty") or 0)
+        s   = int(round(float(it.get("sum") or 0)))
+        grand_total += s
+        s_fmt = f"{s:,}".replace(",", " ")
+        lines.append(f"• {it.get('name')}: <b>{qty} шт. · {s_fmt} сум</b>")
+
+    return_line = ""
+    for it in returns:
+        qty = int(it.get("qty") or 0)
+        if qty > 0:
+            return_line = f"\n↩ Возврат бутылок: <b>{qty} шт.</b>"
+
+    total_fmt  = f"{grand_total:,}".replace(",", " ")
     actor_line = f"\nВыдал: <b>{performed_by}</b>" if performed_by else ""
-    qty_total = sum(int(it.get("qty") or 0) for it in items_summary)
+    items_block = "\n".join(lines) if lines else "—"
+
     caption = (
         f"📋 <b>Накладная — выдача со склада</b>\n"
-        f"Курьер: <b>{courier.name}</b>"
-        f"{f' · {courier.phone}' if courier.phone else ''}\n"
-        f"Позиций: <b>{len(items_summary)}</b> · {qty_total} шт. · {total:,} сум".replace(",", " ")
-        + f"\nВремя: {when_str}{actor_line}"
+        f"Курьер: <b>{courier.name}</b>{f' · {courier.phone}' if courier.phone else ''}\n\n"
+        f"{items_block}\n"
+        f"▬▬▬▬▬▬▬▬▬▬\n"
+        f"Итого: <b>{total_fmt} сум</b>"
+        f"{return_line}"
+        f"\n\nВремя: {when_str}{actor_line}"
     )
-    for aid in app_settings.ADMIN_IDS:
+
+    # Collect unique recipients: admins + warehouse IDs from config + DB staff
+    recipient_ids: set[int] = set(app_settings.ADMIN_IDS)
+    recipient_ids.update(app_settings.WAREHOUSE_IDS)
+    if db:
         try:
-            await tg_send_photo(aid, png, caption=caption,
+            staff_q = await db.execute(
+                select(WarehouseStaff).where(WarehouseStaff.is_active == True)
+            )
+            for staff in staff_q.scalars().all():
+                recipient_ids.add(staff.telegram_id)
+        except Exception:
+            pass
+
+    for rid in recipient_ids:
+        try:
+            await tg_send_photo(rid, png, caption=caption,
                                  filename=f"nakladnaya_{batch_id[:8]}.png")
         except Exception:
             pass
@@ -488,7 +525,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
                 vehicle_plate=courier.vehicle_plate,
                 when=datetime.now(),
             )
-            await _send_invoice_to_admins(png, courier, items, batch_id, body.performed_by)
+            await _send_invoice_to_admins(png, courier, items, batch_id, body.performed_by, db)
         except Exception:
             pass
 
@@ -505,18 +542,20 @@ class BatchIssueItem(BaseModel):
 
 class BatchIssueBody(BaseModel):
     courier_id: int
-    items: list[BatchIssueItem]
+    items: list[BatchIssueItem] = []
     note: str | None = None
     performed_by: str | None = None
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
+    bottle_return: int = 0
 
 
 @router.post("/issue_batch")
 async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
     """Issue several products to a courier in one transaction; produce one invoice."""
-    if not body.items:
-        raise HTTPException(400, "items is empty")
+    bottle_return_qty = max(0, body.bottle_return or 0)
+    if not body.items and bottle_return_qty == 0:
+        raise HTTPException(400, "items is empty and no bottle return")
 
     # Resolve all products + validate stock up-front (atomic check)
     resolved: list[tuple[Product, int]] = []
@@ -528,7 +567,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         if stock.quantity < it.quantity:
             raise HTTPException(400, f"Не хватает на складе: {prod.name} (есть {stock.quantity})")
         resolved.append((prod, it.quantity))
-    if not resolved:
+    if not resolved and bottle_return_qty == 0:
         raise HTTPException(400, "Все позиции имеют нулевое количество")
 
     batch_id = str(uuid.uuid4())
@@ -569,6 +608,25 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             "sum":   qty * price,
         })
 
+    if bottle_return_qty > 0:
+        db.add(WaterTransaction(
+            product_id=None,
+            courier_id=body.courier_id,
+            order_id=None,
+            transaction_type="bottle_return",
+            quantity=bottle_return_qty,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+        ))
+
+    if bottle_return_qty > 0:
+        invoice_items.insert(0, {
+            "name": "Возврат бутылок",
+            "unit": "Шт",
+            "qty":  bottle_return_qty,
+            "is_return": True,
+        })
+
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
 
@@ -582,7 +640,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
                 vehicle_plate=courier.vehicle_plate,
                 when=datetime.now(),
             )
-            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by)
+            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by, db)
         except Exception:
             pass
 
@@ -665,7 +723,7 @@ async def issue_for_order(body: IssueOrderBody, db: AsyncSession = Depends(get_d
                 vehicle_plate=courier.vehicle_plate,
                 when=datetime.now(),
             )
-            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by)
+            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by, db)
         except Exception:
             pass
 
