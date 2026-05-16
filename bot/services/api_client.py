@@ -563,12 +563,13 @@ async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id
         return []
 
 
-async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None) -> dict:
+async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None, performed_by: str = None) -> dict:
     return await _post("/warehouse/issue_batch", {
         "courier_id": courier_id,
         "items": items,
         "bottle_return": bottle_return,
         "note": note,
+        "performed_by": performed_by,
     })
 
 

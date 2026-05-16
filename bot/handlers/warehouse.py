@@ -183,7 +183,8 @@ async def wh_ir_start(message: Message, state: FSMContext):
         return
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
-    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0)
+    operator = message.from_user.full_name or message.from_user.username or "Завсклада"
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
     await state.set_state(IssueReturnState.choosing_courier)
     await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
 
@@ -274,15 +275,25 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     courier_name = data.get("ir_courier_name", "")
     cart = data.get("ir_cart", {})
     return_qty = data.get("ir_return_qty", 0)
+    operator = data.get("ir_operator", "")
+    catalog = data.get("ir_catalog", [])
 
+    # Build items with price lookup for total calculation
+    price_map = {str(p["id"]): float(p.get("price") or 0) for p in catalog}
     items = [
         {"product_id": int(k), "product_name": v["name"], "quantity": v["qty"]}
         for k, v in cart.items() if v["qty"] > 0
     ]
+    total_sum = sum(
+        v["qty"] * price_map.get(k, 0)
+        for k, v in cart.items() if v["qty"] > 0
+    )
 
     await state.clear()
     try:
-        await api.issue_batch(courier_id, items, return_qty)
+        await api.issue_batch(courier_id, items, return_qty, performed_by=operator)
+
+        # Confirmation to operator
         lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
         if items:
             lines.append("\n📦 Выдано:")
@@ -290,18 +301,24 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
                 lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
         if return_qty > 0:
             lines.append(f"\n↩ Возврат бутылок: {return_qty} шт.")
+        if total_sum > 0:
+            lines.append(f"\n💰 Итого: {int(total_sum):,} сум".replace(",", " "))
         await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+
         # Notify courier
         couriers_list = data.get("ir_couriers", [])
         courier = next((c for c in couriers_list if c["id"] == courier_id), {})
-        if courier.get("telegram_id") and items:
-            notify_text = "📦 Выдано со склада: " + ", ".join(
-                f"{it['product_name']} {it['quantity']} шт." for it in items
-            )
+        if courier.get("telegram_id") and (items or return_qty > 0):
+            notify_lines = ["📦 <b>Накладная со склада</b>"]
+            if items:
+                for it in items:
+                    notify_lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
             if return_qty > 0:
-                notify_text += f"\n↩ Принято бутылок: {return_qty} шт."
+                notify_lines.append(f"↩ Принято бутылок: {return_qty} шт.")
+            if total_sum > 0:
+                notify_lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
             try:
-                await call.bot.send_message(courier["telegram_id"], notify_text)
+                await call.bot.send_message(courier["telegram_id"], "\n".join(notify_lines), parse_mode="HTML")
             except Exception:
                 pass
     except Exception as e:
@@ -524,7 +541,8 @@ async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     active = [c for c in couriers if c.get("is_active", True)]
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
-    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0)
+    operator = call.from_user.full_name or call.from_user.username or "Завсклада"
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
     await state.set_state(IssueReturnState.choosing_courier)
     await call.message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
     await call.answer()
