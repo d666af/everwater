@@ -370,7 +370,6 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
         f"📋 <b>Накладная — выдача со склада</b>\n"
         f"Курьер: <b>{courier.name}</b>{f' · {courier.phone}' if courier.phone else ''}\n\n"
         f"{items_block}\n"
-        f"▬▬▬▬▬▬▬▬▬▬\n"
         f"Итого: <b>{total_fmt} сум</b>"
         f"{return_line}"
         f"\n\nВремя: {when_str}{actor_line}"

@@ -396,12 +396,6 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
             ))}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {[1, 2, 5, 10, 20, 50].map(n => (
-              <button key={n} onClick={() => setQty(p => String((Number(p) || 0) + n))} style={st.presetBtn}>+{n}</button>
-            ))}
-            {Number(qty) > 0 && <button onClick={() => setQty('')} style={st.presetBtnReset}>✕</button>}
-          </div>
           <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Заметка</div>
           <input style={st.input} placeholder="Необязательно" value={note} onChange={e => setNote(e.target.value)} />
@@ -500,17 +494,23 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
                     padding: '10px 12px', borderRadius: 12,
                     background: q > 0 ? '#F0FAE8' : '#F8F9FA',
                     border: `1.5px solid ${q > 0 ? C : BORDER}`,
+                    transition: 'background 0.15s, border-color 0.15s',
                   }}>
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>{p.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                       <button
                         onClick={() => setQty(p.id, q - 1)}
-                        style={{ width: 32, height: 32, borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >−</button>
-                      <span style={{ minWidth: 28, textAlign: 'center', fontSize: 16, fontWeight: 800, color: q > 0 ? CD : TEXT2 }}>{q}</span>
+                      <input
+                        type="number" inputMode="numeric" min="0" value={q || ''}
+                        placeholder="0"
+                        onChange={e => setQty(p.id, e.target.value)}
+                        style={{ width: 52, height: 30, borderRadius: 8, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 14, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                      />
                       <button
                         onClick={() => setQty(p.id, q + 1)}
-                        style={{ width: 32, height: 32, borderRadius: 8, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >+</button>
                     </div>
                   </div>
