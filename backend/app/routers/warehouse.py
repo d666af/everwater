@@ -183,7 +183,7 @@ async def get_overview(
         per_product[p.id] = {
             "key": _product_key(p.volume, p.type),
             "product_id": p.id,
-            "product_name": _short_name(p.volume, p.type),
+            "product_name": p.name,
             "catalog_name": p.name,
             "volume": p.volume,
             "type": p.type,
@@ -202,13 +202,26 @@ async def get_overview(
             per_product[s.product_id]["stock"] = s.quantity
 
     # On-hand with couriers
-    product_19l_ids = {p.id for p in products if int(float(p.volume)) == 19}
-    bottles_on_couriers = 0
+    product_19l_ids = [p.id for p in products if int(float(p.volume)) == 19]
     for cw in (await db.execute(select(CourierWater))).scalars().all():
         if cw.product_id in per_product:
             per_product[cw.product_id]["on_couriers"] += cw.quantity
-        if cw.product_id in product_19l_ids:
-            bottles_on_couriers += cw.quantity
+
+    # Bottle debt = all-time 19L issued to couriers − all-time bottle returns
+    if product_19l_ids:
+        q19_issued = await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.transaction_type == "issue")
+            .where(WaterTransaction.product_id.in_(product_19l_ids))
+            .where(WaterTransaction.courier_id.isnot(None))
+        )
+        q19_returned = await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.transaction_type == "bottle_return")
+        )
+        bottles_on_couriers = max(0, (q19_issued.scalar() or 0) - (q19_returned.scalar() or 0))
+    else:
+        bottles_on_couriers = 0
 
     # Transactions in period (skip "tomorrow" — nothing produced yet)
     bottle_returns_period = 0
@@ -895,6 +908,11 @@ async def get_couriers_water(
     couriers = couriers_q.scalars().all()
 
     period_start, period_end = _period_range(period, date, None, None, date_to)
+
+    # 19L product IDs (for bottle debt calculation)
+    all_prods_q = await db.execute(select(Product))
+    product_19l_ids = [p.id for p in all_prods_q.scalars().all() if int(float(p.volume)) == 19]
+
     result = []
 
     for c in couriers:
@@ -906,13 +924,27 @@ async def get_couriers_water(
         )
         water_dict: dict[str, int] = {}
         on_hand_total = 0
-        bottles_must_return = 0
         for cw, prod in cw_q.all():
             short = _short_name(prod.volume, prod.type)
             water_dict[short] = water_dict.get(short, 0) + cw.quantity
             on_hand_total += cw.quantity
-            if int(float(prod.volume)) == 19:
-                bottles_must_return += cw.quantity
+
+        # Bottle debt: all-time 19L issued − all-time returned (transaction-based)
+        if product_19l_ids:
+            c_issued_q = await db.execute(
+                select(func.sum(WaterTransaction.quantity))
+                .where(WaterTransaction.courier_id == c.id)
+                .where(WaterTransaction.transaction_type == "issue")
+                .where(WaterTransaction.product_id.in_(product_19l_ids))
+            )
+            c_returned_q = await db.execute(
+                select(func.sum(WaterTransaction.quantity))
+                .where(WaterTransaction.courier_id == c.id)
+                .where(WaterTransaction.transaction_type == "bottle_return")
+            )
+            bottles_must_return = max(0, (c_issued_q.scalar() or 0) - (c_returned_q.scalar() or 0))
+        else:
+            bottles_must_return = 0
 
         # Active orders with items
         act_q = await db.execute(

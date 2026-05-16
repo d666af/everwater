@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, shortProductName, isWarehouseProduct } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
+import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -31,6 +32,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [showIssue, setShowIssue] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   const [couriers, setCouriers] = useState([])
   const [adjustProduct, setAdjustProduct] = useState(null)
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
@@ -96,6 +98,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         load()
       }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note, actor); load() }} />}
+      {showReport && <ReportModal onClose={() => setShowReport(false)} />}
       {invoiceModal && (
         <InvoiceSuccessModal
           batchId={invoiceModal.batchId}
@@ -157,23 +160,32 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
       {/* Action buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            padding: '13px 10px', borderRadius: 14, border: 'none',
+            background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
+          }} onClick={() => setShowAdd(true)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            Производство
+          </button>
+          <button style={{
+            flex: 0.75, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '13px 10px', borderRadius: 14, border: `1.5px solid ${BORDER}`,
+            background: '#fff', color: TEXT2, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }} onClick={() => setShowReport(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            Отчёт
+          </button>
+        </div>
         <button style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '14px 10px', borderRadius: 14, border: 'none',
-          background: GRAD, color: '#fff', fontSize: 15, fontWeight: 700,
-          cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
-        }} onClick={() => setShowAdd(true)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Производство
-        </button>
-        <button style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '14px 10px', borderRadius: 14, border: `1.5px solid ${C}`,
-          background: '#fff', color: CD, fontSize: 15, fontWeight: 700,
-          cursor: 'pointer',
+          padding: '13px 10px', borderRadius: 14, border: `1.5px solid ${C}`,
+          background: '#fff', color: CD, fontSize: 14, fontWeight: 700, cursor: 'pointer',
         }} onClick={() => setShowIssue(true)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать курьеру
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать / Вернуть
         </button>
       </div>
 
@@ -329,41 +341,40 @@ function ProductCard({ p, onAdjust }) {
       background: '#fff', borderRadius: 14, padding: '10px 10px',
       boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
       border: `1.5px solid ${isShort ? '#FFB4B4' : BORDER}`,
-      display: 'flex', flexDirection: 'column',
     }}>
-      {/* Name row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, lineHeight: 1.3, flex: 1, marginRight: 4 }}>{p.product_name}</div>
+      {/* Name + adjust */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, lineHeight: 1.3, flex: 1, marginRight: 4 }}>{p.product_name}</div>
         <button onClick={onAdjust} style={{
-          background: '#F2F2F7', border: 'none', width: 26, height: 26, borderRadius: 7,
+          background: '#F2F2F7', border: 'none', width: 24, height: 24, borderRadius: 6,
           cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       </div>
 
-      {/* Primary: issued */}
-      <div style={{ marginBottom: 2 }}>
-        <div style={{ fontSize: 26, fontWeight: 800, color: issued > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{issued}</div>
-        <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>выдано</div>
-      </div>
-
-      {/* Secondary: stock + produced */}
-      <div style={{ marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
-          <div style={{ fontSize: 9, color: TEXT2, marginTop: 1 }}>склад</div>
+      {/* Two-column stats: issued left | stock+produced right */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
+        <div style={{ flex: 1, borderRight: `1px solid ${BORDER}`, paddingRight: 8 }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: issued > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{issued}</div>
+          <div style={{ fontSize: 9, color: TEXT2, marginTop: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>выдано</div>
         </div>
-        {p.produced_period > 0 && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>{p.produced_period}</div>
-            <div style={{ fontSize: 9, color: TEXT2, marginTop: 1 }}>произв.</div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
+            <div style={{ fontSize: 9, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>склад</div>
           </div>
-        )}
+          {p.produced_period > 0 && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#2B8A3E', lineHeight: 1 }}>+{p.produced_period}</div>
+              <div style={{ fontSize: 9, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>произв.</div>
+            </div>
+          )}
+        </div>
       </div>
 
       {isShort && (
-        <div style={{ marginTop: 4, padding: '2px 6px', background: '#FFE8E8', borderRadius: 5, alignSelf: 'flex-start' }}>
+        <div style={{ marginTop: 6, padding: '2px 6px', background: '#FFE8E8', borderRadius: 5, display: 'inline-block' }}>
           <span style={{ fontSize: 9, color: '#C92A2A', fontWeight: 700 }}>−{p.shortfall} шт.</span>
         </div>
       )}
@@ -462,9 +473,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
 
   useEffect(() => {
     getProducts().then(ps => {
-      const list = (ps || [])
-        .filter(p => p.is_active !== false && isWarehouseProduct(p.name))
-        .map(p => ({ id: p.id, name: shortProductName(p.name) }))
+      const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
       setCatalog(list)
     }).catch(console.error)
   }, []) // eslint-disable-line
