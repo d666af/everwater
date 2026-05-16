@@ -319,7 +319,7 @@ class IssueBody(BaseModel):
     performed_by: str | None = None
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
-    bottle_return: int | None = 0
+    bottle_return: int = 0
 
 
 async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
@@ -447,13 +447,14 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         note=_note_with_actor(body.note, body.performed_by),
         batch_id=batch_id,
     ))
-    if body.bottle_return and body.bottle_return > 0:
+    bottle_return_qty = max(0, body.bottle_return or 0)
+    if bottle_return_qty > 0:
         db.add(WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
             transaction_type="bottle_return",
-            quantity=body.bottle_return,
+            quantity=bottle_return_qty,
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
         ))
@@ -463,11 +464,11 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
     # Generate invoice + send to admins (best-effort, post-commit)
     if courier:
         items = []
-        if body.bottle_return and body.bottle_return > 0:
+        if bottle_return_qty > 0:
             items.append({
                 "name": "Возврат бутылок",
                 "unit": "Шт",
-                "qty":  body.bottle_return,
+                "qty":  bottle_return_qty,
                 "is_return": True,
             })
         items.append({

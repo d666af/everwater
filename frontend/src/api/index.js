@@ -767,7 +767,7 @@ export const issueWaterToCourier = (courierId, courierName, productName, quantit
       performed_by: performedBy || undefined,
       vehicle_type: vehicleType || undefined,
       vehicle_plate: vehiclePlate || undefined,
-      bottle_return: bottleReturn || undefined,
+      ...(bottleReturn > 0 ? { bottle_return: bottleReturn } : {}),
     }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)
