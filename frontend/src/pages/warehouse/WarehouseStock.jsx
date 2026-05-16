@@ -174,12 +174,12 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </button>
       </div>
 
-      {/* Summary totals */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: '14px 10px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-          <TotalStat value={totals.stock} label="На складе" color={C} />
+      {/* Bottle returns card */}
+      <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Возврат бутылок</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           <TotalStat value={totals.bottle_returns_period ?? 0} label="Вернули" color="#1971C2" />
-          <TotalStat value={totals.on_couriers} label="Осталось" color={TEXT} />
+          <TotalStat value={totals.on_couriers ?? 0} label="Должны вернуть" color={TEXT} />
         </div>
       </div>
 
@@ -189,10 +189,10 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         <span style={{ fontSize: 11, color: TEXT2 }}>{periodLabel}</span>
       </div>
 
-      {/* Product list — 1 per row */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      {/* Product grid — 2 per row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         {products.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Каталог пуст</div>
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Каталог пуст</div>
         ) : products.map(p => <ProductCard key={p.key} p={p} onAdjust={() => setAdjustProduct(p)} />)}
       </div>
 
@@ -395,7 +395,10 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={st.sheet}>
         <div style={st.handle} />
-        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Записать производство</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Записать производство</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -493,54 +496,67 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     }
   }
 
+  const stepBtn = (base = {}) => ({
+    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={st.handle} />
-        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Выдать курьеру</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Курьер</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{
+        ...st.sheet, padding: 0, gap: 0,
+        height: 'min(96dvh, 96vh)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Fixed header */}
+        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+          <div style={st.handle} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
+            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          {/* Courier selector — horizontal scroll */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Курьер</div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 8 }}>
             {couriers.map(c => (
               <button key={c.id} onClick={() => setCourierId(c.id)} style={{
-                padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
                 background: courierId === c.id ? GRAD : '#F8F9FA',
                 color: courierId === c.id ? '#fff' : TEXT,
                 border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
               }}>{c.name}</button>
             ))}
           </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
+        </div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукты</div>
+        {/* Scrollable products only */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
           {catalog.length === 0 ? (
-            <div style={{ fontSize: 12, color: TEXT2, padding: '4px 0' }}>Загрузка…</div>
+            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {catalog.map(p => {
                 const q = quantities[p.id] || 0
                 return (
                   <div key={p.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 12,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', borderRadius: 12,
                     background: q > 0 ? '#F0FAE8' : '#F8F9FA',
                     border: `1.5px solid ${q > 0 ? C : BORDER}`,
-                    transition: 'background 0.15s, border-color 0.15s',
                   }}>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>{p.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                      <button
-                        onClick={() => setQty(p.id, q - 1)}
-                        style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => setQty(p.id, q - 1)}
+                        style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
                       >−</button>
-                      <input
-                        type="number" inputMode="numeric" min="0" value={q || ''}
-                        placeholder="0"
+                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
                         onChange={e => setQty(p.id, e.target.value)}
-                        style={{ width: 64, height: 36, borderRadius: 10, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
                       />
-                      <button
-                        onClick={() => setQty(p.id, q + 1)}
-                        style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                      <button onClick={() => setQty(p.id, q + 1)}
+                        style={stepBtn({ background: q > 0 ? GRAD : '#fff', border: `1.5px solid ${C}`, color: q > 0 ? '#fff' : CD })}
                       >+</button>
                     </div>
                   </div>
@@ -548,52 +564,55 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
               })}
             </div>
           )}
+        </div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат бутылок</div>
+        {/* Fixed footer */}
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Bottle return */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 12px', borderRadius: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 10px', borderRadius: 12,
             background: parsedReturn > 0 ? '#EBF4FF' : '#F8F9FA',
             border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`,
-            transition: 'background 0.15s, border-color 0.15s',
           }}>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>Бутылок</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.3 }}>Возврат бутылок</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
               <button onClick={() => setBottleReturn(String(Math.max(0, parsedReturn - 1)))}
-                style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
               >−</button>
-              <input
-                type="number" inputMode="numeric" min="0" value={parsedReturn || ''} placeholder="0"
+              <input type="number" inputMode="numeric" min="0" value={parsedReturn || ''} placeholder="0"
                 onChange={e => setBottleReturn(String(Math.max(0, Number(e.target.value) || 0)))}
-                style={{ width: 64, height: 36, borderRadius: 10, border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: parsedReturn > 0 ? '#1971C2' : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: parsedReturn > 0 ? '#1971C2' : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
               />
               <button onClick={() => setBottleReturn(String(parsedReturn + 1))}
-                style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid #4DA6FF', background: parsedReturn > 0 ? '#4DA6FF' : '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: parsedReturn > 0 ? '#fff' : '#4DA6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                style={stepBtn({ background: parsedReturn > 0 ? '#4DA6FF' : '#fff', border: '1.5px solid #4DA6FF', color: parsedReturn > 0 ? '#fff' : '#4DA6FF' })}
               >+</button>
             </div>
           </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транспорт</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
-            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
+          {/* Transport */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input style={{ ...st.input, flex: 1, fontSize: 13, padding: '10px 10px' }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
+            <input style={{ ...st.input, flex: 1, fontSize: 13, padding: '10px 10px' }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
           </div>
+          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+          <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
+            {loading ? 'Выдаю...' : 'Выдать'}
+          </button>
         </div>
-        {error && (
-          <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 13, color: '#C92A2A', fontWeight: 600 }}>{error}</div>
-        )}
-        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
-          {loading ? 'Выдаю...' : 'Выдать'}
-        </button>
-        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>
     </div>
   )
 }
 
-/* Success modal — same as in WarehouseCouriers */
 function InvoiceSuccessModal({ batchId, courierName, onClose }) {
   const url = getInvoiceUrl(batchId)
+  const openInBot = () => {
+    if (window.Telegram?.WebApp?.close) {
+      window.Telegram.WebApp.close()
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...st.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
@@ -606,15 +625,15 @@ function InvoiceSuccessModal({ batchId, courierName, onClose }) {
         </div>
         <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', marginTop: -4 }}>
           Курьер: <b style={{ color: TEXT }}>{courierName}</b><br/>
-          Отправлена администратору в Telegram
+          Накладная отправлена в Telegram
         </div>
         <div style={{ background: '#F8F9FA', borderRadius: 12, padding: 8 }}>
           <img src={url} alt="накладная" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
         </div>
-        <a href={url} target="_blank" rel="noopener noreferrer"
-           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', textDecoration: 'none', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
-          Посмотреть накладную
-        </a>
+        <button onClick={openInBot}
+           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
+          Посмотреть в боте
+        </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
           Закрыть
         </button>
