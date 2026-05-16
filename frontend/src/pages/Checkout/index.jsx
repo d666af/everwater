@@ -401,11 +401,6 @@ export default function Checkout() {
             <div style={{ fontSize: 13, color: '#8e8e93', marginBottom: 10 }}>
               Укажите, сколько пустых бутылок вернёте при доставке:
             </div>
-            {deposit19L && discountPerBottle > 0 && (
-              <div style={{ fontSize: 12, color: '#2B8A3E', marginBottom: 10, lineHeight: 1.5 }}>
-                ♻ Со сдачей: <b>{price19LWithReturn?.toLocaleString()} сум</b> · без возврата: {deposit19L.price.toLocaleString()} сум
-              </div>
-            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button
                 style={surveyCount <= 0 ? { ...s.stepperBtn, ...s.stepperBtnDisabled } : s.stepperBtn}
@@ -431,17 +426,8 @@ export default function Checkout() {
           fullBottlePrice={deposit19L?.price ?? null}
           priceWithReturn={price19LWithReturn}
           discountPerBottle={discountPerBottle || null}
+          qty20L={qty20L}
         />
-      )}
-
-      {/* 19L bottle deposit explanation */}
-      {deposit19L && discountPerBottle > 0 && (
-        <div style={s.section}>
-          <div style={{ background: '#EBF4FF', borderRadius: 14, padding: '12px 14px', fontSize: 13, color: '#1971C2', lineHeight: 1.5 }}>
-            🫙 <b>Первый раз:</b> {deposit19L.price.toLocaleString()} сум = {(deposit19L.price - discountPerBottle).toLocaleString()} вода + {discountPerBottle.toLocaleString()} залог.<br/>
-            При возврате бутылки — скидка {discountPerBottle.toLocaleString()} сум.
-          </div>
-        </div>
       )}
 
       {/* Bonus */}
