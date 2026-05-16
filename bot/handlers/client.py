@@ -789,12 +789,18 @@ async def _begin_address_step(target, state: FSMContext, edit: bool = False):
     await msg.answer(body, reply_markup=kb)
 
 
-def _per_bottle_surcharge(cfg: dict, base_price: float | None = None) -> int:
-    """How much extra (in сум) the customer pays for each NEW 19L bottle.
-    Equal to the configured bottle return discount value."""
+def _per_bottle_surcharge(cfg: dict, product: dict | None = None) -> int:
+    """How much extra (in сум) the customer pays for each NON-returned 19L
+    bottle in the order. Prefers product.bottle_surcharge; falls back to
+    the global setting (interpreted as fixed amount or %)."""
+    if product:
+        per_unit = product.get("bottle_surcharge") if isinstance(product, dict) else getattr(product, "bottle_surcharge", None)
+        if per_unit and per_unit > 0:
+            return int(per_unit)
+    base_price = (product or {}).get("price", 0) if isinstance(product, dict) else 0
     if cfg.get("bottle_discount_type") == "percent":
         pct = float(cfg.get("bottle_discount_value") or 0)
-        return int(round((base_price or 0) * pct / 100))
+        return int(round(base_price * pct / 100))
     return int(float(cfg.get("bottle_discount_value") or 0))
 
 
@@ -860,9 +866,9 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
     # Default start: return as many bottles as ordered, capped by what user owes.
     initial_count = min(qty_20l, count)
 
-    # Per-bottle surcharge for new bottles (from settings)
-    base19 = next((v.get("price", 0) for v in cart.values() if v.get("volume", 0) >= 18.9), 0)
-    surcharge = _per_bottle_surcharge(cfg, base19)
+    # Per-bottle surcharge for new bottles — first 19L cart item's product
+    p19 = next((v for v in cart.values() if v.get("volume", 0) >= 18.9), None)
+    surcharge = _per_bottle_surcharge(cfg, p19)
 
     if not buttons_visible:
         # Admin disabled choice — apply auto, then address.

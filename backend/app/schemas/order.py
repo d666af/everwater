@@ -22,7 +22,8 @@ class OrderCreate(BaseModel):
     bonus_used: float = 0.0
     balance_used: float = 0.0
     payment_method: str = "cash"
-    bottle_discount: float | None = None
+    bottle_discount: float | None = None  # legacy clients
+    bottle_surcharge: float | None = None
     delivery_fee: float = 0.0
 
 
@@ -51,6 +52,7 @@ class OrderOut(BaseModel):
     return_bottles_count: int
     return_bottles_volume: float
     bottle_discount: float
+    bottle_surcharge: float = 0.0
     subtotal: float
     total: float
     bonus_used: float

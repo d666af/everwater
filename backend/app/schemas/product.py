@@ -14,7 +14,8 @@ class ProductCreate(BaseModel):
     stock: int = 999
     sort_order: int = 0
     has_bottle_deposit: bool = False
-    deposit_price: int | None = None
+    deposit_price: int | None = None  # legacy
+    bottle_surcharge: int | None = None
     cost_price: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
@@ -31,7 +32,8 @@ class ProductUpdate(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     has_bottle_deposit: bool | None = None
-    deposit_price: int | None = None
+    deposit_price: int | None = None  # legacy
+    bottle_surcharge: int | None = None
     cost_price: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
@@ -49,7 +51,8 @@ class ProductOut(BaseModel):
     is_active: bool
     sort_order: int
     has_bottle_deposit: bool
-    deposit_price: int | None = None
+    deposit_price: int | None = None  # legacy
+    bottle_surcharge: int | None = None
     cost_price: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
