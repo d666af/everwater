@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueWaterToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -81,8 +81,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty, bottleReturn, vt, vp) => {
-        const res = await issueWaterToCourier(courierId, courierName, name, qty, actor, vt, vp, bottleReturn)
+      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp) => {
+        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn)
         if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
         load()
       }} />}
@@ -128,7 +128,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
       {/* Period filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <SegGroup options={QUICK} value={period} onChange={setPeriod} />
+        <div style={{ flex: 1 }}><SegGroup options={QUICK} value={period} onChange={setPeriod} /></div>
         <button
           onClick={() => setPickerOpen(true)}
           style={{
@@ -418,8 +418,7 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
 function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [courierId, setCourierId] = useState(couriers[0]?.id || null)
   const [catalog, setCatalog] = useState([])
-  const [name, setName] = useState('')
-  const [qty, setQty] = useState('')
+  const [quantities, setQuantities] = useState({})
   const [bottleReturn, setBottleReturn] = useState('')
   const [vehicleType, setVehicleType] = useState('')
   const [vehiclePlate, setVehiclePlate] = useState('')
@@ -432,7 +431,6 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     getProducts().then(ps => {
       const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
       setCatalog(list)
-      if (list.length && !name) setName(list[0].name)
     }).catch(console.error)
   }, []) // eslint-disable-line
 
@@ -441,30 +439,24 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     setVehiclePlate(courier?.vehicle_plate || '')
   }, [courierId]) // eslint-disable-line
 
-  const parsedQty = Number(qty)
-  const parsedReturn = Number(bottleReturn) > 0 ? Number(bottleReturn) : 0
-  const hasType = vehicleType.trim().length > 0
-  const hasPlate = vehiclePlate.trim().length > 0
+  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
 
-  const validationError = (hasType && !hasPlate)
-    ? 'Укажите госномер или очистите тип машины'
-    : (hasPlate && !hasType)
-      ? 'Укажите тип машины или очистите госномер'
-      : ''
+  const batchItems = catalog
+    .filter(p => (quantities[p.id] || 0) > 0)
+    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
 
-  const dis = !qty || parsedQty <= 0 || !courierId || !name
+  const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
+  const dis = batchItems.length === 0 && parsedReturn === 0
 
   const handle = async () => {
     if (dis) return
-    if (validationError) { setError(validationError); return }
     setError('')
     setLoading(true)
     try {
       await onSave(
         courierId,
         courier?.name || '',
-        name,
-        parsedQty,
+        batchItems,
         parsedReturn,
         vehicleType.trim() || null,
         vehiclePlate.trim() || null,
@@ -494,56 +486,53 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
               }}>{c.name}</button>
             ))}
           </div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукты</div>
           {catalog.length === 0 ? (
             <div style={{ fontSize: 12, color: TEXT2, padding: '4px 0' }}>Загрузка…</div>
           ) : (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {catalog.map(p => (
-                <button key={p.id} onClick={() => setName(p.name)} style={{
-                  padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  background: name === p.name ? GRAD : '#F8F9FA',
-                  color: name === p.name ? '#fff' : TEXT,
-                  border: name === p.name ? 'none' : `1px solid ${BORDER}`,
-                }}>{p.name}</button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {catalog.map(p => {
+                const q = quantities[p.id] || 0
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 12,
+                    background: q > 0 ? '#F0FAE8' : '#F8F9FA',
+                    border: `1.5px solid ${q > 0 ? C : BORDER}`,
+                  }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>{p.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setQty(p.id, q - 1)}
+                        style={{ width: 32, height: 32, borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >−</button>
+                      <span style={{ minWidth: 28, textAlign: 'center', fontSize: 16, fontWeight: 800, color: q > 0 ? CD : TEXT2 }}>{q}</span>
+                      <button
+                        onClick={() => setQty(p.id, q + 1)}
+                        style={{ width: 32, height: 32, borderRadius: 8, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >+</button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
-          <input style={st.input} type="number" inputMode="numeric" min="1" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            Возврат бутылок{' '}
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(не обязательно)</span>
-          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат бутылок</div>
           <input style={st.input} type="number" inputMode="numeric" min="0" placeholder="0" value={bottleReturn} onChange={e => setBottleReturn(e.target.value)} />
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            Транспорт{' '}
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(оба поля или оба пустые)</span>
-          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транспорт</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              style={{ ...st.input, flex: 1, ...(hasType && !hasPlate ? { border: '1.5px solid #FFB4B4' } : {}) }}
-              value={vehicleType}
-              onChange={e => { setVehicleType(e.target.value); setError('') }}
-              placeholder="Тип машины"
-            />
-            <input
-              style={{ ...st.input, flex: 1, ...(hasPlate && !hasType ? { border: '1.5px solid #FFB4B4' } : {}) }}
-              value={vehiclePlate}
-              onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }}
-              placeholder="Госномер"
-            />
+            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
+            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
           </div>
         </div>
-        {(error || validationError) && (
-          <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 13, color: '#C92A2A', fontWeight: 600 }}>
-            {error || validationError}
-          </div>
+        {error && (
+          <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 13, color: '#C92A2A', fontWeight: 600 }}>{error}</div>
         )}
         <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
-          {loading ? 'Выдаю...' : `Выдать ${qty || 0} шт. → ${courier?.name || '?'}`}
+          {loading ? 'Выдаю...' : 'Выдать'}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>
@@ -571,9 +560,9 @@ function InvoiceSuccessModal({ batchId, courierName, onClose }) {
         <div style={{ background: '#F8F9FA', borderRadius: 12, padding: 8 }}>
           <img src={url} alt="накладная" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
         </div>
-        <a href={url} download={`nakladnaya_${batchId.slice(0, 8)}.png`}
+        <a href={url} target="_blank" rel="noopener noreferrer"
            style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', textDecoration: 'none', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
-          Скачать накладную
+          Посмотреть накладную
         </a>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
           Закрыть
