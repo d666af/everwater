@@ -968,9 +968,9 @@ const orderMatchesPeriod = (order, period, range) => {
 
 // Dashboard aggregate: stock vs demand vs activity — period-aware
 // Iterates CATALOG products so the list is stable across periods.
-export const getWarehouseOverview = (period = 'today', customDate = null, timeFrom = null, timeTo = null) =>
+export const getWarehouseOverview = (period = 'today', customDate = null, timeFrom = null, timeTo = null, customDateTo = null) =>
   safeCall(
-    () => http.get('/warehouse/overview', { params: { period, date: customDate, time_from: timeFrom, time_to: timeTo } }).then(r => r.data),
+    () => http.get('/warehouse/overview', { params: { period, date: customDate, time_from: timeFrom, time_to: timeTo, date_to: customDateTo } }).then(r => r.data),
     () => {
       const range = buildPeriodRange(period, customDate, timeFrom, timeTo)
       const catalog = getCatalogProducts()
@@ -1209,7 +1209,7 @@ export const getWarehouseCourierStats = () =>
 
 // Filtered warehouse history — uses same period/time range semantics as overview
 export const getWarehouseHistory = (filters = {}) => {
-  const { period = 'all', type, product, courier_id, customDate, timeFrom, timeTo } = filters
+  const { period = 'all', type, product, courier_id, customDate, customDateTo } = filters
   const params = { period, limit: 200 }
   if (type && type !== 'all') params.type = type
   if (product && product !== 'all') params.product = product
@@ -1217,8 +1217,9 @@ export const getWarehouseHistory = (filters = {}) => {
   if (period === 'custom' && customDate) {
     params.date = customDate instanceof Date ? customDate.toISOString() : String(customDate)
   }
-  if (timeFrom) params.time_from = timeFrom
-  if (timeTo) params.time_to = timeTo
+  if (period === 'custom' && customDateTo) {
+    params.date_to = customDateTo instanceof Date ? customDateTo.toISOString() : String(customDateTo)
+  }
 
   return safeCall(
     () => http.get('/warehouse/history', { params }).then(r => r.data),
