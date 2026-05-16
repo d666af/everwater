@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getCatalogProducts, issueWaterToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueWaterToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -16,13 +16,6 @@ const QUICK = [
   { key: 'today', label: 'Сегодня' },
 ]
 
-function loadReminders() {
-  try { return JSON.parse(localStorage.getItem('wh_reminders') || '[]') } catch { return [] }
-}
-function saveReminders(list) {
-  localStorage.setItem('wh_reminders', JSON.stringify(list))
-}
-
 export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Склад' }) {
   const subsEnabled = useSubscriptionsEnabled()
   const { user } = useAuthStore()
@@ -32,8 +25,6 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [timeFrom, setTimeFrom] = useState('')
   const [timeTo, setTimeTo] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [remindersOpen, setRemindersOpen] = useState(false)
-  const [reminders, setReminders] = useState(loadReminders)
 
   const [overview, setOverview] = useState(null)
   const [subs, setSubs] = useState(null)
@@ -44,22 +35,6 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [couriers, setCouriers] = useState([])
   const [adjustProduct, setAdjustProduct] = useState(null)
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
-
-  const addReminder = (reminder) => {
-    const updated = [...reminders, { ...reminder, id: Date.now() }]
-    setReminders(updated)
-    saveReminders(updated)
-  }
-  const deleteReminder = (id) => {
-    const updated = reminders.filter(r => r.id !== id)
-    setReminders(updated)
-    saveReminders(updated)
-  }
-
-  const upcomingCount = reminders.filter(r => {
-    const dt = new Date(`${r.date}T${r.time || '00:00'}`)
-    return dt >= new Date()
-  }).length
 
   const load = () => {
     setLoading(true)
@@ -106,8 +81,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} products={products} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty, vt, vp) => {
-        const res = await issueWaterToCourier(courierId, courierName, name, qty, actor, vt, vp)
+      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, name, qty, bottleReturn, vt, vp) => {
+        const res = await issueWaterToCourier(courierId, courierName, name, qty, actor, vt, vp, bottleReturn)
         if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
         load()
       }} />}
@@ -128,15 +103,6 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           onClose={() => setPickerOpen(false)}
         />
       )}
-      {remindersOpen && (
-        <RemindersModal
-          reminders={reminders}
-          onAdd={addReminder}
-          onDelete={deleteReminder}
-          onClose={() => setRemindersOpen(false)}
-        />
-      )}
-
       {/* Shortfall alert with per-item volumes */}
       {shortfallItems.length > 0 && (
         <div style={{ background: 'linear-gradient(135deg, #FFE8E8, #FFF5F5)', border: '1.5px solid #FFB4B4', borderRadius: 16, padding: '12px 14px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -179,46 +145,23 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           </svg>
           {period === 'custom' ? periodLabel : 'Дата'}
         </button>
-        <button
-          onClick={() => setRemindersOpen(true)}
-          style={{
-            position: 'relative', flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
-            background: '#fff', color: TEXT2,
-            border: `1.5px solid ${BORDER}`,
-            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
-          Планы
-          {upcomingCount > 0 && (
-            <span style={{
-              position: 'absolute', top: 4, right: 4,
-              background: '#E03131', color: '#fff',
-              borderRadius: '50%', width: 16, height: 16,
-              fontSize: 9, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{upcomingCount}</span>
-          )}
-        </button>
       </div>
 
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
         <button style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '13px 10px', borderRadius: 14, border: 'none',
-          background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700,
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '14px 10px', borderRadius: 14, border: 'none',
+          background: GRAD, color: '#fff', fontSize: 15, fontWeight: 700,
           cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
         }} onClick={() => setShowAdd(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
           Производство
         </button>
         <button style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '13px 10px', borderRadius: 14, border: `1.5px solid ${C}`,
-          background: '#fff', color: CD, fontSize: 14, fontWeight: 700,
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '14px 10px', borderRadius: 14, border: `1.5px solid ${C}`,
+          background: '#fff', color: CD, fontSize: 15, fontWeight: 700,
           cursor: 'pointer',
         }} onClick={() => setShowIssue(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -472,17 +415,26 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
   )
 }
 
-function IssueToCourierModal({ couriers, products, onClose, onSave }) {
-  const catalog = (products || []).map(p => ({ id: p.product_id ?? p.id, name: p.product_name ?? p.name }))
+function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [courierId, setCourierId] = useState(couriers[0]?.id || null)
-  const [name, setName] = useState(catalog[0]?.name || '')
+  const [catalog, setCatalog] = useState([])
+  const [name, setName] = useState('')
   const [qty, setQty] = useState('')
-  const [loading, setLoading] = useState(false)
-  const courier = couriers.find(c => c.id === courierId)
-
+  const [bottleReturn, setBottleReturn] = useState('')
   const [vehicleType, setVehicleType] = useState('')
   const [vehiclePlate, setVehiclePlate] = useState('')
-  // When the courier changes, prefill from their saved vehicle
+  const [loading, setLoading] = useState(false)
+
+  const courier = couriers.find(c => c.id === courierId)
+
+  useEffect(() => {
+    getProducts().then(ps => {
+      const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
+      setCatalog(list)
+      if (list.length && !name) setName(list[0].name)
+    }).catch(console.error)
+  }, []) // eslint-disable-line
+
   useEffect(() => {
     setVehicleType(courier?.vehicle_type || '')
     setVehiclePlate(courier?.vehicle_plate || '')
@@ -492,13 +444,17 @@ function IssueToCourierModal({ couriers, products, onClose, onSave }) {
   const handle = async () => {
     if (dis) return
     setLoading(true)
-    try { await onSave(courierId, courier?.name || '', name, Number(qty), vehicleType.trim() || null, vehiclePlate.trim() || null); onClose() }
+    try {
+      await onSave(courierId, courier?.name || '', name, Number(qty), Number(bottleReturn) || 0, vehicleType.trim() || null, vehiclePlate.trim() || null)
+      onClose()
+    }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }
+
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.sheet}>
+      <div style={{ ...st.sheet, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={st.handle} />
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Выдать курьеру</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -525,16 +481,12 @@ function IssueToCourierModal({ couriers, products, onClose, onSave }) {
             ))}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {[1, 2, 5, 10, 20, 50].map(n => (
-              <button key={n} onClick={() => setQty(p => String((Number(p) || 0) + n))} style={st.presetBtn}>+{n}</button>
-            ))}
-            {Number(qty) > 0 && <button onClick={() => setQty('')} style={st.presetBtnReset}>✕</button>}
-          </div>
           <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
 
-          {/* Vehicle for the invoice */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>Транспорт (для накладной)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат бутылок (шт.)</div>
+          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={bottleReturn} onChange={e => setBottleReturn(e.target.value)} />
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транспорт (для накладной)</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Тип машины" />
             <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="Госномер" />
@@ -629,137 +581,6 @@ function AdjustStockModal({ product, onClose, onSave }) {
           {loading ? 'Сохраняю...' : `${adjType === 'plus' ? 'Добавить' : 'Списать'} ${qty || 0} шт.`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
-      </div>
-    </div>
-  )
-}
-
-function RemindersModal({ reminders, onAdd, onDelete, onClose }) {
-  const [tab, setTab] = useState('list') // 'list' | 'add'
-  const [text, setText] = useState('')
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [time, setTime] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const sorted = [...reminders].sort((a, b) => {
-    const da = new Date(`${a.date}T${a.time || '00:00'}`)
-    const db = new Date(`${b.date}T${b.time || '00:00'}`)
-    return da - db
-  })
-  const now = new Date()
-
-  const handleAdd = () => {
-    if (!text.trim() || !date) return
-    setLoading(true)
-    onAdd({ text: text.trim(), date, time })
-    setText('')
-    setTime('')
-    setDate(new Date().toISOString().slice(0, 10))
-    setLoading(false)
-    setTab('list')
-  }
-
-  const formatDt = (r) => {
-    const d = new Date(`${r.date}T${r.time || '00:00'}`)
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + (r.time ? ` · ${r.time}` : '')
-  }
-
-  return (
-    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div style={st.handle} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>Запланированные</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 22, lineHeight: 1 }}>×</button>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[{ k: 'list', l: 'Список' }, { k: 'add', l: '+ Добавить' }].map(t => (
-            <button key={t.k} onClick={() => setTab(t.k)} style={{
-              flex: 1, padding: '9px', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-              background: tab === t.k ? GRAD : '#F8F9FA',
-              color: tab === t.k ? '#fff' : TEXT2,
-              border: tab === t.k ? 'none' : `1.5px solid ${BORDER}`,
-            }}>{t.l}</button>
-          ))}
-        </div>
-
-        {tab === 'list' && (
-          sorted.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: TEXT2, fontSize: 14 }}>
-              Нет запланированных действий
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {sorted.map(r => {
-                const dt = new Date(`${r.date}T${r.time || '00:00'}`)
-                const past = dt < now
-                return (
-                  <div key={r.id} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10,
-                    padding: '10px 12px', borderRadius: 12,
-                    background: past ? '#F8F9FA' : '#F0FAE8',
-                    border: `1px solid ${past ? BORDER : 'rgba(141,198,63,0.25)'}`,
-                    opacity: past ? 0.6 : 1,
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{r.text}</div>
-                      <div style={{ fontSize: 11, color: past ? TEXT2 : CD, marginTop: 2, fontWeight: 600 }}>
-                        {past ? '⏰ ' : '📅 '}{formatDt(r)}
-                        {past && ' · прошло'}
-                      </div>
-                    </div>
-                    <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#E03131', fontSize: 16, padding: '2px 4px', flexShrink: 0 }}>✕</button>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        )}
-
-        {tab === 'add' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Описание</div>
-              <input
-                style={st.input}
-                placeholder="Что нужно сделать?"
-                value={text}
-                onChange={e => setText(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Дата</div>
-                <input
-                  style={st.input}
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Время</div>
-                <input
-                  style={st.input}
-                  type="time"
-                  value={time}
-                  onChange={e => setTime(e.target.value)}
-                  placeholder="Необязательно"
-                />
-              </div>
-            </div>
-            <button
-              style={{ ...st.primaryBtn, ...(!text.trim() || !date ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
-              disabled={!text.trim() || !date || loading}
-              onClick={handleAdd}
-            >
-              Добавить
-            </button>
-          </div>
-        )}
       </div>
     </div>
   )
