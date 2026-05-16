@@ -137,29 +137,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </div>
       )}
 
-      {/* Period filter */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <div style={{ flex: 1 }}><SegGroup options={QUICK} value={period} onChange={setPeriod} /></div>
-        <button
-          onClick={() => setPickerOpen(true)}
-          style={{
-            flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
-            background: period === 'custom' ? GRAD : '#fff',
-            color: period === 'custom' ? '#fff' : TEXT2,
-            border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
-            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
-          {period === 'custom' ? periodLabel : 'Дата'}
-        </button>
-      </div>
-
       {/* Action buttons */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <button style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -186,6 +165,27 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         }} onClick={() => setShowIssue(true)}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Выдать / Вернуть
+        </button>
+      </div>
+
+      {/* Period filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ flex: 1 }}><SegGroup options={QUICK} value={period} onChange={setPeriod} /></div>
+        <button
+          onClick={() => setPickerOpen(true)}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+            background: period === 'custom' ? GRAD : '#fff',
+            color: period === 'custom' ? '#fff' : TEXT2,
+            border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {period === 'custom' ? periodLabel : 'Дата'}
         </button>
       </div>
 

@@ -547,18 +547,29 @@ async def get_warehouse_couriers():
         return []
 
 
-async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id: int = None, product_id: int = None):
+async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id: int = None, product_id: int = None, period: str = None):
     try:
         params = {"limit": limit}
         if tx_type:
-            params["tx_type"] = tx_type
+            params["type"] = tx_type
         if courier_id:
             params["courier_id"] = courier_id
         if product_id:
             params["product_id"] = product_id
+        if period:
+            params["period"] = period
         return await _get("/warehouse/history", params)
     except Exception:
         return []
+
+
+async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None) -> dict:
+    return await _post("/warehouse/issue_batch", {
+        "courier_id": courier_id,
+        "items": items,
+        "bottle_return": bottle_return,
+        "note": note,
+    })
 
 
 async def get_all_subscriptions(period: str = "week") -> list:

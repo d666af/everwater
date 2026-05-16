@@ -5,8 +5,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.warehouse import (
-    warehouse_menu_kb, wh_product_select_kb, wh_courier_select_kb, wh_history_filter_kb,
-    wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
+    warehouse_menu_kb, wh_prod_product_kb, wh_courier_select_kb,
+    wh_ir_catalog_kb, wh_report_period_kb,
+    wh_history_filter_kb, wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from handlers.admin import _subs_summary_text, _sub_card_text
@@ -17,8 +18,8 @@ router = Router()
 TX_RU = {
     "production": "➕ Производство",
     "issue": "📤 Выдача",
-    "return": "📥 Возврат",
-    "adjustment": "🔧 Корректировка",
+    "bottle_return": "↩ Возврат тары",
+    "return": "↩ Возврат",
 }
 
 
@@ -39,22 +40,11 @@ class ProductionState(StatesGroup):
     waiting_note = State()
 
 
-class IssueState(StatesGroup):
+class IssueReturnState(StatesGroup):
     choosing_courier = State()
-    choosing_product = State()
-    waiting_quantity = State()
-
-
-class ReturnState(StatesGroup):
-    choosing_courier = State()
-    choosing_product = State()
-    waiting_quantity = State()
-
-
-class AdjustState(StatesGroup):
-    choosing_product = State()
-    waiting_quantity = State()
-    waiting_note = State()
+    choosing_item = State()
+    entering_qty = State()
+    entering_return = State()
 
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
@@ -81,9 +71,7 @@ async def wh_stock(message: Message):
     for item in stock:
         qty = item.get("quantity", 0)
         warn = " ⚠️" if qty < 10 else ""
-        lines.append(
-            f"• {item['product_name']} ({item.get('volume', '')}л) — <b>{qty} шт.</b>{warn}"
-        )
+        lines.append(f"• {item['product_name']} — <b>{qty} шт.</b>{warn}")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
@@ -93,22 +81,29 @@ async def wh_stock(message: Message):
 async def wh_production_start(message: Message, state: FSMContext):
     if not await is_warehouse(message.from_user.id):
         return
-    stock = await api.get_warehouse_stock()
-    if not stock:
-        await message.answer("Нет продуктов.")
+    products = await api.get_products()
+    catalog = [p for p in (products or []) if p.get("is_active", True)]
+    if not catalog:
+        await message.answer("Нет продуктов в каталоге.")
         return
-    await state.update_data(wh_products=stock)
+    await state.update_data(wh_products=catalog)
     await state.set_state(ProductionState.choosing_product)
     await message.answer("Выберите продукт для записи производства:",
-                         reply_markup=wh_product_select_kb(stock, "prod"))
+                         reply_markup=wh_prod_product_kb(catalog))
 
 
 @router.callback_query(ProductionState.choosing_product, F.data.startswith("wh:prod:"))
 async def wh_prod_product(call: CallbackQuery, state: FSMContext):
     product_id = int(call.data.split(":")[2])
-    await state.update_data(prod_product_id=product_id)
+    data = await state.get_data()
+    catalog = data.get("wh_products", [])
+    prod = next((p for p in catalog if p.get("id") == product_id), {})
+    await state.update_data(prod_product_id=product_id, prod_product_name=prod.get("name", ""))
     await state.set_state(ProductionState.waiting_quantity)
-    await call.message.edit_text("Введите количество произведённых бутылок:")
+    await call.message.edit_text(
+        f"Введите количество произведённых единиц:\n<b>{prod.get('name', '')}</b>",
+        parse_mode="HTML"
+    )
     await call.answer()
 
 
@@ -116,7 +111,7 @@ async def wh_prod_product(call: CallbackQuery, state: FSMContext):
 async def wh_prod_quantity(message: Message, state: FSMContext):
     text = message.text.strip()
     if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректное число.")
+        await message.answer("Введите корректное число (больше 0).")
         return
     await state.update_data(prod_quantity=int(text))
     await state.set_state(ProductionState.waiting_note)
@@ -129,95 +124,56 @@ async def wh_prod_note(message: Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
     result = await api.warehouse_production(data["prod_product_id"], data["prod_quantity"], note)
-    products = data.get("wh_products", [])
-    prod = next((p for p in products if p["product_id"] == data["prod_product_id"]), {})
+    prod_name = data.get("prod_product_name", str(data["prod_product_id"]))
     await message.answer(
         f"✅ Производство записано!\n"
-        f"Продукт: {prod.get('product_name', data['prod_product_id'])}\n"
+        f"Продукт: {prod_name}\n"
         f"Количество: {data['prod_quantity']} шт.\n"
         f"Новый остаток: {result.get('new_quantity', '—')} шт."
     )
-    # Notify admins about production
     for admin_id in settings.ADMIN_IDS:
         try:
             await message.bot.send_message(
                 admin_id,
-                f"🏭 Произведено: {prod.get('product_name', '')} — {data['prod_quantity']} шт."
+                f"🏭 Произведено: {prod_name} — {data['prod_quantity']} шт."
             )
         except Exception:
             pass
 
 
-# ─── Issue to courier ─────────────────────────────────────────────────────────
+# ─── Issue / Return (combined) ────────────────────────────────────────────────
 
-@router.message(F.text == "📤 Выдать курьеру")
-async def wh_issue_start(message: Message, state: FSMContext):
-    if not await is_warehouse(message.from_user.id):
-        return
-    couriers = await api.get_couriers()
-    active = [c for c in couriers if c.get("is_active", True)]
-    if not active:
-        await message.answer("Нет активных курьеров.")
-        return
-    await state.update_data(wh_couriers=active)
-    await state.set_state(IssueState.choosing_courier)
-    await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "issue"))
-
-
-@router.callback_query(IssueState.choosing_courier, F.data.startswith("wh:issue:courier:"))
-async def wh_issue_courier(call: CallbackQuery, state: FSMContext):
-    courier_id = int(call.data.split(":")[3])
-    await state.update_data(issue_courier_id=courier_id)
-    stock = await api.get_warehouse_stock()
-    await state.update_data(wh_products=stock)
-    await state.set_state(IssueState.choosing_product)
-    await call.message.edit_text("Выберите продукт для выдачи:",
-                                  reply_markup=wh_product_select_kb(stock, "issue_p"))
-    await call.answer()
-
-
-@router.callback_query(IssueState.choosing_product, F.data.startswith("wh:issue_p:"))
-async def wh_issue_product(call: CallbackQuery, state: FSMContext):
-    product_id = int(call.data.split(":")[2])
-    await state.update_data(issue_product_id=product_id)
-    await state.set_state(IssueState.waiting_quantity)
-    await call.message.edit_text("Введите количество бутылок для выдачи:")
-    await call.answer()
-
-
-@router.message(IssueState.waiting_quantity)
-async def wh_issue_quantity(message: Message, state: FSMContext):
-    text = message.text.strip()
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректное число.")
-        return
-    qty = int(text)
+async def _show_ir_catalog(message: Message, state: FSMContext, edit: bool = False):
     data = await state.get_data()
-    await state.clear()
-    result = await api.warehouse_issue(data["issue_courier_id"], data["issue_product_id"], qty)
-    couriers = data.get("wh_couriers", [])
-    products = data.get("wh_products", [])
-    courier = next((c for c in couriers if c["id"] == data["issue_courier_id"]), {})
-    product = next((p for p in products if p["product_id"] == data["issue_product_id"]), {})
-    await message.answer(
-        f"✅ Выдано!\nКурьер: {courier.get('name', data['issue_courier_id'])}\n"
-        f"Продукт: {product.get('product_name', data['issue_product_id'])}\n"
-        f"Количество: {qty} шт."
-    )
-    if courier.get("telegram_id"):
+    catalog = data.get("ir_catalog", [])
+    cart = data.get("ir_cart", {})
+    return_qty = data.get("ir_return_qty", 0)
+    courier_name = data.get("ir_courier_name", "")
+
+    lines = [f"🔄 <b>Выдать/Возврат · {courier_name}</b>\n"]
+    cart_items = [(v["name"], v["qty"]) for v in cart.values() if v["qty"] > 0]
+    if cart_items:
+        lines.append("📦 <b>Выдача:</b>")
+        for name, qty in cart_items:
+            lines.append(f"  • {name} — {qty} шт.")
+    if return_qty > 0:
+        lines.append(f"↩ <b>Возврат бутылок:</b> {return_qty} шт.")
+    if not cart_items and return_qty == 0:
+        lines.append("Выберите продукт или укажите возврат бутылок")
+
+    text = "\n".join(lines)
+    kb = wh_ir_catalog_kb(catalog, cart, return_qty)
+    if edit:
         try:
-            await message.bot.send_message(
-                courier["telegram_id"],
-                f"📦 Вам выдано со склада: {product.get('product_name', '')} — {qty} шт."
-            )
+            await message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            return
         except Exception:
             pass
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-# ─── Return from courier ──────────────────────────────────────────────────────
-
-@router.message(F.text == "📥 Принять возврат")
-async def wh_return_start(message: Message, state: FSMContext):
+@router.message(F.text == "🔄 Выдать/Возврат")
+async def wh_ir_start(message: Message, state: FSMContext):
     if not await is_warehouse(message.from_user.id):
         return
     couriers = await api.get_couriers()
@@ -225,76 +181,251 @@ async def wh_return_start(message: Message, state: FSMContext):
     if not active:
         await message.answer("Нет активных курьеров.")
         return
-    await state.update_data(wh_couriers=active)
-    await state.set_state(ReturnState.choosing_courier)
-    await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ret"))
+    products = await api.get_products()
+    catalog = [p for p in (products or []) if p.get("is_active", True)]
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0)
+    await state.set_state(IssueReturnState.choosing_courier)
+    await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
 
 
-@router.callback_query(ReturnState.choosing_courier, F.data.startswith("wh:ret:courier:"))
-async def wh_return_courier(call: CallbackQuery, state: FSMContext):
+@router.callback_query(IssueReturnState.choosing_courier, F.data.startswith("wh:ir:courier:"))
+async def wh_ir_courier(call: CallbackQuery, state: FSMContext):
     courier_id = int(call.data.split(":")[3])
-    await state.update_data(ret_courier_id=courier_id)
-    stock = await api.get_warehouse_stock()
-    await state.update_data(wh_products=stock)
-    await state.set_state(ReturnState.choosing_product)
-    await call.message.edit_text("Выберите продукт для возврата:",
-                                  reply_markup=wh_product_select_kb(stock, "ret_p"))
-    await call.answer()
-
-
-@router.callback_query(ReturnState.choosing_product, F.data.startswith("wh:ret_p:"))
-async def wh_return_product(call: CallbackQuery, state: FSMContext):
-    product_id = int(call.data.split(":")[2])
-    await state.update_data(ret_product_id=product_id)
-    await state.set_state(ReturnState.waiting_quantity)
-    await call.message.edit_text("Введите количество возвращаемых бутылок:")
-    await call.answer()
-
-
-@router.message(ReturnState.waiting_quantity)
-async def wh_return_quantity(message: Message, state: FSMContext):
-    text = message.text.strip()
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректное число.")
-        return
-    qty = int(text)
     data = await state.get_data()
+    courier = next((c for c in data.get("ir_couriers", []) if c["id"] == courier_id), {})
+    await state.update_data(ir_courier_id=courier_id, ir_courier_name=courier.get("name", ""))
+    await state.set_state(IssueReturnState.choosing_item)
+    await _show_ir_catalog(call.message, state, edit=True)
+    await call.answer()
+
+
+@router.callback_query(IssueReturnState.choosing_item, F.data.startswith("wh:ir:p:"))
+async def wh_ir_pick_product(call: CallbackQuery, state: FSMContext):
+    product_id = int(call.data.split(":")[3])
+    data = await state.get_data()
+    prod = next((p for p in data.get("ir_catalog", []) if p.get("id") == product_id), {})
+    current_qty = data.get("ir_cart", {}).get(str(product_id), {}).get("qty", 0)
+    await state.update_data(ir_current_product_id=product_id, ir_current_product_name=prod.get("name", ""))
+    await state.set_state(IssueReturnState.entering_qty)
+    await call.message.edit_text(
+        f"<b>{prod.get('name', '')}</b>\n"
+        f"Сейчас: {current_qty} шт.\n"
+        f"Введите количество (0 — убрать из выдачи):",
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.message(IssueReturnState.entering_qty)
+async def wh_ir_enter_qty(message: Message, state: FSMContext):
+    text = message.text.strip()
+    try:
+        qty = int(text)
+        if qty < 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("Введите целое неотрицательное число.")
+        return
+    data = await state.get_data()
+    product_id = data.get("ir_current_product_id")
+    product_name = data.get("ir_current_product_name", "")
+    cart = dict(data.get("ir_cart", {}))
+    key = str(product_id)
+    if qty == 0:
+        cart.pop(key, None)
+    else:
+        cart[key] = {"name": product_name, "qty": qty}
+    await state.update_data(ir_cart=cart)
+    await state.set_state(IssueReturnState.choosing_item)
+    await _show_ir_catalog(message, state, edit=False)
+
+
+@router.callback_query(IssueReturnState.choosing_item, F.data == "wh:ir:ret")
+async def wh_ir_pick_return(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current = data.get("ir_return_qty", 0)
+    await state.set_state(IssueReturnState.entering_return)
+    await call.message.edit_text(
+        f"↩ <b>Возврат бутылок 19л</b>\n"
+        f"Сейчас: {current} шт.\n"
+        f"Введите количество (0 — не возвращать):",
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.message(IssueReturnState.entering_return)
+async def wh_ir_enter_return(message: Message, state: FSMContext):
+    text = message.text.strip()
+    try:
+        qty = max(0, int(text))
+    except ValueError:
+        await message.answer("Введите целое число.")
+        return
+    await state.update_data(ir_return_qty=qty)
+    await state.set_state(IssueReturnState.choosing_item)
+    await _show_ir_catalog(message, state, edit=False)
+
+
+@router.callback_query(IssueReturnState.choosing_item, F.data == "wh:ir:submit")
+async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    courier_id = data.get("ir_courier_id")
+    courier_name = data.get("ir_courier_name", "")
+    cart = data.get("ir_cart", {})
+    return_qty = data.get("ir_return_qty", 0)
+
+    items = [
+        {"product_id": int(k), "product_name": v["name"], "quantity": v["qty"]}
+        for k, v in cart.items() if v["qty"] > 0
+    ]
+
     await state.clear()
-    await api.warehouse_return(data["ret_courier_id"], data["ret_product_id"], qty)
-    couriers = data.get("wh_couriers", [])
-    products = data.get("wh_products", [])
-    courier = next((c for c in couriers if c["id"] == data["ret_courier_id"]), {})
-    product = next((p for p in products if p["product_id"] == data["ret_product_id"]), {})
-    await message.answer(
-        f"✅ Возврат принят!\nКурьер: {courier.get('name', data['ret_courier_id'])}\n"
-        f"Продукт: {product.get('product_name', data['ret_product_id'])}\n"
-        f"Количество: {qty} шт."
+    try:
+        await api.issue_batch(courier_id, items, return_qty)
+        lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
+        if items:
+            lines.append("\n📦 Выдано:")
+            for it in items:
+                lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
+        if return_qty > 0:
+            lines.append(f"\n↩ Возврат бутылок: {return_qty} шт.")
+        await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+        # Notify courier
+        couriers_list = data.get("ir_couriers", [])
+        courier = next((c for c in couriers_list if c["id"] == courier_id), {})
+        if courier.get("telegram_id") and items:
+            notify_text = "📦 Выдано со склада: " + ", ".join(
+                f"{it['product_name']} {it['quantity']} шт." for it in items
+            )
+            if return_qty > 0:
+                notify_text += f"\n↩ Принято бутылок: {return_qty} шт."
+            try:
+                await call.bot.send_message(courier["telegram_id"], notify_text)
+            except Exception:
+                pass
+    except Exception as e:
+        await call.message.edit_text(f"❌ Ошибка при выдаче: {e}")
+    await call.answer()
+
+
+@router.callback_query(IssueReturnState.choosing_item, F.data == "wh:ir:cancel")
+async def wh_ir_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("❌ Операция отменена.")
+    await call.answer()
+
+
+# ─── Report ───────────────────────────────────────────────────────────────────
+
+@router.message(F.text == "📊 Отчёт")
+async def wh_report_menu(message: Message):
+    if not await is_warehouse(message.from_user.id):
+        return
+    await message.answer("Выберите период для отчёта:", reply_markup=wh_report_period_kb())
+
+
+@router.callback_query(F.data.startswith("wh:report:"))
+async def wh_report(call: CallbackQuery):
+    period = call.data.split(":")[2]
+    label = {"today": "сегодня", "week": "неделю", "month": "месяц"}.get(period, period)
+
+    history, couriers = await _gather(
+        api.get_warehouse_history(limit=200, period=period),
+        api.get_warehouse_couriers(),
     )
 
+    prod_by_product: dict[str, int] = {}
+    issue_by_product: dict[str, int] = {}
+    return_by_courier: dict[str, int] = {}
 
-# ─── Courier water overview ───────────────────────────────────────────────────
+    for tx in history:
+        tx_type = tx.get("type", "")
+        qty = tx.get("quantity", 0)
+        if tx_type == "production":
+            name = tx.get("product_name") or "—"
+            prod_by_product[name] = prod_by_product.get(name, 0) + qty
+        elif tx_type in ("issue", "issued"):
+            name = tx.get("product_name") or "—"
+            issue_by_product[name] = issue_by_product.get(name, 0) + qty
+        elif tx_type == "bottle_return":
+            cn = tx.get("courier_name") or "—"
+            return_by_courier[cn] = return_by_courier.get(cn, 0) + qty
 
-@router.message(F.text == "🚴 Склад курьеров")
-async def wh_couriers_water(message: Message):
+    debt_couriers = [
+        (c.get("name", "—"), c.get("bottles_must_return", 0))
+        for c in couriers if (c.get("bottles_must_return") or 0) > 0
+    ]
+
+    lines = [f"📊 <b>Отчёт за {label}:</b>\n"]
+
+    if prod_by_product:
+        lines.append("➕ <b>Произведено:</b>")
+        for name, qty in prod_by_product.items():
+            lines.append(f"  • {name}: +{qty} шт.")
+
+    if issue_by_product:
+        lines.append("\n📤 <b>Выдано курьерам:</b>")
+        for name, qty in issue_by_product.items():
+            lines.append(f"  • {name}: {qty} шт.")
+
+    if return_by_courier:
+        lines.append("\n↩ <b>Возврат бутылок:</b>")
+        for cn, qty in return_by_courier.items():
+            lines.append(f"  • {cn}: {qty} бут.")
+
+    if debt_couriers:
+        lines.append("\n📌 <b>Долг по бутылкам:</b>")
+        for name, debt in debt_couriers:
+            lines.append(f"  • {name}: {debt} бут.")
+
+    if not prod_by_product and not issue_by_product and not return_by_courier and not debt_couriers:
+        lines.append("Нет данных за период")
+
+    await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=wh_report_period_kb())
+    await call.answer()
+
+
+async def _gather(*coros):
+    import asyncio
+    return await asyncio.gather(*coros, return_exceptions=False)
+
+
+# ─── Couriers overview ────────────────────────────────────────────────────────
+
+@router.message(F.text == "👥 Курьеры")
+async def wh_couriers(message: Message):
     if not await is_warehouse(message.from_user.id):
         return
     data = await api.get_warehouse_couriers()
     if not data:
         await message.answer("Нет данных по курьерам.")
         return
-    lines = ["🚴 <b>Вода у курьеров:</b>\n"]
+    lines = ["👥 <b>Курьеры:</b>\n"]
     for c in data:
-        courier_name = c.get("name") or c.get("courier_name") or f"ID {c.get('courier_id')}"
-        water = c.get("water", {})
-        active_orders = c.get("active_orders_count") or len(c.get("active_orders", []))
-        if isinstance(water, dict) and water:
-            items = ", ".join(f"{name}: {qty} шт." for name, qty in water.items())
-            lines.append(f"• <b>{courier_name}</b>: {items} | Активных заказов: {active_orders}")
-        elif isinstance(water, list) and water:
-            items = ", ".join(f"{w.get('product_name', w.get('product_id'))}: {w['quantity']} шт." for w in water)
-            lines.append(f"• <b>{courier_name}</b>: {items} | Активных заказов: {active_orders}")
+        name = c.get("name") or c.get("courier_name") or f"ID {c.get('id')}"
+        vehicle_parts = []
+        if c.get("vehicle_type"):
+            vehicle_parts.append(c["vehicle_type"])
+        if c.get("vehicle_plate"):
+            vehicle_parts.append(c["vehicle_plate"])
+        vehicle = ("🚗 " + " · ".join(vehicle_parts)) if vehicle_parts else ""
+
+        issued = c.get("issued_products", {})
+        if isinstance(issued, dict) and issued:
+            issued_text = "Выдано: " + ", ".join(f"{k} {v} шт." for k, v in issued.items())
         else:
-            lines.append(f"• <b>{courier_name}</b>: нет воды | Активных заказов: {active_orders}")
+            issued_text = "Выдано: —"
+
+        returned = c.get("bottles_returned_today", 0) or 0
+        owed = c.get("bottles_must_return", 0) or 0
+
+        lines.append(
+            f"• <b>{name}</b>"
+            + (f"\n  {vehicle}" if vehicle else "")
+            + f"\n  {issued_text}"
+            + f"\n  ↩ Вернул: {returned} бут. | Должен: {owed} бут."
+        )
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
@@ -311,7 +442,7 @@ async def wh_history_menu(message: Message):
 async def wh_history(call: CallbackQuery):
     tx_type_raw = call.data.split(":")[2]
     tx_type = None if tx_type_raw == "all" else tx_type_raw
-    history = await api.get_warehouse_history(limit=20, tx_type=tx_type)
+    history = await api.get_warehouse_history(limit=20, tx_type=tx_type, period="today")
     if not history:
         await call.message.edit_text("История операций пуста.")
         await call.answer()
@@ -319,69 +450,14 @@ async def wh_history(call: CallbackQuery):
     lines = ["📜 <b>История операций:</b>\n"]
     for tx in history[:20]:
         kind = TX_RU.get(tx.get("type", ""), tx.get("type", ""))
-        name = tx.get("product_name", f"ID {tx.get('product_id')}")
+        name = tx.get("product_name") or ("Бутылки 19л" if tx.get("type") == "bottle_return" else f"ID {tx.get('product_id')}")
         qty = tx.get("quantity", 0)
         note = f" — {tx['note']}" if tx.get("note") else ""
         dt = tx.get("created_at", "")[:10]
-        lines.append(f"• {dt} {kind}: {name} {qty} шт.{note}")
+        courier = f" · {tx['courier_name']}" if tx.get("courier_name") else ""
+        lines.append(f"• {dt} {kind}: {name} {qty} шт.{courier}{note}")
     await call.message.edit_text("\n".join(lines), parse_mode="HTML")
     await call.answer()
-
-
-# ─── Adjustment ───────────────────────────────────────────────────────────────
-
-@router.message(F.text == "🔧 Корректировка")
-async def wh_adjust_start(message: Message, state: FSMContext):
-    if not await is_warehouse(message.from_user.id):
-        return
-    stock = await api.get_warehouse_stock()
-    if not stock:
-        await message.answer("Нет продуктов на складе.")
-        return
-    await state.update_data(wh_products=stock)
-    await state.set_state(AdjustState.choosing_product)
-    await message.answer("Выберите продукт для корректировки:",
-                         reply_markup=wh_product_select_kb(stock, "adj"))
-
-
-@router.callback_query(AdjustState.choosing_product, F.data.startswith("wh:adj:"))
-async def wh_adjust_product(call: CallbackQuery, state: FSMContext):
-    product_id = int(call.data.split(":")[2])
-    await state.update_data(adj_product_id=product_id)
-    await state.set_state(AdjustState.waiting_quantity)
-    await call.message.edit_text(
-        "Введите новое количество (или разницу со знаком, например: +10 или -5):"
-    )
-    await call.answer()
-
-
-@router.message(AdjustState.waiting_quantity)
-async def wh_adjust_quantity(message: Message, state: FSMContext):
-    text = message.text.strip()
-    try:
-        qty = int(text)
-    except ValueError:
-        await message.answer("Введите число (например: 50, +10, -5).")
-        return
-    await state.update_data(adj_quantity=qty)
-    await state.set_state(AdjustState.waiting_note)
-    await message.answer("Добавьте причину корректировки (или «-» чтобы пропустить):")
-
-
-@router.message(AdjustState.waiting_note)
-async def wh_adjust_note(message: Message, state: FSMContext):
-    note = None if message.text.strip() == "-" else message.text.strip()
-    data = await state.get_data()
-    await state.clear()
-    result = await api.warehouse_adjust(data["adj_product_id"], data["adj_quantity"], note)
-    products = data.get("wh_products", [])
-    prod = next((p for p in products if p["product_id"] == data["adj_product_id"]), {})
-    await message.answer(
-        f"🔧 Корректировка записана!\n"
-        f"Продукт: {prod.get('product_name', data['adj_product_id'])}\n"
-        f"Изменение: {data['adj_quantity']:+d} шт.\n"
-        f"Новый остаток: {result.get('quantity', '—')} шт."
-    )
 
 
 # ─── Stock overview with quick actions ────────────────────────────────────────
@@ -390,36 +466,26 @@ async def wh_adjust_note(message: Message, state: FSMContext):
 async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
     if not await is_warehouse(call.from_user.id):
         return
-    stock = await api.get_warehouse_stock()
-    await state.update_data(wh_products=stock)
+    products = await api.get_products()
+    catalog = [p for p in (products or []) if p.get("is_active", True)]
+    await state.update_data(wh_products=catalog)
     await state.set_state(ProductionState.choosing_product)
     await call.message.answer("Выберите продукт для записи производства:",
-                               reply_markup=wh_product_select_kb(stock, "prod"))
+                               reply_markup=wh_prod_product_kb(catalog))
     await call.answer()
 
 
-@router.callback_query(F.data == "wh:quick:issue")
-async def wh_quick_issue(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "wh:quick:ir")
+async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     if not await is_warehouse(call.from_user.id):
         return
     couriers = await api.get_couriers()
     active = [c for c in couriers if c.get("is_active", True)]
-    await state.update_data(wh_couriers=active)
-    await state.set_state(IssueState.choosing_courier)
-    await call.message.answer("Выберите курьера для выдачи:",
-                               reply_markup=wh_courier_select_kb(active, "issue"))
-    await call.answer()
-
-
-@router.callback_query(F.data == "wh:quick:adjust")
-async def wh_quick_adjust(call: CallbackQuery, state: FSMContext):
-    if not await is_warehouse(call.from_user.id):
-        return
-    stock = await api.get_warehouse_stock()
-    await state.update_data(wh_products=stock)
-    await state.set_state(AdjustState.choosing_product)
-    await call.message.answer("Выберите продукт для корректировки:",
-                               reply_markup=wh_product_select_kb(stock, "adj"))
+    products = await api.get_products()
+    catalog = [p for p in (products or []) if p.get("is_active", True)]
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0)
+    await state.set_state(IssueReturnState.choosing_courier)
+    await call.message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
     await call.answer()
 
 
@@ -435,8 +501,7 @@ async def wh_period(call: CallbackQuery):
     lines = [f"📊 <b>Сводка склада за {label}:</b>\n"]
     lines.append(f"Произведено: {totals.get('produced_period', 0)} шт.")
     lines.append(f"Выдано: {totals.get('issued_period', 0)} шт.")
-    lines.append(f"Возвращено: {totals.get('returned_period', 0)} шт.")
-    lines.append(f"Доставлено заказов: {totals.get('delivered_orders', 0)}")
+    lines.append(f"Возврат бутылок: {totals.get('bottle_returns_period', 0)} шт.")
     if products:
         lines.append("\n<b>Текущие остатки:</b>")
         for item in products:
@@ -453,7 +518,6 @@ async def _wh_subs_menu(message_or_call, is_call: bool = False):
     weekly = await api.get_admin_subscriptions(plan="weekly", status="active")
     monthly = await api.get_admin_subscriptions(plan="monthly", status="active")
 
-    # Aggregate water needed for this week
     import re as _re
     water_totals: dict[str, int] = {}
     for s in weekly:
