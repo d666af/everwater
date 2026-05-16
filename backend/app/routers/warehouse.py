@@ -379,12 +379,14 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
     total_fmt  = f"{grand_total:,}".replace(",", " ")
     actor_line = f"\nВыдал: <b>{performed_by}</b>" if performed_by else ""
     items_block = "\n".join(lines) if lines else "—"
+    # Show "Итого" only when there are multiple regular items
+    total_line = f"\nИтого: <b>{total_fmt} сум</b>" if len(regular) > 1 else ""
 
     caption = (
         f"📋 <b>Накладная — выдача со склада</b>\n"
         f"Курьер: <b>{courier.name}</b>{f' · {courier.phone}' if courier.phone else ''}\n\n"
-        f"{items_block}\n"
-        f"Итого: <b>{total_fmt} сум</b>"
+        f"{items_block}"
+        f"{total_line}"
         f"{return_line}"
         f"\n\nВремя: {when_str}{actor_line}"
     )
