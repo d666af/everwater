@@ -322,6 +322,7 @@ function ProductCard({ p, onAdjust }) {
   const isShort = p.shortfall > 0
   const isLow = p.stock <= 10 && p.stock > 0
   const stockColor = isLow || isShort ? '#E03131' : C
+  const issued = p.issued_period || 0
 
   return (
     <div style={{
@@ -331,7 +332,7 @@ function ProductCard({ p, onAdjust }) {
       display: 'flex', flexDirection: 'column',
     }}>
       {/* Name row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, lineHeight: 1.3, flex: 1, marginRight: 4 }}>{p.product_name}</div>
         <button onClick={onAdjust} style={{
           background: '#F2F2F7', border: 'none', width: 26, height: 26, borderRadius: 7,
@@ -341,19 +342,25 @@ function ProductCard({ p, onAdjust }) {
         </button>
       </div>
 
-      {/* Stock */}
-      <div style={{ marginBottom: 4 }}>
-        <div style={{ fontSize: 28, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
-        <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>на складе</div>
+      {/* Primary: issued */}
+      <div style={{ marginBottom: 2 }}>
+        <div style={{ fontSize: 26, fontWeight: 800, color: issued > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{issued}</div>
+        <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>выдано</div>
       </div>
 
-      {/* Secondary */}
-      {(p.produced_period > 0 || p.issued_period > 0) && (
-        <div style={{ marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {p.produced_period > 0 && <div style={{ fontSize: 10 }}><span style={{ color: TEXT2 }}>Произв.: </span><span style={{ fontWeight: 700, color: '#2B8A3E' }}>{p.produced_period} шт.</span></div>}
-          {p.issued_period > 0 && <div style={{ fontSize: 10 }}><span style={{ color: TEXT2 }}>Выдано: </span><span style={{ fontWeight: 700, color: '#E67700' }}>{p.issued_period} шт.</span></div>}
+      {/* Secondary: stock + produced */}
+      <div style={{ marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
+          <div style={{ fontSize: 9, color: TEXT2, marginTop: 1 }}>склад</div>
         </div>
-      )}
+        {p.produced_period > 0 && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>{p.produced_period}</div>
+            <div style={{ fontSize: 9, color: TEXT2, marginTop: 1 }}>произв.</div>
+          </div>
+        )}
+      </div>
 
       {isShort && (
         <div style={{ marginTop: 4, padding: '2px 6px', background: '#FFE8E8', borderRadius: 5, alignSelf: 'flex-start' }}>
@@ -567,14 +574,15 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
 
         {/* Fixed footer */}
         <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Bottle return */}
+          {/* Bottle return section */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат · Бутылки 19л</div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 10px', borderRadius: 12,
             background: parsedReturn > 0 ? '#EBF4FF' : '#F8F9FA',
             border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`,
           }}>
-            <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.3 }}>Возврат бутылок</span>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: parsedReturn > 0 ? '#1971C2' : TEXT2 }}>Бутылки 19л</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
               <button onClick={() => setBottleReturn(String(Math.max(0, parsedReturn - 1)))}
                 style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
@@ -590,8 +598,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           </div>
           {/* Transport */}
           <div style={{ display: 'flex', gap: 6 }}>
-            <input style={{ ...st.input, flex: 1, fontSize: 13, padding: '10px 10px' }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
-            <input style={{ ...st.input, flex: 1, fontSize: 13, padding: '10px 10px' }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
+            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
+            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
           </div>
           {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
           <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>

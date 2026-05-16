@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
+import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
-  getWarehouseCourierStats, getWarehouseStock, getProducts,
-  issueBatchToCourier, returnWaterFromCourier, issueOrderToCourier,
-  getInvoiceUrl,
+  getWarehouseCourierStats, getProducts,
+  issueBatchToCourier, getInvoiceUrl,
 } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
@@ -17,71 +17,66 @@ const BORDER = 'rgba(60,60,67,0.08)'
 export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Курьеры' }) {
   const { user } = useAuthStore()
   const actor = user?.name || null
-  const [couriers, setCouriers] = useState([])
-  const [stock, setStock] = useState([])
-  const [allProducts, setAllProducts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showManual, setShowManual] = useState(null)   // { courier, mode: 'issue'|'return' }
-  const [expanded, setExpanded] = useState(null)
-  const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
 
-  const catalog = useMemo(() =>
-    allProducts.filter(p => p.is_active).map(p => ({ id: p.id, short_name: p.name })),
-    [allProducts]
-  )
+  const [period, setPeriod] = useState('today')
+  const [customDate, setCustomDate] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const [couriers, setCouriers] = useState([])
+  const [catalog, setCatalog] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [issueModal, setIssueModal] = useState(null) // courier object
+  const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
 
   const load = () => {
     setLoading(true)
-    Promise.all([getWarehouseCourierStats(), getWarehouseStock(), getProducts()])
-      .then(([cs, wh, prods]) => { setCouriers(cs); setStock(wh.stock || []); setAllProducts(prods || []) })
+    const cd = period === 'custom' ? customDate : null
+    Promise.all([
+      getWarehouseCourierStats(period, cd),
+      getProducts(),
+    ])
+      .then(([cs, prods]) => {
+        setCouriers(cs)
+        setCatalog((prods || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
-  useEffect(load, [])
 
-  const stockMap = {}
-  stock.forEach(s => { stockMap[s.product_name] = s.quantity })
+  useEffect(load, [period, customDate]) // eslint-disable-line
 
-  const issueBatch = async (courierId, courierName, items, vehicleType, vehiclePlate) => {
-    const payload = Object.entries(items).map(([product_name, quantity]) => ({ product_name, quantity }))
-    const res = await issueBatchToCourier(courierId, payload, actor, vehicleType, vehiclePlate)
+  const applyCustom = (start) => {
+    setCustomDate(start)
+    setPeriod('custom')
+  }
+
+  const fmtDateStr = s => {
+    if (!s) return ''
+    const [y, m, d] = s.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  }
+
+  const periodLabel = period === 'custom' && customDate ? fmtDateStr(customDate) : 'Сегодня'
+
+  const issueBatch = async (courierId, courierName, items, bottleReturn, vehicleType, vehiclePlate) => {
+    const res = await issueBatchToCourier(courierId, items, actor, vehicleType, vehiclePlate, null, bottleReturn)
     if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
     load()
   }
-  const returnBatch = async (courierId, courierName, items) => {
-    for (const [product, qty] of Object.entries(items)) {
-      await returnWaterFromCourier(courierId, courierName, product, qty, actor)
-    }
-    load()
-  }
-  const issueOrder = async (orderId, courierId, courierName, vehicleType, vehiclePlate) => {
-    const res = await issueOrderToCourier(orderId, courierId, courierName, actor, vehicleType, vehiclePlate)
-    if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
-    load()
-  }
-
-  // Aggregates
-  const totalActiveOrders = couriers.reduce((s, c) => s + (c.active_orders_count || 0), 0)
-  const totalPickupItems = couriers.reduce((s, c) => s + Object.values(c.to_pickup || {}).reduce((a, b) => a + b, 0), 0)
-  const totalBottlesMust = couriers.reduce((s, c) => s + (c.bottles_must_return || 0), 0)
-  const totalBottlesRet = couriers.reduce((s, c) => s + (c.bottles_returned_today || 0), 0)
 
   return (
     <Layout title={title}>
-      {showManual && (
-        <BatchModal
-          mode={showManual.mode}
-          courier={showManual.courier}
+      {issueModal && (
+        <CourierIssueModal
+          courier={issueModal}
           catalog={catalog}
-          stockMap={stockMap}
-          courierWater={showManual.courier.water || {}}
-          onClose={() => setShowManual(null)}
-          onSave={(items, vt, vp) => (showManual.mode === 'issue'
-            ? issueBatch(showManual.courier.id, showManual.courier.name, items, vt, vp)
-            : returnBatch(showManual.courier.id, showManual.courier.name, items))}
+          onClose={() => setIssueModal(null)}
+          onSave={async (items, bottleReturn, vt, vp) => {
+            await issueBatch(issueModal.id, issueModal.name, items, bottleReturn, vt, vp)
+            setIssueModal(null)
+          }}
         />
       )}
-
       {invoiceModal && (
         <InvoiceSuccessModal
           batchId={invoiceModal.batchId}
@@ -89,6 +84,45 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onClose={() => setInvoiceModal(null)}
         />
       )}
+      {pickerOpen && (
+        <DateTimePickerModal
+          initialDate={customDate}
+          initialDateTo={null}
+          onApply={(start) => applyCustom(start)}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {/* Date filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button
+          onClick={() => { setPeriod('today'); setCustomDate(null) }}
+          style={{
+            flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
+            background: period === 'today' ? GRAD : '#fff',
+            color: period === 'today' ? '#fff' : TEXT2,
+            border: period === 'today' ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 12, fontWeight: 700,
+          }}>
+          Сегодня
+        </button>
+        <button
+          onClick={() => setPickerOpen(true)}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+            background: period === 'custom' ? GRAD : '#fff',
+            color: period === 'custom' ? '#fff' : TEXT2,
+            border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {period === 'custom' ? periodLabel : 'Дата'}
+        </button>
+      </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -100,42 +134,12 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         </div>
       ) : (
         <>
-          {/* Top summary — clear, non-ambiguous labels */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <SumCard label="Активных заказов" sub="у курьеров" value={totalActiveOrders} color="#E67700" />
-            <SumCard label="К выдаче со склада" sub="бут./бут. воды" value={totalPickupItems} color={C} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
+            Курьеры · {periodLabel}
           </div>
-
-          {/* 20L bottles — must/already returned today */}
-          <div style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Бутыли 20л</div>
-                <div style={{ fontSize: 11, color: TEXT2 }}>возврат на склад сегодня</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{totalBottlesRet}</span>
-                <span style={{ fontSize: 14, color: TEXT2 }}>/ {totalBottlesMust}</span>
-              </div>
-            </div>
-            <div style={{ height: 8, borderRadius: 999, background: '#E8F4FD', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${totalBottlesMust ? Math.min(100, (totalBottlesRet / totalBottlesMust) * 100) : 0}%`, background: 'linear-gradient(90deg, #1971C2, #4DABF7)', transition: 'width 0.4s' }} />
-            </div>
-          </div>
-
-          {/* Courier list */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Курьеры</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {couriers.map(c => (
-              <CourierCard
-                key={c.id}
-                c={c}
-                expanded={expanded === c.id}
-                onToggle={() => setExpanded(e => e === c.id ? null : c.id)}
-                onIssueOrder={issueOrder}
-                onManualIssue={() => setShowManual({ courier: c, mode: 'issue' })}
-                onManualReturn={() => setShowManual({ courier: c, mode: 'return' })}
-              />
+              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} />
             ))}
           </div>
         </>
@@ -144,349 +148,203 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function SumCard({ label, sub, value, color }) {
-  return (
-    <div style={{ background: '#fff', borderRadius: 14, padding: '12px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 12, color: TEXT, marginTop: 5, fontWeight: 700 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>{sub}</div>}
-    </div>
-  )
-}
-
-function CourierCard({ c, expanded, onToggle, onIssueOrder, onManualIssue, onManualReturn }) {
-  const pickupEntries = Object.entries(c.to_pickup || {}).filter(([, q]) => q > 0)
-  const waterEntries = Object.entries(c.water || {}).filter(([, q]) => q > 0)
-  const deliveredEntries = Object.entries(c.delivered_products || {}).filter(([, q]) => q > 0)
-  const pickupTotal = pickupEntries.reduce((s, [, q]) => s + q, 0)
-  const waterTotal = waterEntries.reduce((s, [, q]) => s + q, 0)
-  const deliveredTotal = deliveredEntries.reduce((s, [, q]) => s + q, 0)
-
-  const activeOrders = c.active_orders || []
-  const mustBottles = c.bottles_must_return || 0
+function CourierCard({ c, onIssue }) {
+  const issuedCount = c.issued_today || 0
   const retBottles = c.bottles_returned_today || 0
+  const mustBottles = c.bottles_must_return || 0
 
   return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer' }} onClick={onToggle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 44, height: 44, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(c.name || 'К')[0]}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-          <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <span>Заказов: <b style={{ color: activeOrders.length > 0 ? '#E67700' : TEXT2 }}>{activeOrders.length}</b></span>
-            <span>На руках: <b style={{ color: waterTotal > 0 ? CD : TEXT2 }}>{waterTotal}</b></span>
-            {mustBottles > 0 && <span>Бутыли: <b style={{ color: '#1971C2' }}>{retBottles}/{mustBottles}</b></span>}
-          </div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
-          <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-
-      {expanded && (
-        <div style={{ borderTop: `1px solid ${BORDER}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Assigned orders → per-order Issue button */}
-          {activeOrders.length > 0 && (
-            <Section title={`Назначенные заказы · ${activeOrders.length}`}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {activeOrders.map(o => (
-                  <AssignedOrderRow
-                    key={o.id}
-                    order={o}
-                    onIssue={() => onIssueOrder(o.id, c.id, c.name, c.vehicle_type, c.vehicle_plate)}
-                  />
-                ))}
-              </div>
-            </Section>
-          )}
-
-          {/* Pickup summary across all active orders */}
-          {pickupEntries.length > 0 && (
-            <Section title={`Забрать со склада · ${pickupTotal} шт.`}>
-              <TagList items={pickupEntries} fg="#E67700" bg="#FFF3D9" />
-            </Section>
-          )}
-
-          {/* Current on-hand */}
-          {waterEntries.length > 0 && (
-            <Section title={`На руках · ${waterTotal} шт.`}>
-              <TagList items={waterEntries} fg={CD} bg={`${C}15`} />
-            </Section>
-          )}
-
-          {/* Delivered today — per product */}
-          {deliveredEntries.length > 0 && (
-            <Section title={`Доставил сегодня · ${deliveredTotal} шт.`}>
-              <TagList items={deliveredEntries} fg="#2B8A3E" bg="#EBFBEE" />
-            </Section>
-          )}
-
-          {/* 20L bottle tracking line */}
-          {mustBottles > 0 && (
-            <Section title="Бутыли 20л — возврат на склад">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1, height: 8, borderRadius: 999, background: '#E8F4FD', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.min(100, (retBottles / mustBottles) * 100)}%`, background: 'linear-gradient(90deg, #1971C2, #4DABF7)', transition: 'width 0.4s' }} />
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 800, color: '#1971C2' }}>
-                  {retBottles}<span style={{ color: TEXT2, fontWeight: 600 }}> / {mustBottles}</span>
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: TEXT2, marginTop: 4 }}>
-                Вернул сегодня · должен вернуть по активным и доставленным
-              </div>
-            </Section>
-          )}
-
-          {/* Manual ops (if an unplanned issue/return is ever needed) */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{ flex: 1, padding: '11px 14px', borderRadius: 12, border: 'none', background: GRAD, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={onManualIssue}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Доп. выдача
-            </button>
-            {waterTotal > 0 && (
-              <button style={{ flex: 1, padding: '11px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={onManualReturn}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Возврат на склад
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Section({ title, children }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{title}</div>
-      {children}
-    </div>
-  )
-}
-
-function TagList({ items, fg, bg }) {
-  return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-      {items.map(([name, qty]) => (
-        <span key={name} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 999, background: bg, color: fg, fontWeight: 600 }}>
-          {name} · {qty}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function AssignedOrderRow({ order, onIssue }) {
-  const [loading, setLoading] = useState(false)
-  const issued = !!order.water_issued
-  const handle = async () => { setLoading(true); try { await onIssue() } finally { setLoading(false) } }
-
-  return (
-    <div style={{ border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '10px 12px', background: issued ? '#FAFBF6' : '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: TEXT2, background: '#F2F2F7', padding: '3px 8px', borderRadius: 6 }}>#{order.id}</span>
-        {order.delivery_date && (
-          <span style={{ fontSize: 11, color: TEXT2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-            {order.delivery_date}{order.delivery_period ? ` · ${order.delivery_period}` : ''}
-          </span>
-        )}
-        {issued && (
-          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#EBFBEE', color: '#2B8A3E', fontWeight: 700 }}>Выдано</span>
-        )}
-      </div>
-      {(order.client_name || order.address) && (
-        <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
-          {order.client_name ? `${order.client_name} · ` : ''}{order.address}
-        </div>
-      )}
-      {(order.items || []).length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: issued ? 0 : 8 }}>
-          {order.items.map(it => (
-            <span key={it.key || it.short_name} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#F2F2F7', color: TEXT, fontWeight: 600 }}>
-              {it.short_name} {it.quantity} шт.
-            </span>
-          ))}
-          {order.return_bottles_count > 0 && (
-            <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#E8F4FD', color: '#1971C2', fontWeight: 700 }}>
-              вернуть 20л: {order.return_bottles_count}
-            </span>
+          {(c.vehicle_type || c.vehicle_plate) && (
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
+              {[c.vehicle_type, c.vehicle_plate].filter(Boolean).join(' · ')}
+            </div>
           )}
         </div>
-      )}
-      {!issued && (
         <button
-          onClick={handle}
-          disabled={loading || (order.items || []).length === 0}
+          onClick={onIssue}
           style={{
-            width: '100%', padding: '9px 12px', borderRadius: 10, border: 'none',
-            background: GRAD, color: '#fff', fontSize: 13, fontWeight: 700,
-            cursor: loading ? 'default' : 'pointer',
-            boxShadow: '0 3px 10px rgba(141,198,63,0.3)',
-            opacity: (order.items || []).length === 0 ? 0.5 : 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            flexShrink: 0, padding: '9px 14px', borderRadius: 12, border: 'none',
+            background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 5,
           }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          {loading ? 'Выдаю...' : 'Выдать по заказу'}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать
         </button>
-      )}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        {/* Issued */}
+        <div style={{ flex: 1, background: issuedCount > 0 ? '#FFF8F0' : '#F8F9FA', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: issuedCount > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{issuedCount}</div>
+          <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Выдано, шт.</div>
+        </div>
+        {/* Bottles */}
+        <div style={{ flex: 2, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '10px 12px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бутылки 19л</div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{retBottles}</div>
+              <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>вернул</div>
+            </div>
+            <div style={{ width: 1, height: 28, background: mustBottles > 0 ? '#C0D8F0' : BORDER, flexShrink: 0 }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{mustBottles}</div>
+              <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>должен</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-/* Manual multi-product issue / return */
-function BatchModal({ mode, courier, catalog, stockMap, courierWater, onClose, onSave }) {
-  const [items, setItems] = useState({})
-  const [loading, setLoading] = useState(false)
+function CourierIssueModal({ courier, catalog, onClose, onSave }) {
+  const [quantities, setQuantities] = useState({})
+  const [bottleReturn, setBottleReturn] = useState('')
   const [vehicleType, setVehicleType] = useState(courier?.vehicle_type || '')
   const [vehiclePlate, setVehiclePlate] = useState(courier?.vehicle_plate || '')
-  const isReturn = mode === 'return'
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const available = isReturn
-    ? Object.entries(courierWater || {}).filter(([, v]) => v > 0).map(([p]) => p)
-    : catalog.map(c => c.short_name)
+  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
 
-  const toggle = (p) => setItems(prev => {
-    if (prev[p] !== undefined) { const n = { ...prev }; delete n[p]; return n }
-    return { ...prev, [p]: 1 }
-  })
-  const setQty = (p, q) => {
-    const max = isReturn ? (courierWater?.[p] || 99) : (stockMap?.[p] || 999)
-    setItems(prev => ({ ...prev, [p]: Math.max(1, Math.min(q, max)) }))
-  }
+  const batchItems = catalog
+    .filter(p => (quantities[p.id] || 0) > 0)
+    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
 
-  const totalQty = Object.values(items).reduce((s, v) => s + v, 0)
+  const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
+  const dis = batchItems.length === 0 && parsedReturn === 0
 
   const handle = async () => {
-    if (totalQty <= 0) return
+    if (dis) return
+    setError('')
     setLoading(true)
-    try { await onSave(items, vehicleType.trim() || null, vehiclePlate.trim() || null); onClose() }
-    catch { alert('Ошибка') }
-    finally { setLoading(false) }
+    try {
+      await onSave(batchItems, parsedReturn, vehicleType.trim() || null, vehiclePlate.trim() || null)
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка при выдаче')
+      setLoading(false)
+    }
   }
+
+  const stepBtn = (base = {}) => ({
+    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
 
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={st.handle} />
-        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>
-          {isReturn ? 'Возврат на склад' : 'Доп. выдача воды'}
-        </div>
-        <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>Курьер: <b style={{ color: TEXT }}>{courier.name}</b></div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            {isReturn ? 'Принять от курьера' : 'Выбрать продукты'}
+      <div style={{
+        ...st.sheet, padding: 0, gap: 0,
+        maxHeight: 'min(96dvh, 96vh)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Fixed header */}
+        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+          <div style={st.handle} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
+            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
+          <div style={{ fontSize: 13, color: TEXT2, marginBottom: 10 }}>
+            Курьер: <b style={{ color: TEXT }}>{courier.name}</b>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
+        </div>
 
-          {available.length === 0 ? (
-            <div style={{ padding: 20, textAlign: 'center', color: TEXT2, fontSize: 14 }}>
-              {isReturn ? 'У курьера нет воды для возврата' : 'Каталог пуст'}
-            </div>
-          ) : available.map(p => {
-            const sel = items[p] !== undefined
-            const max = isReturn ? (courierWater?.[p] || 0) : (stockMap?.[p] || 0)
-            return (
-              <div key={p} style={{
-                borderRadius: 12, border: sel ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
-                background: sel ? `${C}06` : '#fff', padding: '10px 12px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => toggle(p)}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                    background: sel ? GRAD : '#fff',
-                    border: sel ? 'none' : '2px solid #ddd',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+        {/* Scrollable products */}
+        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 280px)', flexShrink: 0 }}>
+          {catalog.length === 0 ? (
+            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {catalog.map(p => {
+                const q = quantities[p.id] || 0
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', borderRadius: 12,
+                    background: q > 0 ? '#F0FAE8' : '#F8F9FA',
+                    border: `1.5px solid ${q > 0 ? C : BORDER}`,
                   }}>
-                    {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round"/></svg>}
-                  </div>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>{p}</span>
-                  <span style={{ fontSize: 11, color: !isReturn && max <= 5 ? '#E03131' : TEXT2, fontWeight: 600 }}>
-                    {isReturn ? `у курьера: ${max}` : `на складе: ${max}`}
-                  </span>
-                </div>
-                {sel && (
-                  <div style={{ marginTop: 8, paddingLeft: 30 }}>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
-                      {[1, 2, 5, 10, 20].map(n => (
-                        <button key={n} onClick={() => setQty(p, (items[p] || 0) + n)} style={st.presetBtn}>+{n}</button>
-                      ))}
-                      <button style={st.qtyBtn} onClick={() => setQty(p, 0)}>✕</button>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button style={st.qtyBtn} onClick={() => setQty(p, items[p] - 1)}>−</button>
-                      <span style={{ fontSize: 16, fontWeight: 700, minWidth: 24, textAlign: 'center' }}>{items[p]}</span>
-                      <button style={st.qtyBtn} onClick={() => setQty(p, items[p] + 1)}>+</button>
-                      <span style={{ fontSize: 12, color: TEXT2, marginLeft: 'auto' }}>макс: {max}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => setQty(p.id, q - 1)}
+                        style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
+                      >−</button>
+                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
+                        onChange={e => setQty(p.id, e.target.value)}
+                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                      />
+                      <button onClick={() => setQty(p.id, q + 1)}
+                        style={stepBtn({ background: q > 0 ? GRAD : '#fff', border: `1.5px solid ${C}`, color: q > 0 ? '#fff' : CD })}
+                      >+</button>
                     </div>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Vehicle info — only for issue (накладная) */}
-        {!isReturn && totalQty > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#FAFAFA', borderRadius: 12, padding: '12px 14px', border: `1.5px solid ${BORDER}` }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              Транспорт (для накладной)
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                value={vehicleType}
-                onChange={e => setVehicleType(e.target.value)}
-                placeholder="Тип машины"
-                style={{ flex: 1, border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, minWidth: 0 }}
-              />
-              <input
-                value={vehiclePlate}
-                onChange={e => setVehiclePlate(e.target.value.toUpperCase())}
-                placeholder="Госномер"
-                style={{ flex: 1, border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, minWidth: 0 }}
-              />
-            </div>
-            {(courier?.vehicle_type || courier?.vehicle_plate) && (
-              <div style={{ fontSize: 11, color: TEXT2 }}>
-                Из профиля курьера. При изменении значение сохранится.
-              </div>
-            )}
-          </div>
-        )}
-
-        {totalQty > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isReturn ? '#F0F4FF' : '#F0FFF0', borderRadius: 12, padding: '12px 14px' }}>
-            <span style={{ fontSize: 13, color: TEXT2 }}>Итого</span>
-            <span style={{ fontWeight: 800, fontSize: 20, color: isReturn ? '#1971C2' : C }}>{totalQty} шт.</span>
-          </div>
-        )}
-
-        <button
-          disabled={totalQty <= 0 || loading}
-          onClick={handle}
-          style={{
-            padding: 16, borderRadius: 14, border: 'none',
-            background: isReturn ? '#111827' : GRAD,
-            color: '#fff', fontSize: 16, fontWeight: 700,
-            cursor: totalQty <= 0 || loading ? 'not-allowed' : 'pointer',
-            boxShadow: '0 4px 16px rgba(141,198,63,0.35)',
-            opacity: totalQty <= 0 ? 0.45 : 1,
+        {/* Fixed footer */}
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Bottle return section */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат · Бутылки 19л</div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 10px', borderRadius: 12,
+            background: parsedReturn > 0 ? '#EBF4FF' : '#F8F9FA',
+            border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`,
           }}>
-          {loading ? 'Обработка...' : isReturn ? `Принять ${totalQty} шт.` : `Выдать ${totalQty} шт.`}
-        </button>
-        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: parsedReturn > 0 ? '#1971C2' : TEXT2 }}>Бутылки 19л</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+              <button onClick={() => setBottleReturn(String(Math.max(0, parsedReturn - 1)))}
+                style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
+              >−</button>
+              <input type="number" inputMode="numeric" min="0" value={parsedReturn || ''} placeholder="0"
+                onChange={e => setBottleReturn(String(Math.max(0, Number(e.target.value) || 0)))}
+                style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: parsedReturn > 0 ? '#1971C2' : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+              />
+              <button onClick={() => setBottleReturn(String(parsedReturn + 1))}
+                style={stepBtn({ background: parsedReturn > 0 ? '#4DA6FF' : '#fff', border: '1.5px solid #4DA6FF', color: parsedReturn > 0 ? '#fff' : '#4DA6FF' })}
+              >+</button>
+            </div>
+          </div>
+          {/* Transport */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
+            <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
+          </div>
+          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+          <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
+            {loading ? 'Выдаю...' : 'Выдать'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-/* Success modal shown after issuance — shows invoice preview + download/share */
 function InvoiceSuccessModal({ batchId, courierName, onClose }) {
   const url = getInvoiceUrl(batchId)
+  const openInBot = () => {
+    if (window.Telegram?.WebApp?.close) {
+      window.Telegram.WebApp.close()
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...st.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
@@ -499,15 +357,15 @@ function InvoiceSuccessModal({ batchId, courierName, onClose }) {
         </div>
         <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', marginTop: -4 }}>
           Курьер: <b style={{ color: TEXT }}>{courierName}</b><br/>
-          Отправлена администратору в Telegram
+          Накладная отправлена в Telegram
         </div>
         <div style={{ background: '#F8F9FA', borderRadius: 12, padding: 8 }}>
           <img src={url} alt="накладная" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
         </div>
-        <a href={url} download={`nakladnaya_${batchId.slice(0, 8)}.png`}
-           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', textDecoration: 'none', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
-          Скачать накладную
-        </a>
+        <button onClick={openInBot}
+          style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
+          Посмотреть в боте
+        </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
           Закрыть
         </button>
@@ -520,6 +378,6 @@ const st = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
   sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
   handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
-  qtyBtn: { width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  presetBtn: { padding: '4px 9px', borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  input: { border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '13px 12px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' },
+  primaryBtn: { padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' },
 }
