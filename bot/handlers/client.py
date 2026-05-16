@@ -67,6 +67,10 @@ class CheckoutState(StatesGroup):
     asking_save_addr  = State()
 
 
+class CatalogState(StatesGroup):
+    waiting_custom_qty = State()
+
+
 class SubscriptionState(StatesGroup):
     choosing_plan        = State()
     choosing_water       = State()
@@ -241,60 +245,47 @@ def _eff_price(p: dict, disc_val: float = 0, disc_type: str = "fixed") -> float:
     return max(0, p["price"] - disc_val)
 
 
-def _catalog_kb(products: list, cart: dict, ftype: str = "all",
-                disc_val: float = 0, disc_type: str = "fixed") -> InlineKeyboardMarkup:
-    has_still = any(p.get("type") != "carbonated" for p in products)
-    has_carb = any(p.get("type") == "carbonated" for p in products)
-    buttons = []
-    if has_still and has_carb:
-        row = [InlineKeyboardButton(text=("✅ " if ftype == "all" else "") + "Все", callback_data="cf:all")]
-        row.append(InlineKeyboardButton(text=("✅ " if ftype == "still" else "") + "💧 Без газа", callback_data="cf:still"))
-        row.append(InlineKeyboardButton(text=("✅ " if ftype == "carbonated" else "") + "🫧 Газ.", callback_data="cf:carbonated"))
-        buttons.append(row)
-
+def _catalog_grid_kb(products: list, cart: dict) -> InlineKeyboardMarkup:
+    """2-per-row product picker. Tapping a product opens a quantity sheet.
+    'Далее' appears at the bottom only when the cart is non-empty.
+    """
+    rows = []
+    pair = []
     for p in products:
-        if ftype != "all" and p.get("type") != ftype:
-            continue
         pid = str(p["id"])
-        qty = cart.get(pid, {}).get("qty", 0)
         emoji = "🫧" if p.get("type") == "carbonated" else "💧"
         sname = _short_name(p)
-        ep = _eff_price(p, disc_val, disc_type)
-        deposit_mark = " ♻" if p.get("has_bottle_deposit") and ep < p["price"] else ""
-        price_str = fmt(ep)
-
-        if qty == 0:
-            buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {sname} — {price_str}{deposit_mark}  ➕",
-                callback_data=f"ca:{pid}",
-            )])
-        else:
-            buttons.append([
-                InlineKeyboardButton(text="➖", callback_data=f"cr:{pid}"),
-                InlineKeyboardButton(text=f"{qty} шт.  {sname}", callback_data="noop"),
-                InlineKeyboardButton(text="➕", callback_data=f"ca:{pid}"),
-            ])
+        qty = cart.get(pid, {}).get("qty", 0)
+        label = f"{emoji} {sname}" + (f" · {qty}" if qty else "")
+        pair.append(InlineKeyboardButton(text=label, callback_data=f"cp:{pid}"))
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
 
     if cart:
         total_qty = sum(v["qty"] for v in cart.values())
         total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
-        buttons.append([InlineKeyboardButton(
-            text=f"🛒 Корзина ({total_qty} шт.) — {fmt(total_sum)}",
-            callback_data="show_cart",
+        rows.append([InlineKeyboardButton(
+            text=f"▶ Далее · {total_qty} шт. · {fmt(total_sum)}",
+            callback_data="checkout_start",
         )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-
-async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: bool = False):
+async def _render_catalog(target, state: FSMContext, edit: bool = False):
     products = await api.get_products() or []
     data = await state.get_data()
     cart = data.get("cart", {})
+    # Sync names/prices from fresh product data (in case admin changed them)
     for p in products:
         pid = str(p["id"])
         if pid in cart:
-            cart[pid].update(name=p["name"], price=p["price"],
-                             volume=p.get("volume", 0), product_id=p["id"])
+            cart[pid].update(name=_short_name(p), price=p["price"],
+                             volume=p.get("volume", 0), product_id=p["id"],
+                             has_bottle_deposit=p.get("has_bottle_deposit", False),
+                             deposit_price=p.get("deposit_price"))
     try:
         cfg = await api.get_settings() or {}
     except Exception:
@@ -302,36 +293,137 @@ async def _render_catalog(target, state: FSMContext, ftype: str = "all", edit: b
     disc_type = cfg.get("bottle_discount_type", "fixed")
     disc_val = float(cfg.get("bottle_discount_value") or 0)
 
-    await state.update_data(products=products, cf=ftype, cart=cart)
-    kb = _catalog_kb(products, cart, ftype, disc_val, disc_type)
+    await state.update_data(products=products, cart=cart)
+    kb = _catalog_grid_kb(products, cart)
 
-    # Текст: список всех товаров с ценами
-    lines = ["🛒 <b>Каталог воды Ever Water</b>\n"]
-    shown = [p for p in products if ftype == "all" or p.get("type") == ftype]
-    still = [p for p in shown if p.get("type") != "carbonated"]
-    carb  = [p for p in shown if p.get("type") == "carbonated"]
+    # Concise text: header + price list. No long instructions.
+    lines = ["🛒 <b>Каталог</b>", ""]
+    still = [p for p in products if p.get("type") != "carbonated"]
+    carb = [p for p in products if p.get("type") == "carbonated"]
     if still:
-        lines.append("💧 <b>Без газа:</b>")
         for p in still:
             ep = _eff_price(p, disc_val, disc_type)
             if p.get("has_bottle_deposit") and ep < p["price"]:
-                line = f"  {_short_name(p)} — {fmt(ep)} ♻ (без возврата: {fmt(p['price'])})"
+                lines.append(f"💧 {_short_name(p)} — {fmt(ep)} / {fmt(p['price'])} ♻")
             else:
-                line = f"  {_short_name(p)} — {fmt(p['price'])}"
-            lines.append(line)
+                lines.append(f"💧 {_short_name(p)} — {fmt(p['price'])}")
     if carb:
-        lines.append("\n🫧 <b>Газированная:</b>")
+        if still:
+            lines.append("")
         for p in carb:
-            lines.append(f"  {_short_name(p)} — {fmt(p['price'])}")
-    lines.append("\n<i>Нажмите на товар чтобы добавить в корзину</i>")
+            lines.append(f"🫧 {_short_name(p)} — {fmt(p['price'])}")
+
+    if cart:
+        total_qty = sum(v["qty"] for v in cart.values())
+        total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
+        lines.append("")
+        lines.append(f"📦 В корзине: <b>{total_qty} шт.</b> на <b>{fmt(total_sum)}</b>")
+
     text = "\n".join(lines)
 
     if edit:
         msg = target.message if isinstance(target, CallbackQuery) else target
-        await msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        try:
+            await msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await msg.answer(text, reply_markup=kb, parse_mode="HTML")
     else:
         msg = target if isinstance(target, Message) else target.message
         await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# ─── Quantity picker (per-product) ─────────────────────────────────────────────
+
+def _qty_kb(pid: str, qty: int) -> InlineKeyboardMarkup:
+    rows = [
+        # Live counter
+        [
+            InlineKeyboardButton(text="➖", callback_data=f"qd:{pid}:-1"),
+            InlineKeyboardButton(text=f"{qty} шт.", callback_data="noop"),
+            InlineKeyboardButton(text="➕", callback_data=f"qd:{pid}:1"),
+        ],
+        # Quick presets
+        [
+            InlineKeyboardButton(text="1", callback_data=f"qs:{pid}:1"),
+            InlineKeyboardButton(text="2", callback_data=f"qs:{pid}:2"),
+            InlineKeyboardButton(text="3", callback_data=f"qs:{pid}:3"),
+        ],
+        [
+            InlineKeyboardButton(text="5", callback_data=f"qs:{pid}:5"),
+            InlineKeyboardButton(text="10", callback_data=f"qs:{pid}:10"),
+            InlineKeyboardButton(text="✏️ Своё", callback_data=f"qc:{pid}"),
+        ],
+    ]
+    actions = []
+    if qty > 0:
+        actions.append(InlineKeyboardButton(text="🗑 Убрать", callback_data=f"qremove:{pid}"))
+    actions.append(InlineKeyboardButton(text="✅ Готово", callback_data="back_catalog"))
+    rows.append(actions)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _render_qty_picker(call: CallbackQuery, state: FSMContext, pid: str):
+    data = await state.get_data()
+    products = data.get("products") or []
+    p = next((x for x in products if str(x["id"]) == pid), None)
+    if not p:
+        await call.answer("Товар не найден", show_alert=True)
+        return
+    cart = data.get("cart", {})
+    qty = cart.get(pid, {}).get("qty", 0)
+
+    try:
+        cfg = await api.get_settings() or {}
+    except Exception:
+        cfg = {}
+    disc_type = cfg.get("bottle_discount_type", "fixed")
+    disc_val = float(cfg.get("bottle_discount_value") or 0)
+
+    emoji = "🫧" if p.get("type") == "carbonated" else "💧"
+    sname = _short_name(p)
+    ep = _eff_price(p, disc_val, disc_type)
+    base_price = p["price"]
+
+    lines = [f"{emoji} <b>{sname}</b>", ""]
+    if p.get("has_bottle_deposit") and ep < base_price:
+        lines.append(f"💵 Цена: <b>{fmt(ep)}</b> с возвратом · {fmt(base_price)} без возврата")
+    else:
+        lines.append(f"💵 Цена: <b>{fmt(base_price)}</b>")
+
+    if qty > 0:
+        line_total = base_price * qty
+        lines.append("")
+        lines.append(f"📦 В корзине: {qty} шт. на {fmt(line_total)}")
+
+    lines.append("")
+    lines.append("<i>Выберите количество:</i>")
+    text = "\n".join(lines)
+
+    try:
+        await call.message.edit_text(text, reply_markup=_qty_kb(pid, qty), parse_mode="HTML")
+    except Exception:
+        await call.message.answer(text, reply_markup=_qty_kb(pid, qty), parse_mode="HTML")
+
+
+def _update_cart_qty(cart: dict, pid: str, products: list, qty: int) -> None:
+    """Set cart[pid] qty (in-place). qty<=0 removes the item."""
+    qty = max(0, int(qty))
+    if qty <= 0:
+        cart.pop(pid, None)
+        return
+    p = next((x for x in products if str(x["id"]) == pid), None)
+    if not p:
+        return
+    item = cart.get(pid) or {
+        "product_id": p["id"],
+        "name": _short_name(p),
+        "price": p["price"],
+        "volume": p.get("volume", 0),
+        "has_bottle_deposit": p.get("has_bottle_deposit", False),
+        "deposit_price": p.get("deposit_price"),
+    }
+    item["qty"] = qty
+    cart[pid] = item
 
 
 def _sub_catalog_kb(products: list, cart: dict, ftype: str = "all",
@@ -423,45 +515,100 @@ async def catalog(message: Message, state: FSMContext):
     await _render_catalog(message, state)
 
 
-@router.callback_query(F.data.startswith("cf:"))
-async def catalog_filter(call: CallbackQuery, state: FSMContext):
-    await _render_catalog(call, state, ftype=call.data.split(":")[1], edit=True)
+@router.callback_query(F.data.startswith("cp:"))
+async def cart_pick(call: CallbackQuery, state: FSMContext):
+    """Open the per-product quantity sheet."""
+    pid = call.data.split(":")[1]
+    # Make sure products are loaded into state (handles cold-start case)
+    data = await state.get_data()
+    if not data.get("products"):
+        products = await api.get_products() or []
+        await state.update_data(products=products)
+    await _render_qty_picker(call, state, pid)
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("ca:"))
-async def cart_add(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("qd:"))
+async def qty_delta(call: CallbackQuery, state: FSMContext):
+    """Live counter ➖/➕ in the qty picker."""
+    _, pid, delta = call.data.split(":")
+    delta = int(delta)
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    products = data.get("products") or []
+    current = cart.get(pid, {}).get("qty", 0)
+    _update_cart_qty(cart, pid, products, current + delta)
+    await state.update_data(cart=cart)
+    await _render_qty_picker(call, state, pid)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("qs:"))
+async def qty_set(call: CallbackQuery, state: FSMContext):
+    """Preset (1/2/3/5/10) in the qty picker."""
+    _, pid, n = call.data.split(":")
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    products = data.get("products") or []
+    _update_cart_qty(cart, pid, products, int(n))
+    await state.update_data(cart=cart)
+    await _render_qty_picker(call, state, pid)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("qremove:"))
+async def qty_remove(call: CallbackQuery, state: FSMContext):
     pid = call.data.split(":")[1]
     data = await state.get_data()
     cart = data.get("cart", {})
-    products = data.get("products") or await api.get_products() or []
-    p = next((x for x in products if str(x["id"]) == pid), None)
-    if not p:
-        await call.answer("Товар не найден")
+    cart.pop(pid, None)
+    await state.update_data(cart=cart)
+    await call.answer("Убрано")
+    await _render_catalog(call, state, edit=True)
+
+
+@router.callback_query(F.data.startswith("qc:"))
+async def qty_custom(call: CallbackQuery, state: FSMContext):
+    """Ask user to type a custom quantity (1–999)."""
+    pid = call.data.split(":")[1]
+    await state.set_state(CatalogState.waiting_custom_qty)
+    await state.update_data(pending_qty_pid=pid)
+    await call.message.answer(
+        "✏️ Введите количество (1–999):\n"
+        "Или отправьте «отмена», чтобы вернуться.",
+    )
+    await call.answer()
+
+
+@router.message(CatalogState.waiting_custom_qty)
+async def qty_custom_input(message: Message, state: FSMContext):
+    txt = (message.text or "").strip().lower()
+    data = await state.get_data()
+    pid = data.get("pending_qty_pid")
+    products = data.get("products") or []
+    cart = data.get("cart", {})
+
+    if txt in ("отмена", "/cancel"):
+        await state.set_state(None)
+        await state.update_data(pending_qty_pid=None)
+        await message.answer("Отменено.")
+        await _render_catalog(message, state)
         return
-    if pid not in cart:
-        cart[pid] = {"name": _short_name(p), "price": p["price"],
-                     "qty": 0, "volume": p.get("volume", 0), "product_id": p["id"],
-                     "has_bottle_deposit": p.get("has_bottle_deposit", False),
-                     "deposit_price": p.get("deposit_price")}
-    cart[pid]["qty"] += 1
-    await state.update_data(cart=cart)
-    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
-    await call.answer()
 
+    try:
+        n = int(txt)
+    except ValueError:
+        await message.answer("Нужно число. Попробуйте ещё раз, либо «отмена».")
+        return
+    if n < 0 or n > 999:
+        await message.answer("Допустимо от 0 до 999. Попробуйте ещё раз.")
+        return
 
-@router.callback_query(F.data.startswith("cr:"))
-async def cart_remove(call: CallbackQuery, state: FSMContext):
-    pid = call.data.split(":")[1]
-    data = await state.get_data()
-    cart = data.get("cart", {})
-    if pid in cart:
-        cart[pid]["qty"] -= 1
-        if cart[pid]["qty"] <= 0:
-            del cart[pid]
-    await state.update_data(cart=cart)
-    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
-    await call.answer()
+    _update_cart_qty(cart, pid, products, n)
+    await state.set_state(None)
+    await state.update_data(cart=cart, pending_qty_pid=None)
+    await message.answer(f"✅ Установлено: {n} шт.")
+    await _render_catalog(message, state)
 
 
 @router.callback_query(F.data == "noop")
@@ -525,8 +672,7 @@ async def show_cart_cb(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "back_catalog")
 async def back_catalog(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    await _render_catalog(call, state, ftype=data.get("cf", "all"), edit=True)
+    await _render_catalog(call, state, edit=True)
     await call.answer()
 
 
