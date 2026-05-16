@@ -760,13 +760,14 @@ const normalizeCourierWater = (courierId) => {
   MOCK_WAREHOUSE.courier_water[courierId] = next
 }
 
-export const issueWaterToCourier = (courierId, courierName, productName, quantity, performedBy, vehicleType, vehiclePlate) =>
+export const issueWaterToCourier = (courierId, courierName, productName, quantity, performedBy, vehicleType, vehiclePlate, bottleReturn) =>
   safeCall(
     () => http.post('/warehouse/issue', {
       courier_id: courierId, product_name: productName, quantity,
       performed_by: performedBy || undefined,
       vehicle_type: vehicleType || undefined,
       vehicle_plate: vehiclePlate || undefined,
+      bottle_return: bottleReturn || undefined,
     }).then(r => r.data),
     () => {
       const item = findOrCreateStockRow(productName)

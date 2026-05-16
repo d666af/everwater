@@ -152,25 +152,37 @@ def generate_invoice_png(
     # ── Item rows ─────────────────────────────────────────────────────
     for it in items:
         x = PAD_X
-        cells = [
-            str(it.get("name") or "—"),
-            str(it.get("unit") or "Шт"),
-            str(int(it.get("qty") or 0)),
-            str(int(it.get("bonus") or 0)),
-            _fmt_money(it.get("price") or 0),
-            _fmt_money(it.get("sum") or 0),
-        ]
-        # Right-aligned columns: qty/bonus/price/sum centered, name left-aligned
+        is_return = bool(it.get("is_return"))
+        if is_return:
+            cells = [
+                str(it.get("name") or "—"),
+                str(it.get("unit") or "Шт"),
+                str(int(it.get("qty") or 0)),
+                "—", "—", "—",
+            ]
+        else:
+            cells = [
+                str(it.get("name") or "—"),
+                str(it.get("unit") or "Шт"),
+                str(int(it.get("qty") or 0)),
+                str(int(it.get("bonus") or 0)),
+                _fmt_money(it.get("price") or 0),
+                _fmt_money(it.get("sum") or 0),
+            ]
         aligns = ["L", "C", "C", "C", "C", "C"]
+        row_bg = (230, 245, 255) if is_return else None
+        if row_bg:
+            draw.rectangle([(PAD_X, y), (W - PAD_X, y + ROW_H)], fill=row_bg)
         for i, (txt_, w, al) in enumerate(zip(cells, COL_W, aligns)):
             if i > 0:
                 draw.line([(x, y), (x, y + ROW_H)], fill=BORDER, width=1)
-            tw, th = _measure(draw, txt_, f_cell)
+            font = f_cell_b if is_return else f_cell
+            tw, th = _measure(draw, txt_, font)
             if al == "L":
                 tx = x + 14
             else:
                 tx = x + (w - tw) // 2
-            draw.text((tx, y + (ROW_H - th) // 2), txt_, font=f_cell, fill=TEXT)
+            draw.text((tx, y + (ROW_H - th) // 2), txt_, font=font, fill=TEXT)
             x += w
         y += ROW_H
         draw.line([(PAD_X, y), (W - PAD_X, y)], fill=BORDER, width=1)

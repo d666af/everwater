@@ -319,6 +319,7 @@ class IssueBody(BaseModel):
     performed_by: str | None = None
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
+    bottle_return: int | None = 0
 
 
 async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
@@ -376,8 +377,12 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
         raise HTTPException(404, "Курьер не найден для накладной")
 
     # Aggregate same-product transactions defensively
+    bottle_return_qty = 0
     by_product: dict[int, dict] = {}
     for t in txs:
+        if t.transaction_type == "bottle_return":
+            bottle_return_qty += int(t.quantity or 0)
+            continue
         if t.transaction_type != "issue" or not t.product:
             continue
         key = t.product_id
@@ -394,7 +399,10 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
         by_product[key]["qty"] += int(t.quantity or 0)
         by_product[key]["sum"] += int(t.quantity or 0) * price
 
-    items = list(by_product.values())
+    items = []
+    if bottle_return_qty > 0:
+        items.append({"name": "Возврат бутылок", "unit": "Шт", "qty": bottle_return_qty, "is_return": True})
+    items.extend(by_product.values())
     when = txs[0].created_at if txs else datetime.now()
     png = generate_invoice_png(
         items=items,
@@ -439,19 +447,37 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         note=_note_with_actor(body.note, body.performed_by),
         batch_id=batch_id,
     ))
+    if body.bottle_return and body.bottle_return > 0:
+        db.add(WaterTransaction(
+            product_id=None,
+            courier_id=body.courier_id,
+            order_id=None,
+            transaction_type="bottle_return",
+            quantity=body.bottle_return,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+        ))
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
 
     # Generate invoice + send to admins (best-effort, post-commit)
     if courier:
-        items = [{
+        items = []
+        if body.bottle_return and body.bottle_return > 0:
+            items.append({
+                "name": "Возврат бутылок",
+                "unit": "Шт",
+                "qty":  body.bottle_return,
+                "is_return": True,
+            })
+        items.append({
             "name":  product.name,
             "unit":  "Шт",
             "qty":   body.quantity,
             "bonus": 0,
             "price": float(product.price or 0),
             "sum":   body.quantity * float(product.price or 0),
-        }]
+        })
         try:
             png = generate_invoice_png(
                 items=items,
