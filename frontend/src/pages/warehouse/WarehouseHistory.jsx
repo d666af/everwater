@@ -79,13 +79,16 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     return s
   }, [history])
 
-  const fmtDate = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-  const sameDayH = (a, b) => a && b && a.toDateString() === b.toDateString()
+  const fmtDateStr = s => {
+    if (!s) return ''
+    const [y, m, d] = String(s).split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  }
   const periodLabel = period === 'custom'
     ? (customDate
-        ? (customDateTo && !sameDayH(customDate, customDateTo)
-            ? `${fmtDate(customDate)} – ${fmtDate(customDateTo)}`
-            : fmtDate(customDate))
+        ? (customDateTo && customDateTo !== customDate
+            ? `${fmtDateStr(customDate)} – ${fmtDateStr(customDateTo)}`
+            : fmtDateStr(customDate))
         : 'Дата')
     : [...QUICK, ...RANGES].find(p => p.key === period)?.label || ''
 

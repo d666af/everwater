@@ -22,12 +22,20 @@ const dayMs = 86400000
  *  - onApply(startDate, endDate)
  *  - onClose()
  */
+// Parse a YYYY-MM-DD string (or Date) into a local-midnight Date, avoiding timezone shift
+function parseLocalDate(v) {
+  if (!v) return null
+  if (v instanceof Date) return v
+  const [y, m, d] = String(v).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 export default function DateTimePickerModal({ initialDate, initialDateTo, onApply, onClose }) {
   const today = new Date()
-  const initStart = initialDate ? new Date(initialDate) : new Date(today)
+  const initStart = parseLocalDate(initialDate) || new Date(today)
   const [rangeMode, setRangeMode] = useState(!!initialDateTo)
   const [start, setStart] = useState(initStart)
-  const [end, setEnd] = useState(initialDateTo ? new Date(initialDateTo) : null)
+  const [end, setEnd] = useState(parseLocalDate(initialDateTo))
   const [viewMonth, setViewMonth] = useState(new Date(initStart.getFullYear(), initStart.getMonth(), 1))
 
   const year = viewMonth.getFullYear()
@@ -67,8 +75,10 @@ export default function DateTimePickerModal({ initialDate, initialDateTo, onAppl
   }
 
   const apply = () => {
-    const s = start
-    const e = rangeMode && end ? end : start
+    // Always pass dates as local YYYY-MM-DD strings to avoid timezone shift
+    const localISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const s = localISO(start)
+    const e = rangeMode && end ? localISO(end) : null
     onApply(s, e)
     onClose()
   }

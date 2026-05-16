@@ -53,19 +53,22 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   useEffect(() => { getAdminCouriers().then(cs => setCouriers(cs.filter(c => c.is_active))).catch(console.error) }, [])
 
   const applyCustom = (start, end) => {
-    setCustomDate(start)
-    setCustomDateTo(end)
+    setCustomDate(start)   // YYYY-MM-DD string or null
+    setCustomDateTo(end)   // YYYY-MM-DD string or null
     setPeriod('custom')
   }
 
-  const fmtDate = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-  const sameDay = (a, b) => a && b && a.toDateString() === b.toDateString()
+  const fmtDateStr = s => {
+    if (!s) return ''
+    const [y, m, d] = s.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  }
 
   const periodLabel = period === 'custom'
     ? (customDate
-        ? (customDateTo && !sameDay(customDate, customDateTo)
-            ? `${fmtDate(customDate)} – ${fmtDate(customDateTo)}`
-            : fmtDate(customDate))
+        ? (customDateTo && customDateTo !== customDate
+            ? `${fmtDateStr(customDate)} – ${fmtDateStr(customDateTo)}`
+            : fmtDateStr(customDate))
         : 'Дата')
     : QUICK.find(p => p.key === period)?.label || ''
 
