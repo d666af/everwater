@@ -880,11 +880,15 @@ async def adjust_stock(body: AdjustBody, db: AsyncSession = Depends(get_db)):
 # ─── Couriers water inventory (enriched) ─────────────────────────────────────
 
 @router.get("/couriers")
-async def get_couriers_water(db: AsyncSession = Depends(get_db)):
+async def get_couriers_water(
+    period: str = "today",
+    date: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     couriers_q = await db.execute(select(Courier).where(Courier.is_active == True))
     couriers = couriers_q.scalars().all()
 
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    period_start, period_end = _period_range(period, date, None, None)
     result = []
 
     for c in couriers:
@@ -954,27 +958,29 @@ async def get_couriers_water(db: AsyncSession = Depends(get_db)):
             })
             bottles_must_return += o.return_bottles_count
 
-        # Delivered today
+        # Delivered in period
         del_q = await db.execute(
             select(Order)
             .options(selectinload(Order.items).selectinload(OrderItem.product))
             .where(Order.courier_id == c.id)
             .where(Order.status == OrderStatus.DELIVERED)
-            .where(Order.created_at >= today)
+            .where(Order.created_at >= period_start)
+            .where(Order.created_at < period_end)
         )
-        delivered_today = del_q.scalars().all()
+        delivered_period = del_q.scalars().all()
         delivered_products: dict[str, int] = {}
-        bottles_returned_today = sum(o.return_bottles_count for o in delivered_today)
-        for o in delivered_today:
+        bottles_returned_today = sum(o.return_bottles_count for o in delivered_period)
+        for o in delivered_period:
             for item in o.items:
                 short = _short_name(item.product.volume, item.product.type)
                 delivered_products[short] = delivered_products.get(short, 0) + item.quantity
 
-        # Today's transactions for issued/returned counts
+        # Period transactions for issued/returned counts
         tx_q = await db.execute(
             select(WaterTransaction)
             .where(WaterTransaction.courier_id == c.id)
-            .where(WaterTransaction.created_at >= today)
+            .where(WaterTransaction.created_at >= period_start)
+            .where(WaterTransaction.created_at < period_end)
         )
         issued_today_count = 0
         returned_today_count = 0
