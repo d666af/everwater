@@ -325,11 +325,23 @@ async def _render_catalog(target, state: FSMContext, edit: bool = False):
         msg = target.message if isinstance(target, CallbackQuery) else target
         try:
             await msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            new_id = msg.message_id
         except Exception:
-            await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+            sent = await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+            new_id = sent.message_id
     else:
         msg = target if isinstance(target, Message) else target.message
-        await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+        # Drop the previous catalog message (if any) before sending the new one
+        prev_id = data.get("catalog_msg_id")
+        if prev_id:
+            try:
+                await msg.bot.delete_message(msg.chat.id, prev_id)
+            except Exception:
+                pass
+        sent = await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+        new_id = sent.message_id
+
+    await state.update_data(catalog_msg_id=new_id)
 
 
 # ─── Quantity picker (per-product) ─────────────────────────────────────────────
@@ -351,7 +363,7 @@ def _qty_kb(pid: str, qty: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="5", callback_data=f"qs:{pid}:5"),
             InlineKeyboardButton(text="10", callback_data=f"qs:{pid}:10"),
-            InlineKeyboardButton(text="✏️ Своё", callback_data=f"qc:{pid}"),
+            InlineKeyboardButton(text="20", callback_data=f"qs:{pid}:20"),
         ],
     ]
     actions = []
@@ -362,13 +374,13 @@ def _qty_kb(pid: str, qty: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _render_qty_picker(call: CallbackQuery, state: FSMContext, pid: str):
+async def _build_qty_picker_view(state: FSMContext, pid: str):
+    """Compute (text, keyboard) for the per-product qty sheet."""
     data = await state.get_data()
     products = data.get("products") or []
     p = next((x for x in products if str(x["id"]) == pid), None)
     if not p:
-        await call.answer("Товар не найден", show_alert=True)
-        return
+        return None, None
     cart = data.get("cart", {})
     qty = cart.get(pid, {}).get("qty", 0)
 
@@ -396,13 +408,19 @@ async def _render_qty_picker(call: CallbackQuery, state: FSMContext, pid: str):
         lines.append(f"📦 В корзине: {qty} шт. на {fmt(line_total)}")
 
     lines.append("")
-    lines.append("<i>Выберите количество:</i>")
-    text = "\n".join(lines)
+    lines.append("<i>Выберите количество кнопками или просто отправьте число сообщением.</i>")
+    return "\n".join(lines), _qty_kb(pid, qty)
 
+
+async def _render_qty_picker(call: CallbackQuery, state: FSMContext, pid: str):
+    text, kb = await _build_qty_picker_view(state, pid)
+    if text is None:
+        await call.answer("Товар не найден", show_alert=True)
+        return
     try:
-        await call.message.edit_text(text, reply_markup=_qty_kb(pid, qty), parse_mode="HTML")
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(text, reply_markup=_qty_kb(pid, qty), parse_mode="HTML")
+        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 def _update_cart_qty(cart: dict, pid: str, products: list, qty: int) -> None:
@@ -511,19 +529,34 @@ async def _render_sub_catalog(target, state: FSMContext, ftype: str = "all", edi
 
 @router.message(F.text == "🛒 Заказать")
 async def catalog(message: Message, state: FSMContext):
+    # Preserve the previous catalog message id so we can delete the stale
+    # message after wiping state.
+    data = await state.get_data()
+    prev_msg_id = data.get("catalog_msg_id")
     await state.clear()
+    if prev_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, prev_msg_id)
+        except Exception:
+            pass
     await _render_catalog(message, state)
 
 
 @router.callback_query(F.data.startswith("cp:"))
 async def cart_pick(call: CallbackQuery, state: FSMContext):
-    """Open the per-product quantity sheet."""
+    """Open the per-product quantity sheet. Enter waiting_custom_qty so
+    typing a number applies to the picked product directly."""
     pid = call.data.split(":")[1]
-    # Make sure products are loaded into state (handles cold-start case)
     data = await state.get_data()
     if not data.get("products"):
         products = await api.get_products() or []
         await state.update_data(products=products)
+    await state.set_state(CatalogState.waiting_custom_qty)
+    await state.update_data(
+        pending_qty_pid=pid,
+        picker_msg_id=call.message.message_id,
+        picker_chat_id=call.message.chat.id,
+    )
     await _render_qty_picker(call, state, pid)
     await call.answer()
 
@@ -545,7 +578,7 @@ async def qty_delta(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("qs:"))
 async def qty_set(call: CallbackQuery, state: FSMContext):
-    """Preset (1/2/3/5/10) in the qty picker."""
+    """Preset (1/2/3/5/10/20) in the qty picker."""
     _, pid, n = call.data.split(":")
     data = await state.get_data()
     cart = data.get("cart", {})
@@ -562,53 +595,58 @@ async def qty_remove(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     cart = data.get("cart", {})
     cart.pop(pid, None)
-    await state.update_data(cart=cart)
+    await state.update_data(cart=cart, pending_qty_pid=None)
+    await state.set_state(None)
     await call.answer("Убрано")
     await _render_catalog(call, state, edit=True)
 
 
-@router.callback_query(F.data.startswith("qc:"))
-async def qty_custom(call: CallbackQuery, state: FSMContext):
-    """Ask user to type a custom quantity (1–999)."""
-    pid = call.data.split(":")[1]
-    await state.set_state(CatalogState.waiting_custom_qty)
-    await state.update_data(pending_qty_pid=pid)
-    await call.message.answer(
-        "✏️ Введите количество (1–999):\n"
-        "Или отправьте «отмена», чтобы вернуться.",
-    )
-    await call.answer()
-
-
 @router.message(CatalogState.waiting_custom_qty)
 async def qty_custom_input(message: Message, state: FSMContext):
-    txt = (message.text or "").strip().lower()
+    """User typed a number while a qty picker is open — apply to picked product."""
     data = await state.get_data()
     pid = data.get("pending_qty_pid")
     products = data.get("products") or []
     cart = data.get("cart", {})
+    picker_msg_id = data.get("picker_msg_id")
+    picker_chat_id = data.get("picker_chat_id")
 
-    if txt in ("отмена", "/cancel"):
-        await state.set_state(None)
-        await state.update_data(pending_qty_pid=None)
-        await message.answer("Отменено.")
-        await _render_catalog(message, state)
+    # Always remove the user's number message so the picker stays the only
+    # message in this transaction.
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    if not pid:
         return
 
+    txt = (message.text or "").strip()
     try:
         n = int(txt)
     except ValueError:
-        await message.answer("Нужно число. Попробуйте ещё раз, либо «отмена».")
+        # Not a number — silently ignore to keep the picker uncluttered.
         return
     if n < 0 or n > 999:
-        await message.answer("Допустимо от 0 до 999. Попробуйте ещё раз.")
         return
 
     _update_cart_qty(cart, pid, products, n)
-    await state.set_state(None)
-    await state.update_data(cart=cart, pending_qty_pid=None)
-    await message.answer(f"✅ Установлено: {n} шт.")
-    await _render_catalog(message, state)
+    await state.update_data(cart=cart)
+
+    # Edit the picker message in place
+    if picker_msg_id and picker_chat_id:
+        text, kb = await _build_qty_picker_view(state, pid)
+        if text is not None:
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=picker_chat_id,
+                    message_id=picker_msg_id,
+                    text=text,
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
 
 
 @router.callback_query(F.data == "noop")
@@ -672,6 +710,11 @@ async def show_cart_cb(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "back_catalog")
 async def back_catalog(call: CallbackQuery, state: FSMContext):
+    # Leaving the qty picker → exit the "type a number" state
+    cur = await state.get_state()
+    if cur == CatalogState.waiting_custom_qty.state:
+        await state.set_state(None)
+    await state.update_data(pending_qty_pid=None)
     await _render_catalog(call, state, edit=True)
     await call.answer()
 
