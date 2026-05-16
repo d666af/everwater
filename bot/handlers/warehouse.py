@@ -401,7 +401,10 @@ async def wh_couriers(message: Message):
     if not data:
         await message.answer("Нет данных по курьерам.")
         return
-    lines = ["👥 <b>Курьеры:</b>\n"]
+
+    SEP = "─" * 22
+    blocks = [f"👥 <b>Курьеры</b>  ({len(data)})\n{SEP}"]
+
     for c in data:
         name = c.get("name") or c.get("courier_name") or f"ID {c.get('id')}"
         vehicle_parts = []
@@ -409,24 +412,30 @@ async def wh_couriers(message: Message):
             vehicle_parts.append(c["vehicle_type"])
         if c.get("vehicle_plate"):
             vehicle_parts.append(c["vehicle_plate"])
-        vehicle = ("🚗 " + " · ".join(vehicle_parts)) if vehicle_parts else ""
+
+        card = [f"👤 <b>{name}</b>"]
+        if vehicle_parts:
+            card.append(f"🚗 {' · '.join(vehicle_parts)}")
 
         issued = c.get("issued_products", {})
         if isinstance(issued, dict) and issued:
-            issued_text = "Выдано: " + ", ".join(f"{k} {v} шт." for k, v in issued.items())
+            card.append("")
+            card.append("📦 <b>Выдано:</b>")
+            for prod_name, qty in issued.items():
+                card.append(f"   {prod_name} — {qty} шт.")
         else:
-            issued_text = "Выдано: —"
+            card.append("📦 Выдано: —")
 
         returned = c.get("bottles_returned_today", 0) or 0
         owed = c.get("bottles_must_return", 0) or 0
+        card.append("")
+        card.append(f"↩ Вернул: <b>{returned}</b> бут.")
+        card.append(f"📌 Должен: <b>{owed}</b> бут.")
 
-        lines.append(
-            f"• <b>{name}</b>"
-            + (f"\n  {vehicle}" if vehicle else "")
-            + f"\n  {issued_text}"
-            + f"\n  ↩ Вернул: {returned} бут. | Должен: {owed} бут."
-        )
-    await message.answer("\n".join(lines), parse_mode="HTML")
+        blocks.append("\n".join(card))
+
+    text = f"\n{SEP}\n".join(blocks)
+    await message.answer(text, parse_mode="HTML")
 
 
 # ─── History ──────────────────────────────────────────────────────────────────
@@ -438,6 +447,18 @@ async def wh_history_menu(message: Message):
     await message.answer("Выберите тип операции:", reply_markup=wh_history_filter_kb())
 
 
+def _fmt_ts(created_at: str) -> str:
+    if not created_at:
+        return ""
+    try:
+        from datetime import datetime, timezone, timedelta
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        local = dt.astimezone(timezone(timedelta(hours=5)))
+        return local.strftime("%-d %b, %H:%M")
+    except Exception:
+        return created_at[:10]
+
+
 @router.callback_query(F.data.startswith("wh:hist:"))
 async def wh_history(call: CallbackQuery):
     tx_type_raw = call.data.split(":")[2]
@@ -447,16 +468,36 @@ async def wh_history(call: CallbackQuery):
         await call.message.edit_text("История операций пуста.")
         await call.answer()
         return
-    lines = ["📜 <b>История операций:</b>\n"]
+
+    TYPE_ICON = {
+        "production": "➕",
+        "issue": "📤",
+        "issued": "📤",
+        "bottle_return": "↩",
+        "return": "↩",
+        "returned": "↩",
+    }
+
+    blocks = ["📜 <b>История · сегодня</b>"]
     for tx in history[:20]:
-        kind = TX_RU.get(tx.get("type", ""), tx.get("type", ""))
-        name = tx.get("product_name") or ("Бутылки 19л" if tx.get("type") == "bottle_return" else f"ID {tx.get('product_id')}")
+        tx_type_val = tx.get("type", "")
+        icon = TYPE_ICON.get(tx_type_val, "•")
+        kind = TX_RU.get(tx_type_val, tx_type_val)
+        name = tx.get("product_name") or ("Бутылки 19л" if tx_type_val == "bottle_return" else "—")
         qty = tx.get("quantity", 0)
-        note = f" — {tx['note']}" if tx.get("note") else ""
-        dt = tx.get("created_at", "")[:10]
-        courier = f" · {tx['courier_name']}" if tx.get("courier_name") else ""
-        lines.append(f"• {dt} {kind}: {name} {qty} шт.{courier}{note}")
-    await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+        sign = "+" if tx_type_val == "production" else ("+" if "return" in tx_type_val else "−")
+        ts = _fmt_ts(tx.get("created_at", ""))
+        courier = tx.get("courier_name") or ""
+        note = tx.get("note") or ""
+
+        header = f"{icon} <b>{kind}</b>" + (f" · {courier}" if courier else "")
+        body = f"{name} — {sign}{qty} шт."
+        meta_parts = [ts] + ([note] if note else [])
+        meta = " · ".join(meta_parts)
+
+        blocks.append(f"{header}\n{body}" + (f"\n<i>{meta}</i>" if meta else ""))
+
+    await call.message.edit_text("\n\n".join(blocks), parse_mode="HTML")
     await call.answer()
 
 
