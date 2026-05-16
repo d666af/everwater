@@ -22,8 +22,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const actor = user?.name || null
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
-  const [timeFrom, setTimeFrom] = useState('')
-  const [timeTo, setTimeTo] = useState('')
+  const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const [overview, setOverview] = useState(null)
@@ -39,8 +38,9 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const load = () => {
     setLoading(true)
     const cd = period === 'custom' ? customDate : null
+    const cdTo = period === 'custom' ? customDateTo : null
     Promise.all([
-      getWarehouseOverview(period, cd, timeFrom, timeTo),
+      getWarehouseOverview(period, cd, null, null, cdTo),
       getSubscriptionsByPeriod(period, cd),
       getProductionPlan(),
     ])
@@ -49,18 +49,24 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [period, customDate, timeFrom, timeTo]) // eslint-disable-line
+  useEffect(load, [period, customDate, customDateTo]) // eslint-disable-line
   useEffect(() => { getAdminCouriers().then(cs => setCouriers(cs.filter(c => c.is_active))).catch(console.error) }, [])
 
-  const applyCustom = (date, from, to) => {
-    setCustomDate(date)
-    setTimeFrom(from)
-    setTimeTo(to)
+  const applyCustom = (start, end) => {
+    setCustomDate(start)
+    setCustomDateTo(end)
     setPeriod('custom')
   }
 
+  const fmtDate = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  const sameDay = (a, b) => a && b && a.toDateString() === b.toDateString()
+
   const periodLabel = period === 'custom'
-    ? (customDate ? `${customDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}${timeFrom || timeTo ? ` · ${timeFrom || '00:00'}–${timeTo || '23:59'}` : ''}` : 'Дата')
+    ? (customDate
+        ? (customDateTo && !sameDay(customDate, customDateTo)
+            ? `${fmtDate(customDate)} – ${fmtDate(customDateTo)}`
+            : fmtDate(customDate))
+        : 'Дата')
     : QUICK.find(p => p.key === period)?.label || ''
 
   if (loading && !overview) {
@@ -97,8 +103,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
-          initialFrom={timeFrom}
-          initialTo={timeTo}
+          initialDateTo={customDateTo}
           onApply={applyCustom}
           onClose={() => setPickerOpen(false)}
         />
@@ -169,12 +174,12 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </button>
       </div>
 
-      {/* Summary totals (labels under numbers, no + =) */}
+      {/* Summary totals */}
       <div style={{ background: '#fff', borderRadius: 14, padding: '14px 10px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
           <TotalStat value={totals.stock} label="На складе" color={C} />
-          <TotalStat value={totals.on_couriers} label="У курьеров" color="#1971C2" />
-          <TotalStat value={totals.total} label="Всего" color={TEXT} />
+          <TotalStat value={totals.bottle_returns_period ?? 0} label="Вернули" color="#1971C2" />
+          <TotalStat value={totals.on_couriers} label="Осталось" color={TEXT} />
         </div>
       </div>
 
@@ -184,11 +189,11 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         <span style={{ fontSize: 11, color: TEXT2 }}>{periodLabel}</span>
       </div>
 
-      {/* 2-column product grid — always shows all active catalog products */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+      {/* Product list — 1 per row */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
         {products.length === 0 ? (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Каталог пуст</div>
-        ) : products.map(p => <ProductCard key={p.key} p={p} period={period} onAdjust={() => setAdjustProduct(p)} />)}
+          <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Каталог пуст</div>
+        ) : products.map(p => <ProductCard key={p.key} p={p} onAdjust={() => setAdjustProduct(p)} />)}
       </div>
 
       {/* Production recommendations */}
@@ -303,56 +308,59 @@ function TotalStat({ value, label, color }) {
   )
 }
 
-function ProductCard({ p, period, onAdjust }) {
+function ProductCard({ p, onAdjust }) {
   const isShort = p.shortfall > 0
   const isLow = p.stock <= 10 && p.stock > 0
-  const needLabel = period === 'custom' ? 'К выдаче за период' : 'К выдаче'
+  const stockColor = isLow || isShort ? '#E03131' : C
+  const hasSecondary = p.produced_period > 0 || p.issued_period > 0
 
   return (
-    <div style={{ background: '#fff', borderRadius: 14, padding: '12px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: isShort ? '1.5px solid #FFB4B4' : '1.5px solid transparent' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, lineHeight: 1.2, flex: 1 }}>{p.product_name}</div>
-        <button onClick={onAdjust} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: TEXT2, flexShrink: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-      </div>
-
-      {/* Header row: stock (left) + total (right), both: number on top, label below */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <span style={{ fontSize: 24, fontWeight: 800, color: isLow ? '#E03131' : (isShort ? '#E03131' : C), lineHeight: 1 }}>{p.stock}</span>
-          <span style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>на складе</span>
+    <div style={{
+      background: '#fff', borderRadius: 16, padding: '14px 16px',
+      boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+      border: `1.5px solid ${isShort ? '#FFB4B4' : BORDER}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        {/* Left: name + shortfall badge */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.3 }}>{p.product_name}</div>
+          {isShort && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, padding: '2px 8px', background: '#FFE8E8', borderRadius: 6 }}>
+              <span style={{ fontSize: 11, color: '#C92A2A', fontWeight: 700 }}>Не хватает: {p.shortfall}</span>
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-          <span style={{ fontSize: 24, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{p.total}</span>
-          <span style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>всего</span>
+        {/* Right: big stock number + adjust icon */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexShrink: 0 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 30, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>на складе</div>
+          </div>
+          <button onClick={onAdjust} style={{
+            background: '#F8F9FA', border: 'none', width: 30, height: 30, borderRadius: 8,
+            cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
         </div>
       </div>
 
-      {/* Secondary stats */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
-        <Row label="У курьеров" value={p.on_couriers} color="#1971C2" />
-        {p.needed_period > 0 && <Row label={needLabel} value={p.needed_period} color="#E67700" />}
-        {p.delivered_period > 0 && <Row label="Доставлено" value={p.delivered_period} color="#2B8A3E" />}
-        {p.produced_period > 0 && <Row label="Произведено" value={`+${p.produced_period}`} color="#2B8A3E" />}
-        {p.issued_period > 0 && <Row label="Выдано курьерам" value={p.issued_period} color="#E67700" />}
-        {p.returned_period > 0 && <Row label="Возвраты" value={`+${p.returned_period}`} color="#1971C2" />}
-      </div>
-
-      {isShort && (
-        <div style={{ marginTop: 8, padding: '5px 8px', background: '#FFE8E8', borderRadius: 8, textAlign: 'center' }}>
-          <span style={{ fontSize: 10, color: '#C92A2A', fontWeight: 700 }}>Не хватает: {p.shortfall}</span>
+      {hasSecondary && (
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+          {p.produced_period > 0 && (
+            <div style={{ fontSize: 12 }}>
+              <span style={{ color: TEXT2 }}>Произведено: </span>
+              <span style={{ fontWeight: 700, color: '#2B8A3E' }}>{p.produced_period} шт.</span>
+            </div>
+          )}
+          {p.issued_period > 0 && (
+            <div style={{ fontSize: 12 }}>
+              <span style={{ color: TEXT2 }}>Выдано: </span>
+              <span style={{ fontWeight: 700, color: '#E67700' }}>{p.issued_period} шт.</span>
+            </div>
+          )}
         </div>
       )}
-    </div>
-  )
-}
-
-function Row({ label, value, color }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <span style={{ fontSize: 10, color: TEXT2 }}>{label}</span>
-      <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
     </div>
   )
 }

@@ -31,8 +31,7 @@ const TYPES = [
 export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
-  const [timeFrom, setTimeFrom] = useState('')
-  const [timeTo, setTimeTo] = useState('')
+  const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const [type, setType] = useState('all')
@@ -62,12 +61,12 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   // Load history when filters change
   useEffect(() => {
     setLoading(true)
-    const filters = { period, type, product, courier_id: courierId, customDate, timeFrom, timeTo }
+    const filters = { period, type, product, courier_id: courierId, customDate, customDateTo }
     getWarehouseHistory(filters)
       .then(setHistory)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [period, customDate, timeFrom, timeTo, type, product, courierId])
+  }, [period, customDate, customDateTo, type, product, courierId])
 
   // Aggregate
   const summary = useMemo(() => {
@@ -80,12 +79,18 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     return s
   }, [history])
 
+  const fmtDate = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  const sameDayH = (a, b) => a && b && a.toDateString() === b.toDateString()
   const periodLabel = period === 'custom'
-    ? (customDate ? `${customDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}${timeFrom || timeTo ? ` · ${timeFrom || '00:00'}–${timeTo || '23:59'}` : ''}` : 'Дата')
+    ? (customDate
+        ? (customDateTo && !sameDayH(customDate, customDateTo)
+            ? `${fmtDate(customDate)} – ${fmtDate(customDateTo)}`
+            : fmtDate(customDate))
+        : 'Дата')
     : [...QUICK, ...RANGES].find(p => p.key === period)?.label || ''
 
-  const applyCustom = (date, from, to) => {
-    setCustomDate(date); setTimeFrom(from); setTimeTo(to); setPeriod('custom')
+  const applyCustom = (start, end) => {
+    setCustomDate(start); setCustomDateTo(end); setPeriod('custom')
   }
 
   const activeFilterCount = (type !== 'all' ? 1 : 0) + (product !== 'all' ? 1 : 0) + (courierId ? 1 : 0)
@@ -95,8 +100,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
-          initialFrom={timeFrom}
-          initialTo={timeTo}
+          initialDateTo={customDateTo}
           onApply={applyCustom}
           onClose={() => setPickerOpen(false)}
         />

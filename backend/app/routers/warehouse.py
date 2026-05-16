@@ -85,7 +85,7 @@ async def _resolve_product(db: AsyncSession, product_id: int | None, product_nam
     raise HTTPException(status_code=404, detail=f"Product not found: {product_name or product_id}")
 
 
-def _period_range(period: str, date_str: str | None, time_from: str | None, time_to: str | None):
+def _period_range(period: str, date_str: str | None, time_from: str | None, time_to: str | None, date_to_str: str | None = None):
     """Return (since, until) UTC datetimes for the given period descriptor."""
     now = datetime.utcnow()
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -112,20 +112,29 @@ def _period_range(period: str, date_str: str | None, time_from: str | None, time
             )
         except Exception:
             d = today
-        s = d.replace(hour=0, minute=0, second=0, microsecond=0)
+        s = d
         e = end_of(d)
-        if time_from:
+        if date_to_str:
             try:
-                h, m = [int(x) for x in time_from.split(":")]
-                s = d.replace(hour=h, minute=m, second=0, microsecond=0)
+                d_end = datetime.fromisoformat(date_to_str.split("T")[0]).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                e = end_of(d_end)
             except Exception:
                 pass
-        if time_to:
-            try:
-                h, m = [int(x) for x in time_to.split(":")]
-                e = d.replace(hour=h, minute=m, second=59, microsecond=999999)
-            except Exception:
-                pass
+        else:
+            if time_from:
+                try:
+                    h, m = [int(x) for x in time_from.split(":")]
+                    s = d.replace(hour=h, minute=m, second=0, microsecond=0)
+                except Exception:
+                    pass
+            if time_to:
+                try:
+                    h, m = [int(x) for x in time_to.split(":")]
+                    e = d.replace(hour=h, minute=m, second=59, microsecond=999999)
+                except Exception:
+                    pass
         return s, e
     # "all" or unknown
     return datetime(2000, 1, 1), datetime(2099, 12, 31)
@@ -161,9 +170,10 @@ async def get_overview(
     date: str | None = None,
     time_from: str | None = None,
     time_to: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    since, until = _period_range(period, date, time_from, time_to)
+    since, until = _period_range(period, date, time_from, time_to, date_to)
 
     # All active products → seed per-product map
     products_q = await db.execute(select(Product).where(Product.is_active == True))
@@ -197,6 +207,7 @@ async def get_overview(
             per_product[cw.product_id]["on_couriers"] += cw.quantity
 
     # Transactions in period (skip "tomorrow" — nothing produced yet)
+    bottle_returns_period = 0
     if period != "tomorrow":
         tx_q = await db.execute(
             select(WaterTransaction).where(
@@ -204,6 +215,8 @@ async def get_overview(
             )
         )
         for tx in tx_q.scalars().all():
+            if tx.transaction_type == "bottle_return":
+                bottle_returns_period += tx.quantity
             if tx.product_id not in per_product:
                 continue
             t = tx.transaction_type
@@ -267,6 +280,7 @@ async def get_overview(
         "needed_orders":       needed_orders,
         "delivered_orders":    delivered_count,
         "bottles_returned_period": bottles_returned_period,
+        "bottle_returns_period":   bottle_returns_period,
         "bottles_owed_total":  0,
     }
     return {"products": products_list, "totals": totals, "shortfall_items": shortfall_items, "period": period}
@@ -1005,9 +1019,10 @@ async def get_history(
     date: str | None = None,
     time_from: str | None = None,
     time_to: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    since, until = _period_range(period, date, time_from, time_to)
+    since, until = _period_range(period, date, time_from, time_to, date_to)
 
     q = (
         select(WaterTransaction)
