@@ -1,18 +1,43 @@
 import s, { C, GRAD } from './styles'
 
+function plural(n, one, few, many) {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return one
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
+  return many
+}
+
 export default function BottleReturn({ returnCount, onCountChange, bottleDiscount, bottlesOwed, settings,
-                                       fullBottlePrice, priceWithReturn, discountPerBottle }) {
+                                       fullBottlePrice, priceWithReturn, discountPerBottle,
+                                       qty20L = 0 }) {
   const showButtons = settings.bottle_return_buttons_visible !== false
   const maxReturn = bottlesOwed
   const displayCount = showButtons ? returnCount : maxReturn
 
-  const depositInfoBox = {
-    background: '#F0FFF0', borderRadius: 10, padding: '10px 12px',
-    marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4,
-  }
-  const depositRow = {
-    display: 'flex', justifyContent: 'space-between',
-    fontSize: 13, color: '#3c3c43',
+  // How many ordered bottles will NOT be returned (charged at full price)
+  const missing = Math.max(0, qty20L - displayCount)
+  const surcharge = discountPerBottle || 0
+  const extraTotal = missing * surcharge
+
+  let message
+  if (qty20L > 0 && displayCount >= qty20L) {
+    message = (
+      <span>
+        Вы возвращаете <b>{qty20L}</b> {plural(qty20L, 'бутылку', 'бутылки', 'бутылок')} 19л.
+      </span>
+    )
+  } else if (qty20L > 0) {
+    message = (
+      <span>
+        Вы возвращаете <b>{displayCount} из {qty20L}</b>. За каждую невозвращённую
+        (всего <b>{missing}</b> {plural(missing, 'бутылку', 'бутылки', 'бутылок')}) к заказу
+        будет добавлено <b>{surcharge.toLocaleString()} сум</b> за бутылку
+        {extraTotal > 0 && missing > 1 && <> · итого <b>{extraTotal.toLocaleString()} сум</b></>}.
+      </span>
+    )
+  } else {
+    message = null
   }
 
   return (
@@ -48,26 +73,14 @@ export default function BottleReturn({ returnCount, onCountChange, bottleDiscoun
           )}
         </div>
 
-        {fullBottlePrice != null && priceWithReturn != null && (
-          <div style={depositInfoBox}>
-            <div style={depositRow}>
-              <span>♻ Со сдачей бутылки</span>
-              <b style={{ color: '#2B8A3E' }}>{priceWithReturn.toLocaleString()} сум</b>
-            </div>
-            <div style={depositRow}>
-              <span>Без возврата</span>
-              <span>{fullBottlePrice.toLocaleString()} сум</span>
-            </div>
-            {discountPerBottle > 0 && (
-              <div style={{ fontSize: 11, color: '#8e8e93', marginTop: 2 }}>
-                Скидка за каждую сданную бутылку: {discountPerBottle.toLocaleString()} сум
-              </div>
-            )}
+        {message && (
+          <div style={{
+            background: missing > 0 ? '#FFF7E6' : '#F0FFF0',
+            borderRadius: 10, padding: '10px 12px', marginTop: 10,
+            fontSize: 13, color: '#3c3c43', lineHeight: 1.5,
+          }}>
+            {message}
           </div>
-        )}
-
-        {bottleDiscount > 0 && (
-          <div style={s.discountLine}>Скидка за возврат: −{bottleDiscount.toLocaleString()} сум</div>
         )}
       </div>
     </div>

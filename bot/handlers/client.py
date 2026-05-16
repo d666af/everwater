@@ -260,8 +260,7 @@ def _catalog_grid_kb(products: list, cart: dict) -> InlineKeyboardMarkup:
         pid = str(p["id"])
         emoji = "🫧" if p.get("type") == "carbonated" else "💧"
         sname = _short_name(p)
-        qty = cart.get(pid, {}).get("qty", 0)
-        label = f"{emoji} {sname}" + (f" · {qty}" if qty else "")
+        label = f"{emoji} {sname}"
         pair.append(InlineKeyboardButton(text=label, callback_data=f"cp:{pid}"))
         if len(pair) == 2:
             rows.append(pair)
@@ -270,10 +269,8 @@ def _catalog_grid_kb(products: list, cart: dict) -> InlineKeyboardMarkup:
         rows.append(pair)
 
     if cart:
-        total_qty = sum(v["qty"] for v in cart.values())
-        total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
         rows.append([InlineKeyboardButton(
-            text=f"▶ Далее · {total_qty} шт. · {fmt(total_sum)}",
+            text="▶ Далее",
             callback_data="checkout_start",
         )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -307,11 +304,7 @@ async def _render_catalog(target, state: FSMContext, edit: bool = False):
     carb = [p for p in products if p.get("type") == "carbonated"]
     if still:
         for p in still:
-            ep = _eff_price(p, disc_val, disc_type)
-            if p.get("has_bottle_deposit") and ep < p["price"]:
-                lines.append(f"💧 {_short_name(p)} — {fmt(ep)} / {fmt(p['price'])} ♻")
-            else:
-                lines.append(f"💧 {_short_name(p)} — {fmt(p['price'])}")
+            lines.append(f"💧 {_short_name(p)} — {fmt(p['price'])}")
     if carb:
         if still:
             lines.append("")
@@ -322,7 +315,11 @@ async def _render_catalog(target, state: FSMContext, edit: bool = False):
         total_qty = sum(v["qty"] for v in cart.values())
         total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
         lines.append("")
-        lines.append(f"📦 В корзине: <b>{total_qty} шт.</b> на <b>{fmt(total_sum)}</b>")
+        lines.append(f"📦 <b>В корзине:</b>")
+        # Preserve insertion order; products appear top-to-bottom as added
+        for pid, item in cart.items():
+            lines.append(f"   • {item['name']} × {item['qty']} шт.")
+        lines.append(f"\nИтого: <b>{total_qty} шт. · {fmt(total_sum)}</b>")
 
     text = "\n".join(lines)
 
@@ -398,14 +395,10 @@ async def _build_qty_picker_view(state: FSMContext, pid: str):
 
     emoji = "🫧" if p.get("type") == "carbonated" else "💧"
     sname = _short_name(p)
-    ep = _eff_price(p, disc_val, disc_type)
     base_price = p["price"]
 
     lines = [f"{emoji} <b>{sname}</b>", ""]
-    if p.get("has_bottle_deposit") and ep < base_price:
-        lines.append(f"💵 Цена: <b>{fmt(ep)}</b> с возвратом · {fmt(base_price)} без возврата")
-    else:
-        lines.append(f"💵 Цена: <b>{fmt(base_price)}</b>")
+    lines.append(f"💵 Цена: <b>{fmt(base_price)}</b>")
 
     if qty > 0:
         line_total = base_price * qty
@@ -796,6 +789,48 @@ async def _begin_address_step(target, state: FSMContext, edit: bool = False):
     await msg.answer(body, reply_markup=kb)
 
 
+def _per_bottle_surcharge(cfg: dict, base_price: float | None = None) -> int:
+    """How much extra (in сум) the customer pays for each NEW 19L bottle.
+    Equal to the configured bottle return discount value."""
+    if cfg.get("bottle_discount_type") == "percent":
+        pct = float(cfg.get("bottle_discount_value") or 0)
+        return int(round((base_price or 0) * pct / 100))
+    return int(float(cfg.get("bottle_discount_value") or 0))
+
+
+def _return_step_view(count: int, qty_20l: int, surcharge: int):
+    """Build (text, keyboard) for the bottle-return step at a given count.
+    Wording differs depending on whether the user returns all ordered or
+    leaves some new bottles to be paid at the surcharge price."""
+    if count >= qty_20l:
+        text = (
+            "🫙 <b>Возврат тары 19л</b>\n\n"
+            f"Вы возвращаете <b>{qty_20l} {'бутылку' if qty_20l == 1 else 'бутылки' if 2 <= qty_20l <= 4 else 'бутылок'} 19л</b>."
+        )
+    else:
+        missing = qty_20l - count
+        extra_total = surcharge * missing
+        word_b = "бутылку" if missing == 1 else "бутылки" if 2 <= missing <= 4 else "бутылок"
+        text = (
+            f"🫙 <b>Возврат тары 19л</b>\n\n"
+            f"Вы возвращаете <b>{count} из {qty_20l}</b>.\n"
+            f"За каждую невозвращённую (всего {missing} {word_b}) "
+            f"к заказу будет добавлено <b>{fmt(surcharge)}</b> за бутылку."
+        )
+        if extra_total > 0 and missing > 1:
+            text += f"\nИтого надбавка: <b>{fmt(extra_total)}</b>"
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="−", callback_data=f"rb_adj:{max(0, count - 1)}:{qty_20l}"),
+            InlineKeyboardButton(text=f"🫙 {count} шт.", callback_data="rb_noop"),
+            InlineKeyboardButton(text="+", callback_data=f"rb_adj:{min(qty_20l, count + 1)}:{qty_20l}"),
+        ],
+        [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"rb:{count}")],
+    ])
+    return text, kb
+
+
 async def _begin_return_step(target, state: FSMContext, edit: bool = False):
     """Ask the user how many 19L bottles they return — before address.
     Skips automatically to address if there's no debt to return."""
@@ -810,8 +845,8 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
 
     target_msg = target.message if isinstance(target, CallbackQuery) else target
 
-    if count <= 0:
-        # Nothing to return — straight to address
+    if count <= 0 or qty_20l <= 0:
+        # Nothing to return or no 19L in cart — straight to address
         await state.update_data(co_return=0)
         await _begin_address_step(target, state, edit=edit)
         return
@@ -820,41 +855,29 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
         cfg = await api.get_settings() or {}
     except Exception:
         cfg = {}
-    mode = cfg.get("bottle_return_mode", "max")
     buttons_visible = cfg.get("bottle_return_buttons_visible", True)
-    max_return = min(qty_20l, count) if mode == "equal" else count
-    deposit_hint = _deposit_hint_for_cart(cart, cfg)
+
+    # Default start: return as many bottles as ordered, capped by what user owes.
+    initial_count = min(qty_20l, count)
+
+    # Per-bottle surcharge for new bottles (from settings)
+    base19 = next((v.get("price", 0) for v in cart.values() if v.get("volume", 0) >= 18.9), 0)
+    surcharge = _per_bottle_surcharge(cfg, base19)
 
     if not buttons_visible:
-        # Admin disabled choice — apply max automatically, then address.
-        await state.update_data(co_return=max_return)
-        if max_return > 0:
-            hint = f"\n{deposit_hint}" if deposit_hint else ""
-            await target_msg.answer(
-                f"♻️ <b>Учтён возврат {max_return} бутылок 19л</b>{hint}",
-                parse_mode="HTML",
-            )
+        # Admin disabled choice — apply auto, then address.
+        await state.update_data(co_return=initial_count)
+        word_b = "бутылку" if initial_count == 1 else "бутылки" if 2 <= initial_count <= 4 else "бутылок"
+        await target_msg.answer(
+            f"♻️ <b>Учтён возврат {initial_count} {word_b} 19л</b>",
+            parse_mode="HTML",
+        )
         await _begin_address_step(target, state)
         return
 
+    await state.update_data(co_return=initial_count, co_surcharge=surcharge, co_qty_20l=qty_20l)
     await state.set_state(CheckoutState.asking_return)
-    if max_return > 1:
-        text = (
-            f"У вас числится <b>{count}</b> бутылок 19л к возврату.\n"
-            f"Сколько вернёте? (макс. {max_return} шт.)\n"
-            + (deposit_hint or "")
-        )
-        kb = _bottle_adj_kb(max_return, max_return)
-    else:
-        text = (
-            f"У вас числится {count} бутылок 19л к возврату. "
-            f"Вернёте {max_return} шт.?"
-            + (f"\n{deposit_hint}" if deposit_hint else "")
-        )
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=f"✅ Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
-            InlineKeyboardButton(text="❌ Нет", callback_data="rb:0"),
-        ]])
+    text, kb = _return_step_view(initial_count, qty_20l, surcharge)
 
     if edit and isinstance(target, CallbackQuery):
         try:
@@ -877,11 +900,11 @@ def _location_kb() -> ReplyKeyboardMarkup:
 
 
 
-async def _ask_location(message: Message, state: FSMContext, addr: str):
+async def _ask_location(message: Message, state: FSMContext, addr: str | None = None):
     await state.set_state(CheckoutState.waiting_location)
+    head = f"📍 Адрес: <b>{addr}</b>\n\n" if addr else ""
     await message.answer(
-        f"📍 Адрес: <b>{addr}</b>\n\n"
-        "Отправьте геолокацию, чтобы курьер точно нашёл вас, или пропустите:",
+        head + "Отправьте геолокацию, чтобы курьер точно нашёл вас, или пропустите:",
         reply_markup=_location_kb(),
         parse_mode="HTML",
     )
@@ -914,7 +937,31 @@ async def new_addr(call: CallbackQuery, state: FSMContext):
 @router.message(CheckoutState.waiting_address)
 async def co_address(message: Message, state: FSMContext):
     await state.update_data(co_address=message.text.strip(), co_lat=None, co_lng=None)
-    await _ask_location(message, state, message.text.strip())
+    await _ask_landmark(message, state, addr=message.text.strip())
+
+
+# ── Ориентир ─────────────────────────────────────────────────────────────────
+
+async def _ask_landmark(message: Message, state: FSMContext, addr: str | None = None):
+    await state.set_state(CheckoutState.waiting_landmark)
+    head = f"📍 Адрес: <b>{addr}</b>\n\n" if addr else ""
+    await message.answer(
+        head + "Укажите ориентир для курьера (подъезд, этаж, домофон).\n"
+        "Или нажмите кнопку чтобы пропустить:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="⏩ Пропустить")]],
+            resize_keyboard=True, one_time_keyboard=True,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(CheckoutState.waiting_landmark)
+async def co_landmark(message: Message, state: FSMContext):
+    val = message.text.strip()
+    await state.update_data(co_extra=None if val in ("⏩ Пропустить", "—") else val)
+    await message.answer("Принято!", reply_markup=ReplyKeyboardRemove())
+    await _ask_location(message, state)
 
 
 # ── Локация ──────────────────────────────────────────────────────────────────
@@ -924,32 +971,12 @@ async def co_location(message: Message, state: FSMContext):
     await state.update_data(co_lat=message.location.latitude,
                             co_lng=message.location.longitude)
     await message.answer("✅ Геолокация сохранена!", reply_markup=ReplyKeyboardRemove())
-    await _ask_landmark(message, state)
+    await _ask_phone(message, state)
 
 
 @router.message(CheckoutState.waiting_location, F.text == "⏩ Пропустить")
 async def co_location_skip(message: Message, state: FSMContext):
     await message.answer("Хорошо, пропускаем.", reply_markup=ReplyKeyboardRemove())
-    await _ask_landmark(message, state)
-
-
-async def _ask_landmark(message: Message, state: FSMContext):
-    await state.set_state(CheckoutState.waiting_landmark)
-    await message.answer(
-        "Укажите ориентир для курьера (подъезд, этаж, домофон).\n"
-        "Или нажмите кнопку чтобы пропустить:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="⏩ Пропустить")]],
-            resize_keyboard=True, one_time_keyboard=True,
-        ),
-    )
-
-
-@router.message(CheckoutState.waiting_landmark)
-async def co_landmark(message: Message, state: FSMContext):
-    val = message.text.strip()
-    await state.update_data(co_extra=None if val in ("⏩ Пропустить", "—") else val)
-    await message.answer("Принято!", reply_markup=ReplyKeyboardRemove())
     await _ask_phone(message, state)
 
 
@@ -1021,10 +1048,17 @@ def _bottle_adj_kb(count: int, max_return: int) -> InlineKeyboardMarkup:
 
 
 @router.callback_query(CheckoutState.asking_return, F.data.startswith("rb_adj:"))
-async def co_return_adjust(call: CallbackQuery):
+async def co_return_adjust(call: CallbackQuery, state: FSMContext):
     parts = call.data.split(":")
-    count, max_return = int(parts[1]), int(parts[2])
-    await call.message.edit_reply_markup(reply_markup=_bottle_adj_kb(count, max_return))
+    count, qty_20l = int(parts[1]), int(parts[2])
+    data = await state.get_data()
+    surcharge = int(data.get("co_surcharge", 0))
+    await state.update_data(co_return=count)
+    text, kb = _return_step_view(count, qty_20l, surcharge)
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        pass
     await call.answer()
 
 
