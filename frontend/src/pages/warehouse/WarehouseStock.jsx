@@ -358,22 +358,27 @@ function Row({ label, value, color }) {
 }
 
 function AddProductionModal({ onClose, onSave, products: propProducts }) {
-  // Normalize overview products ({product_id, product_name}) and catalog products ({id, short_name})
   const catalog = (propProducts || getCatalogProducts()).map(p => ({
     id: p.id ?? p.product_id,
     short_name: p.short_name ?? p.product_name,
   }))
-  const [selectedId, setSelectedId] = useState(catalog[0]?.id || null)
-  const [qty, setQty] = useState('')
+  const [quantities, setQuantities] = useState({})
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const selected = catalog.find(p => p.id === selectedId)
+  // Only one product at a time — setting non-zero qty clears others
+  const setQty = (id, val) => {
+    const n = Math.max(0, Number(val) || 0)
+    setQuantities(n > 0 ? { [id]: n } : prev => ({ ...prev, [id]: 0 }))
+  }
+
+  const activeItem = catalog.find(p => (quantities[p.id] || 0) > 0)
+  const dis = !activeItem
 
   const handle = async () => {
-    if (!qty || Number(qty) <= 0 || !selectedId) return
+    if (!activeItem) return
     setLoading(true)
-    try { await onSave(selectedId, Number(qty), note.trim(), selected?.short_name || selected?.product_name); onClose() }
+    try { await onSave(activeItem.id, quantities[activeItem.id], note.trim(), activeItem.short_name); onClose() }
     catch { alert('Ошибка') }
     finally { setLoading(false) }
   }
@@ -385,23 +390,40 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Записать производство</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Продукт</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {catalog.map(p => (
-              <button key={p.id} onClick={() => setSelectedId(p.id)} style={{
-                padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: selectedId === p.id ? GRAD : '#F8F9FA',
-                color: selectedId === p.id ? '#fff' : TEXT,
-                border: selectedId === p.id ? 'none' : `1px solid ${BORDER}`,
-              }}>{p.short_name}</button>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {catalog.map(p => {
+              const q = quantities[p.id] || 0
+              return (
+                <div key={p.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 12px', borderRadius: 12,
+                  background: q > 0 ? '#F0FAE8' : '#F8F9FA',
+                  border: `1.5px solid ${q > 0 ? C : BORDER}`,
+                  transition: 'background 0.15s, border-color 0.15s',
+                }}>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>{p.short_name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => setQty(p.id, q - 1)}
+                      style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >−</button>
+                    <input
+                      type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
+                      onChange={e => setQty(p.id, e.target.value)}
+                      style={{ width: 64, height: 36, borderRadius: 10, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                    />
+                    <button onClick={() => setQty(p.id, q + 1)}
+                      style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >+</button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Количество</div>
-          <input style={st.input} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Заметка</div>
           <input style={st.input} placeholder="Необязательно" value={note} onChange={e => setNote(e.target.value)} />
         </div>
-        <button style={{ ...st.primaryBtn, ...(!qty || Number(qty) <= 0 ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={!qty || Number(qty) <= 0 || loading} onClick={handle}>
-          {loading ? 'Записываю...' : `Добавить ${qty || 0} шт.`}
+        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
+          {loading ? 'Записываю...' : `Добавить ${activeItem ? quantities[activeItem.id] : 0} шт.`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>
@@ -500,17 +522,17 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                       <button
                         onClick={() => setQty(p.id, q - 1)}
-                        style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                        style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >−</button>
                       <input
                         type="number" inputMode="numeric" min="0" value={q || ''}
                         placeholder="0"
                         onChange={e => setQty(p.id, e.target.value)}
-                        style={{ width: 52, height: 30, borderRadius: 8, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 14, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                        style={{ width: 64, height: 36, borderRadius: 10, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
                       />
                       <button
                         onClick={() => setQty(p.id, q + 1)}
-                        style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                        style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: q > 0 ? GRAD : '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: q > 0 ? '#fff' : CD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >+</button>
                     </div>
                   </div>
@@ -520,7 +542,28 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           )}
 
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат бутылок</div>
-          <input style={st.input} type="number" inputMode="numeric" min="0" placeholder="0" value={bottleReturn} onChange={e => setBottleReturn(e.target.value)} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 12px', borderRadius: 12,
+            background: parsedReturn > 0 ? '#EBF4FF' : '#F8F9FA',
+            border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`,
+            transition: 'background 0.15s, border-color 0.15s',
+          }}>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>Бутылок</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <button onClick={() => setBottleReturn(String(Math.max(0, parsedReturn - 1)))}
+                style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >−</button>
+              <input
+                type="number" inputMode="numeric" min="0" value={parsedReturn || ''} placeholder="0"
+                onChange={e => setBottleReturn(String(Math.max(0, Number(e.target.value) || 0)))}
+                style={{ width: 64, height: 36, borderRadius: 10, border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: parsedReturn > 0 ? '#1971C2' : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+              />
+              <button onClick={() => setBottleReturn(String(parsedReturn + 1))}
+                style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid #4DA6FF', background: parsedReturn > 0 ? '#4DA6FF' : '#fff', fontSize: 20, fontWeight: 700, cursor: 'pointer', color: parsedReturn > 0 ? '#fff' : '#4DA6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >+</button>
+            </div>
+          </div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транспорт</div>
           <div style={{ display: 'flex', gap: 8 }}>
