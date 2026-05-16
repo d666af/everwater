@@ -36,7 +36,12 @@ def _item_eff_price(item: dict) -> float:
 
 
 def _short_name(p: dict) -> str:
-    """Возвращает короткое название: '0.5л Вода' или '0.5л Газ. вода'."""
+    """Display name for a product. Uses the admin-configured product.name
+    (so renames in the admin panel are reflected immediately); falls back
+    to a volume-based label only when name is missing."""
+    name = (p.get("name") or "").strip()
+    if name:
+        return name
     vol = p.get("volume")
     is_carb = p.get("type") == "carbonated"
     vol_str = f"{vol}л " if vol else ""
@@ -751,6 +756,22 @@ async def checkout_start(call: CallbackQuery, state: FSMContext):
         return
     saved = await api.get_user_addresses(user["id"]) or []
     await state.update_data(co_user=user, saved_addrs=saved)
+
+    cart = data.get("cart", {})
+    has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
+
+    if has_20l:
+        await _begin_return_step(call, state, edit=True)
+    else:
+        await state.update_data(co_return=0)
+        await _begin_address_step(call, state, edit=True)
+    await call.answer()
+
+
+async def _begin_address_step(target, state: FSMContext, edit: bool = False):
+    """Show saved addresses or ask for a new one. `target` is CallbackQuery or Message."""
+    data = await state.get_data()
+    saved = data.get("saved_addrs") or []
     if saved:
         await state.set_state(CheckoutState.choosing_address)
         rows = [[InlineKeyboardButton(
@@ -758,14 +779,90 @@ async def checkout_start(call: CallbackQuery, state: FSMContext):
             callback_data=f"ua:{i}",
         )] for i, a in enumerate(saved)]
         rows.append([InlineKeyboardButton(text="✏️ Новый адрес", callback_data="new_addr")])
-        await call.message.edit_text(
-            "Выберите адрес доставки:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-        )
+        body = "Выберите адрес доставки:"
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
     else:
         await state.set_state(CheckoutState.waiting_address)
-        await call.message.edit_text("Введите адрес доставки:")
-    await call.answer()
+        body = "Введите адрес доставки:"
+        kb = None
+
+    if edit and isinstance(target, CallbackQuery):
+        try:
+            await target.message.edit_text(body, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    msg = target.message if isinstance(target, CallbackQuery) else target
+    await msg.answer(body, reply_markup=kb)
+
+
+async def _begin_return_step(target, state: FSMContext, edit: bool = False):
+    """Ask the user how many 19L bottles they return — before address.
+    Skips automatically to address if there's no debt to return."""
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    user = data.get("co_user") or {}
+    qty_20l = sum(v.get("qty", 1) for v in cart.values() if v.get("volume", 0) >= 18.9)
+
+    bottles = await api.get_bottles_owed(user.get("id"))
+    count = bottles.get("count", 0)
+    await state.update_data(bottles_owed=count)
+
+    target_msg = target.message if isinstance(target, CallbackQuery) else target
+
+    if count <= 0:
+        # Nothing to return — straight to address
+        await state.update_data(co_return=0)
+        await _begin_address_step(target, state, edit=edit)
+        return
+
+    try:
+        cfg = await api.get_settings() or {}
+    except Exception:
+        cfg = {}
+    mode = cfg.get("bottle_return_mode", "max")
+    buttons_visible = cfg.get("bottle_return_buttons_visible", True)
+    max_return = min(qty_20l, count) if mode == "equal" else count
+    deposit_hint = _deposit_hint_for_cart(cart, cfg)
+
+    if not buttons_visible:
+        # Admin disabled choice — apply max automatically, then address.
+        await state.update_data(co_return=max_return)
+        if max_return > 0:
+            hint = f"\n{deposit_hint}" if deposit_hint else ""
+            await target_msg.answer(
+                f"♻️ <b>Учтён возврат {max_return} бутылок 19л</b>{hint}",
+                parse_mode="HTML",
+            )
+        await _begin_address_step(target, state)
+        return
+
+    await state.set_state(CheckoutState.asking_return)
+    if max_return > 1:
+        text = (
+            f"У вас числится <b>{count}</b> бутылок 19л к возврату.\n"
+            f"Сколько вернёте? (макс. {max_return} шт.)\n"
+            + (deposit_hint or "")
+        )
+        kb = _bottle_adj_kb(max_return, max_return)
+    else:
+        text = (
+            f"У вас числится {count} бутылок 19л к возврату. "
+            f"Вернёте {max_return} шт.?"
+            + (f"\n{deposit_hint}" if deposit_hint else "")
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=f"✅ Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
+            InlineKeyboardButton(text="❌ Нет", callback_data="rb:0"),
+        ]])
+
+    if edit and isinstance(target, CallbackQuery):
+        try:
+            await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    await target_msg.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 def _location_kb() -> ReplyKeyboardMarkup:
@@ -883,62 +980,9 @@ async def co_phone(message: Message, state: FSMContext):
     else:
         phone = message.text.strip() if message.text else user_phone
     await state.update_data(co_phone=phone)
-
-    bottles = await api.get_bottles_owed(data["co_user"]["id"])
-    count = bottles.get("count", 0)
-    await state.update_data(bottles_owed=count)
-
-    cart = data.get("cart", {})
-    has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
-    qty_20l = sum(v.get("qty", 1) for v in cart.values() if v.get("volume", 0) >= 18.9)
-
-    if count > 0 and has_20l:
-        try:
-            cfg = await api.get_settings() or {}
-        except Exception:
-            cfg = {}
-        mode = cfg.get("bottle_return_mode", "max")
-        buttons_visible = cfg.get("bottle_return_buttons_visible", True)
-        max_return = min(qty_20l, count) if mode == "equal" else count
-
-        # Build deposit price hint from cart
-        deposit_hint = _deposit_hint_for_cart(cart, cfg)
-
-        if not buttons_visible:
-            # Admin disabled choice — auto-apply max_return, always inform user
-            await state.update_data(co_return=max_return)
-            if max_return > 0:
-                hint_part = f"\n{deposit_hint}" if deposit_hint else ""
-                await message.answer(
-                    f"♻️ <b>Учтён возврат {max_return} бутылок 19л</b>{hint_part}",
-                    parse_mode="HTML",
-                )
-            await _ask_bonus(message, state)
-        else:
-            await state.set_state(CheckoutState.asking_return)
-            if max_return > 1:
-                await message.answer(
-                    f"У вас числится {count} бутылок 19л к возврату.\n"
-                    f"Сколько вернёте? (макс. {max_return} шт.)\n"
-                    + (deposit_hint or ""),
-                    reply_markup=_bottle_adj_kb(max_return, max_return),
-                    parse_mode="HTML",
-                )
-            else:
-                kb = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text=f"✅ Да, верну {max_return} шт.", callback_data=f"rb:{max_return}"),
-                    InlineKeyboardButton(text="❌ Нет", callback_data="rb:0"),
-                ]])
-                await message.answer(
-                    f"У вас числится {count} бутылок 19л к возврату. "
-                    f"Вернёте {max_return} шт.?"
-                    + (f"\n{deposit_hint}" if deposit_hint else ""),
-                    reply_markup=kb,
-                    parse_mode="HTML",
-                )
-    else:
-        await state.update_data(co_return=0)
-        await _ask_bonus(message, state)
+    # Return-bottles question is asked BEFORE address now; here we go straight
+    # to the bonus step. co_return is already set in state at this point.
+    await _ask_bonus(message, state)
 
 
 def _deposit_hint_for_cart(cart: dict, cfg: dict) -> str:
@@ -994,8 +1038,12 @@ async def co_return(call: CallbackQuery, state: FSMContext):
     val = int(call.data.split(":")[1])
     await state.update_data(co_return=val)
     label = f"Верну {val} шт." if val > 0 else "Не возвращаю"
-    await call.message.edit_text(f"🫙 Бутылки к возврату: {label}")
-    await _ask_bonus(call.message, state)
+    try:
+        await call.message.edit_text(f"🫙 Бутылки к возврату: {label}")
+    except Exception:
+        pass
+    # Return question is asked before address → proceed to address step
+    await _begin_address_step(call.message, state)
     await call.answer()
 
 
