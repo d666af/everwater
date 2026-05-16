@@ -32,6 +32,17 @@ async def is_warehouse(user_id: int) -> bool:
     return user_id in get_all_warehouse_ids() or user_id in settings.ADMIN_IDS
 
 
+async def _operator_name(telegram_id: int, fallback: str = "Завсклада") -> str:
+    try:
+        staff = await api.get_warehouse_staff_db()
+        entry = next((s for s in staff if s.get("telegram_id") == telegram_id), None)
+        if entry and entry.get("name"):
+            return entry["name"]
+    except Exception:
+        pass
+    return fallback
+
+
 # ─── FSM ──────────────────────────────────────────────────────────────────────
 
 class ProductionState(StatesGroup):
@@ -183,7 +194,7 @@ async def wh_ir_start(message: Message, state: FSMContext):
         return
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
-    operator = message.from_user.full_name or message.from_user.username or "Завсклада"
+    operator = await _operator_name(message.from_user.id)
     await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
     await state.set_state(IssueReturnState.choosing_courier)
     await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
@@ -278,16 +289,16 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     operator = data.get("ir_operator", "")
     catalog = data.get("ir_catalog", [])
 
-    # Build items with price lookup for total calculation
-    price_map = {str(p["id"]): float(p.get("price") or 0) for p in catalog}
+    # Build items; use effective_price (post-discount) for the total
+    price_map = {str(p["id"]): float(p.get("effective_price") or p.get("price") or 0) for p in catalog}
     items = [
         {"product_id": int(k), "product_name": v["name"], "quantity": v["qty"]}
         for k, v in cart.items() if v["qty"] > 0
     ]
-    total_sum = sum(
-        v["qty"] * price_map.get(k, 0)
-        for k, v in cart.items() if v["qty"] > 0
-    )
+    total_sum = sum(v["qty"] * price_map.get(k, 0) for k, v in cart.items() if v["qty"] > 0)
+
+    from datetime import datetime, timezone, timedelta
+    now_str = datetime.now(tz=timezone(timedelta(hours=5))).strftime("%d.%m.%Y %H:%M")
 
     await state.clear()
     try:
@@ -302,23 +313,26 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
         if return_qty > 0:
             lines.append(f"\n↩ Возврат бутылок: {return_qty} шт.")
         if total_sum > 0:
-            lines.append(f"\n💰 Итого: {int(total_sum):,} сум".replace(",", " "))
+            lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
         await call.message.edit_text("\n".join(lines), parse_mode="HTML")
 
-        # Notify courier
+        # Notify courier — formatted as shown in design
         couriers_list = data.get("ir_couriers", [])
         courier = next((c for c in couriers_list if c["id"] == courier_id), {})
         if courier.get("telegram_id") and (items or return_qty > 0):
-            notify_lines = ["📦 <b>Накладная со склада</b>"]
+            n = ["📦 <b>Накладная со склада</b>", ""]
             if items:
+                n.append("Получено:")
                 for it in items:
-                    notify_lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
-            if return_qty > 0:
-                notify_lines.append(f"↩ Принято бутылок: {return_qty} шт.")
+                    n.append(f"  • {it['product_name']} — {it['quantity']} шт.")
+            n.append("")
             if total_sum > 0:
-                notify_lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
+                n.append(f"Итого: {int(total_sum):,} сум".replace(",", " "))
+            if return_qty > 0:
+                n.append(f"↩ Возврат бутылок: {return_qty} шт.")
+            n.extend(["", f"Время: {now_str}"])
             try:
-                await call.bot.send_message(courier["telegram_id"], "\n".join(notify_lines), parse_mode="HTML")
+                await call.bot.send_message(courier["telegram_id"], "\n".join(n), parse_mode="HTML")
             except Exception:
                 pass
     except Exception as e:
@@ -419,8 +433,8 @@ async def wh_couriers(message: Message):
         await message.answer("Нет данных по курьерам.")
         return
 
-    SEP = "─" * 22
-    blocks = [f"👥 <b>Курьеры</b>  ({len(data)})\n{SEP}"]
+    SEP = "─" * 14
+    blocks = [f"👥 <b>Курьеры</b> ({len(data)})\n{SEP}"]
 
     for c in data:
         name = c.get("name") or c.get("courier_name") or f"ID {c.get('id')}"
@@ -541,7 +555,7 @@ async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     active = [c for c in couriers if c.get("is_active", True)]
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
-    operator = call.from_user.full_name or call.from_user.username or "Завсклада"
+    operator = await _operator_name(call.from_user.id)
     await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
     await state.set_state(IssueReturnState.choosing_courier)
     await call.message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
