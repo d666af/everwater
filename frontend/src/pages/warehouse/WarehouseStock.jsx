@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, shortProductName, isWarehouseProduct } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -187,7 +187,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           </div>
           <div style={{ width: 1, height: 36, background: BORDER, flexShrink: 0 }} />
           <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{totals.on_couriers ?? 0}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{totals.bottles_on_couriers ?? totals.on_couriers ?? 0}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Должны вернуть</div>
           </div>
         </div>
@@ -462,7 +462,9 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
 
   useEffect(() => {
     getProducts().then(ps => {
-      const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
+      const list = (ps || [])
+        .filter(p => p.is_active !== false && isWarehouseProduct(p.name))
+        .map(p => ({ id: p.id, name: shortProductName(p.name) }))
       setCatalog(list)
     }).catch(console.error)
   }, []) // eslint-disable-line
@@ -575,7 +577,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
         {/* Fixed footer */}
         <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {/* Bottle return section */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат · Бутылки 19л</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 10px', borderRadius: 12,
