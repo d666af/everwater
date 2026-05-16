@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, shortProductName, isWarehouseProduct, getInvoiceUrl } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -10,22 +10,11 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
-// Period filter groups — same pattern as WarehouseStock
-const QUICK = [
-  { key: 'yesterday', label: 'Вчера' },
-  { key: 'today', label: 'Сегодня' },
-  { key: 'all', label: 'Всё' },
-]
-const RANGES = [
-  { key: 'week', label: 'Неделя' },
-  { key: 'month', label: 'Месяц' },
-]
-
 const TYPES = [
-  { key: 'all', label: 'Все', color: TEXT2 },
-  { key: 'production', label: 'Производство', color: '#2B8A3E' },
-  { key: 'issue', label: 'Выдача', color: '#E67700' },
-  { key: 'return', label: 'Возврат', color: '#1971C2' },
+  { key: 'all', label: 'Все', color: TEXT2, bg: '#F2F2F7', activeBg: '#E5E5EA', activeBorder: BORDER },
+  { key: 'production', label: 'Производство', color: '#2B8A3E', bg: '#EBFBEE', activeBorder: '#2B8A3E' },
+  { key: 'issue', label: 'Выдача', color: '#E67700', bg: '#FFF3D9', activeBorder: '#E67700' },
+  { key: 'bottle_return', label: 'Возврат тары', color: '#1971C2', bg: '#E8F4FD', activeBorder: '#1971C2' },
 ]
 
 export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
@@ -35,49 +24,83 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const [type, setType] = useState('all')
-  const [product, setProduct] = useState('all')
-  const [courierId, setCourierId] = useState(null)
+  const [productName, setProductName] = useState('all')
+  const [courierId, setCourierId] = useState('all')
+  const [productPickerOpen, setProductPickerOpen] = useState(false)
+  const [courierPickerOpen, setCourierPickerOpen] = useState(false)
 
   const [couriers, setCouriers] = useState([])
   const [catalog, setCatalog] = useState([])
   const [history, setHistory] = useState([])
+  const [courierStats, setCourierStats] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Load couriers and products once
   useEffect(() => {
     getAdminCouriers()
       .then(cs => setCouriers(cs.filter(c => c.is_active)))
       .catch(console.error)
     getProducts()
       .then(prods => {
-        const filtered = (Array.isArray(prods) ? prods : [])
-          .filter(p => p.is_active && isWarehouseProduct(p.name))
-          .map(p => ({ short_name: shortProductName(p.name) }))
-        setCatalog(filtered)
+        const list = (Array.isArray(prods) ? prods : [])
+          .filter(p => p.is_active !== false)
+          .map(p => ({ id: p.id, name: p.name }))
+        setCatalog(list)
       })
+      .catch(console.error)
+    getWarehouseCourierStats('all')
+      .then(cs => setCourierStats(cs || []))
       .catch(console.error)
   }, [])
 
-  // Load history when filters change
   useEffect(() => {
     setLoading(true)
-    const filters = { period, type, product, courier_id: courierId, customDate, customDateTo }
+    const cd = period === 'custom' ? customDate : null
+    const cdTo = period === 'custom' ? customDateTo : null
+    const filters = {
+      period,
+      customDate: cd,
+      customDateTo: cdTo,
+      type: type === 'all' ? undefined : type,
+      product: productName === 'all' ? undefined : productName,
+      courier_id: courierId === 'all' ? null : Number(courierId),
+    }
     getWarehouseHistory(filters)
       .then(setHistory)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [period, customDate, customDateTo, type, product, courierId])
+  }, [period, customDate, customDateTo, type, productName, courierId])
 
-  // Aggregate
   const summary = useMemo(() => {
-    const s = { production: 0, issue: 0, return: 0 }
+    const prodByProduct = {}
+    const issueByProduct = {}
+    const returnByCourier = {}
     history.forEach(h => {
-      if (h.type === 'production') s.production += h.quantity
-      if (h.type === 'issued' || h.type === 'issue') s.issue += h.quantity
-      if (h.type === 'returned' || h.type === 'return') s.return += h.quantity
+      if (h.type === 'production') {
+        const name = h.product_name || h.product_short || '—'
+        prodByProduct[name] = (prodByProduct[name] || 0) + h.quantity
+      }
+      if (h.type === 'issue' || h.type === 'issued') {
+        const name = h.product_name || h.product_short || '—'
+        issueByProduct[name] = (issueByProduct[name] || 0) + h.quantity
+      }
+      if (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned') {
+        const cn = h.courier_name || '—'
+        returnByCourier[cn] = (returnByCourier[cn] || 0) + h.quantity
+      }
     })
-    return s
+    return { prodByProduct, issueByProduct, returnByCourier }
   }, [history])
+
+  const debtCouriers = courierId === 'all'
+    ? courierStats.filter(c => (c.bottles_must_return || 0) > 0)
+    : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0)
+
+  const hasSummary = !loading && (
+    Object.keys(summary.prodByProduct).length > 0 ||
+    Object.keys(summary.issueByProduct).length > 0 ||
+    Object.keys(summary.returnByCourier).length > 0 ||
+    debtCouriers.length > 0
+  )
 
   const fmtDateStr = s => {
     if (!s) return ''
@@ -90,13 +113,14 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             ? `${fmtDateStr(customDate)} – ${fmtDateStr(customDateTo)}`
             : fmtDateStr(customDate))
         : 'Дата')
-    : [...QUICK, ...RANGES].find(p => p.key === period)?.label || ''
+    : period === 'today' ? 'Сегодня' : ''
 
   const applyCustom = (start, end) => {
     setCustomDate(start); setCustomDateTo(end); setPeriod('custom')
   }
 
-  const activeFilterCount = (type !== 'all' ? 1 : 0) + (product !== 'all' ? 1 : 0) + (courierId ? 1 : 0)
+  const selectedProduct = catalog.find(p => p.name === productName)
+  const selectedCourier = couriers.find(c => String(c.id) === courierId)
 
   return (
     <Layout title={title}>
@@ -108,69 +132,137 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {productPickerOpen && (
+        <PickerSheet
+          title="Продукт"
+          options={[{ id: 'all', name: 'Все продукты' }, ...catalog.map(p => ({ id: p.name, name: p.name }))]}
+          value={productName}
+          onChange={v => { setProductName(v); setProductPickerOpen(false) }}
+          onClose={() => setProductPickerOpen(false)}
+        />
+      )}
+      {courierPickerOpen && (
+        <PickerSheet
+          title="Курьер"
+          options={[{ id: 'all', name: 'Все курьеры' }, ...couriers.map(c => ({ id: String(c.id), name: c.name }))]}
+          value={courierId}
+          onChange={v => { setCourierId(v); setCourierPickerOpen(false) }}
+          onClose={() => setCourierPickerOpen(false)}
+        />
+      )}
 
-      {/* Period filter — matching WarehouseStock layout */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-        <SegGroup options={QUICK} value={period} onChange={setPeriod} />
-        <div style={{ display: 'flex', gap: 6 }}>
-          <SegGroup options={RANGES} value={period} onChange={setPeriod} flex />
-          <button
-            onClick={() => setPickerOpen(true)}
-            style={{
-              flex: 1.2, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
-              background: period === 'custom' ? GRAD : '#fff',
-              color: period === 'custom' ? '#fff' : TEXT2,
-              border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
-              fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            {period === 'custom' ? periodLabel : 'Дата'}
-          </button>
-        </div>
+      {/* Period filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }} style={{
+          flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
+          background: period === 'today' ? GRAD : '#fff',
+          color: period === 'today' ? '#fff' : TEXT2,
+          border: period === 'today' ? 'none' : `1.5px solid ${BORDER}`,
+          fontSize: 12, fontWeight: 700,
+        }}>Сегодня</button>
+        <button onClick={() => setPickerOpen(true)} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+          background: period === 'custom' ? GRAD : '#fff',
+          color: period === 'custom' ? '#fff' : TEXT2,
+          border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
+          fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {period === 'custom' ? periodLabel : 'Дата'}
+        </button>
       </div>
 
       {/* Type chips */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {TYPES.map(t => (
-          <button key={t.key} onClick={() => setType(t.key)} style={{
-            padding: '8px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            background: type === t.key ? t.color : '#fff',
-            color: type === t.key ? '#fff' : TEXT2,
-            border: type === t.key ? 'none' : `1.5px solid ${BORDER}`,
-            flexShrink: 0, whiteSpace: 'nowrap',
-          }}>{t.label}</button>
-        ))}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
+        {TYPES.map(t => {
+          const active = type === t.key
+          return (
+            <button key={t.key} onClick={() => setType(t.key)} style={{
+              padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: active ? t.bg : '#F2F2F7',
+              color: active ? t.color : TEXT2,
+              border: active ? `1.5px solid ${t.activeBorder || t.color}` : '1.5px solid transparent',
+              flexShrink: 0, whiteSpace: 'nowrap',
+            }}>{t.label}</button>
+          )
+        })}
       </div>
 
-      {/* Product + Courier filter as chips row */}
+      {/* Product + Courier filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <FilterSelect label="Продукт" value={product} onChange={setProduct}
-          options={[{ value: 'all', label: 'Все продукты' }, ...catalog.map(c => ({ value: c.short_name, label: c.short_name }))]} />
-        <FilterSelect label="Курьер" value={courierId || 'all'}
-          onChange={v => setCourierId(v === 'all' ? null : Number(v))}
-          options={[{ value: 'all', label: 'Все курьеры' }, ...couriers.map(c => ({ value: String(c.id), label: c.name }))]} />
+        <button onClick={() => setProductPickerOpen(true)} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+          background: productName !== 'all' ? '#F0FAE8' : '#fff',
+          color: productName !== 'all' ? CD : TEXT2,
+          border: `1.5px solid ${productName !== 'all' ? C : BORDER}`,
+          fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
+          overflow: 'hidden', minWidth: 0,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M20 7H4M17 12H7M14 17h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedProduct ? selectedProduct.name : 'Продукт'}
+          </span>
+        </button>
+        <button onClick={() => setCourierPickerOpen(true)} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+          background: courierId !== 'all' ? '#F0FAE8' : '#fff',
+          color: courierId !== 'all' ? CD : TEXT2,
+          border: `1.5px solid ${courierId !== 'all' ? C : BORDER}`,
+          fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
+          overflow: 'hidden', minWidth: 0,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedCourier ? selectedCourier.name : 'Курьер'}
+          </span>
+        </button>
       </div>
 
-      {/* Summary totals */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
-        <SumCard bg="#EBFBEE" color="#2B8A3E" label="Произведено" value={summary.production} />
-        <SumCard bg="#FFF3D9" color="#E67700" label="Выдано" value={summary.issue} />
-        <SumCard bg="#E8F4FD" color="#1971C2" label="Возвращено" value={summary.return} />
-      </div>
+      {/* Summary sections */}
+      {hasSummary && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          {Object.keys(summary.prodByProduct).length > 0 && (
+            <SummarySection title="Произведено" color="#2B8A3E" bg="#EBFBEE">
+              {Object.entries(summary.prodByProduct).map(([name, qty]) => (
+                <SummaryRow key={name} label={name} value={`+${qty} шт.`} color="#2B8A3E" />
+              ))}
+            </SummarySection>
+          )}
+          {Object.keys(summary.issueByProduct).length > 0 && (
+            <SummarySection title="Выдано" color="#E67700" bg="#FFF3D9">
+              {Object.entries(summary.issueByProduct).map(([name, qty]) => (
+                <SummaryRow key={name} label={name} value={`${qty} шт.`} color="#E67700" />
+              ))}
+            </SummarySection>
+          )}
+          {Object.keys(summary.returnByCourier).length > 0 && (
+            <SummarySection title="Возвращено тары" color="#1971C2" bg="#E8F4FD">
+              {Object.entries(summary.returnByCourier).map(([name, qty]) => (
+                <SummaryRow key={name} label={name} value={`${qty} бут.`} color="#1971C2" />
+              ))}
+            </SummarySection>
+          )}
+          {debtCouriers.length > 0 && (
+            <SummarySection title="Должны вернуть" color="#C92A2A" bg="#FFE8E8">
+              {debtCouriers.map(c => (
+                <SummaryRow key={c.id} label={c.name} value={`${c.bottles_must_return} бут.`} color="#C92A2A" />
+              ))}
+            </SummarySection>
+          )}
+        </div>
+      )}
 
       {/* Section title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0 8px' }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Операций · {history.length}{activeFilterCount > 0 ? ` · фильтров: ${activeFilterCount}` : ''}
+          Операции · {history.length}
         </span>
         <span style={{ fontSize: 11, color: TEXT2 }}>{periodLabel}</span>
       </div>
 
-      {/* List */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
           <div style={{ width: 26, height: 26, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
@@ -188,16 +280,27 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           {history.map((h, i) => {
             const isProd = h.type === 'production'
             const isIssue = h.type === 'issued' || h.type === 'issue'
-            const isRet = h.type === 'returned' || h.type === 'return'
+            const isRet = h.type === 'returned' || h.type === 'return' || h.type === 'bottle_return'
+
             const color = isProd ? '#2B8A3E' : isIssue ? '#E67700' : '#1971C2'
             const bg = isProd ? '#EBFBEE' : isIssue ? '#FFF3D9' : '#E8F4FD'
             const sign = isProd ? '+' : isIssue ? '−' : '+'
+
+            const rowTitle = isProd
+              ? (h.product_name || h.product_short || 'Производство')
+              : isIssue
+              ? (h.product_name || h.product_short || 'Выдача')
+              : 'Бутылки 19л'
+
             const subline = isProd
               ? (h.note || 'Производство')
-              : isIssue ? `Выдано · ${h.courier_name || '—'}` : `Возврат · ${h.courier_name || '—'}`
-            // Use both `date` (legacy mock) and `created_at` (backend) for the timestamp
+              : isIssue
+              ? `Выдача · ${h.courier_name || '—'}`
+              : `Возврат тары · ${h.courier_name || '—'}`
+
             const ts = h.created_at || h.date
-            const showInvoice = isIssue && h.batch_id
+            const showInvoice = h.batch_id && (isIssue || isRet)
+
             return (
               <div key={h.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -207,7 +310,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {h.product_short || h.product_name}
+                    {rowTitle}
                   </div>
                   <div style={{ fontSize: 11, color: TEXT2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {subline}
@@ -220,7 +323,6 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                   </div>
                   {showInvoice && (
                     <a href={getInvoiceUrl(h.batch_id)} target="_blank" rel="noreferrer"
-                       download={`nakladnaya_${String(h.batch_id).slice(0, 8)}.png`}
                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#1971C2', background: '#E8F4FD', padding: '3px 8px', borderRadius: 999, textDecoration: 'none' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       Накладная
@@ -236,41 +338,56 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   )
 }
 
-function SegGroup({ options, value, onChange, flex }) {
+function PickerSheet({ title, options, value, onChange, onClose }) {
   return (
-    <div style={{ display: 'flex', gap: 6, flex: flex ? 1 : undefined }}>
-      {options.map(o => (
-        <button key={o.key} onClick={() => onChange(o.key)} style={{
-          flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
-          background: value === o.key ? GRAD : '#fff',
-          color: value === o.key ? '#fff' : TEXT2,
-          border: value === o.key ? 'none' : `1.5px solid ${BORDER}`,
-          fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-        }}>{o.label}</button>
-      ))}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9200, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '10px 16px 34px', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '72vh', animation: 'slideUp 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 6px', display: 'block' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{title}</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {options.map(o => {
+            const active = String(o.id) === String(value)
+            return (
+              <button key={o.id} onClick={() => onChange(String(o.id))} style={{
+                padding: '12px 14px', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer', textAlign: 'left',
+                background: active ? '#F0FAE8' : '#F8F9FA',
+                color: active ? CD : TEXT,
+                border: `1.5px solid ${active ? C : 'transparent'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span>{o.name}</span>
+                {active && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke={CD} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
 
-function FilterSelect({ value, onChange, options }) {
+function SummarySection({ title, color, bg, children }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} style={{
-      flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${BORDER}`,
-      background: '#fff', color: TEXT, fontSize: 13, fontWeight: 600, outline: 'none', cursor: 'pointer',
-      appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-      backgroundImage: 'url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="%238E8E93" stroke-width="2" stroke-linecap="round"/></svg>\')',
-      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 28,
-    }}>
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <div style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', border: `1px solid ${BORDER}` }}>
+      <div style={{ background: bg, padding: '6px 14px' }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</div>
+      </div>
+      <div style={{ padding: '4px 14px 8px', display: 'flex', flexDirection: 'column' }}>
+        {children}
+      </div>
+    </div>
   )
 }
 
-function SumCard({ bg, color, label, value }) {
+function SummaryRow({ label, value, color }) {
   return (
-    <div style={{ background: bg, borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-      <div style={{ fontSize: 20, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>{label}</div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${BORDER}` }}>
+      <span style={{ fontSize: 13, color: TEXT, fontWeight: 500, flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: color || TEXT }}>{value}</span>
     </div>
   )
 }
