@@ -12,16 +12,16 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
-// Quick period groups (three separate filter rows)
 const QUICK = [
-  { key: 'yesterday', label: 'Вчера' },
   { key: 'today', label: 'Сегодня' },
-  { key: 'tomorrow', label: 'Завтра' },
 ]
-const RANGES = [
-  { key: 'week', label: 'Неделя' },
-  { key: 'month', label: 'Месяц' },
-]
+
+function loadReminders() {
+  try { return JSON.parse(localStorage.getItem('wh_reminders') || '[]') } catch { return [] }
+}
+function saveReminders(list) {
+  localStorage.setItem('wh_reminders', JSON.stringify(list))
+}
 
 export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Склад' }) {
   const subsEnabled = useSubscriptionsEnabled()
@@ -32,6 +32,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [timeFrom, setTimeFrom] = useState('')
   const [timeTo, setTimeTo] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [remindersOpen, setRemindersOpen] = useState(false)
+  const [reminders, setReminders] = useState(loadReminders)
 
   const [overview, setOverview] = useState(null)
   const [subs, setSubs] = useState(null)
@@ -42,6 +44,22 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [couriers, setCouriers] = useState([])
   const [adjustProduct, setAdjustProduct] = useState(null)
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
+
+  const addReminder = (reminder) => {
+    const updated = [...reminders, { ...reminder, id: Date.now() }]
+    setReminders(updated)
+    saveReminders(updated)
+  }
+  const deleteReminder = (id) => {
+    const updated = reminders.filter(r => r.id !== id)
+    setReminders(updated)
+    saveReminders(updated)
+  }
+
+  const upcomingCount = reminders.filter(r => {
+    const dt = new Date(`${r.date}T${r.time || '00:00'}`)
+    return dt >= new Date()
+  }).length
 
   const load = () => {
     setLoading(true)
@@ -68,7 +86,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   const periodLabel = period === 'custom'
     ? (customDate ? `${customDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}${timeFrom || timeTo ? ` · ${timeFrom || '00:00'}–${timeTo || '23:59'}` : ''}` : 'Дата')
-    : [...QUICK, ...RANGES].find(p => p.key === period)?.label || ''
+    : QUICK.find(p => p.key === period)?.label || ''
 
   if (loading && !overview) {
     return (
@@ -110,6 +128,14 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {remindersOpen && (
+        <RemindersModal
+          reminders={reminders}
+          onAdd={addReminder}
+          onDelete={deleteReminder}
+          onClose={() => setRemindersOpen(false)}
+        />
+      )}
 
       {/* Shortfall alert with per-item volumes */}
       {shortfallItems.length > 0 && (
@@ -134,28 +160,48 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </div>
       )}
 
-      {/* Period filter — three separate groups */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+      {/* Period filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <SegGroup options={QUICK} value={period} onChange={setPeriod} />
-        <div style={{ display: 'flex', gap: 6 }}>
-          <SegGroup options={RANGES} value={period} onChange={setPeriod} flex />
-          <button
-            onClick={() => setPickerOpen(true)}
-            style={{
-              flex: 1.2, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
-              background: period === 'custom' ? GRAD : '#fff',
-              color: period === 'custom' ? '#fff' : TEXT2,
-              border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
-              fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            {period === 'custom' ? periodLabel : 'Дата'}
-          </button>
-        </div>
+        <button
+          onClick={() => setPickerOpen(true)}
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+            background: period === 'custom' ? GRAD : '#fff',
+            color: period === 'custom' ? '#fff' : TEXT2,
+            border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {period === 'custom' ? periodLabel : 'Дата'}
+        </button>
+        <button
+          onClick={() => setRemindersOpen(true)}
+          style={{
+            position: 'relative', flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+            background: '#fff', color: TEXT2,
+            border: `1.5px solid ${BORDER}`,
+            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          Планы
+          {upcomingCount > 0 && (
+            <span style={{
+              position: 'absolute', top: 4, right: 4,
+              background: '#E03131', color: '#fff',
+              borderRadius: '50%', width: 16, height: 16,
+              fontSize: 9, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{upcomingCount}</span>
+          )}
+        </button>
       </div>
 
       {/* Action buttons */}
@@ -317,7 +363,7 @@ function TotalStat({ value, label, color }) {
 function ProductCard({ p, period, onAdjust }) {
   const isShort = p.shortfall > 0
   const isLow = p.stock <= 10 && p.stock > 0
-  const needLabel = period === 'yesterday' ? 'Нужно было' : period === 'week' ? 'Нужно за неделю' : period === 'month' ? 'Нужно за месяц' : 'К выдаче'
+  const needLabel = period === 'custom' ? 'К выдаче за период' : 'К выдаче'
 
   return (
     <div style={{ background: '#fff', borderRadius: 14, padding: '12px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: isShort ? '1.5px solid #FFB4B4' : '1.5px solid transparent' }}>
@@ -583,6 +629,137 @@ function AdjustStockModal({ product, onClose, onSave }) {
           {loading ? 'Сохраняю...' : `${adjType === 'plus' ? 'Добавить' : 'Списать'} ${qty || 0} шт.`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+function RemindersModal({ reminders, onAdd, onDelete, onClose }) {
+  const [tab, setTab] = useState('list') // 'list' | 'add'
+  const [text, setText] = useState('')
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [time, setTime] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const sorted = [...reminders].sort((a, b) => {
+    const da = new Date(`${a.date}T${a.time || '00:00'}`)
+    const db = new Date(`${b.date}T${b.time || '00:00'}`)
+    return da - db
+  })
+  const now = new Date()
+
+  const handleAdd = () => {
+    if (!text.trim() || !date) return
+    setLoading(true)
+    onAdd({ text: text.trim(), date, time })
+    setText('')
+    setTime('')
+    setDate(new Date().toISOString().slice(0, 10))
+    setLoading(false)
+    setTab('list')
+  }
+
+  const formatDt = (r) => {
+    const d = new Date(`${r.date}T${r.time || '00:00'}`)
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + (r.time ? ` · ${r.time}` : '')
+  }
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={st.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>Запланированные</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[{ k: 'list', l: 'Список' }, { k: 'add', l: '+ Добавить' }].map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)} style={{
+              flex: 1, padding: '9px', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              background: tab === t.k ? GRAD : '#F8F9FA',
+              color: tab === t.k ? '#fff' : TEXT2,
+              border: tab === t.k ? 'none' : `1.5px solid ${BORDER}`,
+            }}>{t.l}</button>
+          ))}
+        </div>
+
+        {tab === 'list' && (
+          sorted.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: TEXT2, fontSize: 14 }}>
+              Нет запланированных действий
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {sorted.map(r => {
+                const dt = new Date(`${r.date}T${r.time || '00:00'}`)
+                const past = dt < now
+                return (
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '10px 12px', borderRadius: 12,
+                    background: past ? '#F8F9FA' : '#F0FAE8',
+                    border: `1px solid ${past ? BORDER : 'rgba(141,198,63,0.25)'}`,
+                    opacity: past ? 0.6 : 1,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{r.text}</div>
+                      <div style={{ fontSize: 11, color: past ? TEXT2 : CD, marginTop: 2, fontWeight: 600 }}>
+                        {past ? '⏰ ' : '📅 '}{formatDt(r)}
+                        {past && ' · прошло'}
+                      </div>
+                    </div>
+                    <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#E03131', fontSize: 16, padding: '2px 4px', flexShrink: 0 }}>✕</button>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        )}
+
+        {tab === 'add' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Описание</div>
+              <input
+                style={st.input}
+                placeholder="Что нужно сделать?"
+                value={text}
+                onChange={e => setText(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Дата</div>
+                <input
+                  style={st.input}
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Время</div>
+                <input
+                  style={st.input}
+                  type="time"
+                  value={time}
+                  onChange={e => setTime(e.target.value)}
+                  placeholder="Необязательно"
+                />
+              </div>
+            </div>
+            <button
+              style={{ ...st.primaryBtn, ...(!text.trim() || !date ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+              disabled={!text.trim() || !date || loading}
+              onClick={handleAdd}
+            >
+              Добавить
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
