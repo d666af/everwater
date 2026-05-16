@@ -176,10 +176,17 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
       {/* Bottle returns card */}
       <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Возврат бутылок</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <TotalStat value={totals.bottle_returns_period ?? 0} label="Вернули" color="#1971C2" />
-          <TotalStat value={totals.on_couriers ?? 0} label="Должны вернуть" color={TEXT} />
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>↩ Возврат бутылок</div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{totals.bottle_returns_period ?? 0}</div>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Вернули</div>
+          </div>
+          <div style={{ width: 1, height: 36, background: BORDER, flexShrink: 0 }} />
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{totals.on_couriers ?? 0}</div>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Должны вернуть</div>
+          </div>
         </div>
       </div>
 
@@ -312,53 +319,42 @@ function ProductCard({ p, onAdjust }) {
   const isShort = p.shortfall > 0
   const isLow = p.stock <= 10 && p.stock > 0
   const stockColor = isLow || isShort ? '#E03131' : C
-  const hasSecondary = p.produced_period > 0 || p.issued_period > 0
 
   return (
     <div style={{
-      background: '#fff', borderRadius: 16, padding: '14px 16px',
-      boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+      background: '#fff', borderRadius: 14, padding: '10px 10px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
       border: `1.5px solid ${isShort ? '#FFB4B4' : BORDER}`,
+      display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        {/* Left: name + shortfall badge */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.3 }}>{p.product_name}</div>
-          {isShort && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, padding: '2px 8px', background: '#FFE8E8', borderRadius: 6 }}>
-              <span style={{ fontSize: 11, color: '#C92A2A', fontWeight: 700 }}>Не хватает: {p.shortfall}</span>
-            </div>
-          )}
-        </div>
-        {/* Right: big stock number + adjust icon */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexShrink: 0 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 30, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>на складе</div>
-          </div>
-          <button onClick={onAdjust} style={{
-            background: '#F8F9FA', border: 'none', width: 30, height: 30, borderRadius: 8,
-            cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-        </div>
+      {/* Name row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, lineHeight: 1.3, flex: 1, marginRight: 4 }}>{p.product_name}</div>
+        <button onClick={onAdjust} style={{
+          background: '#F2F2F7', border: 'none', width: 26, height: 26, borderRadius: 7,
+          cursor: 'pointer', color: TEXT2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
       </div>
 
-      {hasSecondary && (
-        <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
-          {p.produced_period > 0 && (
-            <div style={{ fontSize: 12 }}>
-              <span style={{ color: TEXT2 }}>Произведено: </span>
-              <span style={{ fontWeight: 700, color: '#2B8A3E' }}>{p.produced_period} шт.</span>
-            </div>
-          )}
-          {p.issued_period > 0 && (
-            <div style={{ fontSize: 12 }}>
-              <span style={{ color: TEXT2 }}>Выдано: </span>
-              <span style={{ fontWeight: 700, color: '#E67700' }}>{p.issued_period} шт.</span>
-            </div>
-          )}
+      {/* Stock */}
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: stockColor, lineHeight: 1 }}>{p.stock}</div>
+        <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>на складе</div>
+      </div>
+
+      {/* Secondary */}
+      {(p.produced_period > 0 || p.issued_period > 0) && (
+        <div style={{ marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {p.produced_period > 0 && <div style={{ fontSize: 10 }}><span style={{ color: TEXT2 }}>Произв.: </span><span style={{ fontWeight: 700, color: '#2B8A3E' }}>{p.produced_period} шт.</span></div>}
+          {p.issued_period > 0 && <div style={{ fontSize: 10 }}><span style={{ color: TEXT2 }}>Выдано: </span><span style={{ fontWeight: 700, color: '#E67700' }}>{p.issued_period} шт.</span></div>}
+        </div>
+      )}
+
+      {isShort && (
+        <div style={{ marginTop: 4, padding: '2px 6px', background: '#FFE8E8', borderRadius: 5, alignSelf: 'flex-start' }}>
+          <span style={{ fontSize: 9, color: '#C92A2A', fontWeight: 700 }}>−{p.shortfall} шт.</span>
         </div>
       )}
     </div>
@@ -506,7 +502,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
         ...st.sheet, padding: 0, gap: 0,
-        height: 'min(96dvh, 96vh)',
+        maxHeight: 'min(96dvh, 96vh)',
         display: 'flex', flexDirection: 'column',
       }}>
         {/* Fixed header */}
@@ -531,8 +527,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
         </div>
 
-        {/* Scrollable products only */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
+        {/* Scrollable products — bounded height so footer stays close */}
+        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 310px)', flexShrink: 0 }}>
           {catalog.length === 0 ? (
             <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
           ) : (
