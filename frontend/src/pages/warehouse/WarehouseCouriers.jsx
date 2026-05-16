@@ -4,8 +4,8 @@ import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
   issueBatchToCourier, getInvoiceUrl,
-  shortProductName, isWarehouseProduct,
 } from '../../api'
+import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -29,6 +29,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [loading, setLoading] = useState(true)
   const [issueModal, setIssueModal] = useState(null) // courier object
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
+  const [reportModal, setReportModal] = useState(null) // courier object
 
   const load = () => {
     setLoading(true)
@@ -40,11 +41,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     ])
       .then(([cs, prods]) => {
         setCouriers(cs)
-        setCatalog(
-          (prods || [])
-            .filter(p => p.is_active !== false && isWarehouseProduct(p.name))
-            .map(p => ({ id: p.id, name: shortProductName(p.name) }))
-        )
+        setCatalog((prods || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -96,6 +93,13 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           batchId={invoiceModal.batchId}
           courierName={invoiceModal.courierName}
           onClose={() => setInvoiceModal(null)}
+        />
+      )}
+      {reportModal && (
+        <ReportModal
+          courierId={reportModal.id}
+          courierName={reportModal.name}
+          onClose={() => setReportModal(null)}
         />
       )}
       {pickerOpen && (
@@ -153,7 +157,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {couriers.map(c => (
-              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} />
+              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} />
             ))}
           </div>
         </>
@@ -162,69 +166,82 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function CourierCard({ c, onIssue }) {
+function CourierCard({ c, onIssue, onReport }) {
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
   const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      {/* Header: avatar + name + issue button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(c.name || 'К')[0]}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
           {(c.vehicle_type || c.vehicle_plate) && (
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>
               {[c.vehicle_type, c.vehicle_plate].filter(Boolean).join(' · ')}
             </div>
           )}
         </div>
-        <button
-          onClick={onIssue}
-          style={{
-            flexShrink: 0, padding: '8px 12px', borderRadius: 12, border: 'none',
-            background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-          }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <button onClick={onIssue} style={{
+          flexShrink: 0, padding: '7px 10px', borderRadius: 10, border: 'none',
+          background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Выдать / Вернуть
         </button>
       </div>
 
-      {/* Issued products */}
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Выдано за период</div>
-        {issuedProducts.length > 0 ? (
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-            {issuedProducts.map(([name, qty]) => (
-              <span key={name} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 999, background: '#FFF3D9', color: '#E67700', fontWeight: 700 }}>
-                {name} · {qty} шт.
-              </span>
-            ))}
-          </div>
-        ) : (
-          <span style={{ fontSize: 12, color: TEXT2 }}>Выдач за период нет</span>
-        )}
-      </div>
+      {/* Issued products + Bottles: side by side */}
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        {/* Issued products */}
+        <div style={{ flex: 1, background: '#FAFAFA', borderRadius: 12, padding: '8px 10px', minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Выдано</div>
+          {issuedProducts.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {issuedProducts.map(([name, qty]) => (
+                <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 4, flex: 1 }}>{name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#E67700', flexShrink: 0 }}>{qty}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 11, color: TEXT2 }}>—</span>
+          )}
+        </div>
 
-      {/* Bottle tracking */}
-      <div style={{ marginTop: 10, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '10px 14px' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Бутылки 19л</div>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{retBottles}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>вернул</div>
-          </div>
-          <div style={{ width: 1, height: 30, background: mustBottles > 0 ? '#B8D9F5' : BORDER, flexShrink: 0 }} />
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 600 }}>должен</div>
+        {/* Bottles 19L */}
+        <div style={{ flex: 0, flexBasis: 110, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '8px 10px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бут. 19л</div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{retBottles}</div>
+              <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>вернул</div>
+            </div>
+            <div style={{ width: 1, height: 24, background: '#C0D8F0', alignSelf: 'center' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
+              <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>должен</div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Report button */}
+      <button onClick={onReport} style={{
+        marginTop: 10, width: '100%', padding: '8px 12px', borderRadius: 10,
+        border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
+        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        Отчёт курьера
+      </button>
     </div>
   )
 }
