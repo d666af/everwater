@@ -456,15 +456,6 @@ async def admin_confirm(call: CallbackQuery):
             await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
         return
     order = await api.get_order(order_id)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            await call.bot.send_message(
-                client_tg,
-                f"✅ Ваш заказ #{order_id} подтверждён!\nСкоро назначим курьера."
-            )
-        except Exception:
-            pass
     couriers = await api.get_couriers()
     kb = courier_select_kb(couriers, order_id)
     try:
@@ -565,7 +556,7 @@ async def admin_set_courier(call: CallbackQuery):
             phone_line = f"\nТелефон курьера: {courier_phone}" if _is_phone(courier_phone) else ""
             await call.bot.send_message(
                 client_tg,
-                f"🚴 Курьер {courier_name} назначен на ваш заказ #{order_id}!\nОжидайте доставку.{phone_line}",
+                f"🚴 Курьер {courier_name} назначен на ваш заказ!\nОжидайте доставку.{phone_line}",
             )
             client_notified = True
         except Exception as e:

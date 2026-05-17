@@ -277,12 +277,6 @@ async def create_order(
     await db.commit()
     await db.refresh(order)
 
-    # Check warehouse stock for each item and notify if any product is low
-    try:
-        await _notify_low_stock_if_needed(db, items_data, order.id)
-    except Exception:
-        pass  # never fail the order on notification error
-
     result = await db.execute(
         select(Order).where(Order.id == order.id).options(*_order_opts())
     )
@@ -532,14 +526,6 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     await db.commit()
 
-    # Check stock shortage once — embed in courier message, notify warehouse separately
-    shortage_lines: list[str] = []
-    try:
-        shortage_lines = await _get_shortage_lines(db, items_data_for_stock)
-    except Exception:
-        pass
-    shortage_suffix = ("\n\n⚠️ Нехватка на складе:\n" + "\n".join(shortage_lines)) if shortage_lines else ""
-
     if not from_bot:
         eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
         await _tg(courier_tg,
@@ -547,20 +533,13 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
                   f"Адрес: {order_address}\nТелефон: {order_phone}\n"
                   f"Время: {order_time}\n{eta_text}"
                   f"Товары:\n{items}\n"
-                  f"Сумма: {order_total:,} сум"
-                  + shortage_suffix)
+                  f"Сумма: {order_total:,} сум")
         text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
 
-    # Notify warehouse/admins about shortage (courier already saw it in assignment message)
-    try:
-        await _send_shortage_notification(db, shortage_lines, oid)
-    except Exception:
-        pass
-
-    return {"ok": True, "shortage_text": "\n".join(shortage_lines)}
+    return {"ok": True}
 
 
 @router.patch("/{order_id}/in_delivery")
