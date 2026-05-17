@@ -16,7 +16,7 @@ from app.database import get_db
 from app.models.courier import Courier
 from app.models.order import Order, OrderItem, OrderStatus, Review
 
-from app.models.warehouse import CourierWater
+from app.models.warehouse import CourierWater, WaterTransaction
 from app.models.product import Product
 from app.models.user import User
 from app.routers.orders import _order_opts, _order_to_out
@@ -96,6 +96,36 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     )
     total_delivery_revenue = float(delivery_rev_q.scalar() or 0)
 
+    # Bottle debt: bottles issued to courier minus bottles returned
+    issued_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.courier_id == courier.id,
+                WaterTransaction.transaction_type == "issue",
+            )
+        )
+    )
+    returned_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.courier_id == courier.id,
+                WaterTransaction.transaction_type == "bottle_return",
+            )
+        )
+    )
+    total_issued = issued_q.scalar() or 0
+    total_returned = returned_q.scalar() or 0
+    bottles_must_return = max(0, total_issued - total_returned)
+
+    # Bottle debt value: bottles_must_return × bottle_surcharge of the 19L product
+    surcharge_q = await db.execute(
+        select(Product.bottle_surcharge).where(
+            and_(Product.volume >= 18.9, Product.bottle_surcharge.isnot(None))
+        ).order_by(Product.bottle_surcharge.desc()).limit(1)
+    )
+    bottle_surcharge_val = surcharge_q.scalar() or 0
+    bottle_debt_value = bottles_must_return * float(bottle_surcharge_val)
+
     return {
         "courier_id": courier.id,
         "name": courier.name,
@@ -109,6 +139,8 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
         "avg_rating": round(float(avg_rating or 0), 2),
         "review_count": review_count or 0,
         "active_orders": active_orders,
+        "bottles_must_return": bottles_must_return,
+        "bottle_debt_value": round(bottle_debt_value, 2),
     }
 
 
@@ -185,6 +217,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     total_delivery_revenue = 0.0
     total_bottles_19l_delivered = 0
     total_bottles_returned = 0
+    total_earned = 0.0
     rating_vals = []
 
     for o in orders:
@@ -208,11 +241,14 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
             qty = item.quantity or 0
             if vol >= 19.0:
                 total_bottles_19l_delivered += qty
+            earning = float(getattr(prod, 'courier_earning', None) or 0)
+            total_earned += earning * qty
             items_list.append({
                 "name": prod.name if prod else "—",
                 "quantity": qty,
                 "price": float(item.price or 0),
                 "volume": vol,
+                "courier_earning": earning,
             })
 
         rating = None
@@ -243,10 +279,37 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
     paid_delivery_orders = sum(1 for r in rows if r["delivery_fee"] > 0)
 
+    # Warehouse issuances to this courier in the period (items received from warehouse)
+    wh_q = await db.execute(
+        select(WaterTransaction, Product.name, Product.price)
+        .join(Product, Product.id == WaterTransaction.product_id)
+        .where(
+            and_(
+                WaterTransaction.courier_id == courier_id,
+                WaterTransaction.transaction_type == "issue",
+                WaterTransaction.created_at >= dt_from,
+                WaterTransaction.created_at <= dt_to,
+            )
+        )
+    )
+    wh_rows = wh_q.all()
+    wh_agg: dict = {}
+    for txn, pname, pprice in wh_rows:
+        key = pname or "—"
+        qty = txn.quantity or 0
+        if key not in wh_agg:
+            wh_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
+        wh_agg[key]["quantity"] += qty
+    warehouse_received = [
+        {"name": k, "quantity": v["quantity"], "price": v["price"], "total": round(v["quantity"] * v["price"], 2)}
+        for k, v in wh_agg.items()
+    ]
+
     return {
         "deliveries": len(orders),
         "total_revenue": round(total_revenue, 2),
         "total_delivery_revenue": round(total_delivery_revenue, 2),
+        "total_earned": round(total_earned, 2),
         "paid_delivery_orders": paid_delivery_orders,
         "total_cash": round(total_cash, 2),
         "total_card": round(total_card, 2),
@@ -254,6 +317,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         "total_bottles_19l_delivered": total_bottles_19l_delivered,
         "total_bottles_returned": total_bottles_returned,
         "avg_rating": avg_rating,
+        "warehouse_received": warehouse_received,
         "orders": rows,
     }
 
