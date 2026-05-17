@@ -41,24 +41,23 @@ def courier_assignment_text(order: dict) -> str:
         money_lines = ""
 
     if pay == "cash":
-        payment_line = f"\n💵 Получить наличными: {_fmt_sum(total)}"
+        payment_line = f"\n\n💵 <b>Получить наличными: {_fmt_sum(total)}</b>"
     else:
-        payment_line = f"\n💳 Оплата картой — проверьте чек клиента"
-        if not money_lines:
-            payment_line += f" · {_fmt_sum(total)}"
+        total_part = f" · {_fmt_sum(total)}" if not money_lines else ""
+        payment_line = f"\n\n💳 <b>Оплата картой — проверьте чек клиента{total_part}</b>"
 
     return_count = order.get('return_bottles_count') or 0
     return_line = f"\n\n♻️ Забрать пустых бутылок: {return_count} шт." if return_count > 0 else ""
 
     return (
         f"📍 {order.get('address') or '—'}\n"
-        f"👤 {order.get('recipient_phone') or '—'}"
-        f"{manager_line}\n"
+        f"👤 {order.get('recipient_phone') or '—'}\n"
         f"⏰ {time_str}\n\n"
         f"Доставить:\n{items_text}"
         f"{return_line}"
         f"{money_lines}"
         f"{payment_line}"
+        f"{manager_line}"
     )
 
 

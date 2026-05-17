@@ -147,11 +147,10 @@ def _order_detail_text(order: dict) -> str:
         money_lines = ""
 
     if pay == 'cash':
-        payment_line = f"\n💵 Получить наличными: {fmt(total)}"
+        payment_line = f"\n\n💵 <b>Получить наличными: {fmt(total)}</b>"
     else:
-        payment_line = f"\n💳 Оплата картой — проверьте чек клиента"
-        if not money_lines:
-            payment_line += f" · {fmt(total)}"
+        total_part = f" · {fmt(total)}" if not money_lines else ""
+        payment_line = f"\n\n💳 <b>Оплата картой — проверьте чек клиента{total_part}</b>"
 
     return_count = order.get('return_bottles_count') or 0
     return_line = f"\n\n♻️ Забрать пустых бутылок: {return_count} шт." if return_count > 0 else ""
@@ -159,13 +158,13 @@ def _order_detail_text(order: dict) -> str:
     return (
         f"📦 <b>{status}{urgency}</b>\n\n"
         f"📍 {order.get('address') or '—'}\n"
-        f"👤 {order.get('recipient_phone') or '—'}"
-        f"{manager_line}\n"
+        f"👤 {order.get('recipient_phone') or '—'}\n"
         f"⏰ {time_str}\n\n"
         f"Доставить:\n{items_text}"
         f"{return_line}"
         f"{money_lines}"
         f"{payment_line}"
+        f"{manager_line}"
     )
 
 
