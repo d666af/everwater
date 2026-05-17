@@ -118,34 +118,54 @@ def _orders_list_kb(orders: list, tab: str) -> InlineKeyboardMarkup:
 
 
 def _order_detail_text(order: dict) -> str:
-    items_text = "\n".join(
-        f"  • {i['product_name']} {i['quantity']} шт." for i in order.get("items", [])
-    )
+    items = order.get("items", [])
+    item_lines = [f"  • {i['product_name']} {i['quantity']} шт." for i in items]
+
+    surcharge = order.get('bottle_surcharge') or 0
+    if surcharge > 0:
+        qty_20l = sum(i['quantity'] for i in items if (i.get('volume') or 0) >= 18.9)
+        missing = max(0, qty_20l - (order.get('return_bottles_count') or 0))
+        if missing > 0:
+            item_lines.append(f"  • Невозвращённые бутылки {missing} шт. — +{fmt(surcharge)}")
+
+    items_text = "\n".join(item_lines) if item_lines else "—"
     status = STATUS_RU.get(order["status"], order["status"])
     urgency = _urgency_suffix(order)
     time_str = order.get("delivery_time") or "—"
     pay = order.get('payment_method', 'cash')
     total = order.get('total') or 0
     delivery_fee = order.get('delivery_fee') or 0
-    if delivery_fee > 0:
-        subtotal = total - delivery_fee
-        delivery_line = f"\nТовары: {fmt(subtotal)}\nДоставка: +{fmt(delivery_fee)}"
-    else:
-        delivery_line = ""
-    cash_line = f"\nПолучить от клиента: {fmt(total)}" if pay == 'cash' else ""
+
     manager_phone = order.get("manager_phone") or ""
     from keyboards.courier import _is_phone as _ip
-    manager_line = f"\nМенеджер: {manager_phone}" if _ip(manager_phone) else ""
+    manager_line = f"\n👔 Менеджер: {manager_phone}" if _ip(manager_phone) else ""
+
+    if delivery_fee > 0:
+        subtotal = total - delivery_fee
+        money_lines = f"\n💰 Товары: {fmt(subtotal)}\n🚚 Доставка: +{fmt(delivery_fee)}"
+    else:
+        money_lines = ""
+
+    if pay == 'cash':
+        payment_line = f"\n💵 Получить наличными: {fmt(total)}"
+    else:
+        payment_line = f"\n💳 Оплата картой — проверьте чек клиента"
+        if not money_lines:
+            payment_line += f" · {fmt(total)}"
+
+    return_count = order.get('return_bottles_count') or 0
+    return_line = f"\n\n♻️ Забрать пустых бутылок: {return_count} шт." if return_count > 0 else ""
+
     return (
         f"📦 <b>{status}{urgency}</b>\n\n"
-        f"Адрес: {order.get('address') or '—'}\n"
-        f"Клиент: {order.get('recipient_phone') or '—'}"
+        f"📍 {order.get('address') or '—'}\n"
+        f"👤 {order.get('recipient_phone') or '—'}"
         f"{manager_line}\n"
-        f"Время: {time_str}\n"
-        f"Товары:\n{items_text}"
-        f"{delivery_line}"
-        f"{cash_line}\n"
-        f"Возврат бутылок: {order.get('return_bottles_count', 0)} шт."
+        f"⏰ {time_str}\n\n"
+        f"Доставить:\n{items_text}"
+        f"{return_line}"
+        f"{money_lines}"
+        f"{payment_line}"
     )
 
 
@@ -169,7 +189,6 @@ def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> I
         rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
-    rows.append([InlineKeyboardButton(text="◀️ К списку", callback_data="cor:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
