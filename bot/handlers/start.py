@@ -1086,3 +1086,29 @@ async def process_review_comment(message: Message, state: FSMContext):
     await api.update_review_comment(order_id=data["review_order_id"], comment=message.text)
     await state.clear()
     await message.answer("Спасибо за отзыв! 🙏", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
+
+
+@router.message(StateFilter(None), ~F.text.startswith("/"))
+async def restore_menu_on_lost_state(message: Message):
+    """Restore the reply keyboard when user sends any text with no active FSM state.
+
+    Recovers users whose keyboard disappeared after a bot restart mid-checkout
+    (which leaves ReplyKeyboardRemove in effect with no main menu).
+    """
+    role = await get_primary_role(message.from_user.id)
+    subs_on = await api.is_subscriptions_enabled()
+    sup_on = await api.is_support_chat_enabled()
+    if role == "admin":
+        from keyboards.admin import admin_menu_kb
+        await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
+    elif role == "manager":
+        from keyboards.manager import manager_menu_kb
+        await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on))
+    elif role == "courier":
+        from keyboards.courier import courier_menu_kb
+        await message.answer("Главное меню:", reply_markup=courier_menu_kb())
+    elif role == "warehouse":
+        from keyboards.warehouse import warehouse_menu_kb
+        await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
+    else:
+        await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
