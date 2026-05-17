@@ -129,11 +129,9 @@ export default function Checkout() {
   const effectiveReturnCount = surveyDone
     ? (settings.bottle_return_buttons_visible !== false ? Number(form.returnCount) : maxReturn)
     : surveyCount
-  // Surcharge model: charge extra for each 19L bottle the customer SHOULD
-  // have returned (out of their bottle debt) but didn't. Customers without
-  // any debt yet (first order) don't get the surcharge — they're getting
-  // new bottles from a clean slate.
-  const expectedReturns = Math.min(qty20L, bottlesOwed)
+  // Surcharge model: charge extra for each 19L bottle not returned vs ordered.
+  // Customers with no debt yet (first order, bottlesOwed=0) are exempt.
+  const expectedReturns = bottlesOwed > 0 ? qty20L : 0
   const missingBottles = Math.max(0, expectedReturns - Number(effectiveReturnCount || 0))
   const bottleSurcharge = missingBottles * surchargePerBottle
   const afterBottle = subtotal + bottleSurcharge

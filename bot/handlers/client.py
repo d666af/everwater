@@ -753,11 +753,23 @@ async def checkout_start(call: CallbackQuery, state: FSMContext):
     cart = data.get("cart", {})
     has_20l = any(v.get("volume", 0) >= 18.9 for v in cart.values())
 
+    # Freeze the current message: remove all buttons, leave only cart summary
+    try:
+        total_qty = sum(v["qty"] for v in cart.values())
+        total_sum = sum(_item_eff_price(v) * v["qty"] for v in cart.values())
+        frozen_lines = ["🛒 <b>Каталог</b>", "", "📦 <b>В корзине:</b>"]
+        for item in cart.values():
+            frozen_lines.append(f"   • {item['name']} × {item['qty']} шт.")
+        frozen_lines.append(f"\nИтого: <b>{total_qty} шт. · {fmt(total_sum)}</b>")
+        await call.message.edit_text("\n".join(frozen_lines), parse_mode="HTML")
+    except Exception:
+        pass
+
     if has_20l:
-        await _begin_return_step(call, state, edit=True)
+        await _begin_return_step(call, state, edit=False)
     else:
         await state.update_data(co_return=0)
-        await _begin_address_step(call, state, edit=True)
+        await _begin_address_step(call, state, edit=False)
     await call.answer()
 
 
@@ -872,12 +884,23 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
 
     if not buttons_visible:
         # Admin disabled choice — apply auto, then address.
-        await state.update_data(co_return=initial_count)
-        word_b = "бутылку" if initial_count == 1 else "бутылки" if 2 <= initial_count <= 4 else "бутылок"
-        await target_msg.answer(
-            f"♻️ <b>Учтён возврат {initial_count} {word_b} 19л</b>",
-            parse_mode="HTML",
-        )
+        await state.update_data(co_return=initial_count, co_surcharge=surcharge, co_qty_20l=qty_20l)
+        if initial_count >= qty_20l:
+            word_b = "бутылку" if initial_count == 1 else "бутылки" if 2 <= initial_count <= 4 else "бутылок"
+            msg_text = f"♻️ <b>Учтён возврат {initial_count} {word_b} 19л</b>"
+        else:
+            missing = qty_20l - initial_count
+            word_b = "бутылку" if missing == 1 else "бутылки" if 2 <= missing <= 4 else "бутылок"
+            extra_total = surcharge * missing
+            msg_text = (
+                f"♻️ <b>Возврат тары 19л</b>\n\n"
+                f"Учтён возврат <b>{initial_count}</b> из <b>{qty_20l}</b>.\n"
+                f"За каждую невозвращённую (всего {missing} {word_b}) "
+                f"к заказу будет добавлено <b>{fmt(surcharge)}</b> за бутылку."
+            )
+            if extra_total > 0 and missing > 1:
+                msg_text += f"\nИтого надбавка: <b>{fmt(extra_total)}</b>"
+        await target_msg.answer(msg_text, parse_mode="HTML")
         await _begin_address_step(target, state)
         return
 
@@ -1164,15 +1187,33 @@ async def _show_summary(message: Message, state: FSMContext):
     deposit_hint = _deposit_hint_for_cart(cart, cfg)
     if deposit_hint:
         lines.append(f"\n{deposit_hint}")
+
+    # Bottle return section
+    co_return = data.get("co_return", 0)
+    co_qty_20l = data.get("co_qty_20l", 0)
+    co_surcharge = int(data.get("co_surcharge") or 0)
+    bottle_surcharge_total = 0
+
+    if co_qty_20l > 0:
+        missing = max(0, co_qty_20l - co_return)
+        lines.append("")
+        lines.append("<b>Возврат:</b>")
+        if missing == 0:
+            lines.append(f"• Бутылки 19л {co_return} шт.")
+        else:
+            bottle_surcharge_total = missing * co_surcharge
+            lines.append(f"• Бутылки 19л {co_return} шт. + {missing} шт. — {fmt(bottle_surcharge_total)}")
+
     geo = "✅ указана" if data.get("co_lat") else "—"
+    grand_total = total + bottle_surcharge_total
     if delivery_fee > 0:
         lines += [
-            f"\nТовары: {fmt(total)}",
+            f"\nТовары: {fmt(grand_total)}",
             f"Доставка: +{fmt(delivery_fee)}",
-            f"<b>Итого: {fmt(total + delivery_fee)}</b>",
+            f"<b>Итого: {fmt(grand_total + delivery_fee)}</b>",
         ]
     else:
-        lines.append(f"\nСумма: {fmt(total)}")
+        lines.append(f"\nСумма: {fmt(grand_total)}")
     lines.append(f"Адрес: {data.get('co_address', '—')}")
     if data.get("co_extra"):
         lines.append(f"Ориентир: {data['co_extra']}")
@@ -1181,8 +1222,6 @@ async def _show_summary(message: Message, state: FSMContext):
         f"Телефон: {data.get('co_phone', '—')}",
         f"Оплата: {pay_labels.get(data.get('co_pay', ''), '—')}",
     ]
-    if data.get("co_return", 0) > 0:
-        lines.append(f"Бутылок к возврату: {data['co_return']} шт.")
     if data.get("co_bonus", 0) > 0:
         lines.append(f"Бонусы: −{fmt(data['co_bonus'])}")
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -1296,7 +1335,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     else:
         await call.message.edit_text(
             "✅ Заказ создан!\n"
-            "Ожидайте звонка оператора для подтверждения."
+            "Ожидайте подтверждения оператора."
         )
 
     # Ask to save address if it's new
