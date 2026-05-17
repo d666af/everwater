@@ -852,12 +852,16 @@ def _return_step_view(count: int, qty_20l: int, surcharge: int):
 
 
 async def _begin_return_step(target, state: FSMContext, edit: bool = False):
-    """Ask the user how many 19L bottles they return — before address.
-    Skips automatically to address if there's no debt to return."""
+    """Ask the user how many 19L bottles they return — before address."""
     data = await state.get_data()
     cart = data.get("cart", {})
     user = data.get("co_user") or {}
     qty_20l = sum(v.get("qty", 1) for v in cart.values() if v.get("volume", 0) >= 18.9)
+
+    if qty_20l <= 0:
+        await state.update_data(co_return=0)
+        await _begin_address_step(target, state, edit=edit)
+        return
 
     bottles = await api.get_bottles_owed(user.get("id"))
     count = bottles.get("count", 0)
@@ -865,27 +869,28 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
 
     target_msg = target.message if isinstance(target, CallbackQuery) else target
 
-    if count <= 0 or qty_20l <= 0:
-        # Nothing to return or no 19L in cart — straight to address
-        await state.update_data(co_return=0)
-        await _begin_address_step(target, state, edit=edit)
-        return
-
     try:
         cfg = await api.get_settings() or {}
     except Exception:
         cfg = {}
+
+    p19 = next((v for v in cart.values() if v.get("volume", 0) >= 18.9), None)
+
+    # When user has no bottles on record — inform and proceed without surcharge.
+    if count <= 0:
+        await state.update_data(co_return=0, co_surcharge=0, co_qty_20l=qty_20l)
+        await target_msg.answer("♻️ <b>Возврат бутылок 19 л</b>\n\nНет бутылок к возврату.", parse_mode="HTML")
+        await _begin_address_step(target, state)
+        return
+
     buttons_visible = cfg.get("bottle_return_buttons_visible", True)
 
     # Default start: return as many bottles as ordered, capped by what user owes.
     initial_count = min(qty_20l, count)
 
-    # Per-bottle surcharge for new bottles — first 19L cart item's product
-    p19 = next((v for v in cart.values() if v.get("volume", 0) >= 18.9), None)
     surcharge = _per_bottle_surcharge(cfg, p19)
 
     if not buttons_visible:
-        # Admin disabled choice — apply auto, then address.
         await state.update_data(co_return=initial_count, co_surcharge=surcharge, co_qty_20l=qty_20l)
         if initial_count >= qty_20l:
             word_b = "бутылку" if initial_count == 1 else "бутылки" if 2 <= initial_count <= 4 else "бутылок"

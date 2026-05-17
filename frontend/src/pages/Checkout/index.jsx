@@ -419,7 +419,7 @@ export default function Checkout() {
           </div>
         </div>
       )}
-      {has20L && surveyDone && bottlesOwed > 0 && (
+      {has20L && surveyDone && (
         <BottleReturn
           returnCount={Number(form.returnCount)}
           onCountChange={v => set('returnCount', v)}
@@ -427,7 +427,7 @@ export default function Checkout() {
           bottlesOwed={maxReturn}
           settings={settings}
           surchargePerBottle={surchargePerBottle || 0}
-          qty20L={qty20L}
+          qty20L={bottlesOwed > 0 ? qty20L : 0}
         />
       )}
 
