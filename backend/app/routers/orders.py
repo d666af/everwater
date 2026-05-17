@@ -629,18 +629,21 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
                 from datetime import timedelta
                 user.bonus_expires_at = datetime.utcnow() + timedelta(days=expiry_days)
 
-        # Track 19L bottle debt for customer
+        # Track 19L bottle debt: add newly delivered bottles, subtract returned ones.
+        # net_change = bottles client now has extra vs before this delivery.
         bottles_delivered = sum(
             i.quantity for i in order.items
             if i.product and i.product.has_bottle_deposit
         )
+        returned = order.return_bottles_count or 0
+        net_change = bottles_delivered - returned
         if bottles_delivered > 0 and user:
             debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user.id))
             debt_row = debt_q.scalar_one_or_none()
             if debt_row:
-                debt_row.count = max(0, debt_row.count + bottles_delivered)
+                debt_row.count = max(0, debt_row.count + net_change)
             else:
-                db.add(BottleDebt(user_id=user.id, count=bottles_delivered))
+                db.add(BottleDebt(user_id=user.id, count=max(0, net_change)))
 
         if order.courier_id:
             result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
