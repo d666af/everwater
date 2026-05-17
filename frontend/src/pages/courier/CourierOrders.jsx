@@ -23,7 +23,6 @@ const FILTERS = [
   { key: 'waiting', label: 'Ожидают' },
   { key: 'enroute', label: 'В пути' },
   { key: 'done',    label: 'Доставлено' },
-  { key: 'all',     label: 'Все' },
 ]
 
 /* ── Urgency: parse delivery_period end time, check if today & approaching ── */
@@ -178,6 +177,20 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
                   <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity} шт.</span>
                 </div>
               ))}
+              {(() => {
+                const surcharge = order.bottle_surcharge || 0
+                if (!surcharge) return null
+                const qty20l = (order.items || []).filter(i => (i.volume || 0) >= 18.9).reduce((s, i) => s + i.quantity, 0)
+                const missing = Math.max(0, qty20l - (order.return_bottles_count || 0))
+                if (!missing) return null
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, paddingTop: 4, borderTop: '1px solid rgba(0,0,0,0.06)', marginTop: 2 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#E03131', flexShrink: 0 }} />
+                    <span style={{ flex: 1, color: '#C92A2A', fontWeight: 600 }}>Невозвращённые бутылки</span>
+                    <span style={{ fontWeight: 700, color: '#E03131' }}>× {missing} шт. · +{surcharge.toLocaleString()} сум</span>
+                  </div>
+                )
+              })()}
             </div>
           )}
 
@@ -192,11 +205,19 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
             </div>
           )}
 
-          {/* Total — only for cash */}
-          {isCash && (
+          {/* Payment */}
+          {isCash ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
-              <span style={{ fontSize: 13, color: TEXT2, fontWeight: 500 }}>Получить от клиента</span>
+              <span style={{ fontSize: 13, color: TEXT2, fontWeight: 600 }}>💵 Получить наличными</span>
               <span style={{ fontWeight: 900, fontSize: 22, color: C }}>{(order.total || 0).toLocaleString()} сум</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#EEF2FF', borderRadius: 14, padding: '13px 14px', border: '1px solid rgba(103,65,217,0.15)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="3" stroke="#6741D9" strokeWidth="1.8"/><path d="M2 10h20" stroke="#6741D9" strokeWidth="1.8"/></svg>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#6741D9' }}>Оплата картой</div>
+                <div style={{ fontSize: 12, color: '#845EF7' }}>Проверьте чек об оплате</div>
+              </div>
             </div>
           )}
 
@@ -468,7 +489,7 @@ export default function CourierOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState('waiting')
   const [showCreate, setShowCreate] = useState(false)
   const { user } = useAuthStore()
 
@@ -512,9 +533,9 @@ export default function CourierOrders() {
   const waiting = orders.filter(o => ['confirmed', 'assigned_to_courier'].includes(o.status))
   const enroute = orders.filter(o => o.status === 'in_delivery')
   const done = orders.filter(o => o.status === 'delivered')
-  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length, all: orders.length }
+  const counts = { waiting: waiting.length, enroute: enroute.length, done: done.length }
 
-  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : filter === 'done' ? done : orders
+  const shown = filter === 'waiting' ? waiting : filter === 'enroute' ? enroute : done
 
   // Sort: urgent first
   const sorted = shown.slice().sort((a, b) => {
@@ -531,7 +552,6 @@ export default function CourierOrders() {
     waiting: { title: 'Нет ожидающих заказов', hint: 'Ожидайте назначения от менеджера' },
     enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "Выехал" чтобы начать доставку' },
     done:    { title: 'Нет доставленных', hint: 'Выполненные заказы появятся здесь' },
-    all:     { title: 'Нет заказов', hint: 'Создайте заказ или ожидайте назначения' },
   }[filter]
 
   return (
@@ -559,35 +579,38 @@ export default function CourierOrders() {
       </button>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-        {FILTERS.map(f => {
-          const active = filter === f.key
-          const count = counts[f.key] || 0
-          const hasUrgent = f.key === 'waiting' && urgentWaiting > 0
-          return (
-            <button key={f.key} onClick={() => setFilter(f.key)} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-              padding: '10px 4px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: active ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-              color: active ? '#fff' : TEXT2,
-              border: active ? 'none' : `1.5px solid ${C}40`,
-              boxShadow: active ? '0 4px 12px rgba(141,198,63,0.3)' : '0 1px 4px rgba(0,0,0,0.04)',
-              WebkitTapHighlightColor: 'transparent', position: 'relative',
-            }}>
-              {f.label}
-              {count > 0 && (
-                <span style={{
-                  fontSize: 10, fontWeight: 800, borderRadius: 999,
-                  padding: '1px 5px', minWidth: 16, textAlign: 'center',
-                  background: active ? 'rgba(255,255,255,0.3)' : hasUrgent ? '#E03131' : '#F2F2F7',
-                  color: active ? '#fff' : hasUrgent ? '#fff' : TEXT2,
-                }}>{count}</span>
-              )}
-            </button>
-          )
-        })}
-        <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, display: 'flex', background: '#F2F2F7', borderRadius: 16, padding: 4, gap: 3 }}>
+          {FILTERS.map(f => {
+            const active = filter === f.key
+            const count = counts[f.key] || 0
+            const hasUrgent = f.key === 'waiting' && urgentWaiting > 0
+            return (
+              <button key={f.key} onClick={() => setFilter(f.key)} style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '9px 4px', borderRadius: 12, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: active ? '#fff' : 'transparent',
+                color: active ? (hasUrgent ? '#E03131' : TEXT) : TEXT2,
+                border: 'none',
+                boxShadow: active ? '0 1px 5px rgba(0,0,0,0.13)' : 'none',
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'all 0.15s',
+              }}>
+                {f.label}
+                {count > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, borderRadius: 999,
+                    padding: '1px 5px', minWidth: 16, textAlign: 'center',
+                    background: active ? (hasUrgent ? '#E03131' : `${C}20`) : (hasUrgent ? '#E03131' : 'rgba(0,0,0,0.08)'),
+                    color: hasUrgent ? '#fff' : active ? CD : TEXT2,
+                  }}>{count}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        <button style={{ background: '#F2F2F7', border: 'none', borderRadius: 12, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
 

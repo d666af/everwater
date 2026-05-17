@@ -541,15 +541,11 @@ async def admin_set_courier(call: CallbackQuery):
     courier_err = ""
     client_err = ""
 
-    # Include stock shortage warning in the courier's assignment message (one message, not two)
-    shortage_text = assign_result.get("shortage_text", "") or ""
-    shortage_suffix = f"\n\n⚠️ Нехватка на складе:\n{shortage_text}" if shortage_text else ""
-
     if courier and courier.get("telegram_id"):
         try:
             await call.bot.send_message(
                 courier["telegram_id"],
-                "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order) + shortage_suffix,
+                "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order),
                 reply_markup=courier_assignment_kb(order_id, order),
                 parse_mode="HTML",
             )
