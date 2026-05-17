@@ -267,14 +267,6 @@ async def create_order(
     if balance_used > 0:
         user.balance = max(0.0, user.balance - balance_used)
 
-    # Immediately deduct returned bottles from client's debt so subsequent
-    # orders see the updated available count before this order is delivered.
-    if data.return_bottles_count > 0:
-        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == data.user_id))
-        debt_row = debt_q.scalar_one_or_none()
-        if debt_row and debt_row.count > 0:
-            debt_row.count = max(0, debt_row.count - data.return_bottles_count)
-
     if x_idempotency_key:
         from sqlalchemy import text as _text
         await db.execute(
@@ -402,13 +394,6 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     old_msg_id = order.client_status_msg_id
     items = _order_items_text(order.items)
     oid = order.id
-
-    # Restore bottle debt that was deducted when the order was created
-    if order.return_bottles_count > 0:
-        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
-        debt_row = debt_q.scalar_one_or_none()
-        if debt_row:
-            debt_row.count += order.return_bottles_count
 
     await db.commit()
 
@@ -955,13 +940,6 @@ async def confirm_cancellation(order_id: int, db: AsyncSession = Depends(get_db)
             order.cancellation_penalty = penalty
 
     order.status = OrderStatus.REJECTED
-
-    # Restore bottle debt that was deducted when the order was created
-    if order.return_bottles_count > 0:
-        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
-        debt_row = debt_q.scalar_one_or_none()
-        if debt_row:
-            debt_row.count += order.return_bottles_count
 
     await db.commit()
 

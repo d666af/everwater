@@ -860,7 +860,7 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
     qty_20l = sum(v.get("qty", 1) for v in cart.values() if v.get("volume", 0) >= 18.9)
 
     bottles = await api.get_bottles_owed(user.get("id"))
-    count = bottles.get("count", 0)
+    count = bottles.get("available", bottles.get("count", 0))
     await state.update_data(bottles_owed=count)
 
     target_msg = target.message if isinstance(target, CallbackQuery) else target
