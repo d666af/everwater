@@ -267,6 +267,14 @@ async def create_order(
     if balance_used > 0:
         user.balance = max(0.0, user.balance - balance_used)
 
+    # Immediately deduct returned bottles from client's debt so subsequent
+    # orders see the updated available count before this order is delivered.
+    if data.return_bottles_count > 0:
+        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == data.user_id))
+        debt_row = debt_q.scalar_one_or_none()
+        if debt_row and debt_row.count > 0:
+            debt_row.count = max(0, debt_row.count - data.return_bottles_count)
+
     if x_idempotency_key:
         from sqlalchemy import text as _text
         await db.execute(
@@ -395,6 +403,13 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     items = _order_items_text(order.items)
     oid = order.id
 
+    # Restore bottle debt that was deducted when the order was created
+    if order.return_bottles_count > 0:
+        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
+        debt_row = debt_q.scalar_one_or_none()
+        if debt_row:
+            debt_row.count += order.return_bottles_count
+
     await db.commit()
 
     from app.services.tg_notify import edit_all_notifications
@@ -412,11 +427,12 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 
 
 @router.patch("/{order_id}/payment_confirmed")
-async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
+async def payment_confirmed(order_id: int, from_bot: bool = False, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
     order.status = OrderStatus.AWAITING_CONFIRMATION
 
     oid = order.id
+    client_tg = order.user.telegram_id if order.user else None
     client_name = order.user.name if order.user else "—"
     client_phone = order.recipient_phone
     order_addr = order.address
@@ -427,6 +443,12 @@ async def payment_confirmed(order_id: int, db: AsyncSession = Depends(get_db)):
     pay_label = pay_labels.get(pay_method, pay_method)
 
     await db.commit()
+
+    # Notify the client in Telegram when order is placed from the website
+    if not from_bot and client_tg:
+        new_msg_id = await _tg_send(client_tg, "✅ Заказ создан!\nОжидайте подтверждения оператора.")
+        if new_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
 
     from app.config import settings as cfg
     from app.models.manager import Manager
@@ -933,6 +955,14 @@ async def confirm_cancellation(order_id: int, db: AsyncSession = Depends(get_db)
             order.cancellation_penalty = penalty
 
     order.status = OrderStatus.REJECTED
+
+    # Restore bottle debt that was deducted when the order was created
+    if order.return_bottles_count > 0:
+        debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
+        debt_row = debt_q.scalar_one_or_none()
+        if debt_row:
+            debt_row.count += order.return_bottles_count
+
     await db.commit()
 
     bonus_line = f"\n⚠️ Штраф: {int(penalty):,} бонусов списано" if penalty > 0 else ""
