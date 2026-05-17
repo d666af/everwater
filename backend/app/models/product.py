@@ -21,6 +21,7 @@ class Product(Base):
     deposit_price: Mapped[int | None] = mapped_column(Integer, nullable=True)  # legacy — was "цена со сдачей", no longer used in math
     bottle_surcharge: Mapped[int | None] = mapped_column(Integer, nullable=True)  # надбавка за каждую невозвращённую бутылку (для 19л)
     cost_price: Mapped[float | None] = mapped_column(Float, nullable=True)  # себестоимость
+    courier_earning: Mapped[float | None] = mapped_column(Float, nullable=True)  # заработок курьера с одного товара
     discount_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)  # % скидки акции
     discount_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # до когда действует
 

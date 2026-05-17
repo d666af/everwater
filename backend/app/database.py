@@ -26,6 +26,7 @@ async def create_tables():
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32)",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS batch_id VARCHAR(36)",
             "CREATE INDEX IF NOT EXISTS ix_water_transactions_batch_id ON water_transactions (batch_id)",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS courier_earning FLOAT",
         ):
             try:
                 await conn.execute(text(stmt))

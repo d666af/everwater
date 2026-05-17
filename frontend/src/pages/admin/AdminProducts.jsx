@@ -8,7 +8,7 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.12)'
 
-const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, bottle_surcharge: null, cost_price: '', discount_percent: '', discount_until: '' }
+const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, bottle_surcharge: null, cost_price: '', courier_earning: '', discount_percent: '', discount_until: '' }
 
 function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) {
   const fileRef = useRef(null)
@@ -119,6 +119,12 @@ function ProductForm({ title, form, setForm, onSave, onCancel, saving, error }) 
             onChange={e => setForm(p => ({ ...p, cost_price: e.target.value ? Number(e.target.value) : null }))} />
         </div>
         <div style={s.field}>
+          <div style={s.label}>Заработок курьера (сум)</div>
+          <input style={s.input} type="number" min="0" placeholder="напр. 2000"
+            value={form.courier_earning || ''}
+            onChange={e => setForm(p => ({ ...p, courier_earning: e.target.value ? Number(e.target.value) : null }))} />
+        </div>
+        <div style={s.field}>
           <div style={s.label}>Скидка (%)</div>
           <input style={s.input} type="number" min="0" max="100" placeholder="напр. 10"
             value={form.discount_percent || ''}
@@ -164,7 +170,7 @@ export default function AdminProducts() {
 
   const openNew = () => { setForm(EMPTY); setEditing('new'); setError('') }
   const openEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', courier_earning: p.courier_earning || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
     setEditing(p); setError('')
   }
 
@@ -180,6 +186,7 @@ export default function AdminProducts() {
         price: Number(form.price),
         sort_order: Number(form.sort_order),
         cost_price: form.cost_price !== '' && form.cost_price != null ? Number(form.cost_price) : null,
+        courier_earning: form.courier_earning !== '' && form.courier_earning != null ? Number(form.courier_earning) : null,
         discount_percent: form.discount_percent !== '' && form.discount_percent != null ? Number(form.discount_percent) : null,
         discount_until: form.discount_until || null,
         bottle_surcharge: form.bottle_surcharge !== '' && form.bottle_surcharge != null ? Number(form.bottle_surcharge) : null,
@@ -198,7 +205,7 @@ export default function AdminProducts() {
   const active = products.filter(p => p.is_active).length
 
   const duplicate = (p) => {
-    setForm({ name: p.name + ' (копия)', description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: false, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+    setForm({ name: p.name + ' (копия)', description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: false, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', courier_earning: p.courier_earning || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
     setEditing('new'); setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
