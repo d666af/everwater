@@ -875,11 +875,21 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
         cfg = {}
 
     p19 = next((v for v in cart.values() if v.get("volume", 0) >= 18.9), None)
+    surcharge = _per_bottle_surcharge(cfg, p19)
 
-    # When user has no bottles on record — inform and proceed without surcharge.
+    # When user has no bottles on record — surcharge applies for every new 19L bottle.
     if count <= 0:
-        await state.update_data(co_return=0, co_surcharge=0, co_qty_20l=qty_20l)
-        await target_msg.answer("♻️ <b>Возврат бутылок 19 л</b>\n\nНет бутылок к возврату.", parse_mode="HTML")
+        await state.update_data(co_return=0, co_surcharge=surcharge, co_qty_20l=qty_20l)
+        extra_total = surcharge * qty_20l
+        word_b = "бутылку" if qty_20l == 1 else "бутылки" if 2 <= qty_20l <= 4 else "бутылок"
+        msg_text = (
+            f"♻️ <b>Возврат бутылок 19 л</b>\n\n"
+            f"Нет бутылок к возврату — за {qty_20l} {word_b} "
+            f"к заказу будет добавлено <b>{fmt(surcharge)}</b> за бутылку."
+        )
+        if extra_total > 0 and qty_20l > 1:
+            msg_text += f"\nИтого надбавка: <b>{fmt(extra_total)}</b>"
+        await target_msg.answer(msg_text, parse_mode="HTML")
         await _begin_address_step(target, state)
         return
 
