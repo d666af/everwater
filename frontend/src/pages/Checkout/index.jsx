@@ -112,17 +112,16 @@ export default function Checkout() {
     ? Math.min(qty20L, bottlesOwed)
     : bottlesOwed
 
-  // Deposit pricing info for 19L products shown in bottle return block
+  // 19L product reference for the return block (still uses the deposit flag)
   const deposit19L = items.find(i => i.product.volume >= 18.9 && i.product.has_bottle_deposit)?.product ?? null
-  const discountPerBottle = (() => {
+  const surchargePerBottle = (() => {
     if (!deposit19L) return 0
-    if (deposit19L.deposit_price > 0) return Math.max(0, deposit19L.price - deposit19L.deposit_price)
+    if (deposit19L.bottle_surcharge && deposit19L.bottle_surcharge > 0) return deposit19L.bottle_surcharge
     const val = Number(settings.bottle_discount_value || 0)
     if (!val) return 0
     if (settings.bottle_discount_type === 'percent') return Math.round(deposit19L.price * val / 100)
     return val
   })()
-  const price19LWithReturn = deposit19L && discountPerBottle > 0 ? Math.max(0, deposit19L.price - discountPerBottle) : null
 
   // Calculations
   const subtotal = total()
@@ -130,18 +129,18 @@ export default function Checkout() {
   const effectiveReturnCount = surveyDone
     ? (settings.bottle_return_buttons_visible !== false ? Number(form.returnCount) : maxReturn)
     : surveyCount
-  const bottleDiscount = (() => {
-    const c = effectiveReturnCount
-    if (!c) return 0
-    if (settings.bottle_discount_type === 'percent')
-      return Math.round(subtotal * (settings.bottle_discount_value / 100))
-    return c * Number(settings.bottle_discount_value)
-  })()
-  const afterBottle = subtotal - bottleDiscount
+  // Surcharge model: charge extra for each 19L bottle the customer SHOULD
+  // have returned (out of their bottle debt) but didn't. Customers without
+  // any debt yet (first order) don't get the surcharge — they're getting
+  // new bottles from a clean slate.
+  const expectedReturns = Math.min(qty20L, bottlesOwed)
+  const missingBottles = Math.max(0, expectedReturns - Number(effectiveReturnCount || 0))
+  const bottleSurcharge = missingBottles * surchargePerBottle
+  const afterBottle = subtotal + bottleSurcharge
   const deliveryFee = Number(settings.delivery_price || 0)
   const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
   const bonusLimitPct = (Number(settings.bonus_limit_percent) || 30) / 100
-  const bonusMaxByPct = Math.floor((subtotal + deliveryFee) * bonusLimitPct)
+  const bonusMaxByPct = Math.floor((afterBottle + deliveryFee) * bonusLimitPct)
   const bonusMax = Math.min(availableBonus, afterBottle, bonusMaxByPct)
   const afterBonus = Math.max(0, afterBottle - Number(form.bonusUsed))
   const finalTotal = afterBonus + deliveryFee
@@ -188,7 +187,7 @@ export default function Checkout() {
         latitude: form.lat, longitude: form.lng,
         return_bottles_count: effectiveReturnCount,
         return_bottles_volume: has20L ? 19 : 0,
-        bottle_discount: bottleDiscount,
+        bottle_surcharge: bottleSurcharge,
         bonus_used: Number(form.bonusUsed),
         balance_used: 0,
         payment_method: form.paymentMethod,
@@ -324,9 +323,15 @@ export default function Checkout() {
               <span style={s.orderPrice}>{(product.price * quantity).toLocaleString()} сум</span>
             </div>
           ))}
+          {bottleSurcharge > 0 && (
+            <div style={s.orderRow}>
+              <span style={s.orderName}>Невозвращённые бутылки <span style={s.orderQty}>× {missingBottles} шт.</span></span>
+              <span style={{ ...s.orderPrice, color: '#E67700' }}>+{bottleSurcharge.toLocaleString()} сум</span>
+            </div>
+          )}
           <div style={s.orderTotalRow}>
             <span>Итого</span>
-            <span style={s.orderTotal}>{subtotal.toLocaleString()} сум</span>
+            <span style={s.orderTotal}>{(subtotal + bottleSurcharge).toLocaleString()} сум</span>
           </div>
         </div>
       </div>
@@ -420,12 +425,10 @@ export default function Checkout() {
         <BottleReturn
           returnCount={Number(form.returnCount)}
           onCountChange={v => set('returnCount', v)}
-          bottleDiscount={bottleDiscount}
+          bottleSurcharge={bottleSurcharge}
           bottlesOwed={maxReturn}
           settings={settings}
-          fullBottlePrice={deposit19L?.price ?? null}
-          priceWithReturn={price19LWithReturn}
-          discountPerBottle={discountPerBottle || null}
+          surchargePerBottle={surchargePerBottle || 0}
           qty20L={qty20L}
         />
       )}

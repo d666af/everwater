@@ -153,6 +153,7 @@ async def _notify_low_stock_if_needed(
 
 
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
+    """LEGACY: pre-surcharge discount calc, kept for compat."""
     if count <= 0:
         return 0.0
     if cfg.get("bottle_discount_type") == "percent":
@@ -160,6 +161,30 @@ def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
         return min(subtotal, subtotal * pct / 100.0)
     per = float(cfg.get("bottle_discount_value") or 0)
     return count * per
+
+
+def calc_bottle_surcharge(items_data: list, return_count: int, cfg: dict) -> float:
+    """New model: charge an extra fee for every 19L bottle the customer
+    keeps (i.e. doesn't return) in this order. Per-product surcharge is
+    used when set; otherwise falls back to the global setting."""
+    fallback = float(cfg.get("bottle_discount_value") or 0)
+    is_percent = cfg.get("bottle_discount_type") == "percent"
+    returns_left = max(0, int(return_count or 0))
+    total = 0.0
+    for product, qty in items_data:
+        vol = float(product.volume or 0)
+        if not (18 < vol < 20):
+            continue
+        refilled = min(qty, returns_left)
+        missing = qty - refilled
+        returns_left -= refilled
+        if missing <= 0:
+            continue
+        per_unit = product.bottle_surcharge
+        if per_unit is None or per_unit <= 0:
+            per_unit = round(product.price * fallback / 100) if is_percent else fallback
+        total += missing * float(per_unit or 0)
+    return total
 
 
 @router.post("/", response_model=OrderOut)
@@ -194,17 +219,21 @@ async def create_order(
         items_data.append((product, item.quantity))
 
     cfg = await get_all_settings(db)
-    # Prefer client-sent bottle_discount (already shown to user); fallback to server calc
-    bottle_discount = data.bottle_discount if data.bottle_discount is not None else \
-        calc_bottle_discount(data.return_bottles_count, subtotal, cfg)
+    # New model: surcharge added for every non-returned 19L bottle. Discount
+    # path retained for legacy clients that still send bottle_discount.
+    bottle_discount = float(data.bottle_discount or 0)
+    bottle_surcharge = data.bottle_surcharge if data.bottle_surcharge is not None else \
+        calc_bottle_surcharge(items_data, data.return_bottles_count, cfg)
 
     delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0)
     bonus_limit_pct = float(cfg.get("bonus_limit_percent") or 30) / 100
-    max_bonus_by_pct = (subtotal + delivery_fee) * bonus_limit_pct
-    bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0), subtotal, max_bonus_by_pct)
+    pre_bonus_total = subtotal + bottle_surcharge - bottle_discount
+    max_bonus_by_pct = (pre_bonus_total + delivery_fee) * bonus_limit_pct
+    bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0),
+                     max(0.0, pre_bonus_total), max_bonus_by_pct)
     balance_used = min(float(data.balance_used or 0), float(user.balance or 0),
-                       max(0.0, subtotal - bottle_discount - bonus_used))
-    total = max(0.0, subtotal - bottle_discount - bonus_used - balance_used + delivery_fee)
+                       max(0.0, pre_bonus_total - bonus_used))
+    total = max(0.0, pre_bonus_total - bonus_used - balance_used + delivery_fee)
 
     order = Order(
         user_id=data.user_id,
@@ -217,6 +246,7 @@ async def create_order(
         return_bottles_count=data.return_bottles_count,
         return_bottles_volume=data.return_bottles_volume,
         bottle_discount=bottle_discount,
+        bottle_surcharge=bottle_surcharge,
         subtotal=subtotal,
         delivery_fee=delivery_fee,
         total=total,
@@ -1067,6 +1097,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         return_bottles_count=order.return_bottles_count,
         return_bottles_volume=order.return_bottles_volume,
         bottle_discount=order.bottle_discount,
+        bottle_surcharge=order.bottle_surcharge or 0,
         subtotal=order.subtotal,
         total=order.total,
         bonus_used=order.bonus_used,

@@ -41,7 +41,8 @@ class Order(Base):
     # Bottle return
     return_bottles_count: Mapped[int] = mapped_column(Integer, default=0)
     return_bottles_volume: Mapped[float] = mapped_column(Float, default=0.0)
-    bottle_discount: Mapped[float] = mapped_column(Float, default=0.0)
+    bottle_discount: Mapped[float] = mapped_column(Float, default=0.0)  # legacy: pre-surcharge orders
+    bottle_surcharge: Mapped[float] = mapped_column(Float, default=0.0)  # надбавка за невозвращённые 19л
 
     # Pricing
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)

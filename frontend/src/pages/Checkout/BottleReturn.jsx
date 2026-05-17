@@ -8,36 +8,36 @@ function plural(n, one, few, many) {
   return many
 }
 
-export default function BottleReturn({ returnCount, onCountChange, bottleDiscount, bottlesOwed, settings,
-                                       fullBottlePrice, priceWithReturn, discountPerBottle,
-                                       qty20L = 0 }) {
+export default function BottleReturn({ returnCount, onCountChange, bottleSurcharge, bottlesOwed, settings,
+                                       surchargePerBottle, qty20L = 0 }) {
   const showButtons = settings.bottle_return_buttons_visible !== false
   const maxReturn = bottlesOwed
   const displayCount = showButtons ? returnCount : maxReturn
 
-  // How many ordered bottles will NOT be returned (charged at full price)
-  const missing = Math.max(0, qty20L - displayCount)
-  const surcharge = discountPerBottle || 0
-  const extraTotal = missing * surcharge
+  // Customer is only expected to return as many as they owe (capped by cart 19L qty)
+  const expected = Math.min(qty20L, bottlesOwed)
+  const missing = Math.max(0, expected - displayCount)
+  const surcharge = surchargePerBottle || 0
+  const extraTotal = bottleSurcharge ?? (missing * surcharge)
 
   let message
-  if (qty20L > 0 && displayCount >= qty20L) {
+  if (expected === 0) {
+    message = null
+  } else if (displayCount >= expected) {
     message = (
       <span>
-        Вы возвращаете <b>{qty20L}</b> {plural(qty20L, 'бутылку', 'бутылки', 'бутылок')} 19л.
+        Вы возвращаете <b>{expected}</b> {plural(expected, 'бутылку', 'бутылки', 'бутылок')} 19л.
       </span>
     )
-  } else if (qty20L > 0) {
+  } else {
     message = (
       <span>
-        Вы возвращаете <b>{displayCount} из {qty20L}</b>. За каждую невозвращённую
+        Вы возвращаете <b>{displayCount} из {expected}</b>. За каждую невозвращённую
         (всего <b>{missing}</b> {plural(missing, 'бутылку', 'бутылки', 'бутылок')}) к заказу
         будет добавлено <b>{surcharge.toLocaleString()} сум</b> за бутылку
         {extraTotal > 0 && missing > 1 && <> · итого <b>{extraTotal.toLocaleString()} сум</b></>}.
       </span>
     )
-  } else {
-    message = null
   }
 
   return (
