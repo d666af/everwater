@@ -818,14 +818,14 @@ def _per_bottle_surcharge(cfg: dict, product: dict | None = None) -> int:
     return int(float(cfg.get("bottle_discount_value") or 0))
 
 
-def _return_step_view(count: int, qty_20l: int, surcharge: int):
+def _return_step_view(count: int, qty_20l: int, surcharge: int, max_return: int | None = None):
     """Build (text, keyboard) for the bottle-return step at a given count.
-    Wording differs depending on whether the user returns all ordered or
-    leaves some new bottles to be paid at the surcharge price."""
+    max_return caps the + button (defaults to qty_20l = equal mode)."""
+    cap = max_return if max_return is not None else qty_20l
     if count >= qty_20l:
         text = (
             "🫙 <b>Возврат бутылок 19 л</b>\n\n"
-            f"Вы возвращаете <b>{qty_20l} {'бутылку' if qty_20l == 1 else 'бутылки' if 2 <= qty_20l <= 4 else 'бутылок'} 19л</b>."
+            f"Вы возвращаете <b>{count} {'бутылку' if count == 1 else 'бутылки' if 2 <= count <= 4 else 'бутылок'} 19л</b>."
         )
     else:
         missing = qty_20l - count
@@ -842,9 +842,9 @@ def _return_step_view(count: int, qty_20l: int, surcharge: int):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="−", callback_data=f"rb_adj:{max(0, count - 1)}:{qty_20l}"),
+            InlineKeyboardButton(text="−", callback_data=f"rb_adj:{max(0, count - 1)}:{qty_20l}:{cap}"),
             InlineKeyboardButton(text=f"🫙 {count} шт.", callback_data="rb_noop"),
-            InlineKeyboardButton(text="+", callback_data=f"rb_adj:{min(qty_20l, count + 1)}:{qty_20l}"),
+            InlineKeyboardButton(text="+", callback_data=f"rb_adj:{min(cap, count + 1)}:{qty_20l}:{cap}"),
         ],
         [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"rb:{count}")],
     ])
@@ -884,9 +884,11 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
         return
 
     buttons_visible = cfg.get("bottle_return_buttons_visible", True)
+    return_mode = cfg.get("bottle_return_mode", "max")
 
-    # Default start: return as many bottles as ordered, capped by what user owes.
-    initial_count = min(qty_20l, count)
+    # max mode: return up to all owed bottles; equal mode: return up to ordered qty.
+    max_return = count if return_mode == "max" else min(qty_20l, count)
+    initial_count = max_return  # start at the maximum allowed
 
     surcharge = _per_bottle_surcharge(cfg, p19)
 
@@ -913,7 +915,7 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
 
     await state.update_data(co_return=initial_count, co_surcharge=surcharge, co_qty_20l=qty_20l)
     await state.set_state(CheckoutState.asking_return)
-    text, kb = _return_step_view(initial_count, qty_20l, surcharge)
+    text, kb = _return_step_view(initial_count, qty_20l, surcharge, max_return=max_return)
 
     if edit and isinstance(target, CallbackQuery):
         try:
@@ -1086,11 +1088,13 @@ def _bottle_adj_kb(count: int, max_return: int) -> InlineKeyboardMarkup:
 @router.callback_query(CheckoutState.asking_return, F.data.startswith("rb_adj:"))
 async def co_return_adjust(call: CallbackQuery, state: FSMContext):
     parts = call.data.split(":")
-    count, qty_20l = int(parts[1]), int(parts[2])
+    count = int(parts[1])
+    qty_20l = int(parts[2])
+    max_return = int(parts[3]) if len(parts) > 3 else qty_20l
     data = await state.get_data()
     surcharge = int(data.get("co_surcharge", 0))
     await state.update_data(co_return=count)
-    text, kb = _return_step_view(count, qty_20l, surcharge)
+    text, kb = _return_step_view(count, qty_20l, surcharge, max_return=max_return)
     try:
         await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
