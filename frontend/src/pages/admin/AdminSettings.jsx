@@ -223,53 +223,6 @@ export default function AdminSettings() {
           </div>
         </Section>
 
-        {/* Bottle return discount */}
-        <Section
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
-              <path d="M3 3v5h5" stroke="#12B886" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          }
-          title="Скидка за возврат бутылок"
-          hint="Применяется к заказу при сдаче пустых бутылок"
-        >
-          <div style={s.radioGroup}>
-            <label style={{ ...s.radioOption, ...(form.bottle_discount_type === 'fixed' ? s.radioOptionActive : {}) }}>
-              <input type="radio" value="fixed" checked={form.bottle_discount_type === 'fixed'}
-                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))}
-                style={{ display: 'none' }} />
-              <div style={s.radioDot(form.bottle_discount_type === 'fixed')} />
-              Фиксированная (сум/бутылка)
-            </label>
-            <label style={{ ...s.radioOption, ...(form.bottle_discount_type === 'percent' ? s.radioOptionActive : {}) }}>
-              <input type="radio" value="percent" checked={form.bottle_discount_type === 'percent'}
-                onChange={e => setForm(p => ({ ...p, bottle_discount_type: e.target.value }))}
-                style={{ display: 'none' }} />
-              <div style={s.radioDot(form.bottle_discount_type === 'percent')} />
-              Процентная (% от суммы)
-            </label>
-          </div>
-          <div style={s.field}>
-            <div style={s.label}>
-              {form.bottle_discount_type === 'fixed' ? 'Скидка (сум/бутылка)' : 'Скидка (%)'}
-            </div>
-            <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" {...f('bottle_discount_value')} />
-          </div>
-          <div style={s.preview}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
-              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            Пример: при возврате 3 бутылок — скидка{' '}
-            <b>
-              {form.bottle_discount_type === 'fixed'
-                ? `${3 * Number(form.bottle_discount_value)} сум`
-                : `${form.bottle_discount_value}% от суммы заказа`}
-            </b>
-          </div>
-        </Section>
-
         {/* Bottle return settings */}
         <Section
           icon={
