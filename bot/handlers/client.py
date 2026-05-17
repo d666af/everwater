@@ -1060,26 +1060,6 @@ async def co_phone(message: Message, state: FSMContext):
     await _ask_bonus(message, state)
 
 
-def _deposit_hint_for_cart(cart: dict, cfg: dict) -> str:
-    """Return 19L bottle deposit explanation if cart has deposit items."""
-    deposit_items = [v for v in cart.values() if v.get("has_bottle_deposit")]
-    if not deposit_items:
-        return ""
-    hints = []
-    for item in deposit_items:
-        full_price = item["price"]
-        water_price = item.get("deposit_price") or full_price
-        deposit_amount = full_price - water_price
-        if deposit_amount > 0:
-            n = lambda x: f"{int(x):,}".replace(",", " ")
-            hints.append(
-                f"🫙 <b>Первый раз:</b> {fmt(full_price)} = {n(water_price)} вода + {n(deposit_amount)} залог.\n"
-                f"При возврате бутылки — скидка {fmt(deposit_amount)}."
-            )
-        else:
-            hints.append(f"🫙 <i>Цена со сдачей бутылки: {fmt(_item_eff_price(item))}</i>")
-    return "\n".join(hints)
-
 
 def _bottle_adj_kb(count: int, max_return: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1199,31 +1179,26 @@ async def _show_summary(message: Message, state: FSMContext):
     except Exception:
         cfg = {}
     pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+    co_return = data.get("co_return", 0)
+    co_qty_20l = data.get("co_qty_20l", 0)
+    co_surcharge = int(data.get("co_surcharge") or 0)
+    bottle_surcharge_total = 0
+
     lines = ["<b>📋 Подтверждение заказа</b>\n", "<b>Товары:</b>"]
     total = 0
     for item in cart.values():
         s = item["price"] * item["qty"]
         total += s
         lines.append(f"  • {item['name']} {item['qty']} шт. — {fmt(s)}")
-    deposit_hint = _deposit_hint_for_cart(cart, cfg)
-    if deposit_hint:
-        lines.append(f"\n{deposit_hint}")
-
-    # Bottle return section
-    co_return = data.get("co_return", 0)
-    co_qty_20l = data.get("co_qty_20l", 0)
-    co_surcharge = int(data.get("co_surcharge") or 0)
-    bottle_surcharge_total = 0
 
     if co_qty_20l > 0:
         missing = max(0, co_qty_20l - co_return)
+        if missing > 0 and co_surcharge > 0:
+            bottle_surcharge_total = missing * co_surcharge
+            lines.append(f"  • Невозвращённые бутылки {missing} шт. — +{fmt(bottle_surcharge_total)}")
         lines.append("")
         lines.append("<b>Возврат:</b>")
-        if missing == 0:
-            lines.append(f"• Бутылки 19л {co_return} шт.")
-        else:
-            bottle_surcharge_total = missing * co_surcharge
-            lines.append(f"• Бутылки 19л {co_return} шт. + {missing} шт. — {fmt(bottle_surcharge_total)}")
+        lines.append(f"• Бутылки 19л — {co_return} шт.")
 
     geo = "✅ указана" if data.get("co_lat") else "—"
     grand_total = total + bottle_surcharge_total
