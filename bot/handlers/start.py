@@ -1088,7 +1088,7 @@ async def process_review_comment(message: Message, state: FSMContext):
     await message.answer("Спасибо за отзыв! 🙏", reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()))
 
 
-@router.message(StateFilter(None), ~F.text.startswith("/"))
+@router.message(StateFilter(None), ~F.text.startswith("/"), ~F.text.in_(_ALL_MENU_BUTTONS))
 async def restore_menu_on_lost_state(message: Message):
     """Restore the reply keyboard when user sends any text with no active FSM state.
 
