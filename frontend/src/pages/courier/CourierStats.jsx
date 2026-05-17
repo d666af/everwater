@@ -40,32 +40,10 @@ function ratingMsg(r) {
 }
 
 function Spinner() {
-  return (
-    <div style={{ width: 26, height: 26, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.18)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
-  )
+  return <div style={{ width: 24, height: 24, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
 }
 
-// Flat section label
-function SectionLabel({ children, right }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0 8px' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>{children}</span>
-      {right && <span style={{ fontSize: 11, color: TEXT2 }}>{right}</span>}
-    </div>
-  )
-}
-
-// Clean flat row inside a white card
-function DataRow({ label, value, last }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: last ? 'none' : `1px solid ${BORDER}` }}>
-      <span style={{ fontSize: 14, color: TEXT, fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 14, color: TEXT, fontWeight: 700 }}>{value}</span>
-    </div>
-  )
-}
-
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function CourierStats() {
   const [stats, setStats]               = useState(null)
@@ -128,6 +106,7 @@ export default function CourierStats() {
   const waterTotal    = waterEntries.reduce((s, [, v]) => s + v, 0)
   const hasWarehouse  = (report?.warehouse_received?.length || 0) > 0
   const hasReturns    = (report?.bottle_returns_in_period?.length || 0) > 0
+  const warehouseTotal = (report?.warehouse_received || []).reduce((s, i) => s + (i.total || 0), 0)
 
   if (loading) return (
     <CourierLayout title="Статистика">
@@ -136,105 +115,116 @@ export default function CourierStats() {
   )
   if (!stats) return (
     <CourierLayout title="Статистика">
-      <div style={{ textAlign: 'center', padding: '60px 20px', fontSize: 15, fontWeight: 600, color: TEXT2, opacity: 0.4 }}>
-        Статистика недоступна
-      </div>
+      <div style={{ textAlign: 'center', padding: '60px 20px', fontSize: 15, fontWeight: 600, color: TEXT2, opacity: 0.35 }}>Статистика недоступна</div>
     </CourierLayout>
   )
 
   return (
     <CourierLayout title="Статистика">
       {pickerOpen && (
-        <DateTimePickerModal
-          initialDate={customDate} initialDateTo={customDateTo}
-          onApply={applyCustom} onClose={() => setPickerOpen(false)}
-        />
+        <DateTimePickerModal initialDate={customDate} initialDateTo={customDateTo} onApply={applyCustom} onClose={() => setPickerOpen(false)} />
       )}
       {showReport && stats?.courier_id && (
         <CourierReportModal courierId={stats.courier_id} courierName={stats.name || 'Курьер'} onClose={() => setShowReport(false)} />
       )}
 
-      {/* ── 1. Rating + Deliveries ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-
-        {/* Rating */}
-        <div style={card}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill={C}>
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={CD} strokeWidth="1.2" strokeLinejoin="round"/>
+      {/* ── 1. Rating (full width, horizontal) ── */}
+      <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 14 }}>
+        {/* Left: number + stars */}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={C}>
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={CD} strokeWidth="1" strokeLinejoin="round"/>
             </svg>
-            <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Рейтинг</span>
+            <span style={{ fontSize: 32, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
+              {stats.rating > 0 ? stats.rating.toFixed(1) : '—'}
+            </span>
           </div>
-          <div style={{ fontSize: 36, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
-            {stats.rating > 0 ? stats.rating.toFixed(1) : '—'}
+          {/* Mini star row */}
+          <div style={{ display: 'flex', gap: 2 }}>
+            {[1,2,3,4,5].map(i => {
+              const filled = stats.rating >= i
+              const half = !filled && stats.rating >= i - 0.5
+              return (
+                <svg key={i} width="12" height="12" viewBox="0 0 24 24" fill={filled || half ? C : 'none'}>
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={filled || half ? CD : BORDER.replace('rgba','rgb').replace(',0.08)','')} strokeWidth="1.5" strokeLinejoin="round"/>
+                </svg>
+              )
+            })}
           </div>
-          <div style={{ fontSize: 12, color: TEXT2, marginTop: 5, lineHeight: 1.3 }}>
-            {stats.rating > 0 ? ratingMsg(stats.rating) : 'Нет оценок'}
-          </div>
-          {stats.review_count > 0 && (
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 4 }}>
-              {stats.review_count} {plural(stats.review_count, 'отзыв', 'отзыва', 'отзывов')}
-            </div>
-          )}
         </div>
 
-        {/* Total deliveries */}
-        <div style={card}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="4" width="18" height="16" rx="3" stroke={C} strokeWidth="1.8"/>
-              <path d="M7 9h10M7 13h6" stroke={C} strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Всего доставок</span>
+        {/* Right: bar + message */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Progress bar */}
+          <div style={{ height: 5, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden', marginBottom: 7 }}>
+            <div style={{ height: '100%', width: `${((stats.rating || 0) / 5) * 100}%`, background: GRAD, borderRadius: 99, transition: 'width 0.5s ease' }} />
           </div>
-          <div style={{ fontSize: 36, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
-            {stats.delivery_count ?? '—'}
+          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 2 }}>
+            {stats.rating > 0 ? ratingMsg(stats.rating) : 'Нет оценок пока'}
+          </div>
+          <div style={{ fontSize: 11, color: TEXT2 }}>
+            {stats.review_count > 0
+              ? `${stats.review_count} ${plural(stats.review_count, 'отзыв', 'отзыва', 'отзывов')} · из 5.0`
+              : 'Нет отзывов'}
           </div>
         </div>
       </div>
 
-      {/* ── 2. Bottle debt ── */}
-      {stats.bottles_must_return > 0 && (
-        <div style={{ ...card, borderLeft: '3px solid #E03131', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#E03131', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>Долг по бутылкам</div>
-            <div style={{ fontSize: 13, color: TEXT2 }}>Не возвращено на склад</div>
+      {/* ── 2. Deliveries + Debt (2-col) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: stats.bottles_must_return > 0 ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 10 }}>
+        {/* Deliveries */}
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={C} strokeWidth="1.7" strokeLinejoin="round"/>
+              <circle cx="5.5" cy="18.5" r="2.5" stroke={C} strokeWidth="1.5"/>
+              <circle cx="18.5" cy="18.5" r="2.5" stroke={C} strokeWidth="1.5"/>
+            </svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Всего доставок</span>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: '#E03131', lineHeight: 1 }}>{stats.bottles_must_return} шт.</div>
-            {stats.bottle_debt_value > 0 && (
-              <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{Number(stats.bottle_debt_value).toLocaleString()} сум</div>
-            )}
+          <div style={{ fontSize: 34, fontWeight: 900, color: CD, lineHeight: 1 }}>
+            {stats.delivery_count ?? '—'}
           </div>
         </div>
-      )}
 
-      {/* ── 3. Report button (above filters) ── */}
+        {/* Bottle debt */}
+        {stats.bottles_must_return > 0 && (
+          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid rgba(224,49,49,0.25)`, padding: '14px 16px', borderLeft: '3px solid #E03131' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M9 3h6l1 4H8L9 3z" stroke="#E03131" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M8 7c0 0-2 2-2 7a6 6 0 0012 0c0-5-2-7-2-7" stroke="#E03131" strokeWidth="1.7" strokeLinecap="round"/>
+                <path d="M12 11v3M12 16h.01" stroke="#E03131" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E03131', textTransform: 'uppercase', letterSpacing: 0.4 }}>Долг</span>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#E03131', lineHeight: 1 }}>{stats.bottles_must_return} <span style={{ fontSize: 14, fontWeight: 600 }}>шт.</span></div>
+            {stats.bottle_debt_value > 0 && (
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 4 }}>{Number(stats.bottle_debt_value).toLocaleString()} сум</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. Report button ── */}
       {stats?.courier_id && (
-        <button onClick={() => setShowReport(true)} style={{
-          width: '100%', padding: '12px', borderRadius: 14, border: 'none',
-          background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700,
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          marginBottom: 8,
-        }}>
+        <button onClick={() => setShowReport(true)} style={{ width: '100%', padding: '12px', borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
           Скачать отчёт
         </button>
       )}
 
-      {/* ── 4. Period filters ── */}
+      {/* ── 4. Filters ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <button onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }} style={{
           flex: 1, padding: '10px 12px', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-          background: period === 'today' ? GRAD : '#fff',
-          color: period === 'today' ? '#fff' : TEXT2,
+          background: period === 'today' ? GRAD : '#fff', color: period === 'today' ? '#fff' : TEXT2,
           border: period === 'today' ? 'none' : `1.5px solid ${BORDER}`,
         }}>Сегодня</button>
-
         <button onClick={() => setPickerOpen(true)} style={{
           flex: 1, padding: '10px 12px', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-          background: period === 'custom' ? GRAD : '#fff',
-          color: period === 'custom' ? '#fff' : TEXT2,
+          background: period === 'custom' ? GRAD : '#fff', color: period === 'custom' ? '#fff' : TEXT2,
           border: period === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         }}>
@@ -247,154 +237,158 @@ export default function CourierStats() {
       </div>
 
       {reportLoading
-        ? <div style={{ display: 'flex', justifyContent: 'center', padding: 28 }}><Spinner /></div>
+        ? <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spinner /></div>
         : report && (
-          <>
-            {/* ── 5. Period KPI: Заработано + Доставок ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <div style={card}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Заработано</div>
-                <div style={{ fontSize: 26, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
-                  {report.total_earned > 0 ? `${Number(Math.round(report.total_earned)).toLocaleString()}` : '0'}
-                </div>
-                <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
+        <>
+          {/* ── 5. Period KPI: single card with divider ── */}
+          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, display: 'flex' }}>
+            <div style={{ flex: 1, padding: '14px 16px', borderRight: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Заработано</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: CD, lineHeight: 1 }}>
+                {report.total_earned > 0 ? Number(Math.round(report.total_earned)).toLocaleString() : '0'}
               </div>
-              <div style={card}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Доставок</div>
-                <div style={{ fontSize: 36, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
-                  {report.deliveries ?? 0}
-                </div>
+              <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>сум · {periodLabel}</div>
+            </div>
+            <div style={{ flex: 1, padding: '14px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Доставок</div>
+              <div style={{ fontSize: 34, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
+                {report.deliveries ?? 0}
+              </div>
+              <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>{periodLabel}</div>
+            </div>
+          </div>
+
+          {/* ── 6. Water on hand ── */}
+          {waterEntries.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Товары на руках</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {waterEntries.map(([name, qty], i) => (
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < waterEntries.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                    <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>{name}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: CD }}>{qty} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, marginTop: 2, borderTop: `1px solid ${BORDER}` }}>
+                <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Итого</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: C }}>{waterTotal} шт.</span>
               </div>
             </div>
+          )}
 
-            {/* ── 6. Water on hand ── */}
-            {waterEntries.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                <SectionLabel>Товары на руках</SectionLabel>
-                <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${BORDER}`, padding: '0 16px' }}>
-                  {waterEntries.map(([name, qty], i) => (
-                    <DataRow key={name} label={name} value={`${qty} шт.`} last={i === waterEntries.length - 1} />
-                  ))}
+          {/* ── 7. Warehouse transactions ── */}
+          {(hasWarehouse || hasReturns) && (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Транзакции склада</span>
+                <span style={{ fontSize: 11, color: TEXT2 }}>{periodLabel}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {report.warehouse_received.map((item, i) => {
+                  const isLast = !hasReturns && i === report.warehouse_received.length - 1
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: isLast ? 'none' : `1px solid ${BORDER}` }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                        <path d="M5 12h14M14 6l6 6-6 6" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <span style={{ flex: 1, fontSize: 13, color: TEXT, fontWeight: 500 }}>{item.name}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{item.quantity} шт.</span>
+                      {item.total > 0 && <span style={{ fontSize: 12, color: TEXT2 }}>{Number(item.total).toLocaleString()} сум</span>}
+                    </div>
+                  )
+                })}
+                {hasReturns && report.bottle_returns_in_period.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: 'none', borderTop: hasWarehouse ? `1px solid ${BORDER}` : 'none' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                      <path d="M19 12H5M10 18l-6-6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span style={{ flex: 1, fontSize: 13, color: TEXT, fontWeight: 500 }}>{item.name} · возврат тары</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{item.quantity} шт.</span>
+                  </div>
+                ))}
+              </div>
+              {warehouseTotal > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTop: `1px solid ${BORDER}` }}>
+                  <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Итого выдано</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{Number(warehouseTotal).toLocaleString()} сум</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 16px 0' }}>
-                  <span style={{ fontSize: 12, color: TEXT2 }}>Итого</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{waterTotal} шт.</span>
-                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 8. Delivery history ── */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0 10px' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                История доставок · {deliveryRows.length}
+              </span>
+              <span style={{ fontSize: 11, color: TEXT2 }}>{periodLabel}</span>
+            </div>
+
+            {(report?.orders || []).length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                {[
+                  { key: 'all',  label: 'Все',
+                    icon: null },
+                  { key: 'cash', label: 'Наличные',
+                    icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 7v10M9 9.5C9 8.12 10.34 7 12 7s3 1.12 3 2.5S13.66 12 12 12s-3 1.12-3 2.5S10.34 17 12 17s3-1.12 3-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
+                  { key: 'card', label: 'Карта',
+                    icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M6 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+                ].map(f => (
+                  <button key={f.key} onClick={() => setPayFilter(f.key)} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '7px 13px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    background: payFilter === f.key ? '#F0FAE8' : '#F2F2F7',
+                    color: payFilter === f.key ? CD : TEXT2,
+                    border: payFilter === f.key ? `1.5px solid ${C}` : '1.5px solid transparent',
+                    flexShrink: 0,
+                  }}>
+                    {f.icon}{f.label}
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* ── 7. Warehouse transactions ── */}
-            {(hasWarehouse || hasReturns) && (
-              <div style={{ marginBottom: 10 }}>
-                <SectionLabel>Транзакции склада</SectionLabel>
-                <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${BORDER}`, padding: '0 16px' }}>
-                  {hasWarehouse && report.warehouse_received.map((item, i) => {
-                    const isLast = !hasReturns && i === report.warehouse_received.length - 1
+            {deliveryRows.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: TEXT2, fontSize: 13 }}>Нет доставок за период</div>
+            ) : (
+              <>
+                <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '0 16px' }}>
+                  {deliveryRows.map((o, i) => {
+                    const isCash = o.payment_method === 'cash'
+                    const dt = o.delivered_at_iso ? new Date(o.delivered_at_iso) : null
+                    const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : (o.delivered_at || '').slice(-5)
+                    const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : (o.delivered_at || '').slice(0, 6)
                     return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: isLast ? 'none' : `1px solid ${BORDER}` }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                          <path d="M5 12h14M14 5l7 7-7 7" stroke={C} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span style={{ flex: 1, fontSize: 13, color: TEXT, fontWeight: 500 }}>{item.name}</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
-                          {item.quantity} шт.{item.total > 0 ? ` · ${Number(item.total).toLocaleString()} сум` : ''}
-                        </span>
+                      <div key={o.order_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: i < deliveryRows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                        {/* Payment icon */}
+                        <div style={{ flexShrink: 0, color: TEXT2 }}>
+                          {isCash
+                            ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 7v10M9 9.5C9 8.12 10.34 7 12 7s3 1.12 3 2.5S13.66 12 12 12s-3 1.12-3 2.5S10.34 17 12 17s3-1.12 3-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/></svg>
+                            : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M6 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          }
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
+                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{dateStr} · {timeStr} · {isCash ? 'Наличные' : 'Карта'}</div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, flexShrink: 0 }}>
+                          {Number(o.total).toLocaleString()} сум
+                        </div>
                       </div>
                     )
                   })}
-                  {hasWarehouse && hasReturns && (
-                    <div style={{ borderTop: `1px solid ${BORDER}` }} />
-                  )}
-                  {hasReturns && report.bottle_returns_in_period.map((item, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i === report.bottle_returns_in_period.length - 1 ? 'none' : `1px solid ${BORDER}` }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                        <path d="M19 12H5M10 19l-7-7 7-7" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      <span style={{ flex: 1, fontSize: 13, color: TEXT, fontWeight: 500 }}>{item.name} (возврат тары)</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{item.quantity} шт.</span>
-                    </div>
-                  ))}
                 </div>
-              </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 0' }}>
+                  <span style={{ fontSize: 12, color: TEXT2 }}>{deliveryRows.length} {plural(deliveryRows.length, 'доставка', 'доставки', 'доставок')}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{Number(Math.round(deliveryTotal)).toLocaleString()} сум</span>
+                </div>
+              </>
             )}
-
-            {/* ── 8. Delivery history ── */}
-            <div style={{ marginBottom: 8 }}>
-              <SectionLabel right={periodLabel}>История доставок · {deliveryRows.length}</SectionLabel>
-
-              {(report?.orders || []).length > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                  {[
-                    { key: 'all',  label: 'Все',      icon: null },
-                    { key: 'cash', label: 'Наличные',
-                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20" stroke="currentColor" strokeWidth="1.5"/></svg> },
-                    { key: 'card', label: 'Карта',
-                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><rect x="2" y="10" width="20" height="4" fill="currentColor" opacity="0.18"/></svg> },
-                  ].map(f => (
-                    <button key={f.key} onClick={() => setPayFilter(f.key)} style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '7px 13px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      background: payFilter === f.key ? '#F0FAE8' : '#F2F2F7',
-                      color: payFilter === f.key ? CD : TEXT2,
-                      border: payFilter === f.key ? `1.5px solid ${C}` : '1.5px solid transparent',
-                      flexShrink: 0,
-                    }}>
-                      {f.icon}
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {deliveryRows.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '28px 20px', color: TEXT2, fontSize: 13 }}>Нет доставок за период</div>
-              ) : (
-                <>
-                  <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${BORDER}`, padding: '0 16px' }}>
-                    {deliveryRows.map((o, i) => {
-                      const isCash = o.payment_method === 'cash'
-                      const dt = o.delivered_at_iso ? new Date(o.delivered_at_iso) : null
-                      const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : (o.delivered_at || '').slice(-5)
-                      const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : (o.delivered_at || '').slice(0, 6)
-                      return (
-                        <div key={o.order_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: i < deliveryRows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.45 }}>
-                            {isCash
-                              ? <><rect x="2" y="5" width="20" height="14" rx="2" stroke={TEXT} strokeWidth="1.8"/><path d="M2 10h20" stroke={TEXT} strokeWidth="1.5"/></>
-                              : <><rect x="2" y="5" width="20" height="14" rx="2" stroke={TEXT} strokeWidth="1.8"/><rect x="2" y="10" width="20" height="4" fill={TEXT} opacity="0.35"/></>
-                            }
-                          </svg>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
-                            <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{dateStr} · {timeStr} · {isCash ? 'Нал.' : 'Карта'}</div>
-                          </div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, flexShrink: 0 }}>
-                            {Number(o.total).toLocaleString()} сум
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 0' }}>
-                    <span style={{ fontSize: 12, color: TEXT2 }}>{deliveryRows.length} {plural(deliveryRows.length, 'доставка', 'доставки', 'доставок')}</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{Number(Math.round(deliveryTotal)).toLocaleString()} сум</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </>
-        )
-      }
+          </div>
+        </>
+      )}
     </CourierLayout>
   )
-}
-
-const card = {
-  background: '#fff',
-  borderRadius: 16,
-  border: `1px solid ${BORDER}`,
-  padding: '16px 16px',
-  display: 'flex',
-  flexDirection: 'column',
 }
