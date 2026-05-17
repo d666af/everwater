@@ -14,8 +14,8 @@ export default function BottleReturn({ returnCount, onCountChange, bottleSurchar
   const maxReturn = bottlesOwed
   const displayCount = showButtons ? returnCount : maxReturn
 
-  // Customer is only expected to return as many as they owe (capped by cart 19L qty)
-  const expected = Math.min(qty20L, bottlesOwed)
+  // Customer is expected to return all ordered 19L bottles; shortage triggers surcharge
+  const expected = qty20L
   const missing = Math.max(0, expected - displayCount)
   const surcharge = surchargePerBottle || 0
   const extraTotal = bottleSurcharge ?? (missing * surcharge)
