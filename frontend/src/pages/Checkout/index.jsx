@@ -113,7 +113,7 @@ export default function Checkout() {
     : bottlesOwed
 
   // 19L product reference for the return block (still uses the deposit flag)
-  const deposit19L = items.find(i => i.product.volume >= 18.9 && i.product.has_bottle_deposit)?.product ?? null
+  const deposit19L = items.find(i => i.product.volume >= 18.9)?.product ?? null
   const surchargePerBottle = (() => {
     if (!deposit19L) return 0
     if (deposit19L.bottle_surcharge && deposit19L.bottle_surcharge > 0) return deposit19L.bottle_surcharge
@@ -130,8 +130,8 @@ export default function Checkout() {
     ? (settings.bottle_return_buttons_visible !== false ? Number(form.returnCount) : maxReturn)
     : surveyCount
   // Surcharge model: charge extra for each 19L bottle not returned vs ordered.
-  // Customers with no debt yet (first order, bottlesOwed=0) are exempt.
-  const expectedReturns = bottlesOwed > 0 ? qty20L : 0
+  // Surcharge applies for every 19L bottle not returned, regardless of prior debt.
+  const expectedReturns = qty20L
   const missingBottles = Math.max(0, expectedReturns - Number(effectiveReturnCount || 0))
   const bottleSurcharge = missingBottles * surchargePerBottle
   const afterBottle = subtotal + bottleSurcharge
@@ -427,7 +427,7 @@ export default function Checkout() {
           bottlesOwed={maxReturn}
           settings={settings}
           surchargePerBottle={surchargePerBottle || 0}
-          qty20L={bottlesOwed > 0 ? qty20L : 0}
+          qty20L={qty20L}
         />
       )}
 
