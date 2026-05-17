@@ -17,6 +17,9 @@ const BORDER = 'rgba(60,60,67,0.08)'
 const toLocalISO = d =>
   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 
+// For "today" always use UTC date — matches backend's datetime.utcnow() used in warehouse
+const todayUTC = () => new Date().toISOString().slice(0, 10)
+
 function fmtDateStr(s) {
   if (!s) return ''
   const [y, m, d] = String(s).split('-').map(Number)
@@ -72,9 +75,11 @@ export default function CourierStats() {
   }, [courierId]) // eslint-disable-line
 
   const { dateFrom, dateTo } = (() => {
-    const today = toLocalISO(new Date())
-    if (period === 'today') return { dateFrom: today, dateTo: today }
-    return { dateFrom: customDate || today, dateTo: customDateTo || customDate || today }
+    if (period === 'today') {
+      const t = todayUTC()
+      return { dateFrom: t, dateTo: t }
+    }
+    return { dateFrom: customDate || todayUTC(), dateTo: customDateTo || customDate || todayUTC() }
   })()
 
   const loadReport = useCallback((dbId, from, to) => {
