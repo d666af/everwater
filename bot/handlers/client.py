@@ -287,7 +287,8 @@ async def _render_catalog(target, state: FSMContext, edit: bool = False):
             cart[pid].update(name=_short_name(p), price=p["price"],
                              volume=p.get("volume", 0), product_id=p["id"],
                              has_bottle_deposit=p.get("has_bottle_deposit", False),
-                             deposit_price=p.get("deposit_price"))
+                             deposit_price=p.get("deposit_price"),
+                             bottle_surcharge=p.get("bottle_surcharge"))
     try:
         cfg = await api.get_settings() or {}
     except Exception:
@@ -437,6 +438,7 @@ def _update_cart_qty(cart: dict, pid: str, products: list, qty: int) -> None:
         "volume": p.get("volume", 0),
         "has_bottle_deposit": p.get("has_bottle_deposit", False),
         "deposit_price": p.get("deposit_price"),
+        "bottle_surcharge": p.get("bottle_surcharge"),
     }
     item["qty"] = qty
     cart[pid] = item
@@ -822,7 +824,7 @@ def _return_step_view(count: int, qty_20l: int, surcharge: int):
     leaves some new bottles to be paid at the surcharge price."""
     if count >= qty_20l:
         text = (
-            "🫙 <b>Возврат тары 19л</b>\n\n"
+            "🫙 <b>Возврат бутылок 19 л</b>\n\n"
             f"Вы возвращаете <b>{qty_20l} {'бутылку' if qty_20l == 1 else 'бутылки' if 2 <= qty_20l <= 4 else 'бутылок'} 19л</b>."
         )
     else:
@@ -830,7 +832,7 @@ def _return_step_view(count: int, qty_20l: int, surcharge: int):
         extra_total = surcharge * missing
         word_b = "бутылку" if missing == 1 else "бутылки" if 2 <= missing <= 4 else "бутылок"
         text = (
-            f"🫙 <b>Возврат тары 19л</b>\n\n"
+            f"🫙 <b>Возврат бутылок 19 л</b>\n\n"
             f"Вы возвращаете <b>{count} из {qty_20l}</b>.\n"
             f"За каждую невозвращённую (всего {missing} {word_b}) "
             f"к заказу будет добавлено <b>{fmt(surcharge)}</b> за бутылку."
@@ -893,7 +895,7 @@ async def _begin_return_step(target, state: FSMContext, edit: bool = False):
             word_b = "бутылку" if missing == 1 else "бутылки" if 2 <= missing <= 4 else "бутылок"
             extra_total = surcharge * missing
             msg_text = (
-                f"♻️ <b>Возврат тары 19л</b>\n\n"
+                f"♻️ <b>Возврат бутылок 19 л</b>\n\n"
                 f"Учтён возврат <b>{initial_count}</b> из <b>{qty_20l}</b>.\n"
                 f"За каждую невозвращённую (всего {missing} {word_b}) "
                 f"к заказу будет добавлено <b>{fmt(surcharge)}</b> за бутылку."

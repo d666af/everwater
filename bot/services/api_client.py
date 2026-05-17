@@ -204,7 +204,7 @@ async def mark_delivered(order_id: int, from_bot: bool = True):
 
 
 async def payment_confirmed(order_id: int):
-    return await _patch(f"/orders/{order_id}/payment_confirmed")
+    return await _patch(f"/orders/{order_id}/payment_confirmed?from_bot=true")
 
 
 async def update_order_cash_received(order_id: int):
