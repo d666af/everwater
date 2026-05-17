@@ -214,6 +214,8 @@ class BottleDeltaBody(BaseModel):
 
 
 _ACTIVE_STATUSES = [
+    OrderStatus.NEW,
+    OrderStatus.AWAITING_CONFIRMATION,
     OrderStatus.CONFIRMED,
     OrderStatus.ASSIGNED_TO_COURIER,
     OrderStatus.IN_DELIVERY,
