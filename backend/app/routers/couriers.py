@@ -96,15 +96,25 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     )
     total_delivery_revenue = float(delivery_rev_q.scalar() or 0)
 
-    # Bottle debt: bottles issued to courier minus bottles returned
-    issued_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.courier_id == courier.id,
-                WaterTransaction.transaction_type == "issue",
+    # Bottle debt: only count 19L products (match warehouse logic)
+    prod_19l_q = await db.execute(
+        select(Product.id).where(Product.volume >= 18.9)
+    )
+    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
+
+    if prod_19l_ids:
+        issued_q = await db.execute(
+            select(func.sum(WaterTransaction.quantity)).where(
+                and_(
+                    WaterTransaction.courier_id == courier.id,
+                    WaterTransaction.transaction_type == "issue",
+                    WaterTransaction.product_id.in_(prod_19l_ids),
+                )
             )
         )
-    )
+    else:
+        issued_q = None
+
     returned_q = await db.execute(
         select(func.sum(WaterTransaction.quantity)).where(
             and_(
@@ -113,7 +123,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
             )
         )
     )
-    total_issued = issued_q.scalar() or 0
+    total_issued = (issued_q.scalar() if issued_q else None) or 0
     total_returned = returned_q.scalar() or 0
     bottles_must_return = max(0, total_issued - total_returned)
 
@@ -280,44 +290,49 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
     paid_delivery_orders = sum(1 for r in rows if r["delivery_fee"] > 0)
 
-    # Warehouse transactions in the period: both issues and bottle returns
-    wh_q = await db.execute(
+    # Warehouse issues in the period (product_id is NOT NULL for issues)
+    issue_q = await db.execute(
         select(WaterTransaction, Product.name, Product.price)
         .join(Product, Product.id == WaterTransaction.product_id)
         .where(
             and_(
                 WaterTransaction.courier_id == courier_id,
-                WaterTransaction.transaction_type.in_(["issue", "bottle_return"]),
+                WaterTransaction.transaction_type == "issue",
                 WaterTransaction.created_at >= dt_from,
                 WaterTransaction.created_at <= dt_to,
             )
         )
-        .order_by(WaterTransaction.created_at)
     )
-    wh_rows = wh_q.all()
     issued_agg: dict = {}
-    returned_agg: dict = {}
-    for txn, pname, pprice in wh_rows:
+    for txn, pname, pprice in issue_q.all():
         key = pname or "—"
         qty = txn.quantity or 0
-        if txn.transaction_type == "issue":
-            if key not in issued_agg:
-                issued_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
-            issued_agg[key]["quantity"] += qty
-        else:
-            if key not in returned_agg:
-                returned_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
-            returned_agg[key]["quantity"] += qty
+        if key not in issued_agg:
+            issued_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
+        issued_agg[key]["quantity"] += qty
+
+    # Bottle returns in the period (product_id is NULL — warehouse records with no product)
+    ret_q = await db.execute(
+        select(WaterTransaction)
+        .where(
+            and_(
+                WaterTransaction.courier_id == courier_id,
+                WaterTransaction.transaction_type == "bottle_return",
+                WaterTransaction.created_at >= dt_from,
+                WaterTransaction.created_at <= dt_to,
+            )
+        )
+    )
+    total_bottle_returns_in_period = sum(r.quantity or 0 for r in ret_q.scalars().all())
 
     warehouse_received = [
         {"name": k, "quantity": v["quantity"], "price": v["price"], "total": round(v["quantity"] * v["price"], 2)}
         for k, v in issued_agg.items()
     ]
-    bottle_returns_in_period = [
-        {"name": k, "quantity": v["quantity"]}
-        for k, v in returned_agg.items()
-    ]
-    total_bottle_returns_in_period = sum(v["quantity"] for v in returned_agg.values())
+    bottle_returns_in_period = (
+        [{"name": "Бутылки 19л", "quantity": total_bottle_returns_in_period}]
+        if total_bottle_returns_in_period > 0 else []
+    )
 
     return {
         "deliveries": len(orders),
