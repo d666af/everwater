@@ -83,7 +83,7 @@ export default function Checkout() {
         })
         .then(debt => {
           setSurveyDone(debt.survey_done ?? true)
-          userStore.setBottlesOwed(debt.available ?? debt.count ?? 0)
+          userStore.setBottlesOwed(debt.count ?? 0)
         })
         .catch(console.error)
     } else if (authUser) {
@@ -93,7 +93,7 @@ export default function Checkout() {
       getBottlesOwed(authUser.id)
         .then(debt => {
           setSurveyDone(debt.survey_done ?? true)
-          userStore.setBottlesOwed(debt.available ?? debt.count ?? 0)
+          userStore.setBottlesOwed(debt.count ?? 0)
         })
         .catch(console.error)
     }
