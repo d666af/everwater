@@ -1325,11 +1325,17 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
                 pass
 
     if pay_method == "card":
+        try:
+            pay_cfg = await api.get_settings() or {}
+        except Exception:
+            pay_cfg = {}
+        card_num = pay_cfg.get("payment_card") or settings.PAYMENT_CARD
+        card_holder = pay_cfg.get("payment_holder") or settings.PAYMENT_HOLDER
         await call.message.edit_text(
             f"✅ Заказ создан!\n\n"
             f"Переведите <b>{fmt(order.get('total', 0))}</b> на карту:\n\n"
-            f"💳 <b>{settings.PAYMENT_CARD}</b>\n"
-            f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
+            f"💳 <b>{card_num}</b>\n"
+            f"Получатель: {card_holder}\n\n"
             "После оплаты нажмите кнопку ниже:",
             reply_markup=order_actions_kb(order_id),
             parse_mode="HTML",
@@ -1753,10 +1759,16 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         total = sum(_item_eff_price(v) * v.get("qty", 0) for v in cart.values())
         bonus = data.get("sub_bonus", 0)
         to_pay = max(0, total - bonus)
+        try:
+            pay_cfg = await api.get_settings() or {}
+        except Exception:
+            pay_cfg = {}
+        card_num = pay_cfg.get("payment_card") or settings.PAYMENT_CARD
+        card_holder = pay_cfg.get("payment_holder") or settings.PAYMENT_HOLDER
         await call.message.edit_text(
             f"💳 Переведите <b>{fmt(to_pay)}</b> сум на карту:\n\n"
-            f"<b>{settings.PAYMENT_CARD}</b>\n"
-            f"Получатель: {settings.PAYMENT_HOLDER}\n\n"
+            f"<b>{card_num}</b>\n"
+            f"Получатель: {card_holder}\n\n"
             f"После оплаты нажмите кнопку ниже:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="✅ Я оплатил", callback_data="sub_card_paid"),

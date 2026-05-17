@@ -279,7 +279,7 @@ export default function Checkout() {
   if (createdOrder && form.paymentMethod === 'card') return (
     <CardPayment
       settings={settings}
-      amount={finalTotal}
+      amount={createdOrder.total ?? finalTotal}
       balanceUsed={0}
       cardRemainder={0}
       onConfirm={confirmCardPayment}
