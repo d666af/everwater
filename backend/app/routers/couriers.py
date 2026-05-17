@@ -273,37 +273,51 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
             "created_at": o.created_at.strftime("%d.%m.%Y %H:%M") if o.created_at else "—",
             "confirmed_at": o.confirmed_at.strftime("%d.%m.%Y %H:%M") if o.confirmed_at else "—",
             "delivered_at": o.delivered_at.strftime("%d.%m.%Y %H:%M") if o.delivered_at else "—",
+            "delivered_at_iso": o.delivered_at.isoformat() if o.delivered_at else None,
             "rating": rating,
         })
 
     avg_rating = round(sum(rating_vals) / len(rating_vals), 2) if rating_vals else None
     paid_delivery_orders = sum(1 for r in rows if r["delivery_fee"] > 0)
 
-    # Warehouse issuances to this courier in the period (items received from warehouse)
+    # Warehouse transactions in the period: both issues and bottle returns
     wh_q = await db.execute(
         select(WaterTransaction, Product.name, Product.price)
         .join(Product, Product.id == WaterTransaction.product_id)
         .where(
             and_(
                 WaterTransaction.courier_id == courier_id,
-                WaterTransaction.transaction_type == "issue",
+                WaterTransaction.transaction_type.in_(["issue", "bottle_return"]),
                 WaterTransaction.created_at >= dt_from,
                 WaterTransaction.created_at <= dt_to,
             )
         )
+        .order_by(WaterTransaction.created_at)
     )
     wh_rows = wh_q.all()
-    wh_agg: dict = {}
+    issued_agg: dict = {}
+    returned_agg: dict = {}
     for txn, pname, pprice in wh_rows:
         key = pname or "—"
         qty = txn.quantity or 0
-        if key not in wh_agg:
-            wh_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
-        wh_agg[key]["quantity"] += qty
+        if txn.transaction_type == "issue":
+            if key not in issued_agg:
+                issued_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
+            issued_agg[key]["quantity"] += qty
+        else:
+            if key not in returned_agg:
+                returned_agg[key] = {"quantity": 0, "price": float(pprice or 0)}
+            returned_agg[key]["quantity"] += qty
+
     warehouse_received = [
         {"name": k, "quantity": v["quantity"], "price": v["price"], "total": round(v["quantity"] * v["price"], 2)}
-        for k, v in wh_agg.items()
+        for k, v in issued_agg.items()
     ]
+    bottle_returns_in_period = [
+        {"name": k, "quantity": v["quantity"]}
+        for k, v in returned_agg.items()
+    ]
+    total_bottle_returns_in_period = sum(v["quantity"] for v in returned_agg.values())
 
     return {
         "deliveries": len(orders),
@@ -318,6 +332,8 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         "total_bottles_returned": total_bottles_returned,
         "avg_rating": avg_rating,
         "warehouse_received": warehouse_received,
+        "bottle_returns_in_period": bottle_returns_in_period,
+        "total_bottle_returns_in_period": total_bottle_returns_in_period,
         "orders": rows,
     }
 
