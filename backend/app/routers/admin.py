@@ -149,6 +149,24 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
+    # Product sales breakdown for the period
+    product_sales_q = await db.execute(
+        select(
+            Product.name,
+            func.sum(OrderItem.quantity).label("qty"),
+            func.sum(OrderItem.quantity * OrderItem.price).label("total"),
+        )
+        .join(OrderItem, OrderItem.product_id == Product.id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
+        .group_by(Product.name)
+        .order_by(func.sum(OrderItem.quantity).desc())
+    )
+    product_sales = [
+        {"name": row.name, "qty": int(row.qty or 0), "total": round(float(row.total or 0), 2)}
+        for row in product_sales_q.all()
+    ]
+
     return {
         "period": period,
         "order_count": len(orders),
@@ -165,6 +183,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bonus_earned": bonus_earned,
         "bottles_surcharge_count": bottles_surcharge_count,
         "bottles_surcharge_total": bottles_surcharge_total,
+        "product_sales": product_sales,
         "bottle_debt_count": bottle_debt_count,
         "bottle_debt_value": bottle_debt_value,
         "bottle_debt_clients": client_debt_count,
