@@ -109,6 +109,7 @@ export default function CourierStats() {
     (o.items || []).forEach(it => { acc[it.name] = (acc[it.name] || 0) + it.quantity })
     return acc
   }, {})
+  const totalReturnedFromClients = deliveryRows.reduce((s, o) => s + (o.return_bottles || 0), 0)
 
   const reservedItems = (stats?.reserved_items || []).filter(i => (i.reserved || 0) > 0 || (i.available || 0) > 0)
   const hasReserved   = reservedItems.some(i => i.reserved > 0)
@@ -307,6 +308,17 @@ export default function CourierStats() {
             )
           })()}
 
+          {/* ── 6a. Returned bottles from clients ── */}
+          {totalReturnedFromClients > 0 && (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid rgba(18,184,134,0.25)`, borderLeft: '3px solid #12B886', marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#0CA678', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Возвращённые бутылки</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>Бутылки 19л · получено от клиентов</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#12B886' }}>+{totalReturnedFromClients} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
+              </div>
+            </div>
+          )}
+
           {/* ── 6b. Reserved for orders ── */}
           {hasReserved && (
             <div style={{ background: '#fff', borderRadius: 16, border: `1.5px solid rgba(230,119,0,0.3)`, borderLeft: '3px solid #E67700', marginBottom: 10, padding: '12px 16px' }}>
@@ -423,7 +435,7 @@ export default function CourierStats() {
                             {Number(o.total).toLocaleString()} сум
                           </div>
                         </div>
-                        {orderItems.length > 0 && (
+                        {(orderItems.length > 0 || o.return_bottles > 0) && (
                           <div style={{ marginTop: 6, paddingLeft: 27, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {orderItems.map((it, j) => (
                               <div key={j} style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
@@ -431,6 +443,12 @@ export default function CourierStats() {
                                 <span>{it.name}</span>
                               </div>
                             ))}
+                            {o.return_bottles > 0 && (
+                              <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
+                                <span style={{ color: '#12B886', fontWeight: 700 }}>+{o.return_bottles} шт.</span>
+                                <span>Возврат бутылок</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -442,13 +460,18 @@ export default function CourierStats() {
                     <span style={{ fontSize: 12, color: TEXT2 }}>{deliveryRows.length} {plural(deliveryRows.length, 'доставка', 'доставки', 'доставок')}</span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{Number(Math.round(deliveryTotal)).toLocaleString()} сум</span>
                   </div>
-                  {Object.keys(deliveryItemTotals).length > 0 && (
+                  {(Object.keys(deliveryItemTotals).length > 0 || totalReturnedFromClients > 0) && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {Object.entries(deliveryItemTotals).map(([name, qty]) => (
                         <div key={name} style={{ fontSize: 11, color: TEXT2, background: '#F2F2F7', borderRadius: 7, padding: '3px 8px' }}>
                           <span style={{ color: '#E03131', fontWeight: 700 }}>−{qty}</span> {name}
                         </div>
                       ))}
+                      {totalReturnedFromClients > 0 && (
+                        <div style={{ fontSize: 11, color: TEXT2, background: '#E6FCF5', borderRadius: 7, padding: '3px 8px', border: '1px solid rgba(18,184,134,0.2)' }}>
+                          <span style={{ color: '#12B886', fontWeight: 700 }}>+{totalReturnedFromClients}</span> Возврат бутылок
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

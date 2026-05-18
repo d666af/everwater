@@ -43,6 +43,21 @@ async def _tg(chat_id: int, text: str):
         pass
 
 
+async def _tg_delete_message(chat_id: int, message_id: int):
+    """Delete a Telegram message silently."""
+    from app.config import settings as cfg
+    import aiohttp
+    if not chat_id or not message_id:
+        return
+    url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/deleteMessage"
+    try:
+        async with aiohttp.ClientSession() as s:
+            await s.post(url, json={"chat_id": chat_id, "message_id": message_id},
+                         timeout=aiohttp.ClientTimeout(total=5))
+    except Exception:
+        pass
+
+
 async def _tg_send(chat_id: int, text: str, reply_markup: dict | None = None,
                    parse_mode: str | None = None) -> int | None:
     """Send Telegram message, return message_id on success."""
@@ -724,6 +739,44 @@ async def report_payment_issue(order_id: int, body: PaymentIssueBody, db: AsyncS
     return {"ok": True}
 
 
+class PaymentCollectedBody(BaseModel):
+    collected: bool = True
+
+
+@router.patch("/{order_id}/payment_collected")
+async def set_payment_collected(order_id: int, body: PaymentCollectedBody,
+                                db: AsyncSession = Depends(get_db)):
+    """Record whether courier collected payment. Deletes the pending bot payment prompt if any."""
+    order = await _get_order(order_id, db)
+    order.payment_collected = body.collected
+
+    # Delete the bot payment-prompt message if we know its id
+    prompt_msg_id = order.payment_prompt_msg_id
+    courier_tg = order.courier.telegram_id if order.courier else None
+
+    await db.commit()
+
+    if prompt_msg_id and courier_tg:
+        await _tg_delete_message(courier_tg, prompt_msg_id)
+
+    return {"ok": True}
+
+
+class PaymentPromptBody(BaseModel):
+    message_id: int
+
+
+@router.post("/{order_id}/payment_prompt")
+async def store_payment_prompt(order_id: int, body: PaymentPromptBody,
+                               db: AsyncSession = Depends(get_db)):
+    """Store the Telegram message_id of the bot's payment prompt so it can be deleted later."""
+    from sqlalchemy import update as sa_update
+    await db.execute(sa_update(Order).where(Order.id == order_id)
+                     .values(payment_prompt_msg_id=body.message_id))
+    await db.commit()
+    return {"ok": True}
+
+
 @router.patch("/{order_id}/courier_accept")
 async def courier_accept(order_id: int, db: AsyncSession = Depends(get_db)):
     order = await _get_order(order_id, db)
@@ -1173,6 +1226,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         cash_collected=order.cash_collected,
         rejection_reason=order.rejection_reason,
         payment_confirmed=order.payment_confirmed,
+        payment_collected=order.payment_collected,
         delivery_fee=order.delivery_fee or 0.0,
         cancellation_reason=order.cancellation_reason,
         cancellation_penalty=order.cancellation_penalty or 0.0,

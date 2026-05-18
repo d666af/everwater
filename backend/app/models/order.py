@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    String, Float, Boolean, DateTime, Text, Integer,
+    String, Float, Boolean, DateTime, Text, Integer, BigInteger,
     ForeignKey, Enum as SAEnum
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -60,6 +60,10 @@ class Order(Base):
     # Admin
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Courier payment collection tracking (nullable: None=not yet answered)
+    payment_collected: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    payment_prompt_msg_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     # Cancellation
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
