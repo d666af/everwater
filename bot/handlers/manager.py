@@ -270,7 +270,7 @@ def _mgr_order_kb(o: dict):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@router.message(F.text == "📋 Заказы")
+@router.message(F.text == "📋 Заказы", _IsManagerFilter())
 async def mgr_all_orders(message: Message):
     if not await is_manager(message.from_user.id):
         return
@@ -619,7 +619,7 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "👥 Клиенты")
+@router.message(F.text == "👥 Клиенты", _IsManagerFilter())
 async def mgr_clients(message: Message, state: FSMContext):
     if not await is_manager(message.from_user.id):
         return
@@ -910,7 +910,7 @@ async def _mgr_subs_menu(message_or_call, is_call: bool = False):
         await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-@router.message(F.text == "📅 Подписки")
+@router.message(F.text == "📅 Подписки", _IsManagerFilter())
 async def mgr_subs_overview(message: Message):
     if not await is_manager(message.from_user.id):
         return

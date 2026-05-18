@@ -14,6 +14,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import settings
 
 router = Router()
+router.message.filter(lambda msg: is_admin(msg.from_user.id))
 
 STATUS_RU = {
     "new": "🆕 Новый",
