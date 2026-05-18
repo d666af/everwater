@@ -78,14 +78,18 @@ function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
           {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-            <span style={{ fontSize: 11, background: '#F0FFF4', color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-              {c.delivery_count || 0} доставок
-            </span>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/><circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{c.delivery_count || 0}</span>
+              <span style={{ fontSize: 11, color: TEXT2 }}>доставок</span>
+            </div>
             {myActiveOrders.length > 0 && (
-              <span style={{ fontSize: 11, background: `${C}15`, color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-                {myActiveOrders.length} в работе
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{myActiveOrders.length}</span>
+                <span style={{ fontSize: 11, color: TEXT2 }}>в работе</span>
+              </div>
             )}
           </div>
         </div>
