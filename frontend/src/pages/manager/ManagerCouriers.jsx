@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
 
 const C = '#8DC63F'
@@ -84,86 +84,65 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
     getCourierDetails(c.id).then(setDetails).catch(() => {})
   }, [c.id])
 
-  const debt = details?.bottles_must_return || 0
   const rating = details?.avg_rating > 0 ? Number(details.avg_rating).toFixed(1) : '—'
-  const totalDeliveries = details?.delivery_count ?? '—'
+  const totalDeliveries = details?.total_deliveries ?? (c.delivery_count ?? '—')
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={toggleExpand}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {(c.name || 'К')[0]}
         </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
-          {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/><circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/></svg>
-              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{c.delivery_count || 0}</span>
-              <span style={{ fontSize: 11, color: TEXT2 }}>доставок</span>
-            </div>
-            {myActiveOrders.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{myActiveOrders.length}</span>
-                <span style={{ fontSize: 11, color: TEXT2 }}>в работе</span>
-              </div>
-            )}
-          </div>
-
-          <button
-            style={{
-              height: 34, padding: '0 10px', borderRadius: 10, flexShrink: 0,
-              border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD,
-              display: 'flex', alignItems: 'center', gap: 5,
-              cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            }}
-            onClick={() => setShowReport(true)}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-              <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            Отчёт
-          </button>
+          {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{c.phone}</div>}
         </div>
+        <button
+          style={{
+            height: 34, padding: '0 12px', borderRadius: 10, flexShrink: 0,
+            border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD,
+            display: 'flex', alignItems: 'center', gap: 5,
+            cursor: 'pointer', fontSize: 12, fontWeight: 700,
+          }}
+          onClick={() => setShowReport(true)}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Отчёт
+        </button>
+      </div>
 
-        {/* Stat chips */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" />
-          <StatChip
-            icon="🫙" value={debt > 0 ? `${debt} шт.` : '0'}
-            label="Долг" color={debt > 0 ? '#E03131' : TEXT2}
-            bg={debt > 0 ? '#FFF5F5' : '#F8F9FA'}
-            borderColor={debt > 0 ? 'rgba(224,49,49,0.2)' : undefined}
-          />
-          <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" />
-        </div>
+      {/* Stat chips row */}
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>
+        <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" />
+        <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" />
+      </div>
 
-        {/* Deactivate / Activate */}
-        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
-          {c.is_active ? (
-            !confirming ? (
-              <button
-                style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
-                onClick={() => setConfirming(true)}
-              >Деактивировать</button>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {c.name}?</span>
-                <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                  onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
-                <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
-                  onClick={() => setConfirming(false)}>Нет</button>
-              </div>
-            )
-          ) : (
+      {/* Deactivate / Activate */}
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
+        {c.is_active ? (
+          !confirming ? (
             <button
-              style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
-              onClick={() => onActivate(c.id)}
-            >Активировать</button>
-          )}
-        </div>
+              style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
+              onClick={() => setConfirming(true)}
+            >Деактивировать</button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {c.name}?</span>
+              <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
+              <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
+                onClick={() => setConfirming(false)}>Нет</button>
+            </div>
+          )
+        ) : (
+          <button
+            style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+            onClick={() => onActivate(c.id)}
+          >Активировать</button>
+        )}
       </div>
 
       {showReport && <CourierReportModal courierId={c.id} courierName={c.name} onClose={() => setShowReport(false)} />}
