@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
@@ -12,7 +12,7 @@ from keyboards.manager import (
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text
+from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text, _order_detail_lines, _notify_order_staff
 from config import settings
 
 router = Router()
@@ -37,6 +37,11 @@ def fmt(amount):
 async def is_manager(telegram_id: int) -> bool:
     mgr = await api.get_manager_by_telegram(telegram_id)
     return mgr is not None
+
+
+class _IsManagerFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        return await is_manager(message.from_user.id)
 
 
 class MgrReject(StatesGroup):
@@ -233,14 +238,12 @@ async def mgr_confirm(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     kb = mgr_courier_select_kb(couriers, order_id)
+    body = _order_detail_lines(order)
+    confirm_text = f"✅ <b>Заказ подтверждён</b>\n\n{body}\n\nВыберите курьера:"
     try:
-        await call.message.edit_text(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
-        )
+        await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
-        )
+        await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
 
@@ -391,19 +394,16 @@ async def mgr_set_courier(call: CallbackQuery):
     else:
         client_err = "нет telegram_id у клиента"
 
-    result_text = f"✅ Курьер назначен на заказ #{order_id}."
-    if courier_notified:
-        result_text += "\n📨 Курьер уведомлён."
-    else:
-        result_text += f"\n⚠️ Курьер НЕ уведомлён ({courier_err})."
-    if client_notified:
-        result_text += "\n📨 Клиент уведомлён."
-    else:
-        result_text += f"\n⚠️ Клиент НЕ уведомлён ({client_err})."
+    courier_name = courier["name"] if courier else "?"
+    courier_phone = courier.get("phone", "") if courier else ""
+    phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
+    body = _order_detail_lines(order)
+    result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
     try:
-        await call.message.edit_text(result_text)
+        await call.message.edit_text(result_text, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text)
+        await call.message.answer(result_text, parse_mode="HTML")
+    await _notify_order_staff(call.bot, call.from_user.id, result_text)
     await call.answer()
 
 
@@ -558,10 +558,8 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "📊 Статистика", _IsManagerFilter())
 async def mgr_stats_menu(message: Message):
-    if not await is_manager(message.from_user.id):
-        return
     await message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
 
 
@@ -882,10 +880,8 @@ async def mgr_sub_create_order(call: CallbackQuery):
 from aiogram.types import ReplyKeyboardRemove
 
 
-@router.message(F.text == "📝 Создать заказ")
+@router.message(F.text == "📝 Создать заказ", _IsManagerFilter())
 async def mgr_create_order_start(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
-        return
     await state.update_data(mco_items={})
     await state.set_state(MgrOrderCreate.waiting_phone)
     await message.answer("Введите номер телефона клиента:", reply_markup=ReplyKeyboardRemove())

@@ -803,10 +803,19 @@ async def _begin_address_step(target, state: FSMContext, edit: bool = False):
     await msg.answer(body, reply_markup=kb)
 
 
+def _is_setting_on(cfg: dict, key: str, default: bool = True) -> bool:
+    v = cfg.get(key)
+    if v is None:
+        return default
+    return str(v).lower() not in ("false", "0", "нет", "off", "no")
+
+
 def _per_bottle_surcharge(cfg: dict, product: dict | None = None) -> int:
     """How much extra (in сум) the customer pays for each NON-returned 19L
     bottle in the order. Prefers product.bottle_surcharge; falls back to
     the global setting (interpreted as fixed amount or %)."""
+    if not _is_setting_on(cfg, "bottle_bonus_enabled"):
+        return 0
     if product:
         per_unit = product.get("bottle_surcharge") if isinstance(product, dict) else getattr(product, "bottle_surcharge", None)
         if per_unit and per_unit > 0:
@@ -1115,6 +1124,14 @@ async def _ask_bonus(message: Message, state: FSMContext):
     data = await state.get_data()
     bonus = float(data.get("co_user", {}).get("bonus_points") or 0)
     if bonus >= 1:
+        try:
+            cfg = await api.get_settings() or {}
+        except Exception:
+            cfg = {}
+        if not _is_setting_on(cfg, "bonus_program_enabled"):
+            await state.update_data(co_bonus=0)
+            await _ask_payment(message, state)
+            return
         await state.set_state(CheckoutState.asking_bonus)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"ub:{int(bonus)}"),
@@ -1297,7 +1314,11 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}"
         )
         sent_msgs = []
+        seen_tg: set[int] = set()
         for admin_id in settings.ADMIN_IDS:
+            if admin_id in seen_tg:
+                continue
+            seen_tg.add(admin_id)
             try:
                 msg = await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
                 sent_msgs.append({"chat_id": admin_id, "message_id": msg.message_id})
@@ -1306,10 +1327,14 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         managers = await api.get_managers()
         for mgr in managers:
             if mgr.get("is_active") and mgr.get("telegram_id"):
+                tid = int(mgr["telegram_id"])
+                if tid in seen_tg:
+                    continue
+                seen_tg.add(tid)
                 try:
-                    msg = await call.bot.send_message(mgr["telegram_id"], notification_text,
+                    msg = await call.bot.send_message(tid, notification_text,
                                                       reply_markup=order_confirm_kb(order_id))
-                    sent_msgs.append({"chat_id": mgr["telegram_id"], "message_id": msg.message_id})
+                    sent_msgs.append({"chat_id": tid, "message_id": msg.message_id})
                 except Exception:
                     pass
         if sent_msgs:
@@ -1700,17 +1725,22 @@ async def _sub_ask_bonus(message: Message, state: FSMContext):
     user = data.get("sub_user") or await api.get_user(message.from_user.id)
     bonus = int(user.get("bonus_points", 0)) if user else 0
     if bonus > 0:
-        await state.set_state(SubscriptionState.asking_bonus)
-        await message.answer(
-            f"У вас {fmt(bonus)} бонусных баллов. Использовать при оплате подписки?",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"sub_ub:{bonus}"),
-                InlineKeyboardButton(text="Не использовать", callback_data="sub_ub:0"),
-            ]]),
-        )
-    else:
-        await state.update_data(sub_bonus=0)
-        await _sub_ask_payment(message, state)
+        try:
+            cfg = await api.get_settings() or {}
+        except Exception:
+            cfg = {}
+        if _is_setting_on(cfg, "bonus_program_enabled"):
+            await state.set_state(SubscriptionState.asking_bonus)
+            await message.answer(
+                f"У вас {fmt(bonus)} бонусных баллов. Использовать при оплате подписки?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"sub_ub:{bonus}"),
+                    InlineKeyboardButton(text="Не использовать", callback_data="sub_ub:0"),
+                ]]),
+            )
+            return
+    await state.update_data(sub_bonus=0)
+    await _sub_ask_payment(message, state)
 
 
 @router.callback_query(SubscriptionState.asking_bonus, F.data.startswith("sub_ub:"))

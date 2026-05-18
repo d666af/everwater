@@ -83,8 +83,8 @@ def courier_menu_kb() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="📋 Мои заказы"),
                 KeyboardButton(text="🗺 Карта заказов", web_app=WebAppInfo(url=f"{base}/courier/map")),
             ],
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📈 Отчет")],
-            [KeyboardButton(text="📝 Создать заказ")],
+            [KeyboardButton(text="📊 Мои данные")],
+            [KeyboardButton(text="📝 Новый заказ")],
         ],
         resize_keyboard=True,
     )

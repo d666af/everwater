@@ -69,9 +69,13 @@ async def edit_all_notifications(msg_ids_json: str | None, text: str) -> None:
 
 
 async def notify_all(admin_ids: list[int], managers, text: str, reply_markup=None) -> str:
-    """Send to all admins + active managers, return JSON list of {chat_id, message_id}."""
+    """Send to all admins + active managers (deduplicated), return JSON list of {chat_id, message_id}."""
     msg_ids = []
+    seen: set[int] = set()
     for aid in admin_ids:
+        if aid in seen:
+            continue
+        seen.add(aid)
         result = await tg_send_capture(aid, text, reply_markup)
         if result:
             msg_ids.append(result)
@@ -79,7 +83,11 @@ async def notify_all(admin_ids: list[int], managers, text: str, reply_markup=Non
         tg = m.telegram_id if hasattr(m, "telegram_id") else m.get("telegram_id")
         active = m.is_active if hasattr(m, "is_active") else m.get("is_active", True)
         if active and tg:
-            result = await tg_send_capture(tg, text, reply_markup)
+            tid = int(tg)
+            if tid in seen:
+                continue
+            seen.add(tid)
+            result = await tg_send_capture(tid, text, reply_markup)
             if result:
                 msg_ids.append(result)
     return json.dumps(msg_ids)

@@ -29,14 +29,16 @@ export default function AdminSettings() {
     payment_holder: '',
     bottle_discount_type: 'fixed',
     bottle_discount_value: 50,
+    bottle_bonus_enabled: true,
     cashback_percent: 5,
+    bonus_program_enabled: true,
+    bonus_program_type: 'percent',
     bottle_return_buttons_visible: true,
     bottle_return_mode: 'max',
     accepted_bottle_companies: [],
     require_bottle_brand_selection: false,
     delivery_enabled: true,
     delivery_price: 0,
-    bonus_per_bottle: 100,
     bonus_expiry_days: 60,
     cancellation_penalty_pct: 10,
     late_order_hour: 18,
@@ -401,29 +403,6 @@ export default function AdminSettings() {
           </div>
         </Section>
 
-        {/* Cashback */}
-        <Section
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                stroke="#E67700" strokeWidth="1.8" strokeLinejoin="round"/>
-            </svg>
-          }
-          title="Бонусная программа"
-          hint="Клиент получает бонусные баллы после успешной доставки"
-        >
-          <div style={s.field}>
-            <div style={s.label}>Кэшбэк с заказа (%)</div>
-            <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" max="100" {...f('cashback_percent')} />
-          </div>
-          <div style={s.preview}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
-              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            Пример: заказ на 100 000 сум — клиент получит <b>{form.cashback_percent * 1000} сум</b> бонусами
-          </div>
-        </Section>
 
         {/* Delivery */}
         <Section
@@ -483,7 +462,7 @@ export default function AdminSettings() {
           </div>
         </Section>
 
-        {/* Bonus program extended */}
+        {/* Bonuses combined */}
         <Section
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -491,28 +470,95 @@ export default function AdminSettings() {
                 stroke="#E67700" strokeWidth="1.8" strokeLinejoin="round"/>
             </svg>
           }
-          title="Начисление и срок бонусов"
-          hint="Бонусы за 19л бутылки и срок их действия"
+          title="Бонусы"
+          hint="Кэшбек с заказов, бонус за возврат бутылок и срок действия"
         >
-          <div style={s.formGrid}>
-            <div style={s.field}>
-              <div style={s.label}>Бонус за бутылку 19л (сум)</div>
-              <input style={s.input} type="number" min="0" {...f('bonus_per_bottle')} />
+          {/* Cashback row */}
+          <div style={s.bonusBlock}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Кэшбек с заказа</div>
+                <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>Бонусные баллы клиенту за успешный заказ</div>
+              </div>
+              <button
+                onClick={() => setForm(p => ({ ...p, bonus_program_enabled: !p.bonus_program_enabled }))}
+                style={{ width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer', background: form.bonus_program_enabled ? C : '#ddd', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
+              >
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: form.bonus_program_enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+              </button>
             </div>
-            <div style={s.field}>
-              <div style={s.label}>Срок действия бонусов (дней)</div>
-              <input style={s.input} type="number" min="0" {...f('bonus_expiry_days')} />
-            </div>
+            {form.bonus_program_enabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['fixed', 'Сум'], ['percent', '%']].map(([val, lbl]) => (
+                    <button key={val} onClick={() => setForm(p => ({ ...p, bonus_program_type: val }))}
+                      style={{ padding: '8px 16px', borderRadius: 8, border: `1.5px solid ${form.bonus_program_type === val ? C : BORDER}`, background: form.bonus_program_type === val ? '#F0FFF0' : '#fff', color: form.bonus_program_type === val ? C : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <input style={{ ...s.input, maxWidth: 140 }} type="number" min="0" max={form.bonus_program_type === 'percent' ? 100 : undefined}
+                  value={form.cashback_percent} onChange={e => setForm(p => ({ ...p, cashback_percent: e.target.value }))} />
+                <span style={{ fontSize: 13, color: TEXT2 }}>{form.bonus_program_type === 'percent' ? '%' : 'сум'}</span>
+              </div>
+            )}
           </div>
+
+          <div style={s.bonusDivider} />
+
+          {/* Expiry row */}
+          <div style={s.field}>
+            <div style={s.label}>Срок действия бонусов (дней, 0 = не сгорают)</div>
+            <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" {...f('bonus_expiry_days')} />
+          </div>
+
+          <div style={s.bonusDivider} />
+
+          {/* Bottle bonus row */}
+          <div style={s.bonusBlock}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Бонус за бутылку</div>
+                <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>Начисляется за каждую возвращённую 19л бутылку</div>
+              </div>
+              <button
+                onClick={() => setForm(p => ({ ...p, bottle_bonus_enabled: !p.bottle_bonus_enabled }))}
+                style={{ width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer', background: form.bottle_bonus_enabled ? C : '#ddd', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
+              >
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: form.bottle_bonus_enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+              </button>
+            </div>
+            {form.bottle_bonus_enabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[['fixed', 'Сум'], ['percent', '%']].map(([val, lbl]) => (
+                    <button key={val} onClick={() => setForm(p => ({ ...p, bottle_discount_type: val }))}
+                      style={{ padding: '8px 16px', borderRadius: 8, border: `1.5px solid ${form.bottle_discount_type === val ? C : BORDER}`, background: form.bottle_discount_type === val ? '#F0FFF0' : '#fff', color: form.bottle_discount_type === val ? C : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <input style={{ ...s.input, maxWidth: 140 }} type="number" min="0" max={form.bottle_discount_type === 'percent' ? 100 : undefined}
+                  value={form.bottle_discount_value} onChange={e => setForm(p => ({ ...p, bottle_discount_value: e.target.value }))} />
+                <span style={{ fontSize: 13, color: TEXT2 }}>{form.bottle_discount_type === 'percent' ? '%' : 'сум'}</span>
+              </div>
+            )}
+          </div>
+
           <div style={s.preview}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            За каждую бутылку 19л — <b>{Number(form.bonus_per_bottle).toLocaleString()} бонусов</b>
+            {form.bonus_program_enabled
+              ? <>Кэшбек: <b>{form.cashback_percent}{form.bonus_program_type === 'percent' ? '%' : ' сум'}</b> с заказа. </>
+              : <span style={{ color: TEXT2 }}>Кэшбек выключен. </span>}
+            {form.bottle_bonus_enabled
+              ? <>Бутылка: <b>{Number(form.bottle_discount_value).toLocaleString()}{form.bottle_discount_type === 'percent' ? '%' : ' сум'}</b>. </>
+              : <span style={{ color: TEXT2 }}>Бонус за бутылку выключен. </span>}
             {Number(form.bonus_expiry_days) > 0
-              ? <>, срок <b>{form.bonus_expiry_days} дн.</b></>
-              : <>, бонусы не сгорают</>}
+              ? <>Срок: <b>{form.bonus_expiry_days} дн.</b></>
+              : <>Бонусы не сгорают.</>}
           </div>
         </Section>
 
@@ -748,6 +794,9 @@ const s = {
     fontSize: 13, color: TEXT2, background: '#F0FFF0',
     borderRadius: 10, padding: '10px 14px',
   },
+
+  bonusBlock: { display: 'flex', flexDirection: 'column', gap: 12 },
+  bonusDivider: { height: 1, background: BORDER, margin: '2px 0' },
 
   errorMsg: { color: '#E03131', fontSize: 13, fontWeight: 500 },
   successMsg: {
