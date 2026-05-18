@@ -248,6 +248,7 @@ def calc_bottle_surcharge(items_data: list, return_count: int, cfg: dict) -> flo
 @router.post("/", response_model=OrderOut)
 async def create_order(
     data: OrderCreate,
+    from_bot: bool = False,
     db: AsyncSession = Depends(get_db),
     x_idempotency_key: str | None = Header(default=None),
 ):
@@ -490,28 +491,28 @@ async def payment_confirmed(order_id: int, from_bot: bool = False, db: AsyncSess
         if new_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
 
-    from app.config import settings as cfg
-    from app.models.manager import Manager
-    from app.services.tg_notify import notify_all
-    site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
-    text = (
-        f"🆕 Новый заказ!\n"
-        f"Клиент: {client_name} | {client_phone}\n"
-        f"Адрес: {order_addr}\n"
-        f"Заказ: {items_text}\n"
-        f"Сумма: {order_total:,} сум\n"
-        f"Оплата: {pay_label}"
-    )
-    kb = {"inline_keyboard": [
-        [{"text": "✅ Подтвердить", "callback_data": f"admin:confirm:{oid}"},
-         {"text": "❌ Отклонить", "callback_data": f"admin:reject:{oid}"}],
-        [{"text": "🌐 Заказ на сайте", "url": site_url}],
-    ]}
-    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
-
-    await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
-    await db.commit()
+    if not from_bot:
+        from app.config import settings as cfg
+        from app.models.manager import Manager
+        from app.services.tg_notify import notify_all
+        site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+        text = (
+            f"🆕 Новый заказ!\n"
+            f"Клиент: {client_name} | {client_phone}\n"
+            f"Адрес: {order_addr}\n"
+            f"Заказ: {items_text}\n"
+            f"Сумма: {order_total:,} сум\n"
+            f"Оплата: {pay_label}"
+        )
+        kb = {"inline_keyboard": [
+            [{"text": "✅ Подтвердить", "callback_data": f"admin:confirm:{oid}"},
+             {"text": "❌ Отклонить", "callback_data": f"admin:reject:{oid}"}],
+            [{"text": "🌐 Заказ на сайте", "url": site_url}],
+        ]}
+        mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+        msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
+        await db.commit()
 
     return {"ok": True}
 
@@ -549,15 +550,22 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     # Capture everything needed for notifications BEFORE commit
     # (after commit SQLAlchemy expires all attributes → MissingGreenlet on lazy access)
     client_tg = order.user.telegram_id if order.user else None
+    client_name = order.user.name if order.user else "—"
     old_msg_id = order.client_status_msg_id
+    notification_msg_ids = order.notification_msg_ids
+    items_bullets = "\n".join(
+        f"  • {i.product.name} {i.quantity} шт." for i in order.items if i.product
+    ) or "—"
     items = _order_items_text(order.items)
     items_data_for_stock = [(i.product, i.quantity) for i in order.items if i.product]
     order_address = order.address
     order_phone = order.recipient_phone
     order_time = order.delivery_time or "—"
     order_total = int(order.total)
+    order_payment = order.payment_method or "cash"
     courier_tg = courier.telegram_id
     courier_name = courier.name
+    courier_phone = courier.phone or ""
     oid = order.id
 
     cfg = await get_all_settings(db)
@@ -587,6 +595,20 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     await _reserve_inventory(order, db)
     await db.commit()
+
+    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "⚖️ Баланс", "bonus": "🎁 Бонусы"}
+    pay_label_str = _pay_labels.get(order_payment, order_payment)
+    c_phone_part = f"  |  {courier_phone}" if courier_phone else ""
+    sync_text = (
+        f"✅ Курьер {courier_name} назначен{c_phone_part}\n\n"
+        f"👤 {client_name}  |  {order_phone}\n"
+        f"📍 {order_address}\n\n"
+        f"Товары:\n{items_bullets}\n"
+        f"💰 {order_total:,} сум  |  {pay_label_str}\n"
+        f"🚴 {courier_name}{c_phone_part}"
+    )
+    from app.services.tg_notify import edit_all_notifications
+    await edit_all_notifications(notification_msg_ids, sync_text)
 
     if not from_bot:
         eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
