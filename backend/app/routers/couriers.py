@@ -1033,6 +1033,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             courier_phone_m = manager_assigned_courier.phone or ""
 
             items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            if missing_m > 0 and bottle_surcharge > 0:
+                items_lines_c += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
             courier_text = (
                 f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
                 f"📍 {body.address}\n"
@@ -1082,6 +1084,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум"
                     for p, q in items_data
                 ) if items_data else "  —"
+                if missing_m > 0 and bottle_surcharge > 0:
+                    items_lines_fmt += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
                 await _tg(client_tg, (
                     f"✅ Для вас создан заказ!\n\n"
                     f"Состав:\n{items_lines_fmt}"
