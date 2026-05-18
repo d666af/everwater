@@ -1148,3 +1148,85 @@ async def cron_mark_subscription_reminded(body: MarkSubRemindedBody, db: AsyncSe
         sub.reminder_sent_at = datetime.utcnow()
         await db.commit()
     return {"ok": True}
+
+
+# ─── Coolers ─────────────────────────────────────────────────────────────────
+
+from app.models.cooler import Cooler, CoolerPayment
+from sqlalchemy.orm import selectinload as _sil
+
+
+def _cooler_out(c: Cooler) -> dict:
+    total_paid = sum(p.amount for p in c.payments)
+    remaining = max(0.0, c.price - total_paid)
+    return {
+        "id": c.id,
+        "user_id": c.user_id,
+        "name": c.name,
+        "price": c.price,
+        "total_paid": total_paid,
+        "remaining": remaining,
+        "created_at": c.created_at.isoformat(),
+        "payments": [
+            {"id": p.id, "amount": p.amount, "note": p.note,
+             "created_at": p.created_at.isoformat()}
+            for p in c.payments
+        ],
+    }
+
+
+@router.get("/users/{user_id}/coolers")
+async def list_user_coolers(user_id: int, db: AsyncSession = Depends(get_db)):
+    q = await db.execute(
+        select(Cooler).where(Cooler.user_id == user_id)
+        .options(_sil(Cooler.payments))
+        .order_by(Cooler.created_at.desc())
+    )
+    return [_cooler_out(c) for c in q.scalars().all()]
+
+
+class CoolerBody(BaseModel):
+    name: str
+    price: float = 0.0
+
+
+@router.post("/users/{user_id}/coolers")
+async def add_user_cooler(user_id: int, body: CoolerBody, db: AsyncSession = Depends(get_db)):
+    c = Cooler(user_id=user_id, name=body.name.strip(), price=body.price)
+    db.add(c)
+    await db.commit()
+    await db.refresh(c)
+    c.payments = []
+    return _cooler_out(c)
+
+
+@router.delete("/users/{user_id}/coolers/{cooler_id}")
+async def remove_user_cooler(user_id: int, cooler_id: int, db: AsyncSession = Depends(get_db)):
+    c = (await db.execute(
+        select(Cooler).where(Cooler.id == cooler_id, Cooler.user_id == user_id)
+    )).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "Cooler not found")
+    await db.delete(c)
+    await db.commit()
+    return {"ok": True}
+
+
+class CoolerPaymentBody(BaseModel):
+    amount: float
+    note: str | None = None
+
+
+@router.post("/coolers/{cooler_id}/payments")
+async def add_cooler_payment(cooler_id: int, body: CoolerPaymentBody, db: AsyncSession = Depends(get_db)):
+    c = (await db.execute(
+        select(Cooler).where(Cooler.id == cooler_id).options(_sil(Cooler.payments))
+    )).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "Cooler not found")
+    p = CoolerPayment(cooler_id=cooler_id, amount=body.amount, note=body.note)
+    db.add(p)
+    await db.commit()
+    await db.refresh(p)
+    c.payments.append(p)
+    return _cooler_out(c)

@@ -879,6 +879,14 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     items_lines = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
     total_int = int(total)
 
+    # Map URL: prefer lat/lng, fall back to address string
+    def _map_url(addr, lat, lng):
+        from urllib.parse import quote as _uq
+        if lat and lng:
+            return f"https://maps.google.com/?q={lat},{lng}"
+        return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
+
+    note_line = f"\n🏠 {body.note}" if body.note else ""
     client_tg = user.telegram_id if user else None
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
 
@@ -894,14 +902,14 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             await _tg(assigned_courier_r.telegram_id, (
                 f"♻️ Возврат бутылок оформлен!\n\n"
                 f"👤 {client_identity_r}\n"
-                f"📍 {body.address}\n"
+                f"📍 {body.address}{note_line}\n"
                 f"Бутылки 19л: {body.return_bottles_count} шт."
             ))
             extra_line = f"\nКурьер: {assigned_courier_r.name} ({assigned_courier_r.phone or '—'})"
             info_text_r = (
                 f"♻️ Возврат бутылок\n"
                 f"Клиент: {client_identity_r}\n"
-                f"Адрес: {body.address}\n"
+                f"Адрес: {body.address}{note_line}\n"
                 f"Бутылки 19л: {body.return_bottles_count} шт."
                 f"{extra_line}"
             )
@@ -918,7 +926,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             info_text_r = (
                 f"♻️ Возврат бутылок (нужен курьер)\n"
                 f"Клиент: {client_identity_r}\n"
-                f"Адрес: {body.address}\n"
+                f"Адрес: {body.address}{note_line}\n"
                 f"Бутылки 19л: {body.return_bottles_count} шт."
                 f"{mgr_line}"
             )
@@ -944,7 +952,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             items_lines_c += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n(bottle_surcharge)} сум"
         courier_text = (
             f"🚴 <b>Вы создали новый заказ!</b>\n\n"
-            f"📍 {body.address}\n"
+            f"📍 {body.address}{note_line}\n"
             f"👤 {client_phone_display}\n\n"
             f"Состав:\n{items_lines_c}"
         )
@@ -953,8 +961,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         courier_text += f"\n\nИтого: {_fmt_n(total_int)} сум"
         from urllib.parse import quote as url_quote
         kb_rows = []
-        if body.address:
-            kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={url_quote(body.address)}"}])
+        _m = _map_url(body.address, body.latitude, body.longitude)
+        if _m:
+            kb_rows.append([{"text": "🗺 На карте", "url": _m}])
         kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
@@ -998,7 +1007,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         info_text = (
             f"🆕 Новый заказ! Создан курьером {courier_name}\n"
             f"Клиент: {client_identity}\n"
-            f"Адрес: {body.address}\n\n"
+            f"Адрес: {body.address}{note_line}\n\n"
             f"Состав:\n{admin_items_lines}"
             f"{return_block_adm}\n\n"
             f"Сумма: {_fmt_n3(total_int)} сум\n\n"
@@ -1037,7 +1046,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 items_lines_c += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
             courier_text = (
                 f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
-                f"📍 {body.address}\n"
+                f"📍 {body.address}{note_line}\n"
                 f"👤 {mgr_client_identity}\n\n"
                 f"Состав:\n{items_lines_c}"
                 f"{mgr_return_block}\n\n"
@@ -1045,8 +1054,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             )
             from urllib.parse import quote as url_quote
             kb_rows = []
-            if body.address:
-                kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={url_quote(body.address)}"}])
+            _m = _map_url(body.address, body.latitude, body.longitude)
+            if _m:
+                kb_rows.append([{"text": "🗺 На карте", "url": _m}])
             kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
             await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
 
@@ -1067,7 +1077,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             info_text = (
                 f"🆕 Новый заказ! Создан {role_label}\n"
                 f"Клиент: {mgr_client_identity}\n"
-                f"Адрес: {body.address}\n\n"
+                f"Адрес: {body.address}{note_line}\n\n"
                 f"Состав:\n{mgr_items_lines}"
                 f"{mgr_return_block}\n\n"
                 f"Сумма: {_fmt_nm(total_int)} сум\n\n"
@@ -1101,7 +1111,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             text = (
                 f"🆕 Новый заказ! Создан {role_label}\n"
                 f"Клиент: {mgr_client_identity}\n"
-                f"Адрес: {body.address}\n\n"
+                f"Адрес: {body.address}{note_line}\n\n"
                 f"Состав:\n{mgr_items_lines}"
                 f"{mgr_return_block}\n\n"
                 f"Сумма: {_fmt_nm(total_int)} сум\n\n"

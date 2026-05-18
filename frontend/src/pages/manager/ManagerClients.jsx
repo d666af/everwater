@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, confirmTopup, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler } from '../../api'
+import { getAdminUsers, getUserOrders, confirmTopup, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -29,7 +29,7 @@ const STATUS_STYLE = {
 
 const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', bonus_used: '#E67700' }
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
-const TABS = ['Инфо', 'Заказы', 'Транзакции', 'Подписки', 'Бутылки', 'Адреса', 'Кулеры']
+const TABS = ['Инфо', 'Заказы', 'Подписки', 'Бутылки', 'Адреса', 'Кулеры']
 
 function TopupModal({ user, onClose, onConfirm }) {
   const [amount, setAmount] = useState('')
@@ -94,6 +94,11 @@ function ClientDetail({ user, onClose, onTopup }) {
     if (subsEnabled === false && TABS[tab] === 'Подписки') setTab(0)
   }, [subsEnabled, tab])
 
+  const handleCoolerPayment = async (coolerId, amount, note) => {
+    const updated = await addCoolerPayment(coolerId, { amount, note })
+    setCoolers(prev => prev.map(c => c.id === coolerId ? updated : c))
+  }
+
   useEffect(() => {
     getUserOrders(user.id).then(setOrders).catch(() => setOrders([])).finally(() => setLoadingO(false))
     getClientDetails(user.id).then(setDetails).catch(() => setDetails(null)).finally(() => setLoadingD(false))
@@ -124,9 +129,7 @@ function ClientDetail({ user, onClose, onTopup }) {
         {[
           ['Телефон', user.phone || '—'],
           ['Telegram ID', user.telegram_id || '—'],
-          ['Баланс', `${(user.balance || 0).toLocaleString()} сум`],
           ['Бонусы', `${Math.round(user.bonus_points || 0)}`],
-          ['Задолженность', details ? (details.pending_return > 0 ? `${details.bottles_owed} бут. (в возврате: ${details.pending_return})` : `${details.bottles_owed} бутылок`) : '...'],
         ].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontSize: 14, color: TEXT2 }}>{k}</span>
@@ -140,45 +143,33 @@ function ClientDetail({ user, onClose, onTopup }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {orders.map(o => {
           const ss = STATUS_STYLE[o.status] || { bg: '#F2F2F7', color: TEXT2 }
+          const dt = o.created_at ? new Date(new Date(o.created_at).getTime() + 5 * 60 * 60 * 1000) : null
+          const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
+          const orderItems = (o.items || []).filter(i => i.quantity > 0)
           return (
-            <div key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, fontSize: 15, color: TEXT }}>#{o.id}</span>
-                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, fontWeight: 700, background: ss.bg, color: ss.color }}>{STATUS_LABELS[o.status] || o.status}</span>
+            <div key={o.id} style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, fontWeight: 700, background: ss.bg, color: ss.color }}>{STATUS_LABELS[o.status] || o.status}</span>
+                    {dateStr && <span style={{ fontSize: 11, color: TEXT2 }}>{dateStr}</span>}
+                  </div>
+                  {o.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{o.address}</div>}
+                  {orderItems.length > 0 && (
+                    <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {orderItems.map((it, j) => (
+                        <div key={j} style={{ fontSize: 12, color: TEXT, display: 'flex', gap: 6 }}>
+                          <span style={{ color: CD, fontWeight: 700 }}>{it.quantity} шт.</span>
+                          <span>{it.product_name || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.return_bottles_count > 0 && (
+                    <div style={{ fontSize: 12, color: '#12B886', marginTop: 3 }}>↩ Возврат: {o.return_bottles_count} бут.</div>
+                  )}
                 </div>
-                {o.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{o.address}</div>}
-                {o.delivery_time && <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{o.delivery_time}</div>}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</div>
-            </div>
-          )
-        })}
-      </div>
-    )
-
-    if (tab === 2) return loadingD ? <Spinner /> : !details?.transactions?.length ? <Empty text="Нет транзакций" /> : (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {details.transactions.map(tx => {
-          const clr = TX_COLORS[tx.type] || TEXT2
-          const positive = tx.amount > 0
-          return (
-            <div key={tx.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: clr + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {tx.type === 'payment' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke={clr} strokeWidth="1.8"/><path d="M2 10h20" stroke={clr} strokeWidth="1.5"/></svg>}
-                {tx.type === 'topup' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke={clr} strokeWidth="2" strokeLinecap="round"/></svg>}
-                {tx.type === 'cashback' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke={clr} strokeWidth="1.8" strokeLinecap="round"/><path d="M3 3v5h5" stroke={clr} strokeWidth="1.8" strokeLinecap="round"/></svg>}
-                {tx.type === 'bonus_used' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2l3 6 7 1-5 5 1.2 7L12 18l-6.2 3L7 14 2 9l7-1 3-6z" stroke={clr} strokeWidth="1.5" strokeLinejoin="round"/></svg>}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, background: clr + '18', color: clr, padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>{TX_LABELS[tx.type] || tx.type}</span>
-                </div>
-                <div style={{ fontSize: 13, color: TEXT, marginTop: 3 }}>{tx.desc}</div>
-                <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{fmtDate(tx.date)}</div>
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: clr, flexShrink: 0 }}>
-                {positive ? '+' : ''}{tx.amount.toLocaleString()} сум
+                <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</div>
               </div>
             </div>
           )
@@ -186,7 +177,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 3) return loadingD ? <Spinner /> : !details?.subscriptions?.length ? <Empty text="Нет подписок" /> : (
+    if (tab === 2) return loadingD ? <Spinner /> : !details?.subscriptions?.length ? <Empty text="Нет подписок" /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {details.subscriptions.map(sub => (
           <div key={sub.id} style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, border: `1px solid ${BORDER}` }}>
@@ -215,7 +206,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 4) return loadingD ? <Spinner /> : (
+    if (tab === 3) return loadingD ? <Spinner /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ textAlign: 'center', padding: '16px 0' }}>
           <div style={{ fontSize: 48, fontWeight: 900, color: details?.bottles_owed > 0 ? '#E03131' : '#2B8A3E' }}>{details?.bottles_owed || 0}</div>
@@ -252,7 +243,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 5) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет сохранённых адресов" /> : (
+    if (tab === 4) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет сохранённых адресов" /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {details.addresses.map(a => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
@@ -268,7 +259,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 6) return loadingC ? <Spinner /> : (
+    if (tab === 5) return loadingC ? <Spinner /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {showCoolerForm && <CoolerForm onCancel={() => setShowCoolerForm(false)} onSave={handleAddCooler} />}
 
@@ -280,7 +271,7 @@ function ClientDetail({ user, onClose, onTopup }) {
         )}
 
         {/* Cooler list */}
-        {coolers.length === 0 ? <Empty text="Нет кулеров" /> : coolers.map(c => <CoolerCard key={c.id} cooler={c} onRemove={() => handleRemoveCooler(c.id)} />)}
+        {coolers.length === 0 ? <Empty text="Нет кулеров" /> : coolers.map(c => <CoolerCard key={c.id} cooler={c} onRemove={() => handleRemoveCooler(c.id)} onPayment={handleCoolerPayment} />)}
       </div>
     )
 
@@ -331,149 +322,131 @@ function ClientDetail({ user, onClose, onTopup }) {
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-function CoolerCard({ cooler, onRemove }) {
-  const plan = cooler.plan
-  const planText = plan
-    ? plan.type === 'weekly'
-      ? `${plan.days?.join(', ') || '—'} · ${plan.qty_per_delivery || 0} × 20л`
-      : `${(plan.dates || []).join(', ')} числа · ${plan.qty_per_delivery || 0} × 20л`
-    : 'План не задан'
-  const monthly = plan?.total_monthly || 0
+function CoolerCard({ cooler, onRemove, onPayment }) {
+  const [showPayForm, setShowPayForm] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [payAmount, setPayAmount] = useState('')
+  const [payNote, setPayNote] = useState('')
+  const [paying, setPaying] = useState(false)
+
+  const fmtMoney = (n) => Number(n || 0).toLocaleString()
+  const remaining = cooler.remaining ?? Math.max(0, (cooler.price || 0) - (cooler.total_paid || 0))
+  const pct = cooler.price > 0 ? Math.min(100, Math.round(((cooler.total_paid || 0) / cooler.price) * 100)) : 0
+
+  const handlePay = async () => {
+    const amt = Number(payAmount)
+    if (!amt || amt <= 0) return
+    setPaying(true)
+    try {
+      await onPayment(cooler.id, amt, payNote.trim() || null)
+      setPayAmount(''); setPayNote(''); setShowPayForm(false)
+    } catch { alert('Ошибка при погашении') }
+    finally { setPaying(false) }
+  }
 
   return (
     <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 42, height: 42, borderRadius: 12, background: '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="2" stroke="#1971C2" strokeWidth="1.5"/><circle cx="12" cy="8" r="2" stroke="#1971C2" strokeWidth="1.5"/><path d="M9 14h6" stroke="#1971C2" strokeWidth="1.5" strokeLinecap="round"/></svg>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{cooler.model}</div>
-          {cooler.serial_number && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>S/N: {cooler.serial_number}</div>}
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{cooler.name}</div>
+          <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>Цена: {fmtMoney(cooler.price)} сум</div>
         </div>
         <button style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }} onClick={onRemove}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
         </button>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke={C} strokeWidth="1.8"/><path d="M16 2v4M8 2v4M3 10h18" stroke={C} strokeWidth="1.5" strokeLinecap="round"/></svg>
-          <span style={{ fontSize: 11, fontWeight: 700, color: C, textTransform: 'uppercase', letterSpacing: 0.4 }}>План доставки</span>
+      {/* Debt progress */}
+      {cooler.price > 0 && (
+        <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: TEXT2 }}>Оплачено</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: remaining === 0 ? '#2B8A3E' : '#E03131' }}>
+              Остаток: {fmtMoney(remaining)} сум
+            </span>
+          </div>
+          <div style={{ height: 6, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: remaining === 0 ? '#2B8A3E' : `linear-gradient(90deg, ${C}, ${CD})`, borderRadius: 99, transition: 'width 0.4s' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 11, color: TEXT2 }}>{fmtMoney(cooler.total_paid)} сум уплачено</span>
+            <span style={{ fontSize: 11, color: TEXT2 }}>{pct}%</span>
+          </div>
         </div>
-        <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{planText}</div>
-        {monthly > 0 && (
-          <div style={{ fontSize: 12, color: TEXT2 }}>Итого в месяц: <b style={{ color: CD }}>{monthly} бут.</b></div>
-        )}
-      </div>
+      )}
+
+      {/* Pay form */}
+      {showPayForm ? (
+        <div style={{ background: '#fff', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, border: `1px solid ${BORDER}` }}>
+          <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '9px 12px', fontSize: 15, fontWeight: 700, outline: 'none', background: '#FAFAFA', color: TEXT, boxSizing: 'border-box' }} type="number" inputMode="numeric" placeholder="Сумма погашения" value={payAmount} onChange={e => setPayAmount(e.target.value)} />
+          <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none', background: '#FAFAFA', color: TEXT, boxSizing: 'border-box' }} placeholder="Примечание (необязательно)" value={payNote} onChange={e => setPayNote(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => setShowPayForm(false)}>Отмена</button>
+            <button style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: payAmount && Number(payAmount) > 0 ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: payAmount && Number(payAmount) > 0 ? '#fff' : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer' }} disabled={!payAmount || Number(payAmount) <= 0 || paying} onClick={handlePay}>
+              {paying ? 'Сохраняю...' : 'Погасить'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button style={{ padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}12`, color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer' }} onClick={() => setShowPayForm(true)}>
+          Погашение долга
+        </button>
+      )}
+
+      {/* Payment history */}
+      {(cooler.payments || []).length > 0 && (
+        <div>
+          <button onClick={() => setShowHistory(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 12, fontWeight: 600, padding: 0 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transform: showHistory ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            История погашений ({cooler.payments.length})
+          </button>
+          {showHistory && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {[...(cooler.payments || [])].reverse().map((p, i, arr) => {
+                const dt = new Date(p.created_at)
+                const dateStr = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#2B8A3E' }}>+{fmtMoney(p.amount)} сум</div>
+                      {p.note && <div style={{ fontSize: 11, color: TEXT2 }}>{p.note}</div>}
+                      <div style={{ fontSize: 11, color: TEXT2 }}>{dateStr}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 function CoolerForm({ onCancel, onSave }) {
-  const [model, setModel] = useState('')
-  const [serial, setSerial] = useState('')
-  const [planType, setPlanType] = useState('weekly')
-  const [days, setDays] = useState([])
-  const [dates, setDates] = useState([])
-  const [qty, setQty] = useState('')
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const toggleDay = (d) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
-  const toggleDate = (n) => setDates(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n])
-
-  // Auto total
-  const q = Number(qty) || 0
-  const total = planType === 'weekly'
-    ? days.length * q * 4  // ~4 weeks per month
-    : dates.length * q
-
-  const canSave = model.trim() && q > 0 && (planType === 'weekly' ? days.length > 0 : dates.length > 0)
+  const canSave = name.trim() && Number(price) >= 0
 
   const handle = async () => {
     if (!canSave) return
     setLoading(true)
     try {
-      await onSave({
-        model: model.trim(),
-        serial_number: serial.trim(),
-        installed_date: new Date().toISOString().slice(0, 10),
-        plan: {
-          type: planType,
-          days: planType === 'weekly' ? [...days].sort((a, b) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b)) : undefined,
-          dates: planType === 'monthly' ? [...dates].sort((a, b) => a - b) : undefined,
-          qty_per_delivery: q,
-          total_monthly: total,
-        },
-      })
+      await onSave({ name: name.trim(), price: Number(price) || 0 })
     } catch { alert('Ошибка'); setLoading(false) }
   }
 
   return (
     <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}` }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Новый кулер</div>
-
-      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} placeholder="Модель кулера *" value={model} onChange={e => setModel(e.target.value)} />
-      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} placeholder="Серийный номер" value={serial} onChange={e => setSerial(e.target.value)} />
-
-      {/* Plan schedule type */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>График доставки 20л</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[['weekly', 'Еженедельно'], ['monthly', 'По числам']].map(([k, l]) => (
-          <button key={k} onClick={() => setPlanType(k)} style={{
-            flex: 1, padding: '10px 12px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            background: planType === k ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-            color: planType === k ? '#fff' : TEXT2,
-            border: planType === k ? 'none' : `1px solid ${BORDER}`,
-          }}>{l}</button>
-        ))}
-      </div>
-
-      {/* Weekly days */}
-      {planType === 'weekly' && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, marginBottom: 6 }}>Дни недели</div>
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-            {WEEKDAYS.map(d => (
-              <button key={d} onClick={() => toggleDay(d)} style={{
-                padding: '8px 0', minWidth: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                background: days.includes(d) ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-                color: days.includes(d) ? '#fff' : TEXT,
-                border: days.includes(d) ? 'none' : `1px solid ${BORDER}`,
-              }}>{d}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Monthly dates */}
-      {planType === 'monthly' && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, marginBottom: 6 }}>Числа месяца</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map(n => (
-              <button key={n} onClick={() => toggleDate(n)} style={{
-                padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                background: dates.includes(n) ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
-                color: dates.includes(n) ? '#fff' : TEXT,
-                border: dates.includes(n) ? 'none' : `1px solid ${BORDER}`,
-              }}>{n}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Qty per delivery */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 }}>Количество 20л за доставку</div>
-      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 15, fontWeight: 700, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} type="number" inputMode="numeric" placeholder="0" value={qty} onChange={e => setQty(e.target.value)} />
-
-      {/* Total preview */}
-      {total > 0 && (
-        <div style={{ background: `${C}12`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: TEXT2 }}>Итого в месяц</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: CD }}>{total} бут. 20л</span>
-        </div>
-      )}
-
+      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} placeholder="Название кулера *" value={name} onChange={e => setName(e.target.value)} />
+      <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '10px 12px', fontSize: 14, outline: 'none', background: '#fff', color: TEXT, boxSizing: 'border-box' }} type="number" inputMode="numeric" placeholder="Цена кулера (сум)" value={price} onChange={e => setPrice(e.target.value)} />
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <button style={{ flex: 1, padding: '12px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, fontWeight: 600, cursor: 'pointer' }} onClick={onCancel}>Отмена</button>
         <button style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: canSave ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: canSave ? '#fff' : TEXT2, fontSize: 14, fontWeight: 700, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave || loading} onClick={handle}>
@@ -527,7 +500,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[users.length, 'Клиентов'], [totalBalance.toLocaleString(), 'Балансы (сум)'], [Math.round(totalBonuses), 'Бонусов']].map(([v, l]) => (
+        {[[users.length, 'Клиентов'], [Math.round(totalBonuses), 'Бонусов']].map(([v, l]) => (
           <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
             <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
