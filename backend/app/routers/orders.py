@@ -172,6 +172,8 @@ async def _reserve_inventory(order, db: AsyncSession):
     from app.models.warehouse import CourierWater
     if not order.courier_id or not order.items:
         return
+    if getattr(order, 'creator_role', None) == 'manager':
+        return
     for item in order.items:
         if not item.product_id or not item.quantity:
             continue
@@ -192,6 +194,8 @@ async def _release_inventory(order, db: AsyncSession, consume: bool = False):
     """Move reserved items back to available (cancel) or simply remove them (deliver)."""
     from app.models.warehouse import CourierWater
     if not order.courier_id or not order.items:
+        return
+    if getattr(order, 'creator_role', None) == 'manager':
         return
     for item in order.items:
         if not item.product_id or not item.quantity:

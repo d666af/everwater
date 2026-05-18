@@ -734,6 +734,8 @@ class CourierOrderCreate(BaseModel):
     longitude: float | None = None
     courier_telegram_id: int | None = None  # set when a courier creates the order
     creator_role: str = "manager"           # "courier" | "manager" | "admin"
+    manager_name: str | None = None
+    manager_phone: str | None = None
 
 
 @router.post("/orders")
@@ -795,6 +797,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         latitude=body.latitude,
         longitude=body.longitude,
         status=OrderStatus.CONFIRMED,
+        creator_role=body.creator_role,
     )
     db.add(order)
     await db.flush()
@@ -866,13 +869,19 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Бутылки 19л: {body.return_bottles_count} шт."
             ))
 
-        courier_line = f"\nКурьер: {creator_courier.name} ({creator_courier.phone or '—'})" if creator_courier else ""
+        if creator_courier:
+            extra_line = f"\nКурьер: {creator_courier.name} ({creator_courier.phone or '—'})"
+        elif body.creator_role == "manager" and body.manager_name:
+            phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
+            extra_line = f"\nМенеджер: {body.manager_name}{phone_part}"
+        else:
+            extra_line = ""
         info_text_r = (
             f"♻️ Возврат бутылок\n"
             f"Клиент: {client_identity_r}\n"
             f"Адрес: {body.address}\n"
             f"Бутылки 19л: {body.return_bottles_count} шт."
-            f"{courier_line}"
+            f"{extra_line}"
         )
         for aid in cfg.ADMIN_IDS:
             await _tg(aid, info_text_r)
