@@ -34,7 +34,6 @@ STATUS_MAP = {
 PAY_MAP = {
     "cash": "💵 Наличные",
     "card": "💳 Карта",
-    "balance": "💰 Баланс",
 }
 
 
@@ -142,8 +141,8 @@ _ALL_MENU_BUTTONS = frozenset({
 # FSM state prefixes that belong to each role — used to detect active role in escape handler
 _COURIER_STATE_PREFIXES = ("CourierOrderCreate:", "CourierReport:", "PaymentIssueReason:")
 _MANAGER_STATE_PREFIXES = ("MgrOrderCreate:", "MgrRejectCustom:", "MgrReject:",
-                           "MgrClientSearch:", "MgrTopup:", "MgrMsgClient:", "MgrSupportReply:")
-_ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:", "AdminManualTopup:",
+                           "MgrClientSearch:", "MgrMsgClient:", "MgrSupportReply:")
+_ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:",
                            "AdminMsgUser:", "AdminBroadcast:")
 _WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:",)
 
@@ -552,8 +551,6 @@ async def order_detail(call: CallbackQuery):
         lines.append(f"Скидка за бутылки: −{fmt(order['bottle_discount'])}")
     if order.get("bonus_used", 0) > 0:
         lines.append(f"Бонусы: −{fmt(order['bonus_used'])}")
-    if order.get("balance_used", 0) > 0:
-        lines.append(f"Баланс: −{fmt(order['balance_used'])}")
     lines.append(f"<b>К оплате: {fmt(order.get('total', 0))}</b>")
     lines.append(f"Оплата: {pay_label}")
     lines.append(f"📱 {order.get('recipient_phone', '—')}")
@@ -770,8 +767,6 @@ async def profile(message: Message, state: FSMContext):
     text += f"✔️ Выполненных заказов: <b>{order_count}</b>\n"
     bonus = int(user.get("bonus_points") or 0)
     text += f"⭐ Бонусный баланс: <b>{fmt(bonus)}</b>\n"
-    if float(user.get("balance") or 0) > 0:
-        text += f"💰 Депозит: <b>{fmt(user['balance'])}</b>\n"
     if bottle_count > 0:
         text += "\n"
         if pending > 0:

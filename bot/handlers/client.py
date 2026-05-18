@@ -1133,7 +1133,7 @@ async def _ask_bonus(message: Message, state: FSMContext):
             await _ask_payment(message, state)
             return
 
-        # Compute the actual cap: min(balance, total * limit_pct, total)
+        # Compute the actual bonus cap: min(total * limit_pct, total)
         cart = data.get("cart", {})
         subtotal = sum(item["price"] * item["qty"] for item in cart.values())
         co_qty_20l = data.get("co_qty_20l", 0)
@@ -1184,7 +1184,6 @@ async def co_bonus(call: CallbackQuery, state: FSMContext):
 async def _ask_payment(message: Message, state: FSMContext):
     await state.set_state(CheckoutState.choosing_payment)
     data = await state.get_data()
-    balance = data.get("co_user", {}).get("balance", 0)
     rows = [
         [InlineKeyboardButton(text="💵 Наличные", callback_data="pm:cash")],
         [InlineKeyboardButton(text="💳 Карта", callback_data="pm:card")],
@@ -1196,7 +1195,7 @@ async def _ask_payment(message: Message, state: FSMContext):
 async def co_payment(call: CallbackQuery, state: FSMContext):
     pay = call.data.split(":")[1]
     await state.update_data(co_pay=pay)
-    pay_labels = {"cash": "💵 Наличными курьеру", "card": "💳 Картой", "balance": "💰 С баланса"}
+    pay_labels = {"cash": "💵 Наличными курьеру", "card": "💳 Картой"}
     await call.message.edit_text(f"Оплата: {pay_labels.get(pay, pay)}")
     await state.set_state(CheckoutState.confirming)
     await _show_summary(call.message, state)
@@ -1220,7 +1219,7 @@ async def _show_summary(message: Message, state: FSMContext):
         delivery_fee = int(cfg.get("delivery_price") or 0) if cfg.get("delivery_enabled", True) else 0
     except Exception:
         cfg = {}
-    pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+    pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта"}
     co_return = data.get("co_return", 0)
     co_qty_20l = data.get("co_qty_20l", 0)
     co_surcharge = int(data.get("co_surcharge") or 0)
@@ -1290,12 +1289,6 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     cart = data.get("cart", {})
     pay_method = data.get("co_pay", "cash")
 
-    # Calculate balance_used when payment method is balance
-    balance_used = 0
-    if pay_method == "balance":
-        subtotal = sum(v["price"] * v["qty"] for v in cart.values())
-        balance_used = min(float(user.get("balance", 0)), subtotal)
-
     items = [
         {"product_id": v["product_id"], "quantity": v["qty"], "price": v["price"]}
         for v in cart.values()
@@ -1311,7 +1304,6 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             "recipient_phone": data.get("co_phone", user.get("phone", "")),
             "return_bottles_count": data.get("co_return", 0),
             "bonus_used": data.get("co_bonus", 0),
-            "balance_used": balance_used,
             "payment_method": pay_method,
         })
     except Exception:
@@ -1341,8 +1333,8 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         except Exception:
             pass
 
-    PAY_LABELS = {"cash": "Наличными курьеру", "card": "Картой", "balance": "С баланса"}
-    # Notify admins + managers (cash/balance — no payment step needed)
+    PAY_LABELS = {"cash": "Наличными курьеру", "card": "Картой"}
+    # Notify admins + managers (cash — no payment step needed)
     if pay_method != "card":
         from keyboards.admin import order_confirm_kb
         cart_info = _cart_summary(cart)
@@ -1482,7 +1474,7 @@ _PLAN_LABEL = {
     "ten_days": "Каждые 10 дн.",
     "monthly": "Ежемесячная",
 }
-_PAY_LABEL = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+_PAY_LABEL = {"cash": "💵 Наличные", "card": "💳 Карта"}
 _SUB_STATUS = {"active": "✅ Активна", "paused": "⏸ На паузе", "cancelled": "❌ Отменена"}
 
 
@@ -1801,7 +1793,6 @@ async def _sub_ask_payment(message: Message, state: FSMContext):
     await state.set_state(SubscriptionState.choosing_payment)
     data = await state.get_data()
     user = data.get("sub_user") or {}
-    balance = int(user.get("balance", 0))
     rows = [
         [InlineKeyboardButton(text="💵 Наличные", callback_data="subpm:cash")],
         [InlineKeyboardButton(text="💳 Карта", callback_data="subpm:card")],
@@ -1847,11 +1838,11 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
 
-    # For cash/balance — create subscription immediately
+    # For cash — create subscription immediately
     total = sum(_item_eff_price(v) * v.get("qty", 0) for v in cart.values())
     bonus = data.get("sub_bonus", 0)
     to_pay = max(0, total - bonus)
-    pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой", "balance": "💰 С баланса"}
+    pay_labels = {"cash": "💵 Наличными", "card": "💳 Картой"}
     await call.message.edit_text(f"Оплата: {pay_labels.get(method, method)}")
     result = await api.create_subscription(user["id"], {
         "plan": data.get("sub_plan"),
@@ -1864,7 +1855,7 @@ async def sub_payment(call: CallbackQuery, state: FSMContext):
         "total": to_pay,
     })
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
-    pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    pay_label = {"cash": "Наличные", "card": "Карта"}
     bonus_line = f"\nСписано бонусов: {fmt(bonus)}" if bonus > 0 else ""
     if result:
         await call.message.edit_text(

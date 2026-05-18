@@ -80,7 +80,7 @@ function SubCard({ sub, onCreateOrder }) {
             <Row label="📍 Адрес" value={sub.address} />
             {sub.landmark && <Row label="🏢 Ориентир" value={sub.landmark} />}
             <Row label="📞 Телефон" value={sub.phone || '—'} />
-            <Row label="💳 Оплата" value={{ cash: 'Наличные', card: 'Карта', balance: 'Баланс' }[sub.payment_method] || sub.payment_method} />
+            <Row label="💳 Оплата" value={{ cash: 'Наличные', card: 'Карта' }[sub.payment_method] || sub.payment_method} />
             <Row label="💰 Сумма" value={`${Math.round(sub.total).toLocaleString('ru')} сум`} />
             {sub.last_delivered_at && (
               <Row label="✅ Посл. доставка" value={new Date(sub.last_delivered_at).toLocaleDateString('ru-RU')} />

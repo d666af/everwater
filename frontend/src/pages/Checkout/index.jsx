@@ -187,7 +187,6 @@ export default function Checkout() {
         return_bottles_volume: has20L ? 19 : 0,
         bottle_surcharge: bottleSurcharge,
         bonus_used: Number(form.bonusUsed),
-        balance_used: 0,
         payment_method: form.paymentMethod,
         delivery_fee: deliveryFee,
         items: items.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.product.price })),
@@ -279,8 +278,6 @@ export default function Checkout() {
     <CardPayment
       settings={settings}
       amount={createdOrder.total ?? finalTotal}
-      balanceUsed={0}
-      cardRemainder={0}
       onConfirm={confirmCardPayment}
       loading={loading}
       error={error}

@@ -128,7 +128,6 @@ export const createOrder = (data) => {
         0,
         (data.items?.reduce((s, i) => s + i.quantity * (i.price || 25000), 0) || 0)
         - (Number(data.bonus_used) || 0)
-        - (Number(data.balance_used) || 0)
       )
       const newOrder = {
         id: Date.now(),
@@ -139,7 +138,6 @@ export const createOrder = (data) => {
         recipient_phone: data.recipient_phone,
         total,
         bonus_used: data.bonus_used || 0,
-        balance_used: data.balance_used || 0,
         bottle_discount: data.bottle_discount || 0,
         return_bottles_count: data.return_bottles_count || 0,
         items: (data.items || []).map((i, idx) => ({
@@ -173,36 +171,17 @@ export const getUserOrders = (userId) =>
 export const getOrders = (params = {}) =>
   safeCall(
     async () => {
-      const [orders, topups, subs] = await Promise.all([
+      const [orders, subs] = await Promise.all([
         http.get('/orders/', { params }).then(r => r.data),
-        http.get('/admin/topup_requests?status=all').then(r => r.data).catch(() => []),
         http.get('/admin/subscriptions?status=all').then(r => r.data).catch(() => []),
       ])
-      return [...orders, ...topups, ...subs]
+      return [...orders, ...subs]
     },
     () => {
       let list = [...MOCK_ORDERS]
       if (params.status) list = list.filter(o => o.status === params.status)
       return list
     }
-  )
-
-export const requestTopup = (userId, amount, telegramId = null) =>
-  safeCall(
-    () => http.post(`/admin/users/${userId}/topup_request`, { amount, telegram_id: telegramId }).then(r => r.data),
-    () => ({ ok: true, id: Date.now() })
-  )
-
-export const confirmTopupRequest = (reqId) =>
-  safeCall(
-    () => http.post(`/admin/topup_requests/${reqId}/confirm`).then(r => r.data),
-    () => ({ ok: true })
-  )
-
-export const rejectTopupRequest = (reqId) =>
-  safeCall(
-    () => http.post(`/admin/topup_requests/${reqId}/reject`).then(r => r.data),
-    () => ({ ok: true })
   )
 
 export const paymentConfirmed = (orderId) =>
@@ -371,7 +350,7 @@ export const getCourierReviews = (courierId) =>
 export const getUserByTelegram = (tgId) =>
   safeCall(
     () => http.get(`/users/by_telegram/${tgId}`).then(r => r.data),
-    () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 3500, balance: 50000, order_count: 7, is_registered: true })
+    () => ({ id: 1, telegram_id: tgId, name: 'Demo User', phone: '+7 999 000-00-00', bonus_points: 3500, order_count: 7, is_registered: true })
   )
 
 export const authByInitData = (initData) =>
@@ -433,9 +412,9 @@ export const getAdminUsers = () =>
   safeCall(
     () => http.get('/admin/users').then(r => r.data),
     () => [
-      { id: 1, name: 'Иван Иванов', phone: '+7 999 001-01-01', telegram_id: '11111', bonus_points: 350, balance: 0, is_registered: true },
-      { id: 2, name: 'Мария Петрова', phone: '+7 999 002-02-02', telegram_id: '22222', bonus_points: 120, balance: 500, is_registered: true },
-      { id: 3, name: '', phone: '', telegram_id: '33333', bonus_points: 0, balance: 0, is_registered: false },
+      { id: 1, name: 'Иван Иванов', phone: '+7 999 001-01-01', telegram_id: '11111', bonus_points: 350, is_registered: true },
+      { id: 2, name: 'Мария Петрова', phone: '+7 999 002-02-02', telegram_id: '22222', bonus_points: 120, is_registered: true },
+      { id: 3, name: '', phone: '', telegram_id: '33333', bonus_points: 0, is_registered: false },
     ]
   )
 
@@ -597,13 +576,6 @@ export const deleteManager = (id) =>
 
 export const broadcastMessage = (message, target = 'all') =>
   safeCall(() => http.post('/admin/broadcast', { message, target }).then(r => r.data), () => ({ ok: true }))
-
-// ─── Balance top-up confirmation ──────────────────────────────────────────────
-export const confirmTopup = (userId, amount) =>
-  safeCall(
-    () => http.post(`/admin/users/${userId}/topup`, { amount }).then(r => r.data),
-    () => ({ ok: true, new_balance: 100000 })
-  )
 
 // ─── Bottle debt / survey ────────────────────────────────────────────────────
 export const getBottlesOwed = (userId) =>

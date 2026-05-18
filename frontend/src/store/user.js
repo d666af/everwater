@@ -14,7 +14,6 @@ function loadLS(key, fallback) {
 export const useUserStore = create((set, get) => ({
   id: null,
   telegram_id: null,
-  balance: 0,
   bonus_points: 0,
   order_count: 0,
   initialized: false,
@@ -37,7 +36,6 @@ export const useUserStore = create((set, get) => ({
     const update = {
       id: userData.id || null,
       telegram_id: userData.telegram_id || null,
-      balance: userData.balance || 0,
       bonus_points: userData.bonus_points || 0,
       order_count: userData.order_count || 0,
       initialized: true,
@@ -58,8 +56,6 @@ export const useUserStore = create((set, get) => ({
     set(update)
   },
 
-  addBalance: (amount) => set({ balance: get().balance + amount }),
-  deductBalance: (amount) => set({ balance: Math.max(0, get().balance - amount) }),
   deductBonus: (amount) => set({ bonus_points: Math.max(0, get().bonus_points - amount) }),
   addBonuses: (amount) => set({ bonus_points: get().bonus_points + amount }),
   incrementOrders: () => set({ order_count: get().order_count + 1 }),

@@ -54,7 +54,7 @@ def stats_period_kb() -> InlineKeyboardMarkup:
 
 
 def admin_user_kb(user_id: int, tg_id: int | None) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="💰 Пополнить баланс", callback_data=f"admin:topup_manual:{user_id}")]]
+    rows = []
     if tg_id:
         rows.append([InlineKeyboardButton(text="✉️ Написать", callback_data=f"admin:msg_user:{tg_id}")])
     rows.append([InlineKeyboardButton(text="🌐 Клиенты на сайте", url=_site("/admin/clients"))])

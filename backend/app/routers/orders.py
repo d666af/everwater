@@ -315,9 +315,7 @@ async def create_order(
     max_bonus_by_pct = (pre_bonus_total + delivery_fee) * bonus_limit_pct
     bonus_used = min(float(data.bonus_used or 0), float(user.bonus_points or 0),
                      max(0.0, pre_bonus_total), max_bonus_by_pct)
-    balance_used = min(float(data.balance_used or 0), float(user.balance or 0),
-                       max(0.0, pre_bonus_total - bonus_used))
-    total = max(0.0, pre_bonus_total - bonus_used - balance_used + delivery_fee)
+    total = max(0.0, pre_bonus_total - bonus_used + delivery_fee)
 
     order = Order(
         user_id=data.user_id,
@@ -335,7 +333,6 @@ async def create_order(
         delivery_fee=delivery_fee,
         total=total,
         bonus_used=bonus_used,
-        balance_used=balance_used,
         payment_method=data.payment_method or "cash",
         status=OrderStatus.NEW,
     )
@@ -348,8 +345,6 @@ async def create_order(
 
     if bonus_used > 0:
         user.bonus_points = max(0.0, user.bonus_points - bonus_used)
-    if balance_used > 0:
-        user.balance = max(0.0, user.balance - balance_used)
 
     if x_idempotency_key:
         from sqlalchemy import text as _text
@@ -505,7 +500,7 @@ async def payment_confirmed(order_id: int, from_bot: bool = False, db: AsyncSess
     items_text = _order_items_text(order.items)
     order_total = int(order.total)
     pay_method = order.payment_method
-    pay_labels = {"cash": "Наличные", "card": "Перевод на карту", "balance": "Баланс", "balance_card": "Баланс + карта"}
+    pay_labels = {"cash": "Наличные", "card": "Перевод на карту"}
     pay_label = pay_labels.get(pay_method, pay_method)
 
     await db.commit()
@@ -645,7 +640,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     await _reserve_inventory(order, db)
     await db.commit()
 
-    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "⚖️ Баланс", "bonus": "🎁 Бонусы"}
+    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
     c_phone_part = f"  |  {courier_phone}" if courier_phone else ""
     sync_text = (
@@ -1292,7 +1287,6 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         subtotal=order.subtotal,
         total=order.total,
         bonus_used=order.bonus_used,
-        balance_used=order.balance_used,
         payment_method=order.payment_method,
         cash_collected=order.cash_collected,
         rejection_reason=order.rejection_reason,

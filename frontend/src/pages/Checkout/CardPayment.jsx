@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import s, { C } from './styles'
 
-export default function CardPayment({ settings, amount, balanceUsed, cardRemainder, onConfirm, loading, error }) {
+export default function CardPayment({ settings, amount, onConfirm, loading, error }) {
   const [copied, setCopied] = useState(false)
 
   const copyCard = () => {
@@ -21,18 +21,6 @@ export default function CardPayment({ settings, amount, balanceUsed, cardRemaind
 
   return (
     <div style={s.page}>
-      {cardRemainder > 0 && (
-        <div style={s.section}>
-          <div style={s.balanceNote}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12l4 4L19 7" stroke={C} strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize: 14, color: '#3c3c43' }}>
-              С баланса списано <b style={{ color: C }}>{balanceUsed.toLocaleString()} сум</b>
-            </span>
-          </div>
-        </div>
-      )}
       <div style={s.section}>
         <div style={s.sLabel}>Оплата заказа</div>
         <div style={s.payCard}>

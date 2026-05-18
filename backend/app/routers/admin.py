@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
-from app.models.client_data import SavedAddress, Subscription, BottleDebt, TopupRequest
+from app.models.client_data import SavedAddress, Subscription, BottleDebt
 from app.schemas.order import CourierCreate, CourierOut
 from app.services.settings_service import is_subscriptions_enabled
 from app.models.warehouse import WaterTransaction
@@ -613,7 +613,6 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "name": u.name,
             "phone": u.phone,
             "is_registered": u.is_registered,
-            "balance": u.balance,
             "bonus_points": u.bonus_points,
             "created_at": u.created_at,
             "orders_count": orders_map.get(u.id, 0),
@@ -680,7 +679,6 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
         "telegram_id": user.telegram_id,
         "name": user.name,
         "phone": user.phone,
-        "balance": user.balance,
         "bonus_points": user.bonus_points,
         "is_registered": user.is_registered,
         "created_at": user.created_at,
@@ -694,158 +692,6 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
-class TopupData(BaseModel):
-    amount: float
-
-
-@router.post("/users/{user_id}/topup")
-async def topup_user_balance(user_id: int, data: TopupData, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.balance = (user.balance or 0) + data.amount
-    await db.commit()
-    return {"ok": True, "new_balance": user.balance}
-
-
-class TopupRequestBody(BaseModel):
-    amount: float
-    telegram_id: int | None = None
-
-
-@router.post("/users/{user_id}/topup_request")
-async def create_topup_request(user_id: int, data: TopupRequestBody, db: AsyncSession = Depends(get_db)):
-    from app.config import settings as cfg
-    user_q = await db.execute(select(User).where(User.id == user_id))
-    user = user_q.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    req = TopupRequest(user_id=user_id, amount=data.amount)
-    db.add(req)
-    await db.commit()
-    await db.refresh(req)
-
-    tg_id = data.telegram_id or user.telegram_id
-    client_name = user.name or str(tg_id)
-    fmt_amt = f"{int(data.amount):,}".replace(",", " ")
-
-    text = (
-        f"💰 Запрос на пополнение баланса!\n"
-        f"Клиент: {client_name}\n"
-        f"Сумма: {fmt_amt} сум"
-    )
-    kb = {"inline_keyboard": [[
-        {"text": f"✅ Подтвердить {fmt_amt} сум",
-         "callback_data": f"admin_topup_req:{req.id}:confirm"},
-        {"text": "❌ Отклонить",
-         "callback_data": f"admin_topup_req:{req.id}:reject"},
-    ]]}
-
-    from app.services.tg_notify import notify_all
-    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
-
-    req.notification_msg_ids = msg_ids_json
-    await db.commit()
-
-    return {"ok": True, "id": req.id}
-
-
-@router.get("/topup_requests")
-async def list_topup_requests(status: str = "pending", db: AsyncSession = Depends(get_db)):
-    q = select(TopupRequest, User).join(User, User.id == TopupRequest.user_id)
-    if status != "all":
-        q = q.where(TopupRequest.status == status)
-    q = q.order_by(TopupRequest.created_at.desc())
-    rows = (await db.execute(q)).all()
-    result = []
-    for req, user in rows:
-        result.append({
-            "id": req.id,
-            "type": "topup",
-            "user_id": req.user_id,
-            "client_name": user.name or "",
-            "amount": req.amount,
-            "total": req.amount,
-            "status": req.status,
-            "payment_confirmed": req.status == "confirmed",
-            "payment_method": "card",
-            "created_at": req.created_at.isoformat(),
-        })
-    return result
-
-
-@router.post("/topup_requests/{req_id}/confirm")
-async def confirm_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
-    from app.config import settings as cfg
-    from app.services.tg_notify import edit_all_notifications
-    req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
-    req = req_q.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Topup request not found")
-    if req.status != "pending":
-        raise HTTPException(status_code=409, detail="Already processed")
-
-    user_q = await db.execute(select(User).where(User.id == req.user_id))
-    user = user_q.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    msg_ids_json = req.notification_msg_ids
-    user.balance = (user.balance or 0) + req.amount
-    req.status = "confirmed"
-    await db.commit()
-
-    fmt_amt = f"{int(req.amount):,}".replace(",", " ")
-    await edit_all_notifications(msg_ids_json, f"✅ Пополнение {fmt_amt} сум подтверждено")
-    if user.telegram_id:
-        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
-        try:
-            async with aiohttp.ClientSession() as s:
-                await s.post(url, json={
-                    "chat_id": user.telegram_id,
-                    "text": f"✅ Ваш баланс пополнен на {fmt_amt} сум!\nТекущий баланс: {int(user.balance):,} сум",
-                }, timeout=aiohttp.ClientTimeout(total=5))
-        except Exception:
-            pass
-
-    return {"ok": True, "new_balance": user.balance}
-
-
-@router.post("/topup_requests/{req_id}/reject")
-async def reject_topup_request(req_id: int, db: AsyncSession = Depends(get_db)):
-    from app.config import settings as cfg
-    from app.services.tg_notify import edit_all_notifications
-    req_q = await db.execute(select(TopupRequest).where(TopupRequest.id == req_id))
-    req = req_q.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Topup request not found")
-    if req.status != "pending":
-        raise HTTPException(status_code=409, detail="Already processed")
-
-    user_q = await db.execute(select(User).where(User.id == req.user_id))
-    user = user_q.scalar_one_or_none()
-
-    msg_ids_json = req.notification_msg_ids
-    req.status = "rejected"
-    await db.commit()
-
-    fmt_amt = f"{int(req.amount):,}".replace(",", " ")
-    await edit_all_notifications(msg_ids_json, f"❌ Пополнение {fmt_amt} сум отклонено")
-    if user and user.telegram_id:
-        url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/sendMessage"
-        try:
-            async with aiohttp.ClientSession() as s:
-                await s.post(url, json={
-                    "chat_id": user.telegram_id,
-                    "text": f"❌ Ваш запрос на пополнение {fmt_amt} сум отклонён.",
-                }, timeout=aiohttp.ClientTimeout(total=5))
-        except Exception:
-            pass
-
-    return {"ok": True}
 
 
 # ─── Subscriptions (admin view) ───────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, confirmTopup, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
@@ -31,53 +31,7 @@ const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', b
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
 const TABS = ['Инфо', 'Заказы', 'Подписки', 'Адреса', 'Кулеры']
 
-function TopupModal({ user, onClose, onConfirm }) {
-  const [amount, setAmount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
-  const handle = async () => {
-    const amt = Number(amount)
-    if (!amt || amt < 100) return
-    setLoading(true)
-    try { await onConfirm(amt); setDone(true) }
-    catch { alert('Ошибка при пополнении') }
-    finally { setLoading(false) }
-  }
-  return (
-    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={st.sheet}>
-        <div style={st.handle} />
-        {done ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '10px 0' }}>
-            <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 20px rgba(141,198,63,0.4)' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: TEXT }}>Баланс пополнен!</div>
-            <div style={{ fontSize: 14, color: TEXT2 }}>{user.name}: +{Number(amount).toLocaleString()} сум</div>
-            <button style={st.primaryBtn} onClick={onClose}>Закрыть</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Пополнить баланс</div>
-            <div style={{ fontSize: 14, color: TEXT2, textAlign: 'center' }}>Клиент: <b>{user.name}</b></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {[5000, 10000, 25000, 50000].map(a => (
-                <button key={a} style={{ padding: '14px 8px', borderRadius: 12, border: Number(amount) === a ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`, background: Number(amount) === a ? 'rgba(141,198,63,0.1)' : '#F8F9FA', fontSize: 15, fontWeight: 700, color: Number(amount) === a ? CD : TEXT, cursor: 'pointer', textAlign: 'center', WebkitTapHighlightColor: 'transparent' }} onClick={() => setAmount(String(a))}>{a.toLocaleString()}</button>
-              ))}
-            </div>
-            <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '14px 16px', fontSize: 18, fontWeight: 700, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }} type="number" inputMode="numeric" placeholder="Сумма (сум)" value={amount} onChange={e => setAmount(e.target.value)} />
-            <button style={{ ...st.primaryBtn, ...(!amount || Number(amount) < 100 ? { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none' } : {}) }} disabled={!amount || Number(amount) < 100 || loading} onClick={handle}>
-              {loading ? 'Начисляю...' : `Зачислить ${amount ? Number(amount).toLocaleString() + ' сум' : ''}`}
-            </button>
-            <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ClientDetail({ user, onClose, onTopup }) {
+function ClientDetail({ user, onClose }) {
   const [tab, setTab] = useState(0)
   const [orders, setOrders] = useState([])
   const [details, setDetails] = useState(null)
@@ -446,7 +400,6 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [search, setSearch] = useState('')
   const [labelFilter, setLabelFilter] = useState('all')
   const [selectedUser, setSelectedUser] = useState(null)
-  const [topupUser, setTopupUser] = useState(null)
   const [phoneModal, setPhoneModal] = useState(null)
 
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
@@ -457,16 +410,10 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     return matchText && matchLabel
   })
 
-  const handleTopupConfirm = async (userId, amount) => {
-    await confirmTopup(userId, amount)
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, balance: (u.balance || 0) + amount } : u))
-  }
-
   return (
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
-      {topupUser && <TopupModal user={topupUser} onClose={() => setTopupUser(null)} onConfirm={(amt) => handleTopupConfirm(topupUser.id, amt)} />}
-      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
+      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 18, padding: '11px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={TEXT2} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/></svg>

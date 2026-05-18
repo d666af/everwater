@@ -509,11 +509,9 @@ async def download_courier_report_pdf(
 
         pay_abbr = {
             "cash": "Нал.", "card": "Карта", "online": "Онлайн",
-            "balance": "Баланс", "balance_card": "Бал+Кар",
         }
         pay_full = {
             "cash": "Наличные", "card": "Карта", "online": "Онлайн / перевод",
-            "balance": "Баланс", "balance_card": "Баланс + Карта",
         }
 
         def orders_header():

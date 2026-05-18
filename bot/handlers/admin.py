@@ -25,7 +25,7 @@ STATUS_RU = {
     "rejected": "❌ Отклонён",
 }
 
-PAY_RU = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+PAY_RU = {"cash": "💵 Наличные", "card": "💳 Карта"}
 
 
 def fmt(v):
@@ -65,9 +65,6 @@ class AdminBroadcast(StatesGroup):
 
 class AdminMsgUser(StatesGroup):
     waiting_text = State()
-
-class AdminManualTopup(StatesGroup):
-    waiting_amount = State()
 
 class AdminWarehouseStaff(StatesGroup):
     waiting_tg_id = State()
@@ -300,7 +297,7 @@ async def admin_text_users(message: Message):
     registered = [u for u in users if u.get("is_registered")]
     lines = [f"👥 <b>Клиенты: {len(registered)} зарегистрировано</b>\n"]
     for u in registered[:15]:
-        lines.append(f"• {u.get('name', '—')} | {u.get('phone', '—')} | {fmt(u.get('balance', 0))}")
+        lines.append(f"• {u.get('name', '—')} | {u.get('phone', '—')}")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
@@ -780,75 +777,13 @@ async def admin_users(call: CallbackQuery):
     registered = [u for u in users if u.get("is_registered")]
     lines = [f"👥 <b>Клиенты: {len(registered)} зарегистрировано</b>\n"]
     for u in registered[:15]:
-        lines.append(f"• {u.get('name', '—')} | {u.get('phone', '—')} | {fmt(u.get('balance', 0))}")
+        lines.append(f"• {u.get('name', '—')} | {u.get('phone', '—')}")
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="← Назад", callback_data="admin:back")],
     ])
     await call.message.edit_text("\n".join(lines), reply_markup=kb, parse_mode="HTML")
     await call.answer()
-
-
-@router.callback_query(F.data.startswith("admin:topup_manual:"))
-async def admin_topup_manual_start(call: CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id):
-        return
-    user_id = int(call.data.split(":")[2])
-    await state.update_data(topup_uid=user_id)
-    await state.set_state(AdminManualTopup.waiting_amount)
-    await call.message.answer(f"Введите сумму пополнения для клиента ID {user_id}:")
-    await call.answer()
-
-
-@router.message(AdminManualTopup.waiting_amount)
-async def admin_topup_manual_amount(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    text = message.text.strip().replace(" ", "")
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректную сумму.")
-        return
-    amount = int(text)
-    data = await state.get_data()
-    result = await api.topup_user(data["topup_uid"], amount)
-    await state.clear()
-    await message.answer(f"✅ Баланс пополнен на {fmt(amount)}. Новый: {fmt(result.get('new_balance', 0))}")
-
-
-@router.callback_query(F.data.startswith("admin_topup_req:"))
-async def admin_topup_req(call: CallbackQuery):
-    parts = call.data.split(":")
-    req_id, action = int(parts[1]), parts[2]
-    try:
-        if action == "confirm":
-            result = await api.confirm_topup_req(req_id)
-            new_balance = result.get("new_balance", 0)
-            await call.message.edit_text(
-                f"✅ Пополнение подтверждено. Новый баланс клиента: {fmt(new_balance)}"
-            )
-        else:
-            await api.reject_topup_req(req_id)
-            await call.message.edit_text("❌ Запрос на пополнение отклонён.")
-    except Exception as e:
-        if "409" in str(e):
-            await call.answer("Уже обработано другим администратором", show_alert=True)
-        else:
-            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("admin_topup_confirm:"))
-async def admin_topup_confirm(call: CallbackQuery):
-    """Legacy handler kept for old-format callback buttons."""
-    if not is_admin(call.from_user.id):
-        return
-    await call.answer("Это уведомление устарело. Используйте новые запросы.", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("admin_topup_reject:"))
-async def admin_topup_reject(call: CallbackQuery):
-    """Legacy handler kept for old-format callback buttons."""
-    await call.answer("Это уведомление устарело. Используйте новые запросы.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("admin_sub_confirm:"))
