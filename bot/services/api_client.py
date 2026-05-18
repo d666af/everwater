@@ -214,6 +214,20 @@ async def update_order_cash_received(order_id: int):
         return {}
 
 
+async def set_payment_collected(order_id: int, collected: bool):
+    try:
+        return await _patch(f"/orders/{order_id}/payment_collected", {"collected": collected})
+    except Exception:
+        return {}
+
+
+async def store_payment_prompt(order_id: int, message_id: int):
+    try:
+        return await _post(f"/orders/{order_id}/payment_prompt", {"message_id": message_id})
+    except Exception:
+        return {}
+
+
 async def report_payment_issue(order_id: int, payment_method: str, reason: str, courier_name: str):
     try:
         return await _post(f"/orders/{order_id}/payment_issue", {

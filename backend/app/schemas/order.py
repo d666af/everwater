@@ -61,6 +61,7 @@ class OrderOut(BaseModel):
     cash_collected: bool
     rejection_reason: str | None
     payment_confirmed: bool
+    payment_collected: bool | None = None
     delivery_fee: float = 0.0
     cancellation_reason: str | None = None
     cancellation_penalty: float = 0.0

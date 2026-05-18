@@ -28,6 +28,8 @@ async def create_tables():
             "CREATE INDEX IF NOT EXISTS ix_water_transactions_batch_id ON water_transactions (batch_id)",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS courier_earning FLOAT",
             "ALTER TABLE courier_water ADD COLUMN IF NOT EXISTS reserved INTEGER DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_collected BOOLEAN",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_prompt_msg_id BIGINT",
         ):
             try:
                 await conn.execute(text(stmt))

@@ -271,6 +271,12 @@ export const reportPaymentIssue = (orderId, paymentMethod, reason, courierName) 
     () => ({ ok: true })
   )
 
+export const setPaymentCollected = (orderId, collected) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/payment_collected`, { collected }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const courierAccept = (orderId) =>
   safeCall(
     () => http.patch(`/orders/${orderId}/courier_accept`).then(r => r.data),

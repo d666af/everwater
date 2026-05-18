@@ -646,18 +646,28 @@ async def courier_done(call: CallbackQuery):
             pass
 
     await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
+
+    # Skip payment question if already answered (e.g., via website)
+    if order.get("payment_collected") is not None:
+        await call.answer()
+        return
+
     total_fmt = fmt(order.get("total", 0))
     pay = order.get("payment_method", "cash")
     if pay == "cash":
-        await call.message.answer(
+        sent = await call.message.answer(
             f"💵 Вы получили наличные?\nСумма: {total_fmt}",
             reply_markup=courier_cash_confirm_kb(order_id),
         )
     else:
-        await call.message.answer(
+        sent = await call.message.answer(
             f"💳 Вы проверили чек оплаты по карте?\nСумма: {total_fmt}",
             reply_markup=courier_card_confirm_kb(order_id),
         )
+    try:
+        await api.store_payment_prompt(order_id, sent.message_id)
+    except Exception:
+        pass
     await call.answer()
 
 
@@ -666,6 +676,7 @@ async def courier_cash_received(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     try:
         await api.update_order_cash_received(order_id)
+        await api.set_payment_collected(order_id, True)
     except Exception:
         pass
     await call.message.edit_text("✅ Наличные зафиксированы!")
@@ -674,6 +685,11 @@ async def courier_cash_received(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("courier:card_ok:"))
 async def courier_card_received(call: CallbackQuery):
+    order_id = int(call.data.split(":")[2])
+    try:
+        await api.set_payment_collected(order_id, True)
+    except Exception:
+        pass
     await call.message.edit_text("✅ Оплата по карте подтверждена!")
     await call.answer()
 
@@ -706,7 +722,8 @@ async def payment_issue_reason_received(message: Message, state: FSMContext):
     await state.clear()
     try:
         await api.report_payment_issue(order_id, payment_method, reason, courier_name)
+        await api.set_payment_collected(order_id, False)
     except Exception:
         pass
     pay_label = "наличные" if payment_method == "cash" else "чек оплаты"
-    await message.answer(f"✅ Сообщение отправлено менеджеру. Причина зафиксирована.")
+    await message.answer("✅ Сообщение отправлено менеджеру. Причина зафиксирована.")

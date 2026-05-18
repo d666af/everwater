@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue, setPaymentCollected } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 
@@ -624,13 +625,22 @@ export default function CourierOrders() {
   }
 
   const doDeliverConfirm = (order) => {
-    setConfirmOrder(order)
+    // Skip modal if payment already confirmed (e.g., answered in bot)
+    if (order.payment_collected !== null && order.payment_collected !== undefined) {
+      doAction(orderId => courierDelivered(orderId, !!order.payment_collected), order.id)
+    } else {
+      setConfirmOrder(order)
+    }
   }
 
   const handlePaymentYes = async (order) => {
     setConfirmOrder(null)
     setActionLoading(true)
-    try { await courierDelivered(order.id, true); load() }
+    try {
+      await courierDelivered(order.id, true)
+      await setPaymentCollected(order.id, true)
+      load()
+    }
     catch { alert('Ошибка операции') }
     finally { setActionLoading(false) }
   }
@@ -641,6 +651,7 @@ export default function CourierOrders() {
     try {
       await courierDelivered(order.id, false)
       await reportPaymentIssue(order.id, order.payment_method, reason, courierName)
+      await setPaymentCollected(order.id, false)
       load()
     }
     catch { alert('Ошибка операции') }
@@ -679,12 +690,13 @@ export default function CourierOrders() {
   return (
     <CourierLayout title="Заказы">
       {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} courierId={courierId} />}
-      {confirmOrder && (
+      {confirmOrder && createPortal(
         <PaymentConfirmModal
           order={confirmOrder}
           onYes={() => handlePaymentYes(confirmOrder)}
           onNo={(reason) => handlePaymentNo(confirmOrder, reason)}
-        />
+        />,
+        document.body
       )}
 
       {/* CSS for urgency pulse animation */}
