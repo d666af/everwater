@@ -182,11 +182,13 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         for row in product_sales_q.all()
     ]
 
-    # Warehouse sales: items issued from warehouse in the period, valued at cost price
+    # Warehouse sales: items issued from warehouse in the period
+    # market = qty * sale price; cost = qty * cost_price (for the header total)
     warehouse_sales_q = await db.execute(
         select(
             Product.name,
             Product.cost_price,
+            Product.price,
             func.sum(WaterTransaction.quantity).label("qty"),
         )
         .join(Product, Product.id == WaterTransaction.product_id)
@@ -197,15 +199,15 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
                 WaterTransaction.product_id.isnot(None),
             )
         )
-        .group_by(Product.id, Product.name, Product.cost_price)
+        .group_by(Product.id, Product.name, Product.cost_price, Product.price)
         .order_by(func.sum(WaterTransaction.quantity).desc())
     )
     warehouse_sales = [
         {
             "name": row.name,
             "qty": int(row.qty or 0),
+            "market": round(float(row.price or 0) * int(row.qty or 0), 2),
             "cost": round(float(row.cost_price or 0) * int(row.qty or 0), 2),
-            "cost_price": round(float(row.cost_price or 0), 2),
         }
         for row in warehouse_sales_q.all()
     ]
@@ -311,6 +313,44 @@ async def get_stats_extended(period: str = "month", db: AsyncSession = Depends(g
         "growth_pct": round(growth_pct, 1) if growth_pct is not None else None,
         "total_users": total_users,
     }
+
+
+@router.get("/stats/cancelled-orders")
+async def get_cancelled_orders_list(period: str = "day", db: AsyncSession = Depends(get_db)):
+    now = datetime.utcnow()
+    if period == "day":
+        since = now - timedelta(days=1)
+    elif period == "week":
+        since = now - timedelta(weeks=1)
+    else:
+        since = now - timedelta(days=30)
+
+    q = await db.execute(
+        select(Order, User.name.label("client_name"))
+        .join(User, User.id == Order.user_id)
+        .where(and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since))
+        .order_by(Order.created_at.desc())
+    )
+    rows = q.all()
+    result = []
+    for order, client_name in rows:
+        reason = order.rejection_reason or order.cancellation_reason or ""
+        if order.rejection_reason:
+            cancelled_by = "Менеджер"
+        elif order.cancellation_reason:
+            cancelled_by = "Клиент"
+        else:
+            cancelled_by = "Администратор"
+        result.append({
+            "id": order.id,
+            "client_name": client_name or "",
+            "address": order.address or "",
+            "total": round(order.total, 2),
+            "reason": reason,
+            "cancelled_by": cancelled_by,
+            "created_at": order.created_at.isoformat(),
+        })
+    return result
 
 
 # ─── Couriers ─────────────────────────────────────────────────────────────────

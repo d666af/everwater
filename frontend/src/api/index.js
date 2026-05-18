@@ -408,6 +408,9 @@ export const getAdminStats = (period = 'day') =>
     () => MOCK_STATS[period] || MOCK_STATS.day
   )
 
+export const getCancelledOrders = (period = 'day') =>
+  http.get('/admin/stats/cancelled-orders', { params: { period } }).then(r => r.data)
+
 export const getAdminCouriers = () =>
   safeCall(
     () => http.get('/admin/couriers').then(r => r.data),
