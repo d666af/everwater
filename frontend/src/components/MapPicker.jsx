@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
 const LEAFLET_JS  = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-const DEFAULT_LAT = 41.2995
-const DEFAULT_LNG = 69.2401
+const DEFAULT_LAT = 39.6547
+const DEFAULT_LNG = 66.9758
 
 function loadLeaflet() {
   return new Promise((resolve, reject) => {
