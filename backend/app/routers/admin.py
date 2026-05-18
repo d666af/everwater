@@ -477,6 +477,37 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
     )
     today_deliveries = today_q.scalar() or 0
 
+    # Bottle debt: 19L issued minus returned via bottle_return transactions
+    prod_19l_q = await db.execute(
+        select(Product.id).where(Product.volume >= 18.9)
+    )
+    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
+
+    if prod_19l_ids:
+        issued_q = await db.execute(
+            select(func.sum(WaterTransaction.quantity)).where(
+                and_(
+                    WaterTransaction.courier_id == courier_id,
+                    WaterTransaction.transaction_type == "issue",
+                    WaterTransaction.product_id.in_(prod_19l_ids),
+                )
+            )
+        )
+    else:
+        issued_q = None
+
+    returned_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.courier_id == courier_id,
+                WaterTransaction.transaction_type == "bottle_return",
+            )
+        )
+    )
+    total_issued = (issued_q.scalar() if issued_q else None) or 0
+    total_returned = returned_q.scalar() or 0
+    bottles_must_return = max(0, total_issued - total_returned)
+
     return {
         "courier_id": courier.id,
         "name": courier.name,
@@ -486,6 +517,7 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
         "total_revenue": courier.total_earnings,
         "avg_rating": courier.avg_rating if courier.avg_rating else None,
         "rating_count": courier.rating_count,
+        "bottles_must_return": bottles_must_return,
     }
 
 
