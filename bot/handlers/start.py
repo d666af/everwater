@@ -131,19 +131,44 @@ _ALL_MENU_BUTTONS = frozenset({
     "🏭 Склад", "📦 Товары", "📅 Подписки", "🧑‍💼 Менеджеры",
     "⚙️ Настройки", "📣 Рассылка",
     # manager
-    "📋 Заказы", "👥 Клиенты", "📊 Статистика",
-    # courier
+    "📋 Заказы", "👥 Клиенты", "📊 Статистика", "📝 Создать заказ",
+    # courier (current + legacy names for backward compat)
     "📋 Мои заказы", "📊 Мои отчеты", "💧 Мой склад", "⭐ Мои отзывы", "📝 Создать заказ",
+    "📊 Мои данные", "📈 Отчёт", "📝 Новый заказ",
     # shared
     "🔄 Роль",
 })
+
+# FSM state prefixes that belong to each role — used to detect active role in escape handler
+_COURIER_STATE_PREFIXES = ("CourierOrderCreate:", "CourierReport:", "PaymentIssueReason:")
+_MANAGER_STATE_PREFIXES = ("MgrOrderCreate:", "MgrRejectCustom:", "MgrReject:",
+                           "MgrClientSearch:", "MgrTopup:", "MgrMsgClient:", "MgrSupportReply:")
+_ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:", "AdminManualTopup:",
+                           "AdminMsgUser:", "AdminBroadcast:")
+_WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:",)
+
+
+def _role_from_state(state_str: str | None) -> str | None:
+    if not state_str:
+        return None
+    if any(state_str.startswith(p) for p in _COURIER_STATE_PREFIXES):
+        return "courier"
+    if any(state_str.startswith(p) for p in _MANAGER_STATE_PREFIXES):
+        return "manager"
+    if any(state_str.startswith(p) for p in _ADMIN_STATE_PREFIXES):
+        return "admin"
+    if any(state_str.startswith(p) for p in _WAREHOUSE_STATE_PREFIXES):
+        return "warehouse"
+    return None
 
 
 @router.message(~StateFilter(None), F.text.in_(_ALL_MENU_BUTTONS))
 async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
     """When user presses a menu button while stuck in an FSM flow, abort flow and restore keyboard."""
+    current_state = await state.get_state()
     await state.clear()
-    role = await get_primary_role(message.from_user.id)
+    # Prefer role derived from the active FSM state to handle multi-role users correctly
+    role = _role_from_state(current_state) or await get_primary_role(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
     sup_on = await api.is_support_chat_enabled()
     if role == "admin":

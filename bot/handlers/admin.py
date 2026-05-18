@@ -229,7 +229,7 @@ async def admin_text_pending(message: Message):
         await message.answer(text, reply_markup=order_confirm_kb(o["id"]), parse_mode="HTML")
 
 
-@router.message(F.text == "📊 Статистика", F.from_user.id.func(is_admin))
+@router.message(F.text == "📊 Статистика", F.from_user.id.in_(settings.ADMIN_IDS))
 async def admin_text_stats(message: Message):
     await message.answer("Выберите период:", reply_markup=stats_period_kb())
 
