@@ -142,6 +142,43 @@ def _admin_order_kb(o: dict):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _order_detail_lines(o: dict) -> str:
+    """Order info block without status badge, shared for notifications."""
+    items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
+    pay = PAY_RU.get(o.get("payment_method", ""), "—")
+    lines = [
+        f"👤 {o.get('client_name', '—')}  |  {o.get('recipient_phone', '—')}",
+        f"📍 {o.get('address', '—')}",
+    ]
+    if o.get("extra_info"):
+        lines.append(f"ℹ️ {o['extra_info']}")
+    delivery_fee = o.get('delivery_fee') or 0
+    delivery_part = f" (вкл. доставку {fmt(delivery_fee)})" if delivery_fee > 0 else ""
+    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}"]
+    if o.get("courier_name"):
+        cp = o.get("courier_phone", "")
+        lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
+    return "\n".join(lines)
+
+
+async def _notify_order_staff(bot, caller_id: int, text: str):
+    """Notify all admins+managers about an order action, skipping the caller to avoid duplicate."""
+    recipients: set[int] = set(settings.ADMIN_IDS)
+    try:
+        managers = await api.get_managers()
+        for m in managers:
+            if m.get("is_active") and m.get("telegram_id"):
+                recipients.add(int(m["telegram_id"]))
+    except Exception:
+        pass
+    recipients.discard(caller_id)
+    for uid in recipients:
+        try:
+            await bot.send_message(uid, text, parse_mode="HTML")
+        except Exception:
+            pass
+
+
 @router.message(F.text == "📋 Заказы")
 async def admin_text_orders(message: Message):
     if not is_admin(message.from_user.id):
@@ -322,22 +359,6 @@ async def admin_text_managers(message: Message):
     )
 
 
-@router.message(F.text == "⚙️ Настройки")
-async def admin_text_settings(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    cfg = await api.get_settings()
-    lines = ["⚙️ <b>Настройки:</b>\n"]
-    for key, label in SETTINGS_LABELS.items():
-        lines.append(f"• {label}: <b>{cfg.get(key, '—')}</b>")
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"✏️ {SETTINGS_LABELS[k]}", callback_data=f"admin:set:{k}")]
-        for k in SETTINGS_LABELS
-    ])
-    await message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML")
-
-
 @router.message(F.text == "📣 Рассылка")
 async def admin_text_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -456,16 +477,13 @@ async def admin_confirm(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     kb = courier_select_kb(couriers, order_id)
+    body = _order_detail_lines(order)
+    confirm_text = f"✅ <b>Заказ подтверждён</b>\n\n{body}\n\nВыберите курьера:"
     try:
-        await call.message.edit_text(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
-            reply_markup=kb,
-        )
+        await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:",
-            reply_markup=kb,
-        )
+        await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
+    await _notify_order_staff(call.bot, call.from_user.id, f"✅ <b>Заказ подтверждён</b>\n\n{body}")
     await call.answer()
 
 
@@ -562,20 +580,16 @@ async def admin_set_courier(call: CallbackQuery):
     else:
         client_err = "нет telegram_id у клиента"
 
-    courier_label = f"«{courier['name']}»" if courier else ""
-    result_text = f"✅ Курьер {courier_label} назначен на заказ #{order_id}."
-    if courier_notified:
-        result_text += "\n📨 Курьер уведомлён."
-    else:
-        result_text += f"\n⚠️ Курьер НЕ уведомлён ({courier_err})."
-    if client_notified:
-        result_text += "\n📨 Клиент уведомлён."
-    else:
-        result_text += f"\n⚠️ Клиент НЕ уведомлён ({client_err})."
+    courier_name = courier["name"] if courier else "?"
+    courier_phone = courier.get("phone", "") if courier else ""
+    phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
+    body = _order_detail_lines(order)
+    result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
     try:
-        await call.message.edit_text(result_text)
+        await call.message.edit_text(result_text, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text)
+        await call.message.answer(result_text, parse_mode="HTML")
+    await _notify_order_staff(call.bot, call.from_user.id, result_text)
     await call.answer()
 
 
@@ -1149,12 +1163,87 @@ async def admin_wh_prod_note(message: Message, state: FSMContext):
 # ─── Settings ─────────────────────────────────────────────────────────────────
 
 SETTINGS_LABELS = {
-    "bottle_discount_type": "Тип скидки за бутылки (fixed/percent)",
-    "bottle_discount_value": "Размер скидки за бутылку",
-    "cashback_percent": "Кэшбэк % с заказа",
     "payment_card": "Номер карты для оплаты",
     "payment_holder": "Получатель платежа",
+    "cashback_percent": "Начисление бонусов (значение)",
+    "bonus_expiry_days": "Срок действия бонусов (дней)",
+    "bottle_discount_value": "Размер бонуса за бутылку (значение)",
 }
+
+
+def _is_setting_on(cfg: dict, key: str, default: bool = True) -> bool:
+    v = cfg.get(key)
+    if v is None:
+        return default
+    return str(v).lower() not in ("false", "0", "нет", "off", "no")
+
+
+def _settings_display(cfg: dict):
+    bonus_on = _is_setting_on(cfg, "bonus_program_enabled")
+    bonus_type = cfg.get("bonus_program_type", "percent")
+    bonus_val = cfg.get("cashback_percent", "—")
+    expiry = cfg.get("bonus_expiry_days", "—")
+    bottle_on = _is_setting_on(cfg, "bottle_bonus_enabled")
+    bottle_type = cfg.get("bottle_discount_type", "fixed")
+    bottle_val = cfg.get("bottle_discount_value", "—")
+    card = cfg.get("payment_card", "—")
+    holder = cfg.get("payment_holder", "—")
+
+    b_icon = "✅" if bonus_on else "❌"
+    bo_icon = "✅" if bottle_on else "❌"
+    b_type_label = "Фикс. сумма" if bonus_type == "fixed" else "Процент"
+    bo_type_label = "Фикс. сумма" if bottle_type == "fixed" else "Процент"
+    bonus_val_sfx = " сум" if bonus_type == "fixed" else "%"
+    bottle_val_sfx = " сум" if bottle_type == "fixed" else "%"
+    bv = f"{bonus_val}{bonus_val_sfx}" if str(bonus_val) != "—" else "—"
+    bov = f"{bottle_val}{bottle_val_sfx}" if str(bottle_val) != "—" else "—"
+
+    lines = [
+        "⚙️ <b>Настройки</b>\n",
+        "💳 <b>Оплата</b>",
+        f"  Карта: {card}",
+        f"  Получатель: {holder}",
+        "",
+        f"🎁 <b>Бонусная программа</b>: {b_icon}",
+        f"  Тип начисления: {b_type_label}  |  Значение: {bv}",
+        f"  Срок действия: {expiry} дн." if str(expiry) != "—" else "  Срок действия: —",
+        "",
+        f"🫙 <b>Бонус за бутылку</b>: {bo_icon}",
+        f"  Тип: {bo_type_label}  |  Размер: {bov}",
+    ]
+
+    b_tog = "🎁 Выключить" if bonus_on else "🎁 Включить"
+    bo_tog = "🫙 Выключить" if bottle_on else "🫙 Включить"
+    bf = "✅ Фикс" if bonus_type == "fixed" else "Фикс"
+    bp = "✅ %" if bonus_type == "percent" else "%"
+    bof = "✅ Фикс" if bottle_type == "fixed" else "Фикс"
+    bop = "✅ %" if bottle_type == "percent" else "%"
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Карта", callback_data="admin:set:payment_card"),
+         InlineKeyboardButton(text="👤 Получатель", callback_data="admin:set:payment_holder")],
+        [InlineKeyboardButton(text=b_tog, callback_data="admin:tog:bonus_program")],
+        [InlineKeyboardButton(text=bf, callback_data="admin:set_type:bonus:fixed"),
+         InlineKeyboardButton(text=bp, callback_data="admin:set_type:bonus:percent"),
+         InlineKeyboardButton(text="✏️ Значение", callback_data="admin:set:cashback_percent"),
+         InlineKeyboardButton(text="⏳ Срок (дни)", callback_data="admin:set:bonus_expiry_days")],
+        [InlineKeyboardButton(text=bo_tog, callback_data="admin:tog:bottle_bonus")],
+        [InlineKeyboardButton(text=bof, callback_data="admin:set_type:bottle:fixed"),
+         InlineKeyboardButton(text=bop, callback_data="admin:set_type:bottle:percent"),
+         InlineKeyboardButton(text="✏️ Размер", callback_data="admin:set:bottle_discount_value")],
+        [InlineKeyboardButton(text="← Назад", callback_data="admin:back")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.message(F.text == "⚙️ Настройки")
+async def admin_text_settings(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "admin:settings")
@@ -1162,15 +1251,11 @@ async def admin_settings(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     cfg = await api.get_settings()
-    lines = ["⚙️ <b>Настройки:</b>\n"]
-    for key, label in SETTINGS_LABELS.items():
-        lines.append(f"• {label}: <b>{cfg.get(key, '—')}</b>")
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"✏️ {SETTINGS_LABELS[k]}", callback_data=f"admin:set:{k}")]
-        for k in SETTINGS_LABELS
-    ] + [[InlineKeyboardButton(text="← Назад", callback_data="admin:back")]])
-    await call.message.edit_text("\n".join(lines), reply_markup=kb, parse_mode="HTML")
+    text, kb = _settings_display(cfg)
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
 
@@ -1179,6 +1264,9 @@ async def admin_set_key(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
     key = call.data.split(":", 2)[2]
+    if key not in SETTINGS_LABELS:
+        await call.answer("Неизвестная настройка", show_alert=True)
+        return
     await state.update_data(settings_key=key)
     await state.set_state(AdminSettings.waiting_value)
     label = SETTINGS_LABELS.get(key, key)
@@ -1195,7 +1283,59 @@ async def admin_set_value(message: Message, state: FSMContext):
     value = message.text.strip()
     await api.update_settings({key: value})
     await state.clear()
-    await message.answer(f"✅ Настройка обновлена: {SETTINGS_LABELS.get(key, key)} = {value}")
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await message.answer(f"✅ Сохранено\n\n{text}", reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin:tog:bonus_program")
+async def admin_toggle_bonus(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    cfg = await api.get_settings()
+    current = _is_setting_on(cfg, "bonus_program_enabled")
+    await api.update_settings({"bonus_program_enabled": "false" if current else "true"})
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("❌ Выключено" if current else "✅ Включено")
+
+
+@router.callback_query(F.data == "admin:tog:bottle_bonus")
+async def admin_toggle_bottle_bonus(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    cfg = await api.get_settings()
+    current = _is_setting_on(cfg, "bottle_bonus_enabled")
+    await api.update_settings({"bottle_bonus_enabled": "false" if current else "true"})
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("❌ Выключено" if current else "✅ Включено")
+
+
+@router.callback_query(F.data.startswith("admin:set_type:bonus:"))
+async def admin_set_bonus_type(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    btype = call.data.split(":")[-1]
+    await api.update_settings({"bonus_program_type": btype})
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin:set_type:bottle:"))
+async def admin_set_bottle_type(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    btype = call.data.split(":")[-1]
+    await api.update_settings({"bottle_discount_type": btype})
+    cfg = await api.get_settings()
+    text, kb = _settings_display(cfg)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
 
 
 # ─── Broadcast ────────────────────────────────────────────────────────────────
