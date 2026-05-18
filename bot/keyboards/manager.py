@@ -8,8 +8,8 @@ def _site(path: str = "") -> str:
 
 def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
-        [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
-        [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="👥 Клиенты")],
+        [KeyboardButton(text="📊 Статистика")],
     ]
     third = []
     if subs_enabled:
