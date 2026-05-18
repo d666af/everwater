@@ -207,11 +207,8 @@ function MetricCard({ metric, value }) {
   )
 }
 
-function RevenueContext({ stats, period }) {
+function RevenueContext({ stats, revenueLabel }) {
   if (!stats) return null
-
-  const periodLabel =
-    period === 'day' ? 'за сегодня' : period === 'week' ? 'за неделю' : 'за месяц'
 
   const warehouseRows = stats.warehouse_sales || []
   const warehouseTotalQty = warehouseRows.reduce((s, r) => s + r.qty, 0)
@@ -233,7 +230,7 @@ function RevenueContext({ stats, period }) {
         }}
       >
         <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
-          Выручка {periodLabel}
+          Выручка {revenueLabel}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: 32, fontWeight: 800, color: TEXT }}>
@@ -311,6 +308,10 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
     : dateFrom === dateTo
       ? fmtDate(dateFrom)
       : `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
+
+  const revenueLabel = isToday ? 'за сегодня'
+    : dateFrom === dateTo ? `за ${fmtDate(dateFrom)}`
+    : `за ${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
 
   useEffect(() => {
     setLoading(true)
@@ -446,7 +447,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           </div>
 
           {/* Revenue card — immediately after bottles */}
-          <RevenueContext stats={stats} period={period} />
+          <RevenueContext stats={stats} revenueLabel={revenueLabel} />
 
           {/* Courier sales card */}
           {(stats.product_sales?.length > 0 || (stats.bottles_surcharge_count || 0) > 0) && (() => {
