@@ -110,6 +110,7 @@ export default function CourierStats() {
     return acc
   }, {})
   const totalReturnedFromClients = deliveryRows.reduce((s, o) => s + (o.return_bottles || 0), 0)
+  const totalBonusUsed = deliveryRows.reduce((s, o) => s + (o.bonus_used || 0), 0)
   const bottleSurcharge = report?.bottle_surcharge || 0
   const unreturnedInPeriod = Math.max(0, (report?.total_bottles_19l_delivered || 0) - (report?.total_bottles_returned || 0))
   const unreturnedPeriodValue = Math.round(unreturnedInPeriod * bottleSurcharge)
@@ -479,6 +480,12 @@ export default function CourierStats() {
                                 )}
                               </div>
                             )}
+                            {(o.bonus_used || 0) > 0 && (
+                              <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
+                                <span style={{ color: '#6741D9', fontWeight: 700 }}>−{Number(o.bonus_used).toLocaleString()} сум</span>
+                                <span>бонусная скидка</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -500,6 +507,11 @@ export default function CourierStats() {
                       {totalReturnedFromClients > 0 && (
                         <div style={{ fontSize: 11, color: TEXT2, background: '#E6FCF5', borderRadius: 7, padding: '3px 8px', border: '1px solid rgba(18,184,134,0.2)' }}>
                           <span style={{ color: '#12B886', fontWeight: 700 }}>+{totalReturnedFromClients}</span> Возврат бутылок
+                        </div>
+                      )}
+                      {totalBonusUsed > 0 && (
+                        <div style={{ fontSize: 11, color: TEXT2, background: '#F3ECFF', borderRadius: 7, padding: '3px 8px', border: '1px solid rgba(103,65,217,0.15)' }}>
+                          <span style={{ color: '#6741D9', fontWeight: 700 }}>−{Number(Math.round(totalBonusUsed)).toLocaleString()}</span> Скидки бонусами
                         </div>
                       )}
                     </div>

@@ -195,6 +195,17 @@ function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoa
             </div>
           )}
 
+          {/* Bonus discount */}
+          {(order.bonus_used || 0) > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F3ECFF', borderRadius: 14, padding: '10px 14px', border: '1px solid rgba(103,65,217,0.15)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 5.4 5.6.8-4 4 .9 5.8L12 15.4l-4.9 2.6.9-5.8-4-4 5.6-.8L12 2z" stroke="#6741D9" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#6741D9' }}>Скидка бонусами</div>
+              </div>
+              <span style={{ fontWeight: 800, fontSize: 14, color: '#6741D9' }}>−{Number(order.bonus_used).toLocaleString()} сум</span>
+            </div>
+          )}
+
           {/* Return bottles */}
           {order.return_bottles_count > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#E6FCF5', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(18,184,134,0.2)' }}>

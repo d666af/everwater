@@ -154,7 +154,9 @@ def _order_detail_lines(o: dict) -> str:
         lines.append(f"ℹ️ {o['extra_info']}")
     delivery_fee = o.get('delivery_fee') or 0
     delivery_part = f" (вкл. доставку {fmt(delivery_fee)})" if delivery_fee > 0 else ""
-    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}"]
+    bonus_used = float(o.get('bonus_used') or 0)
+    bonus_part = f"\n💎 Бонусная скидка: −{fmt(int(bonus_used))}" if bonus_used > 0 else ""
+    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}{bonus_part}"]
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")

@@ -48,6 +48,29 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     delivery_revenue = sum(o.delivery_fee for o in orders if (o.delivery_fee or 0) > 0)
     delivery_orders_count = sum(1 for o in orders if (o.delivery_fee or 0) > 0)
     free_delivery_count = len(orders) - delivery_orders_count
+    bonus_used = round(sum(float(o.bonus_used or 0) for o in orders), 2)
+
+    # Bonus earned this period (computed from current settings)
+    try:
+        from app.services.settings_service import get_all_settings
+        cfg = await get_all_settings(db)
+    except Exception:
+        cfg = {}
+    bonus_per_bottle = float(cfg.get("bonus_per_bottle") or 0)
+    cashback_pct = float(cfg.get("cashback_percent") or 0)
+    if bonus_per_bottle > 0 and orders:
+        order_ids = [o.id for o in orders]
+        bottles_q = await db.execute(
+            select(func.sum(OrderItem.quantity))
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(and_(OrderItem.order_id.in_(order_ids), Product.volume >= 18.9))
+        )
+        total_bottles = bottles_q.scalar() or 0
+        bonus_earned = round(float(total_bottles) * bonus_per_bottle, 2)
+    elif cashback_pct > 0:
+        bonus_earned = round(revenue * cashback_pct / 100, 2)
+    else:
+        bonus_earned = 0.0
 
     cancelled_q = await db.execute(
         select(func.count(Order.id)).where(
@@ -84,6 +107,8 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "delivery_revenue": round(delivery_revenue, 2),
         "delivery_orders_count": delivery_orders_count,
         "free_delivery_count": free_delivery_count,
+        "bonus_used": bonus_used,
+        "bonus_earned": bonus_earned,
     }
 
 

@@ -49,6 +49,9 @@ def courier_assignment_text(order: dict) -> str:
     return_count = order.get('return_bottles_count') or 0
     return_line = f"\n\n♻️ Забрать пустых бутылок: {return_count} шт." if return_count > 0 else ""
 
+    bonus_used = float(order.get('bonus_used') or 0)
+    bonus_line = f"\n💎 Скидка бонусами: −{_fmt_sum(int(bonus_used))}" if bonus_used > 0 else ""
+
     return (
         f"📍 {order.get('address') or '—'}\n"
         f"👤 {order.get('recipient_phone') or '—'}\n"
@@ -56,6 +59,7 @@ def courier_assignment_text(order: dict) -> str:
         f"Доставить:\n{items_text}"
         f"{return_line}"
         f"{money_lines}"
+        f"{bonus_line}"
         f"{payment_line}"
         f"{manager_line}"
     )
