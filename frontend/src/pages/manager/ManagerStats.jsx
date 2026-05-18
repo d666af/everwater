@@ -51,8 +51,6 @@ function CancelledCard({ count, dateParams }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
 
-  if (!count) return null
-
   const handleToggle = async () => {
     if (!expanded && orders.length === 0) {
       setLoading(true)
@@ -216,8 +214,6 @@ function RevenueContext({ stats, revenueLabel }) {
   const warehouseTotalCost = warehouseRows.reduce((s, r) => s + r.cost, 0)
   const hasWarehouseSales = warehouseRows.length > 0
 
-  if (!hasWarehouseSales && !stats.revenue) return null
-
   return (
     <>
       <div
@@ -263,7 +259,7 @@ function RevenueContext({ stats, revenueLabel }) {
                     {item.name}
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{item.qty} шт.</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1971C2', flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: CD, flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
                     {item.market > 0 ? `${Math.round(item.market).toLocaleString('ru-RU')} сум` : '—'}
                   </div>
                 </div>
@@ -271,14 +267,14 @@ function RevenueContext({ stats, revenueLabel }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, marginTop: 4, borderTop: '1.5px solid rgba(60,60,67,0.1)' }}>
               <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#1971C2' }}>{warehouseTotalQty} шт.</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: '#1971C2', minWidth: 90, textAlign: 'right' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{warehouseTotalQty} шт.</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 90, textAlign: 'right' }}>
                 {Math.round(warehouseTotalMarket).toLocaleString('ru-RU')} сум
               </div>
             </div>
             {(stats.bottles_returned_to_warehouse || 0) > 0 && (
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(60,60,67,0.06)' }}>
-                <span style={{ fontSize: 12, color: '#1971C2', fontWeight: 600 }}>
+                <span style={{ fontSize: 12, color: CD, fontWeight: 600 }}>
                   Возврат 19л бутылок: {stats.bottles_returned_to_warehouse} шт.
                 </span>
               </div>
@@ -349,11 +345,9 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
             fontSize: 13, fontWeight: 700,
             boxShadow: isToday ? '0 2px 10px rgba(141,198,63,0.4)' : '0 1px 4px rgba(0,0,0,0.04)',
             WebkitTapHighlightColor: 'transparent',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
           }}
         >
-          <span>Сегодня</span>
-          <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.85 }}>{fmtDate(todayISO())}</span>
+          Сегодня
         </button>
         <button
           onClick={() => setPickerOpen(true)}
@@ -450,7 +444,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           <RevenueContext stats={stats} revenueLabel={revenueLabel} />
 
           {/* Courier sales card */}
-          {(stats.product_sales?.length > 0 || (stats.bottles_surcharge_count || 0) > 0) && (() => {
+          {(() => {
             const surchargeRow = (stats.bottles_surcharge_count || 0) > 0
               ? [{ name: 'Бутылка 19л', qty: stats.bottles_surcharge_count, total: stats.bottles_surcharge_total || 0, courier_earning: 0 }]
               : []
@@ -477,14 +471,14 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                     <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
                   </div>
                   {totalEarning > 0 && (
-                    <div style={{ fontSize: 12, color: '#6741D9', fontWeight: 700, marginTop: 5 }}>
+                    <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 5 }}>
                       Заработок курьеров: +{Math.round(totalEarning).toLocaleString('ru-RU')} сум
                     </div>
                   )}
                 </div>
                 {(stats.bottles_returned || 0) > 0 && (
                   <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid rgba(60,60,67,0.06)` }}>
-                    <span style={{ fontSize: 12, color: '#12B886', fontWeight: 600 }}>
+                    <span style={{ fontSize: 12, color: CD, fontWeight: 600 }}>
                       Возврат 19л бутылок: {stats.bottles_returned} шт.
                     </span>
                   </div>
@@ -494,20 +488,18 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           })()}
 
           {/* Bonus card */}
-          {(stats.bonus_earned > 0 || stats.bonus_used > 0) && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16, display: 'flex', gap: 0 }}>
-              <div style={{ flex: 1, paddingRight: 16, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Начислено бонусов</div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: '#E67700', lineHeight: 1 }}>{Math.round(stats.bonus_earned || 0).toLocaleString('ru-RU')}</div>
-                <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
-              </div>
-              <div style={{ flex: 1, paddingLeft: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано</div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: '#6741D9', lineHeight: 1 }}>{Math.round(stats.bonus_used || 0).toLocaleString('ru-RU')}</div>
-                <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум скидки</div>
-              </div>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16, display: 'flex', gap: 0 }}>
+            <div style={{ flex: 1, paddingRight: 16, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Начислено бонусов</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: C, lineHeight: 1 }}>{Math.round(stats.bonus_earned || 0).toLocaleString('ru-RU')}</div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
             </div>
-          )}
+            <div style={{ flex: 1, paddingLeft: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: CD, lineHeight: 1 }}>{Math.round(stats.bonus_used || 0).toLocaleString('ru-RU')}</div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум скидки</div>
+            </div>
+          </div>
 
           {/* Key metrics grid */}
           {METRICS.length > 0 && (
@@ -529,32 +521,30 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           <CancelledCard count={stats.cancelled} dateParams={dateParams} />
 
           {/* Customer classification cards */}
-          {((stats.permanent_customers || 0) > 0 || (stats.inactive_customers || 0) > 0) && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#EBFBEE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="8" r="4" stroke="#2B8A3E" strokeWidth="1.8"/>
-                    <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke="#2B8A3E" strokeWidth="1.8" strokeLinecap="round"/>
-                    <path d="M18 5l1.5 1.5L22 4" stroke="#2B8A3E" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 900, color: '#2B8A3E', lineHeight: 1 }}>{stats.permanent_customers || 0}</div>
-                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Постоянных клиентов</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: `${C}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="8" r="4" stroke={CD} strokeWidth="1.8"/>
+                  <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke={CD} strokeWidth="1.8" strokeLinecap="round"/>
+                  <path d="M18 5l1.5 1.5L22 4" stroke={CD} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </div>
-              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#F1F3F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="8" r="4" stroke="#868E96" strokeWidth="1.8"/>
-                    <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke="#868E96" strokeWidth="1.8" strokeLinecap="round"/>
-                    <path d="M19 9v4M19 16h.01" stroke="#868E96" strokeWidth="1.7" strokeLinecap="round"/>
-                  </svg>
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 900, color: '#868E96', lineHeight: 1 }}>{stats.inactive_customers || 0}</div>
-                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Не активных клиентов</div>
-              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: CD, lineHeight: 1 }}>{stats.permanent_customers || 0}</div>
+              <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Постоянных клиентов</div>
             </div>
-          )}
+            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#F1F3F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="8" r="4" stroke="#868E96" strokeWidth="1.8"/>
+                  <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke="#868E96" strokeWidth="1.8" strokeLinecap="round"/>
+                  <path d="M19 9v4M19 16h.01" stroke="#868E96" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#868E96', lineHeight: 1 }}>{stats.inactive_customers || 0}</div>
+              <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Не активных клиентов</div>
+            </div>
+          </div>
 
           {/* Extended analytics (admin-only) */}
           {showExtended && extStats && (
@@ -567,11 +557,11 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 </div>
                 <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
                   <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>LTV клиента</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2' }}>{Math.round(extStats.ltv || 0).toLocaleString()} сум</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: CD }}>{Math.round(extStats.ltv || 0).toLocaleString()} сум</div>
                 </div>
                 <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
                   <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Бонусов у клиентов</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#E67700' }}>{Math.round(extStats.bonus_load || 0).toLocaleString()} сум</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C }}>{Math.round(extStats.bonus_load || 0).toLocaleString()} сум</div>
                 </div>
                 <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '14px 16px' }}>
                   <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Новых клиентов</div>
