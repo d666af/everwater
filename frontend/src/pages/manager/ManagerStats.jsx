@@ -433,13 +433,23 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
               </div>
               <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Не возвращено</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: (stats.bottles_unreturned || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottles_unreturned ?? 0}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>всего</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottles_surcharge_count || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottles_surcharge_count ?? 0} шт.</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottles_surcharge_total || 0) > 0 ? '#E03131' : TEXT2, marginTop: 2 }}>
+                  {(stats.bottles_surcharge_total || 0) > 0 ? `${Math.round(stats.bottles_surcharge_total).toLocaleString('ru-RU')} сум` : '—'}
+                </div>
               </div>
               <div style={{ flex: 1, paddingLeft: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Долг</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: (stats.bottles_debt_value || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{(stats.bottles_debt_value || 0) >= 1000 ? `${Math.round((stats.bottles_debt_value || 0) / 1000)}к` : Math.round(stats.bottles_debt_value || 0)}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>сум</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottle_debt_count || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottle_debt_count ?? 0} шт.</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottle_debt_value || 0) > 0 ? '#E03131' : TEXT2, marginTop: 2 }}>
+                  {(stats.bottle_debt_value || 0) > 0 ? `${Math.round(stats.bottle_debt_value).toLocaleString('ru-RU')} сум` : '—'}
+                </div>
+                {((stats.bottle_debt_clients || 0) > 0 || (stats.bottle_debt_couriers || 0) > 0) && (
+                  <div style={{ fontSize: 10, color: TEXT2, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {(stats.bottle_debt_clients || 0) > 0 && <span>Клиенты: {stats.bottle_debt_clients} шт.</span>}
+                    {(stats.bottle_debt_couriers || 0) > 0 && <span>Курьеры: {stats.bottle_debt_couriers} шт.</span>}
+                  </div>
+                )}
               </div>
             </div>
           </div>
