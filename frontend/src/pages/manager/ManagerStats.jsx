@@ -8,10 +8,10 @@ const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 
-const todayLabel = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+const todayDate = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 
 const PERIODS = [
-  { key: 'day', label: todayLabel },
+  { key: 'day', label: 'Сегодня', sub: todayDate },
   { key: 'week', label: 'Неделя' },
   { key: 'month', label: 'Месяц' },
 ]
@@ -323,20 +323,25 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
               onClick={() => setPeriod(p.key)}
               style={{
                 flex: 1,
-                padding: '10px 6px',
+                padding: '8px 6px',
                 borderRadius: 12,
                 border: 'none',
                 background: active ? GRAD : 'none',
                 color: active ? '#fff' : TEXT2,
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 boxShadow: active ? '0 2px 10px rgba(141,198,63,0.4)' : 'none',
                 WebkitTapHighlightColor: 'transparent',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1,
               }}
             >
-              {p.label}
+              <span>{p.label}</span>
+              {p.sub && <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>{p.sub}</span>}
             </button>
           )
         })}

@@ -50,6 +50,7 @@ export default function AdminSettings() {
     support_chat_enabled: true,
     support_contacts_text: '',
     permanent_customer_min_orders: 5,
+    permanent_customer_period_days: 90,
     inactive_customer_days: 60,
   })
   const [loading, setLoading] = useState(true)
@@ -711,6 +712,15 @@ export default function AdminSettings() {
               />
             </div>
             <div style={s.field}>
+              <div style={s.label}>За период (дней, 0 = за всё время)</div>
+              <input
+                style={{ ...s.input, maxWidth: 200 }}
+                type="number" min="0"
+                value={form.permanent_customer_period_days}
+                onChange={e => setForm(p => ({ ...p, permanent_customer_period_days: Number(e.target.value) }))}
+              />
+            </div>
+            <div style={s.field}>
               <div style={s.label}>Не активен (дней без заказа)</div>
               <input
                 style={{ ...s.input, maxWidth: 200 }}
@@ -725,8 +735,11 @@ export default function AdminSettings() {
               <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            Клиент с <b>≥{form.permanent_customer_min_orders} доставленных</b> заказов — «Постоянный».
-            {' '}Клиент без заказов более <b>{form.inactive_customer_days} дней</b> — «Не активен».
+            Клиент с <b>≥{form.permanent_customer_min_orders} доставл.</b> заказов
+            {form.permanent_customer_period_days > 0
+              ? <> за последние <b>{form.permanent_customer_period_days} дней</b></>
+              : ' за всё время'} — «Постоянный».
+            {' '}Без заказов более <b>{form.inactive_customer_days} дней</b> — «Не активен».
           </div>
         </Section>
 

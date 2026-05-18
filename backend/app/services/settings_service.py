@@ -44,6 +44,7 @@ DEFAULTS: dict[str, Any] = {
     "support_contacts_text": "📞 Телефон поддержки: +998 90 000-00-00\n📨 Telegram: @everwater_support\n🕐 Часы работы: 09:00–22:00",
     # Customer classification
     "permanent_customer_min_orders": 5,   # delivered orders threshold for "постоянный"
+    "permanent_customer_period_days": 90, # within last N days (0 = all-time)
     "inactive_customer_days": 60,         # days since last delivered order for "не активный"
 }
 
