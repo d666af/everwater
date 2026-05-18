@@ -136,7 +136,6 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     bottle_surcharge_val = surcharge_q.scalar() or 0
     bottle_debt_value = bottles_must_return * float(bottle_surcharge_val)
 
-    return {
     # Inventory: available + reserved per product
     water_q = await db.execute(
         select(CourierWater, Product.name)
