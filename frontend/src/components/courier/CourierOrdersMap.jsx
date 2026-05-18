@@ -13,9 +13,10 @@ const TEXT   = '#1C1C1E'
 const TEXT2  = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
+// confirmed + assigned_to_courier → same orange (both are "Ожидает")
 const STATUS_COLOR = {
   confirmed:           '#E67700',
-  assigned_to_courier: C,
+  assigned_to_courier: '#E67700',
   in_delivery:         '#1971C2',
 }
 
@@ -94,9 +95,7 @@ function PreviewMap({ orders, onClick }) {
       boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: 12,
     }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      {/* Transparent overlay so click reaches the outer div */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 800 }} />
-      {/* Badge */}
       <div style={{
         position: 'absolute', bottom: 8, left: 8, zIndex: 900, pointerEvents: 'none',
         background: 'rgba(28,28,30,0.72)', backdropFilter: 'blur(5px)',
@@ -109,7 +108,6 @@ function PreviewMap({ orders, onClick }) {
         </svg>
         {withCoords.length > 0 ? `${orders.length} заказов · открыть карту` : 'Карта заказов'}
       </div>
-      {/* Expand icon */}
       <div style={{
         position: 'absolute', bottom: 8, right: 8, zIndex: 900, pointerEvents: 'none',
         background: 'rgba(255,255,255,0.9)', borderRadius: 8, padding: '4px 5px',
@@ -158,9 +156,7 @@ function FullOrdersMap({ orders, onAction, onDeliverConfirm, actionLoading, onCl
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9500 }}>
-      <style>{`
-        @keyframes sheetUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
-      `}</style>
+      <style>{`@keyframes sheetUp { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
 
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
@@ -175,21 +171,18 @@ function FullOrdersMap({ orders, onAction, onDeliverConfirm, actionLoading, onCl
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>Карта заказов</div>
           {noCoords > 0 && (
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>
-              {noCoords} без координат — не на карте
-            </div>
+            <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{noCoords} без координат — не на карте</div>
           )}
         </div>
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        {/* Legend: 2 statuses only */}
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           {[
-            ['confirmed', 'Ожидает'],
-            ['assigned_to_courier', 'Назначен'],
-            ['in_delivery', 'В пути'],
-          ].map(([s, l]) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[s] }} />
-              <span style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>{l}</span>
+            ['#E67700', 'Ожидает'],
+            ['#1971C2', 'В пути'],
+          ].map(([color, label]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+              <span style={{ fontSize: 11, color: TEXT2, fontWeight: 600 }}>{label}</span>
             </div>
           ))}
         </div>
@@ -217,7 +210,6 @@ function FullOrdersMap({ orders, onAction, onDeliverConfirm, actionLoading, onCl
         </div>
       )}
 
-      {/* Bottom sheet for selected order */}
       {selected && (
         <OrderSheet
           order={selected}
@@ -234,14 +226,23 @@ function FullOrdersMap({ orders, onAction, onDeliverConfirm, actionLoading, onCl
 
 /* ─── Order detail bottom sheet ─────────────────────────────────────────── */
 function OrderSheet({ order, onClose, onAction, onDeliverConfirm, actionLoading, onActionDone }) {
-  const sc = {
-    confirmed:           { label: 'Ожидает',  color: '#E67700', bg: '#FFF3BF' },
-    assigned_to_courier: { label: 'Назначен', color: CD,        bg: `${C}18` },
-    in_delivery:         { label: 'В пути',   color: '#1971C2', bg: '#E7F5FF' },
-  }[order.status] || { label: order.status, color: TEXT2, bg: '#F2F2F7' }
+  const isWaiting  = ['confirmed', 'assigned_to_courier'].includes(order.status)
+  const scColor    = isWaiting ? '#E67700' : '#1971C2'
+  const scBg       = isWaiting ? '#FFF3BF' : '#E7F5FF'
+  const scLabel    = isWaiting ? 'Ожидает'  : 'В пути'
 
-  const total = Number(order.total || 0)
-  const isCash = order.payment_method === 'cash'
+  const total      = Number(order.total || 0)
+  const isCash     = order.payment_method === 'cash'
+  const hasItems   = order.items?.length > 0
+  const surcharge  = order.bottle_surcharge || 0
+  const returnQty  = order.return_bottles_count || 0
+  const hasSurcharge = surcharge > 0
+
+  // Missing bottles count for surcharge line
+  const qty20l  = (order.items || []).filter(i => (i.volume || 0) >= 18.9).reduce((s, i) => s + i.quantity, 0)
+  const missing = Math.max(0, qty20l - returnQty)
+
+  const payLabel = isCash ? 'Получить наличными' : 'Оплата картой'
 
   return (
     <div style={{
@@ -256,10 +257,9 @@ function OrderSheet({ order, onClose, onAction, onDeliverConfirm, actionLoading,
 
       {/* Status + close */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{
-          fontSize: 12, fontWeight: 700, color: sc.color,
-          background: sc.bg, borderRadius: 7, padding: '3px 9px',
-        }}>{sc.label}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: scColor, background: scBg, borderRadius: 7, padding: '3px 9px' }}>
+          {scLabel}
+        </span>
         <button onClick={onClose} style={{
           width: 28, height: 28, borderRadius: '50%', border: 'none',
           background: '#F2F2F7', cursor: 'pointer',
@@ -271,81 +271,118 @@ function OrderSheet({ order, onClose, onAction, onDeliverConfirm, actionLoading,
         </button>
       </div>
 
-      {/* Address */}
-      <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.3 }}>{order.address}</div>
-      {order.extra_info && (
-        <div style={{ fontSize: 13, color: TEXT2, marginTop: -6 }}>{order.extra_info}</div>
-      )}
-
-      {/* Phone + amount */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        {order.recipient_phone && (
-          <a href={`tel:${order.recipient_phone}`} style={{ fontSize: 13, fontWeight: 600, color: '#1971C2', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-            {order.recipient_phone}
-          </a>
-        )}
-        {total > 0 && (
-          <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
-            {isCash ? '💵' : '💳'} {total.toLocaleString()} сум
-          </span>
-        )}
+      {/* 📍 Address */}
+      <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 16, lineHeight: 1.3, flexShrink: 0 }}>📍</span>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.4 }}>{order.address}</div>
+          {order.extra_info && <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.3, marginTop: 2 }}>{order.extra_info}</div>}
+        </div>
       </div>
 
+      {/* 👤 Phone */}
+      {order.recipient_phone && (
+        <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+          <span style={{ fontSize: 16 }}>👤</span>
+          <a href={`tel:${order.recipient_phone}`}
+            style={{ fontSize: 14, fontWeight: 600, color: '#1971C2', textDecoration: 'none' }}>
+            {order.recipient_phone}
+          </a>
+        </div>
+      )}
+
       {/* Items */}
-      {order.items?.length > 0 && (
-        <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
-          {order.items.map((it, i) => (
-            <span key={i}>{it.product_name} × {it.quantity}{i < order.items.length - 1 ? ' · ' : ''}</span>
+      {hasItems && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 1 }}>
+            {hasSurcharge ? 'Состав:' : 'Доставить:'}
+          </div>
+          {order.items.map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: TEXT2, fontSize: 13, flexShrink: 0 }}>•</span>
+              <span style={{ flex: 1, fontSize: 13, color: TEXT }}>
+                {item.product_name} {item.quantity} шт.
+              </span>
+              {hasSurcharge && item.price > 0 && (
+                <span style={{ fontSize: 13, color: TEXT2, fontWeight: 600, flexShrink: 0 }}>
+                  — {Number(item.price * item.quantity).toLocaleString()} сум
+                </span>
+              )}
+            </div>
           ))}
-          {order.return_bottles_count > 0 && (
-            <span style={{ color: '#0CA678' }}> · ♻️ {order.return_bottles_count} бут.</span>
+          {hasSurcharge && missing > 0 && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: '#E03131', fontSize: 13, flexShrink: 0 }}>•</span>
+              <span style={{ flex: 1, fontSize: 13, color: '#C92A2A', fontWeight: 600 }}>
+                Невозвращённые бутылки {missing} шт.
+              </span>
+              <span style={{ fontSize: 13, color: '#E03131', fontWeight: 700, flexShrink: 0 }}>
+                — +{Number(surcharge).toLocaleString()} сум
+              </span>
+            </div>
           )}
         </div>
       )}
 
-      {/* Action button */}
+      {/* ♻️ Return bottles */}
+      {returnQty > 0 && (
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#0CA678' }}>
+          ♻️ Забрать пустых бутылок: {returnQty} шт.
+        </div>
+      )}
+
+      {/* Payment / total */}
+      {hasSurcharge ? (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Итого</span>
+          <span style={{ fontSize: 16, fontWeight: 900, color: CD }}>
+            {total.toLocaleString()} сум
+            <span style={{ fontSize: 11, color: TEXT2, fontWeight: 500, marginLeft: 5 }}>
+              ({isCash ? 'наличные' : 'карта'})
+            </span>
+          </span>
+        </div>
+      ) : total > 0 ? (
+        <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>
+          {isCash ? '💵' : '💳'} {payLabel}:{' '}
+          <span style={{ color: CD }}>{total.toLocaleString()} сум</span>
+        </div>
+      ) : null}
+
+      {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8 }}>
         {order.status === 'confirmed' && (
-          <button
-            disabled={actionLoading}
+          <button disabled={actionLoading}
             onClick={() => { onAction(courierAccept, order.id); onActionDone() }}
-            style={{ ...btnSt, background: `linear-gradient(135deg,${C},${CD})` }}
-          >
+            style={{ ...btnSt, background: `linear-gradient(135deg,${C},${CD})` }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             Принял заказ
           </button>
         )}
         {order.status === 'assigned_to_courier' && (
-          <button
-            disabled={actionLoading}
+          <button disabled={actionLoading}
             onClick={() => { onAction(courierInDelivery, order.id); onActionDone() }}
-            style={{ ...btnSt, background: 'linear-gradient(135deg,#1C7ED6,#1864AB)' }}
-          >
+            style={{ ...btnSt, background: 'linear-gradient(135deg,#1C7ED6,#1864AB)' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             Выехал
           </button>
         )}
         {order.status === 'in_delivery' && (
-          <button
-            disabled={actionLoading}
+          <button disabled={actionLoading}
             onClick={() => { onDeliverConfirm(order); onActionDone() }}
-            style={{ ...btnSt, background: `linear-gradient(135deg,${C},${CD})` }}
-          >
+            style={{ ...btnSt, background: `linear-gradient(135deg,${C},${CD})` }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
             Доставлено
           </button>
         )}
         {order.latitude && (
-          <a
-            href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
+          <a href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
             target="_blank" rel="noopener noreferrer"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 48, borderRadius: 14, background: '#111827',
               color: '#fff', textDecoration: 'none', flexShrink: 0,
-            }}
-          >
+            }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/></svg>
           </a>
         )}
