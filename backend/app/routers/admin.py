@@ -27,19 +27,36 @@ async def _ensure_subs_enabled(db: AsyncSession) -> None:
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
-async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
+async def get_stats(
+    period: str = "month",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     now = datetime.utcnow()
-    if period == "day":
-        since = now - timedelta(days=1)
-    elif period == "week":
-        since = now - timedelta(weeks=1)
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        since = datetime(df.year, df.month, df.day, 0, 0, 0)
+        dt_str = date_to or date_from
+        dt = datetime.strptime(dt_str, "%Y-%m-%d")
+        until = datetime(dt.year, dt.month, dt.day, 23, 59, 59)
     else:
-        since = now - timedelta(days=30)
+        until = now
+        if period == "day":
+            since = now - timedelta(days=1)
+        elif period == "week":
+            since = now - timedelta(weeks=1)
+        else:
+            since = now - timedelta(days=30)
+
+    def _order_time(*extra):
+        return and_(Order.created_at >= since, Order.created_at <= until, *extra)
+
+    def _tx_time(*extra):
+        return and_(WaterTransaction.created_at >= since, WaterTransaction.created_at <= until, *extra)
 
     delivered_q = await db.execute(
-        select(Order).where(
-            and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since)
-        )
+        select(Order).where(_order_time(Order.status == OrderStatus.DELIVERED))
     )
     orders = delivered_q.scalars().all()
 
@@ -78,14 +95,14 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
 
     cancelled_q = await db.execute(
         select(func.count(Order.id)).where(
-            and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since)
+            _order_time(Order.status == OrderStatus.REJECTED)
         )
     )
     cancelled = cancelled_q.scalar()
 
     repeat_q = await db.execute(
         select(Order.user_id, func.count(Order.id).label("cnt"))
-        .where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
+        .where(_order_time(Order.status == OrderStatus.DELIVERED))
         .group_by(Order.user_id)
         .having(func.count(Order.id) > 1)
     )
@@ -93,7 +110,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
 
     by_status_q = await db.execute(
         select(Order.status, func.count(Order.id).label("cnt"))
-        .where(Order.created_at >= since)
+        .where(and_(Order.created_at >= since, Order.created_at <= until))
         .group_by(Order.status)
     )
     by_status = {str(row[0]).replace("OrderStatus.", "").lower(): row[1]
@@ -145,10 +162,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     )
     bottles_returned_to_warehouse_q = await db.execute(
         select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.transaction_type == "bottle_return",
-                WaterTransaction.created_at >= since,
-            )
+            _tx_time(WaterTransaction.transaction_type == "bottle_return")
         )
     )
     bottles_returned_to_warehouse = int(bottles_returned_to_warehouse_q.scalar() or 0)
@@ -171,7 +185,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         )
         .join(OrderItem, OrderItem.product_id == Product.id)
         .join(Order, Order.id == OrderItem.order_id)
-        .where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
+        .where(_order_time(Order.status == OrderStatus.DELIVERED))
         .group_by(Product.id, Product.name, Product.courier_earning)
         .order_by(func.sum(OrderItem.quantity).desc())
     )
@@ -196,9 +210,8 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         )
         .join(Product, Product.id == WaterTransaction.product_id)
         .where(
-            and_(
+            _tx_time(
                 WaterTransaction.transaction_type == "issue",
-                WaterTransaction.created_at >= since,
                 WaterTransaction.product_id.isnot(None),
             )
         )
@@ -269,21 +282,36 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/stats/extended")
-async def get_stats_extended(period: str = "month", db: AsyncSession = Depends(get_db)):
+async def get_stats_extended(
+    period: str = "month",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     now = datetime.utcnow()
-    if period == "day":
-        since = now - timedelta(days=1)
-        prev_since = now - timedelta(days=2)
-    elif period == "week":
-        since = now - timedelta(weeks=1)
-        prev_since = now - timedelta(weeks=2)
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        since = datetime(df.year, df.month, df.day, 0, 0, 0)
+        dt_str = date_to or date_from
+        dt = datetime.strptime(dt_str, "%Y-%m-%d")
+        until = datetime(dt.year, dt.month, dt.day, 23, 59, 59)
+        span = (until - since).total_seconds()
+        prev_since = since - timedelta(seconds=span)
     else:
-        since = now - timedelta(days=30)
-        prev_since = now - timedelta(days=60)
+        until = now
+        if period == "day":
+            since = now - timedelta(days=1)
+            prev_since = now - timedelta(days=2)
+        elif period == "week":
+            since = now - timedelta(weeks=1)
+            prev_since = now - timedelta(weeks=2)
+        else:
+            since = now - timedelta(days=30)
+            prev_since = now - timedelta(days=60)
 
     # Delivered orders this period
     orders_q = await db.execute(
-        select(Order).where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
+        select(Order).where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since, Order.created_at <= until))
     )
     orders = orders_q.scalars().all()
 
@@ -346,19 +374,32 @@ async def get_stats_extended(period: str = "month", db: AsyncSession = Depends(g
 
 
 @router.get("/stats/cancelled-orders")
-async def get_cancelled_orders_list(period: str = "day", db: AsyncSession = Depends(get_db)):
+async def get_cancelled_orders_list(
+    period: str = "day",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     now = datetime.utcnow()
-    if period == "day":
-        since = now - timedelta(days=1)
-    elif period == "week":
-        since = now - timedelta(weeks=1)
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        since = datetime(df.year, df.month, df.day, 0, 0, 0)
+        dt_str = date_to or date_from
+        dt = datetime.strptime(dt_str, "%Y-%m-%d")
+        until = datetime(dt.year, dt.month, dt.day, 23, 59, 59)
     else:
-        since = now - timedelta(days=30)
+        until = now
+        if period == "day":
+            since = now - timedelta(days=1)
+        elif period == "week":
+            since = now - timedelta(weeks=1)
+        else:
+            since = now - timedelta(days=30)
 
     q = await db.execute(
         select(Order, User.name.label("client_name"))
         .join(User, User.id == Order.user_id)
-        .where(and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since))
+        .where(and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since, Order.created_at <= until))
         .order_by(Order.created_at.desc())
     )
     rows = q.all()

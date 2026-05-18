@@ -339,10 +339,10 @@ export const hideReview = (reviewId) =>
     () => ({ ok: true })
   )
 
-export const getAdminStatsExtended = (period = 'month') =>
+export const getAdminStatsExtended = (params = {}) =>
   safeCall(
-    () => http.get('/admin/stats/extended', { params: { period } }).then(r => r.data),
-    () => ({ period, profit: 0, ltv: 0, bonus_load: 0, new_users: 0, prev_new_users: 0, growth_pct: null, total_users: 0 })
+    () => http.get('/admin/stats/extended', { params }).then(r => r.data),
+    () => ({ profit: 0, ltv: 0, bonus_load: 0, new_users: 0, prev_new_users: 0, growth_pct: null, total_users: 0 })
   )
 
 // ─── Reviews ─────────────────────────────────────────────────────────────────
@@ -402,14 +402,14 @@ export const saveUserAddresses = (userId, addresses) =>
   )
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
-export const getAdminStats = (period = 'day') =>
+export const getAdminStats = (params = {}) =>
   safeCall(
-    () => http.get('/admin/stats', { params: { period } }).then(r => r.data),
-    () => MOCK_STATS[period] || MOCK_STATS.day
+    () => http.get('/admin/stats', { params }).then(r => r.data),
+    () => MOCK_STATS[params.period] || MOCK_STATS.day
   )
 
-export const getCancelledOrders = (period = 'day') =>
-  http.get('/admin/stats/cancelled-orders', { params: { period } }).then(r => r.data)
+export const getCancelledOrders = (params = {}) =>
+  http.get('/admin/stats/cancelled-orders', { params }).then(r => r.data)
 
 export const getAdminCouriers = () =>
   safeCall(
