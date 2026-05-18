@@ -422,6 +422,28 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         </div>
       ) : (
         <>
+          {/* Bottles card */}
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки</div>
+            <div style={{ display: 'flex', gap: 0 }}>
+              <div style={{ flex: 1, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Возвращено</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#12B886', lineHeight: 1 }}>{stats.bottles_returned ?? 0}</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>за период</div>
+              </div>
+              <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Не возвращено</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: (stats.bottles_unreturned || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottles_unreturned ?? 0}</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>всего</div>
+              </div>
+              <div style={{ flex: 1, paddingLeft: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Долг</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: (stats.bottles_debt_value || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{(stats.bottles_debt_value || 0) >= 1000 ? `${Math.round((stats.bottles_debt_value || 0) / 1000)}к` : Math.round(stats.bottles_debt_value || 0)}</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>сум</div>
+              </div>
+            </div>
+          </div>
+
           {/* Bonus card */}
           {(stats.bonus_earned > 0 || stats.bonus_used > 0) && (
             <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16, display: 'flex', gap: 0 }}>
@@ -431,7 +453,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
               </div>
               <div style={{ flex: 1, paddingLeft: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано бонусов</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано</div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: '#6741D9', lineHeight: 1 }}>{Math.round(stats.bonus_used || 0).toLocaleString('ru-RU')}</div>
                 <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум скидки</div>
               </div>
