@@ -437,16 +437,18 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [labelFilter, setLabelFilter] = useState('all')
   const [selectedUser, setSelectedUser] = useState(null)
   const [topupUser, setTopupUser] = useState(null)
   const [phoneModal, setPhoneModal] = useState(null)
 
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
-  const filtered = users.filter(u =>
-    (u.name?.toLowerCase().includes(search.toLowerCase())) ||
-    (u.phone?.includes(search))
-  )
+  const filtered = users.filter(u => {
+    const matchText = (u.name?.toLowerCase().includes(search.toLowerCase())) || (u.phone?.includes(search))
+    const matchLabel = labelFilter === 'all' || u.customer_label === labelFilter
+    return matchText && matchLabel
+  })
 
   const handleTopupConfirm = async (userId, amount) => {
     await confirmTopup(userId, amount)
@@ -464,6 +466,33 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
         <input style={{ border: 'none', outline: 'none', flex: 1, fontSize: 15, background: 'transparent', color: TEXT }} placeholder="Имя или телефон..." value={search} onChange={e => setSearch(e.target.value)} />
         {search && <button style={{ border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setSearch('')}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/></svg></button>}
       </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        {[
+          { key: 'all', label: 'Все' },
+          { key: 'permanent', label: 'Постоянные' },
+          { key: 'inactive', label: 'Не активные' },
+        ].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setLabelFilter(f.key)}
+            style={{
+              padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+              background: labelFilter === f.key
+                ? (f.key === 'permanent' ? '#EBFBEE' : f.key === 'inactive' ? '#F1F3F5' : `${C}22`)
+                : '#fff',
+              color: labelFilter === f.key
+                ? (f.key === 'permanent' ? '#2B8A3E' : f.key === 'inactive' ? '#868E96' : CD)
+                : TEXT2,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ fontSize: 12, color: TEXT2, fontWeight: 500, paddingLeft: 4, marginBottom: 12 }}>
         Клиентов: <b style={{ color: TEXT }}>{filtered.length}</b>
       </div>
