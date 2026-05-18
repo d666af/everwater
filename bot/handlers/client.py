@@ -1317,7 +1317,11 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     except Exception:
         order = None
     if not order or "id" not in order:
-        await call.message.answer("Ошибка при создании заказа. Попробуйте ещё раз.")
+        await state.clear()
+        await call.message.answer(
+            "❌ Ошибка при создании заказа. Попробуйте ещё раз.",
+            reply_markup=main_menu_kb(subs_enabled=await api.is_subscriptions_enabled()),
+        )
         await call.answer()
         return
 
@@ -2002,6 +2006,9 @@ async def forward_to_support(message: Message, state: FSMContext):
     """Catch-all: forward unhandled text to support chat."""
     current_state = await state.get_state()
     if current_state is not None:
+        # User is in an active flow but no handler matched (e.g. typed text during
+        # an inline-button-only step). Give them a visible escape route.
+        await message.answer("Используйте кнопки выше или нажмите /menu для возврата в меню.")
         return
     tg_id = message.from_user.id
     name = message.from_user.full_name or str(tg_id)
