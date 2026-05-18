@@ -135,7 +135,7 @@ export default function Checkout() {
   const missingBottles = Math.max(0, expectedReturns - Number(effectiveReturnCount || 0))
   const bottleSurcharge = missingBottles * surchargePerBottle
   const afterBottle = subtotal + bottleSurcharge
-  const deliveryFee = Number(settings.delivery_price || 0)
+  const deliveryFee = settings.delivery_enabled !== false ? Number(settings.delivery_price || 0) : 0
   const availableBonus = userStore.initialized ? userStore.bonus_points : (user?.bonus_points || 0)
   const bonusLimitPct = (Number(settings.bonus_limit_percent) || 30) / 100
   const bonusMaxByPct = Math.floor((afterBottle + deliveryFee) * bonusLimitPct)
