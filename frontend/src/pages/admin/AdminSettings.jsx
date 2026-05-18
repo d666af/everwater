@@ -2,6 +2,35 @@ import { useEffect, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { getSettings, updateSettings } from '../../api'
 
+function ScrollToTopBtn() {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 300)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  if (!visible) return null
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      style={{
+        position: 'fixed', bottom: 96, right: 16, zIndex: 300,
+        width: 44, height: 44, borderRadius: '50%',
+        background: 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)',
+        border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 4px 16px rgba(80,140,20,0.35)',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+      aria-label="Наверх"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 19V5M5 12l7-7 7 7" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  )
+}
+
 const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
@@ -757,6 +786,8 @@ export default function AdminSettings() {
           {saving ? 'Сохраняю...' : 'Сохранить настройки'}
         </button>
       </div>
+
+      <ScrollToTopBtn />
 
       {confirmSubsOff && (
         <div
