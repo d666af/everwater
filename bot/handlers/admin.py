@@ -141,7 +141,12 @@ def _admin_order_kb(o: dict):
 
 def _order_detail_lines(o: dict) -> str:
     """Order info block without status badge, shared for notifications."""
-    items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
+    items = o.get("items", [])
+    item_lines = [f"  • {i['product_name']} {i['quantity']} шт." for i in items]
+    surcharge = o.get("bottle_surcharge") or 0
+    if surcharge > 0:
+        item_lines.append(f"  • Надбавка за невозврат +{fmt(surcharge)}")
+    items_text = "\n".join(item_lines) if item_lines else "—"
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
     lines = [
         f"👤 {o.get('client_name', '—')}  |  {o.get('recipient_phone', '—')}",
@@ -153,7 +158,9 @@ def _order_detail_lines(o: dict) -> str:
     delivery_part = f" (вкл. доставку {fmt(delivery_fee)})" if delivery_fee > 0 else ""
     bonus_used = float(o.get('bonus_used') or 0)
     bonus_part = f"\n💎 Бонусная скидка: −{fmt(int(bonus_used))}" if bonus_used > 0 else ""
-    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}{bonus_part}"]
+    return_count = o.get("return_bottles_count") or 0
+    return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
+    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}{bonus_part}{return_line}"]
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
