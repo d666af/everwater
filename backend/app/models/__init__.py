@@ -5,9 +5,11 @@ from app.models.courier import Courier
 from app.models.settings import AppSetting
 from app.models.client_data import SavedAddress, Subscription, BottleDebt
 from app.models.support import SupportChat, SupportMessage
+from app.models.cooler import Cooler, CoolerPayment
 
 __all__ = [
     "User", "Product", "Order", "OrderItem", "OrderStatus", "Review", "Courier",
     "AppSetting", "SavedAddress", "Subscription", "BottleDebt",
-    "SupportChat", "SupportMessage",
+    "SupportChat", "SupportMessage", "Cooler", "CoolerPayment",
 ]
+

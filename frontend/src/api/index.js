@@ -714,6 +714,12 @@ export const removeClientCooler = (userId, coolerId) =>
     }
   )
 
+export const addCoolerPayment = (coolerId, data) =>
+  safeCall(
+    () => http.post(`/admin/coolers/${coolerId}/payments`, data).then(r => r.data),
+    () => { throw new Error('mock') }
+  )
+
 // ─── Warehouse ──────────────────────────────────────────────────────────────
 export const getWarehouseStock = () =>
   safeCall(
