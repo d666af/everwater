@@ -17,10 +17,13 @@ const NAV = [
     ),
   },
   {
-    path: '/admin/reviews', label: 'Отзывы',
+    path: '/admin/crm', label: 'CRM',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+        <circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M3 20c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="17" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M21 19c0-2.2-1.8-4-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
       </svg>
     ),
   },
@@ -43,7 +46,7 @@ const NAV = [
   },
 ]
 
-const MAIN_PATHS = new Set(['/admin', '/admin/reviews', '/admin/orders', '/admin/stats'])
+const MAIN_PATHS = new Set(['/admin', '/admin/crm', '/admin/orders', '/admin/stats'])
 
 export default function AdminLayout({ children, noPadding = false, title }) {
   const navigate = useNavigate()
