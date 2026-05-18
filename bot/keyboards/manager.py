@@ -9,7 +9,7 @@ def _site(path: str = "") -> str:
 def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="👥 Клиенты")],
-        [KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="🚴 Курьеры"), KeyboardButton(text="📊 Статистика")],
     ]
     third = []
     if subs_enabled:
