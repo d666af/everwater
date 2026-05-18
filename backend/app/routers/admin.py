@@ -96,35 +96,33 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     by_status = {str(row[0]).replace("OrderStatus.", "").lower(): row[1]
                  for row in by_status_q.fetchall()}
 
-    # Bottle debt stats (global, not period-filtered)
-    prod_19l_q = await db.execute(select(Product.id).where(Product.volume >= 18.9))
-    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
-
-    courier_issued_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(WaterTransaction.transaction_type == "issue",
-                 WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
+    # "Не возвращено": bottles that triggered surcharges in delivered orders this period
+    surcharge_orders = [o for o in orders if (o.bottle_surcharge or 0) > 0]
+    bottles_surcharge_total = round(sum(float(o.bottle_surcharge) for o in surcharge_orders), 2)
+    if surcharge_orders:
+        s_order_ids = [o.id for o in surcharge_orders]
+        delivered_19l_q = await db.execute(
+            select(func.sum(OrderItem.quantity))
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(and_(OrderItem.order_id.in_(s_order_ids), Product.volume >= 18.9))
         )
-    )
-    courier_returned_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            WaterTransaction.transaction_type == "bottle_return"
-        )
-    )
-    courier_unreturned = max(0, (courier_issued_q.scalar() or 0) - (courier_returned_q.scalar() or 0))
+        delivered_19l = int(delivered_19l_q.scalar() or 0)
+        returned_19l = sum(o.return_bottles_count for o in surcharge_orders)
+        bottles_surcharge_count = max(0, delivered_19l - returned_19l)
+    else:
+        bottles_surcharge_count = 0
 
-    client_debt_q = await db.execute(select(func.sum(BottleDebt.count)))
-    client_debt = int(client_debt_q.scalar() or 0)
+    # "Долг": current outstanding bottle debt from BottleDebt table (global)
+    bottle_debt_count_q = await db.execute(select(func.sum(BottleDebt.count)))
+    bottle_debt_count = int(bottle_debt_count_q.scalar() or 0)
 
-    total_unreturned = courier_unreturned + client_debt
-
-    bottle_surcharge_q = await db.execute(
+    bottle_surcharge_price_q = await db.execute(
         select(Product.bottle_surcharge).where(
             and_(Product.volume >= 18.9, Product.bottle_surcharge.isnot(None))
         ).order_by(Product.bottle_surcharge.desc()).limit(1)
     )
-    bottle_surcharge_price = float(bottle_surcharge_q.scalar() or 0)
-    total_debt_value = round(total_unreturned * bottle_surcharge_price, 2)
+    bottle_surcharge_price = float(bottle_surcharge_price_q.scalar() or 0)
+    bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
     return {
         "period": period,
@@ -140,8 +138,10 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "free_delivery_count": free_delivery_count,
         "bonus_used": bonus_used,
         "bonus_earned": bonus_earned,
-        "bottles_unreturned": total_unreturned,
-        "bottles_debt_value": total_debt_value,
+        "bottles_surcharge_count": bottles_surcharge_count,
+        "bottles_surcharge_total": bottles_surcharge_total,
+        "bottle_debt_count": bottle_debt_count,
+        "bottle_debt_value": bottle_debt_value,
     }
 
 
