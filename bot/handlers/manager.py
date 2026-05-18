@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.manager import (
     manager_menu_kb, mgr_order_kb, mgr_courier_select_kb,
-    mgr_stats_period_kb, mgr_client_kb,
+    mgr_client_kb,
     mgr_order_reject_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
@@ -48,9 +48,6 @@ class MgrReject(StatesGroup):
     waiting_reason = State()
 
 
-class MgrClientSearch(StatesGroup):
-    waiting_phone = State()
-
 
 class MgrBroadcast(StatesGroup):
     waiting_text = State()
@@ -89,84 +86,6 @@ async def manager_panel(message: Message):
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
-MGR_PAGE_SIZE = 4
-
-MGR_TAB_LABELS = {
-    "new":    ("⏳", "Новые"),
-    "active": ("🚀", "В работе"),
-    "done":   ("✔️",  "Доставлено"),
-}
-
-
-def _mgr_filter_orders(orders: list, tab: str) -> list:
-    if tab == "new":
-        return [o for o in orders if o.get("status") in ("new", "awaiting_confirmation")]
-    if tab == "active":
-        return [o for o in orders if o.get("status") in ("confirmed", "assigned_to_courier", "in_delivery")]
-    if tab == "done":
-        return [o for o in orders if o.get("status") == "delivered"]
-    return orders
-
-
-def _mgr_filter_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⏳ Новые",    callback_data="mgo:list:new:0"),
-        InlineKeyboardButton(text="🚀 В работе", callback_data="mgo:list:active:0"),
-        InlineKeyboardButton(text="✔️ Готово",   callback_data="mgo:list:done:0"),
-    ]])
-
-
-def _mgr_order_btn_text(o: dict) -> str:
-    STATUS_ICON = {
-        "new": "🆕", "awaiting_confirmation": "⏳", "confirmed": "✅",
-        "assigned_to_courier": "🚚", "in_delivery": "🚴",
-        "delivered": "✔️", "rejected": "❌",
-    }
-    icon = STATUS_ICON.get(o.get("status", ""), "•")
-    addr = (o.get("address") or "").split(",")[0].strip()
-    if len(addr) > 22:
-        addr = addr[:21] + "…"
-    client = (o.get("client_name") or "Клиент").split()[0]
-    return f"{icon} {client} · {addr} · {fmt(o.get('total', 0))}"
-
-
-def _mgr_orders_page_text(filtered: list, tab: str, page: int) -> str:
-    icon, label = MGR_TAB_LABELS.get(tab, ("📋", tab))
-    n = len(filtered)
-    if n == 0:
-        return f"{icon} <b>Заказы — {label}</b>\n\nЗаказов нет."
-    total_pages = max(1, (n + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
-    pg_info = f" · стр. {page + 1}/{total_pages}" if total_pages > 1 else ""
-    return f"{icon} <b>Заказы — {label}</b> ({n}){pg_info}\n\nВыберите заказ:"
-
-
-def _mgr_orders_page_kb(filtered: list, tab: str, page: int) -> InlineKeyboardMarkup:
-    n = len(filtered)
-    total_pages = max(1, (n + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
-    page = max(0, min(page, total_pages - 1))
-    chunk = filtered[page * MGR_PAGE_SIZE: (page + 1) * MGR_PAGE_SIZE]
-
-    rows = []
-    for o in chunk:
-        rows.append([InlineKeyboardButton(
-            text=_mgr_order_btn_text(o),
-            callback_data=f"mgo:order:{o['id']}:{tab}:{page}",
-        )])
-
-    if not rows:
-        rows.append([InlineKeyboardButton(text="— Заказов нет —", callback_data="mgo:noop")])
-
-    if total_pages > 1:
-        nav = []
-        if page > 0:
-            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"mgo:list:{tab}:{page - 1}"))
-        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="mgo:noop"))
-        if page < total_pages - 1:
-            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"mgo:list:{tab}:{page + 1}"))
-        rows.append(nav)
-
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="mgo:filter")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _mgr_order_text(o: dict) -> str:
@@ -218,38 +137,8 @@ def _mgr_order_text(o: dict) -> str:
     return "\n".join(lines)
 
 
-def _mgr_order_detail_kb(o: dict, tab: str = "", page: int = 0) -> InlineKeyboardMarkup:
-    oid = o["id"]
-    status = o.get("status", "")
-    rows = []
-    client_tg = o.get("client_telegram_id")
-
-    if status == "awaiting_confirmation":
-        rows.append([
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"mgr:confirm:{oid}"),
-            InlineKeyboardButton(text="❌ Отклонить",   callback_data=f"mgr:reject:{oid}"),
-        ])
-    if status == "confirmed":
-        rows.append([InlineKeyboardButton(text="🚴 Назначить курьера", callback_data=f"mgr:assign:{oid}")])
-    if status in ("confirmed", "assigned_to_courier", "in_delivery"):
-        rows.append([InlineKeyboardButton(
-            text="✔️ Отметить доставлен",
-            callback_data=f"mgrl:delivered:{oid}:{tab}:{page}",
-        )])
-    if client_tg:
-        rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
-    if status not in ("delivered", "rejected"):
-        rows.append([InlineKeyboardButton(
-            text="❌ Отменить заказ",
-            callback_data=f"mgrl:cancel:{oid}:{tab}:{page}",
-        )])
-    if tab:
-        rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data=f"mgo:back:{tab}:{page}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def _mgr_order_kb(o: dict):
-    """Legacy keyboard for non-list contexts (confirm flow, ⏳ Новые заказы)."""
+    """Keyboard for notification-triggered order actions."""
     oid = o["id"]
     status = o.get("status", "")
     rows = []
@@ -270,130 +159,18 @@ def _mgr_order_kb(o: dict):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _app(path: str = "") -> str:
+    return settings.MINI_APP_URL.rstrip("/") + path
+
+
 @router.message(F.text == "📋 Заказы", _IsManagerFilter())
 async def mgr_all_orders(message: Message):
-    if not await is_manager(message.from_user.id):
-        return
     await message.answer(
-        "📋 <b>Заказы</b>\n\nВыберите раздел:",
-        reply_markup=_mgr_filter_kb(),
-        parse_mode="HTML",
+        "Открыть заказы в приложении:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📋 Заказы", url=_app("/manager")),
+        ]]),
     )
-
-
-@router.callback_query(F.data == "mgo:filter")
-async def mgr_orders_filter_cb(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    await call.message.edit_text(
-        "📋 <b>Заказы</b>\n\nВыберите раздел:",
-        reply_markup=_mgr_filter_kb(),
-        parse_mode="HTML",
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgo:list:"))
-async def mgr_orders_list_cb(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    tab = parts[2]
-    page = int(parts[3]) if len(parts) > 3 else 0
-
-    orders = await api.get_all_orders()
-    filtered = _mgr_filter_orders(orders, tab)
-    total_pages = max(1, (len(filtered) + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
-    page = max(0, min(page, total_pages - 1))
-
-    await call.message.edit_text(
-        _mgr_orders_page_text(filtered, tab, page),
-        reply_markup=_mgr_orders_page_kb(filtered, tab, page),
-        parse_mode="HTML",
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgo:order:"))
-async def mgr_order_detail_cb(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    order_id = int(parts[2])
-    tab = parts[3] if len(parts) > 3 else "new"
-    page = int(parts[4]) if len(parts) > 4 else 0
-
-    order = await api.get_order(order_id)
-    await call.message.edit_text(
-        _mgr_order_text(order),
-        reply_markup=_mgr_order_detail_kb(order, tab, page),
-        parse_mode="HTML",
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgo:back:"))
-async def mgr_orders_back_cb(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    tab = parts[2] if len(parts) > 2 else "new"
-    page = int(parts[3]) if len(parts) > 3 else 0
-
-    orders = await api.get_all_orders()
-    filtered = _mgr_filter_orders(orders, tab)
-    total_pages = max(1, (len(filtered) + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
-    page = max(0, min(page, total_pages - 1))
-
-    await call.message.edit_text(
-        _mgr_orders_page_text(filtered, tab, page),
-        reply_markup=_mgr_orders_page_kb(filtered, tab, page),
-        parse_mode="HTML",
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data == "mgo:noop")
-async def mgr_orders_noop(call: CallbackQuery):
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgrl:delivered:"))
-async def mgrl_mark_delivered(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    order_id = int(parts[2])
-    tab = parts[3] if len(parts) > 3 else "active"
-    page = int(parts[4]) if len(parts) > 4 else 0
-
-    await api.mark_delivered(order_id, from_bot=True)
-    order = await api.get_order(order_id)
-    await call.message.edit_text(
-        _mgr_order_text(order),
-        reply_markup=_mgr_order_detail_kb(order, tab, page),
-        parse_mode="HTML",
-    )
-    await call.answer("✅ Доставлен")
-
-
-@router.callback_query(F.data.startswith("mgrl:cancel:"))
-async def mgrl_cancel_order(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    order_id = int(parts[2])
-    tab = parts[3] if len(parts) > 3 else "new"
-    page = int(parts[4]) if len(parts) > 4 else 0
-
-    await api.reject_order(order_id, "Отменён менеджером", from_bot=True)
-    order = await api.get_order(order_id)
-    await call.message.edit_text(
-        _mgr_order_text(order),
-        reply_markup=_mgr_order_detail_kb(order, tab, page),
-        parse_mode="HTML",
-    )
-    await call.answer("❌ Отменён")
 
 
 
@@ -402,7 +179,10 @@ async def mgrl_cancel_order(call: CallbackQuery):
 async def mgr_confirm(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
-    order_id = int(call.data.split(":")[2])
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else ""
+    page = int(parts[4]) if len(parts) > 4 else 0
     try:
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
@@ -413,7 +193,7 @@ async def mgr_confirm(call: CallbackQuery):
         return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
-    kb = mgr_courier_select_kb(couriers, order_id)
+    kb = mgr_courier_select_kb(couriers, order_id, tab=tab, page=page)
     body = _order_detail_lines(order)
     confirm_text = f"✅ <b>Заказ подтверждён</b>\n\n{body}\n\nВыберите курьера:"
     try:
@@ -510,11 +290,14 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
 async def mgr_assign(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
-    order_id = int(call.data.split(":")[2])
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else ""
+    page = int(parts[4]) if len(parts) > 4 else 0
     couriers = await api.get_couriers()
     await call.message.edit_text(
         f"Выберите курьера для заказа #{order_id}:",
-        reply_markup=mgr_courier_select_kb(couriers, order_id),
+        reply_markup=mgr_courier_select_kb(couriers, order_id, tab=tab, page=page),
     )
     await call.answer()
 
@@ -525,6 +308,8 @@ async def mgr_set_courier(call: CallbackQuery):
         return
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
+    tab = parts[4] if len(parts) > 4 else ""
+    page = int(parts[5]) if len(parts) > 5 else 0
     try:
         await api.assign_courier(order_id, courier_id, from_bot=True, manager_telegram_id=call.from_user.id)
     except Exception:
@@ -575,10 +360,13 @@ async def mgr_set_courier(call: CallbackQuery):
     phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 Заказы", url=_app("/manager"))]
+    ])
     try:
-        await call.message.edit_text(result_text, parse_mode="HTML")
+        await call.message.edit_text(result_text, reply_markup=back_kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text, parse_mode="HTML")
+        await call.message.answer(result_text, reply_markup=back_kb, parse_mode="HTML")
     await _notify_order_staff(call.bot, call.from_user.id, result_text)
     await call.answer()
 
@@ -599,8 +387,24 @@ async def mgr_mark_delivered(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.mark_delivered(order_id, from_bot=True)
+    result = await api.mark_delivered(order_id, from_bot=True)
     order = await api.get_order(order_id)
+
+    from keyboards.user import review_kb
+    client_tg = order.get("client_telegram_id")
+    bonus = (result or {}).get("bonus", 0) if isinstance(result, dict) else 0
+    if client_tg:
+        try:
+            bonus_txt = f"\n🎁 Начислено {fmt(bonus)} сум бонусных баллов!" if bonus and bonus > 0 else ""
+            await call.bot.send_message(client_tg, f"✅ Ваш заказ доставлен!{bonus_txt}")
+            await call.bot.send_message(
+                client_tg,
+                "Пожалуйста, оцените качество доставки:",
+                reply_markup=review_kb(order_id),
+            )
+        except Exception:
+            pass
+
     await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     await call.answer("✅ Доставлен")
 
@@ -610,8 +414,26 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.reject_order(order_id, "Отменён менеджером", from_bot=True)
+    reason = "Отменён менеджером"
+    try:
+        await api.reject_order(order_id, reason, from_bot=True)
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("Заказ уже обработан", show_alert=True)
+            return
+
     order = await api.get_order(order_id)
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            await call.bot.send_message(
+                client_tg,
+                f"❌ Ваш заказ #{order_id} отменён.\nПричина: {reason}\n"
+                "Если есть вопросы — обратитесь в поддержку.",
+            )
+        except Exception:
+            pass
+
     await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     await call.answer("❌ Заказ отменён")
 
@@ -620,34 +442,13 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
 @router.message(F.text == "👥 Клиенты", _IsManagerFilter())
-async def mgr_clients(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
-        return
-    await state.set_state(MgrClientSearch.waiting_phone)
-    await message.answer("Введите номер телефона или имя клиента для поиска:")
-
-
-@router.message(MgrClientSearch.waiting_phone)
-async def mgr_client_search(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
-        return
-    query = message.text.strip()
-    await state.clear()
-    users = await api.get_all_users()
-    found = [u for u in users if
-             (query.lower() in (u.get("name") or "").lower() or
-              query.replace("+", "").replace(" ", "") in (u.get("phone") or "").replace("+", "").replace(" ", ""))]
-    if not found:
-        await message.answer("Клиент не найден.")
-        return
-    for u in found[:5]:
-        text = (
-            f"👤 <b>{u.get('name', '—')}</b>\n"
-            f"Телефон: {u.get('phone', '—')}\n"
-            f"Бонусы: {fmt(u.get('bonus_points', 0))}"
-        )
-        await message.answer(text, reply_markup=mgr_client_kb(u["id"], u.get("telegram_id")),
-                             parse_mode="HTML")
+async def mgr_clients(message: Message):
+    await message.answer(
+        "Открыть клиентов в приложении:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="👥 Клиенты", url=_app("/manager/clients")),
+        ]]),
+    )
 
 
 @router.callback_query(F.data.startswith("mgr:msg_client:"))
@@ -679,27 +480,22 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 @router.message(F.text == "📊 Статистика", _IsManagerFilter())
 async def mgr_stats_menu(message: Message):
-    await message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
-
-
-@router.callback_query(F.data.startswith("mgr:stats:"))
-async def mgr_stats(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    period = call.data.split(":")[2]
-    stats = await api.get_stats(period)
-    label = {"day": "день", "week": "неделю", "month": "месяц"}.get(period, period)
-    text = (
-        f"📊 <b>Статистика за {label}:</b>\n\n"
-        f"📦 Заказов: {stats.get('order_count', 0)}\n"
-        f"💰 Выручка: {fmt(stats.get('revenue', 0))}\n"
-        f"🧾 Средний чек: {fmt(stats.get('avg_check', 0))}\n"
-        f"🫙 Возвращено бутылок: {stats.get('bottles_returned', 0)}\n"
-        f"❌ Отменено: {stats.get('cancelled', 0)}\n"
-        f"🔄 Повторных клиентов: {stats.get('repeat_customers', 0)}"
+    await message.answer(
+        "Открыть статистику в приложении:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📊 Статистика", url=_app("/manager/stats")),
+        ]]),
     )
-    await call.message.edit_text(text, parse_mode="HTML")
-    await call.answer()
+
+
+@router.message(F.text == "🚴 Курьеры", _IsManagerFilter())
+async def mgr_couriers_link(message: Message):
+    await message.answer(
+        "Открыть курьеров в приложении:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🚴 Курьеры", url=_app("/manager/couriers")),
+        ]]),
+    )
 
 
 # ─── Client detail tabs ───────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ def _site(path: str = "") -> str:
 def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="👥 Клиенты")],
-        [KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="🚴 Курьеры"), KeyboardButton(text="📊 Статистика")],
     ]
     third = []
     if subs_enabled:
@@ -42,9 +42,9 @@ def mgr_order_reject_kb(order_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def mgr_courier_select_kb(couriers: list, order_id: int) -> InlineKeyboardMarkup:
+def mgr_courier_select_kb(couriers: list, order_id: int, tab: str = "", page: int = 0) -> InlineKeyboardMarkup:
     buttons = [
-        [InlineKeyboardButton(text=c["name"], callback_data=f"mgr:set_courier:{order_id}:{c['id']}")]
+        [InlineKeyboardButton(text=c["name"], callback_data=f"mgr:set_courier:{order_id}:{c['id']}:{tab}:{page}")]
         for c in couriers
     ]
     buttons.append([InlineKeyboardButton(text="🌐 Курьеры на сайте", url=_site("/manager/couriers"))])
