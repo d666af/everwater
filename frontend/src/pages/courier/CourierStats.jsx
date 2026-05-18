@@ -414,7 +414,7 @@ export default function CourierStats() {
                 <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '0 16px' }}>
                   {deliveryRows.map((o, i) => {
                     const isCash = o.payment_method === 'cash'
-                    const dt = o.delivered_at_iso ? new Date(o.delivered_at_iso) : null
+                    const dt = o.delivered_at_iso ? new Date(new Date(o.delivered_at_iso).getTime() + 5 * 60 * 60 * 1000) : null
                     const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : (o.delivered_at || '').slice(-5)
                     const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : (o.delivered_at || '').slice(0, 6)
                     const orderItems = (o.items || []).filter(it => it.quantity > 0)

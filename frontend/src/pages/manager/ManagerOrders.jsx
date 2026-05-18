@@ -143,7 +143,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
         />
       )}
       {showCreate && (
-        <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} />
+        <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} couriers={couriers} />
       )}
 
       {/* Create order button */}
@@ -650,7 +650,7 @@ function Stepper({ value, onDec, onInc, onChange, min = 0, max = Infinity }) {
   )
 }
 
-function CreateOrderModal({ onClose, onSave }) {
+function CreateOrderModal({ onClose, onSave, couriers = [] }) {
   const [phone, setPhone] = useState('')
   const [client, setClient] = useState(null)
   const [looking, setLooking] = useState(false)
@@ -662,6 +662,7 @@ function CreateOrderModal({ onClose, onSave }) {
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
+  const [courierId, setCourierId] = useState('')
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef(null)
 
@@ -728,7 +729,7 @@ function CreateOrderModal({ onClose, onSave }) {
       return p ? { product_id: p.id, quantity: qty, price: p.price } : null
     }).filter(Boolean)
 
-  const canSave = phone.replace(/\D/g, '').length >= 9 && address.trim() && (items.length > 0 || returnBottles > 0)
+  const canSave = phone.replace(/\D/g, '').length >= 9 && address.trim() && (items.length > 0 || returnBottles > 0) && !!courierId
 
   const handle = async () => {
     if (!canSave) return
@@ -746,6 +747,7 @@ function CreateOrderModal({ onClose, onSave }) {
         latitude: lat,
         longitude: lng,
         creator_role: 'manager',
+        courier_id: courierId ? Number(courierId) : null,
       })
       onClose()
     } catch { alert('Ошибка при создании заказа') }
@@ -911,6 +913,21 @@ function CreateOrderModal({ onClose, onSave }) {
             </div>
           </div>
         )}
+
+        {/* ── Courier selection ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Label>Курьер</Label>
+          <select
+            style={{ ...s.inp, appearance: 'none', WebkitAppearance: 'none' }}
+            value={courierId}
+            onChange={e => setCourierId(e.target.value)}
+          >
+            <option value="">-- Выберите курьера --</option>
+            {couriers.filter(c => c.is_active !== false).map(c => (
+              <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>
+            ))}
+          </select>
+        </div>
 
         <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: canSave ? 'pointer' : 'not-allowed', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', border: 'none', boxShadow: '0 4px 14px rgba(141,198,63,0.35)', opacity: canSave ? 1 : 0.45 }} disabled={!canSave || loading} onClick={handle}>
           {loading ? 'Создаю...' : `Создать заказ · ${Number(grandTotal).toLocaleString()} сум`}

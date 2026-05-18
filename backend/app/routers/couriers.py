@@ -733,6 +733,7 @@ class CourierOrderCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     courier_telegram_id: int | None = None  # set when a courier creates the order
+    courier_id: int | None = None           # set when manager pre-selects courier
     creator_role: str = "manager"           # "courier" | "manager" | "admin"
     manager_name: str | None = None
     manager_phone: str | None = None
@@ -805,7 +806,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         db.add(OrderItem(order_id=order.id, product_id=product.id,
                          quantity=quantity, price=product.price))
 
-    # Auto-assign if a courier created the order
+    # Resolve creator courier (courier-created order)
     creator_courier = None
     if body.courier_telegram_id:
         c_q = await db.execute(
@@ -816,25 +817,32 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
 
+    # Resolve manager-pre-selected courier (manager-created order with courier chosen at creation)
+    manager_assigned_courier = None
+    if body.creator_role in ("manager", "admin") and body.courier_id and not creator_courier:
+        mac_q = await db.execute(select(Courier).where(Courier.id == body.courier_id))
+        manager_assigned_courier = mac_q.scalar_one_or_none()
+        if manager_assigned_courier:
+            order.courier_id = manager_assigned_courier.id
+
     is_return_only = not items_data and body.return_bottles_count > 0
 
     if is_return_only:
-        if creator_courier:
-            # Courier-created return-only: auto-deliver and record bottle return immediately
+        assigned_courier = creator_courier or manager_assigned_courier
+        if assigned_courier:
+            # Auto-deliver return-only order when courier is known
             order.status = OrderStatus.DELIVERED
             order.delivered_at = datetime.utcnow()
             from app.models.warehouse import WaterTransaction
             db.add(WaterTransaction(
-                courier_id=creator_courier.id,
+                courier_id=assigned_courier.id,
                 transaction_type="bottle_return",
                 quantity=body.return_bottles_count,
                 order_id=order.id,
             ))
-        # Manager-created return-only: stay as CONFIRMED so manager can assign a courier
-        # WaterTransaction will be created in assign_courier
+        # else: no courier yet — stays CONFIRMED for later assignment
     elif order.courier_id and items_data:
-        # Inline reservation — order.items relationship not loaded yet, use items_data directly
-        from app.models.warehouse import CourierWater
+        from app.models.warehouse import CourierWater, WaterTransaction
         for product, quantity in items_data:
             row_q = await db.execute(
                 select(CourierWater).where(
@@ -843,10 +851,27 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 )
             )
             row = row_q.scalar_one_or_none()
-            if row:
+            if manager_assigned_courier:
+                # Manager pre-assigned: record as issue transaction and set reserved
+                if not row:
+                    row = CourierWater(courier_id=order.courier_id, product_id=product.id, quantity=0, reserved=0)
+                    db.add(row)
+                row.reserved = (row.reserved or 0) + quantity
+                db.add(WaterTransaction(
+                    product_id=product.id,
+                    courier_id=order.courier_id,
+                    order_id=order.id,
+                    transaction_type="issue",
+                    quantity=quantity,
+                    note="Заказ создан менеджером",
+                ))
+            elif row:
+                # Courier-created: move from available to reserved
                 qty = min(quantity, max(0, row.quantity))
                 row.quantity = max(0, row.quantity - qty)
                 row.reserved = (row.reserved or 0) + qty
+        if manager_assigned_courier:
+            order.status = OrderStatus.ASSIGNED_TO_COURIER
     await db.commit()
 
     oid = order.id
@@ -862,16 +887,17 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         client_phone_r = (user.phone if user and user.phone else None) or body.phone
         client_name_r = (user.name if user else None) or ""
         client_identity_r = f"{client_name_r} | {client_phone_r}".strip(" |") if client_name_r else client_phone_r
+        assigned_courier_r = creator_courier or manager_assigned_courier
 
-        if creator_courier:
-            # Courier-created: auto-delivered, notify courier + admins
-            await _tg(creator_courier.telegram_id, (
+        if assigned_courier_r:
+            # Courier known: auto-delivered, notify courier + admins
+            await _tg(assigned_courier_r.telegram_id, (
                 f"♻️ Возврат бутылок оформлен!\n\n"
                 f"👤 {client_identity_r}\n"
                 f"📍 {body.address}\n"
                 f"Бутылки 19л: {body.return_bottles_count} шт."
             ))
-            extra_line = f"\nКурьер: {creator_courier.name} ({creator_courier.phone or '—'})"
+            extra_line = f"\nКурьер: {assigned_courier_r.name} ({assigned_courier_r.phone or '—'})"
             info_text_r = (
                 f"♻️ Возврат бутылок\n"
                 f"Клиент: {client_identity_r}\n"
@@ -886,7 +912,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     await _tg(m.telegram_id, info_text_r)
             return {"id": oid, "status": "delivered"}
         else:
-            # Manager-created: order stays CONFIRMED — notify admins/managers to assign courier
+            # No courier yet — notify admins/managers to assign one
             phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
             mgr_line = f"\nМенеджер: {body.manager_name}{phone_part}" if body.manager_name else ""
             info_text_r = (
@@ -984,34 +1010,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
                 await _tg(m.telegram_id, info_text)
 
-    # ── Manager/admin-created order (needs courier assignment) ──
+    # ── Manager/admin-created order ──
     else:
         role_label = "менеджером" if body.creator_role == "manager" else "администратором"
 
-        # Notify client that order was created
-        if client_tg:
-            def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
-            items_lines_fmt = "\n".join(
-                f"  • {p.name} {q} шт. — {_fmt_n(p.price * q)} сум"
-                for p, q in items_data
-            ) if items_data else "  —"
-            return_block = (
-                f"\n\nВозврат:\n• Бутылки 19л — {body.return_bottles_count} шт."
-                if body.return_bottles_count else ""
-            )
-            await _tg(client_tg, (
-                f"✅ Для вас создан заказ!\n\n"
-                f"Состав:\n{items_lines_fmt}"
-                f"{return_block}\n\n"
-                f"Сумма: {_fmt_n(total_int)} сум\n"
-                f"Адрес: {body.address}"
-            ))
-            await _tg(client_tg, (
-                f"✅ Заказ передан на подтверждение.\n"
-                f"Мы уведомим вас когда подтвердят."
-            ))
-
-        # Notify admins/managers with "assign courier" inline button
         def _fmt_nm(n): return f"{int(n):,}".replace(',', ' ')
         mgr_client_name = (user.name if user and user.name else None) or ""
         mgr_client_phone = (user.phone if user and user.phone else None) or body.phone
@@ -1025,21 +1027,88 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
             if body.return_bottles_count else ""
         )
-        text = (
-            f"🆕 Новый заказ! Создан {role_label}\n"
-            f"Клиент: {mgr_client_identity}\n"
-            f"Адрес: {body.address}\n\n"
-            f"Состав:\n{mgr_items_lines}"
-            f"{mgr_return_block}\n\n"
-            f"Сумма: {_fmt_nm(total_int)} сум\n\n"
-            f"Назначьте курьера!"
-        )
-        kb = {"inline_keyboard": [
-            [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
-            [{"text": "🌐 Заказ на сайте", "url": cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"}],
-        ]}
-        msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
-        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
-        await db.commit()
+
+        if manager_assigned_courier:
+            courier_name_m = manager_assigned_courier.name
+            courier_phone_m = manager_assigned_courier.phone or ""
+
+            items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            courier_text = (
+                f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
+                f"📍 {body.address}\n"
+                f"👤 {mgr_client_identity}\n\n"
+                f"Состав:\n{items_lines_c}"
+                f"{mgr_return_block}\n\n"
+                f"Итого: {_fmt_nm(total_int)} сум"
+            )
+            from urllib.parse import quote as url_quote
+            kb_rows = []
+            if body.address:
+                kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={url_quote(body.address)}"}])
+            kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
+            await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
+
+            if client_tg:
+                await _tg(client_tg, (
+                    f"✅ Для вас создан заказ!\n\n"
+                    f"Состав:\n{items_lines_c}"
+                    f"{mgr_return_block}\n\n"
+                    f"Сумма: {_fmt_nm(total_int)} сум\n"
+                    f"Адрес: {body.address}"
+                ))
+                phone_line = f"\nТелефон курьера: {courier_phone_m}" if courier_phone_m else ""
+                await _tg(client_tg, (
+                    f"🚴 Курьер {courier_name_m} назначен на ваш заказ!\n"
+                    f"Ожидайте доставку.{phone_line}"
+                ))
+
+            info_text = (
+                f"🆕 Новый заказ! Создан {role_label}\n"
+                f"Клиент: {mgr_client_identity}\n"
+                f"Адрес: {body.address}\n\n"
+                f"Состав:\n{mgr_items_lines}"
+                f"{mgr_return_block}\n\n"
+                f"Сумма: {_fmt_nm(total_int)} сум\n\n"
+                f"✅ Курьер {courier_name_m} назначен"
+            )
+            for aid in cfg.ADMIN_IDS:
+                await _tg(aid, info_text)
+            for m in mgrs:
+                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                    await _tg(m.telegram_id, info_text)
+        else:
+            if client_tg:
+                items_lines_fmt = "\n".join(
+                    f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум"
+                    for p, q in items_data
+                ) if items_data else "  —"
+                await _tg(client_tg, (
+                    f"✅ Для вас создан заказ!\n\n"
+                    f"Состав:\n{items_lines_fmt}"
+                    f"{mgr_return_block}\n\n"
+                    f"Сумма: {_fmt_nm(total_int)} сум\n"
+                    f"Адрес: {body.address}"
+                ))
+                await _tg(client_tg, (
+                    f"✅ Заказ передан на подтверждение.\n"
+                    f"Мы уведомим вас когда подтвердят."
+                ))
+
+            text = (
+                f"🆕 Новый заказ! Создан {role_label}\n"
+                f"Клиент: {mgr_client_identity}\n"
+                f"Адрес: {body.address}\n\n"
+                f"Состав:\n{mgr_items_lines}"
+                f"{mgr_return_block}\n\n"
+                f"Сумма: {_fmt_nm(total_int)} сум\n\n"
+                f"Назначьте курьера!"
+            )
+            kb = {"inline_keyboard": [
+                [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+                [{"text": "🌐 Заказ на сайте", "url": cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"}],
+            ]}
+            msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+            await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
+            await db.commit()
 
     return {"ok": True, "order_id": oid}
