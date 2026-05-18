@@ -814,7 +814,22 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         courier_name = creator_courier.name
         courier_phone = creator_courier.phone or ""
 
-        # Notify courier with full assignment message + action buttons
+        # Notify courier with new order confirmation
+        def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
+        qty19L_c = sum(q for p, q in items_data if p.has_bottle_deposit)
+        missing_c = max(0, qty19L_c - body.return_bottles_count)
+        items_lines_c = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
+        if body.return_bottles_count > 0:
+            items_lines_c += f"\n  • Возврат бутылок 19л — {body.return_bottles_count} шт."
+        if missing_c > 0 and bottle_surcharge > 0:
+            items_lines_c += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n(bottle_surcharge)} сум"
+        courier_text = (
+            f"🚴 <b>Вы создали новый заказ!</b>\n\n"
+            f"📍 {body.address}\n"
+            f"👤 {body.phone}\n\n"
+            f"Состав:\n{items_lines_c}\n\n"
+            f"Итого: · {_fmt_n(total_int)} сум"
+        )
         from urllib.parse import quote as url_quote
         kb_rows = []
         if body.address:
@@ -822,15 +837,6 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
-        bottles_line = f"\nВозврат бутылок: {body.return_bottles_count} шт." if body.return_bottles_count else ""
-        courier_text = (
-            f"📦 <b>🚚 Назначен курьеру</b>\n\n"
-            f"Адрес: {body.address}\n"
-            f"Клиент: {body.phone}\n"
-            f"Время: {body.delivery_time or '—'}\n"
-            f"Товары:\n{items_lines}\n"
-            f"Получить от клиента: {total_int:,} сум{bottles_line}"
-        )
         await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
 
         # Notify client about created+assigned order
