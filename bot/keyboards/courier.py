@@ -1,5 +1,5 @@
 from urllib.parse import quote
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from config import settings
 
 
@@ -76,10 +76,14 @@ def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
 
 
 def courier_menu_kb() -> ReplyKeyboardMarkup:
+    base = settings.MINI_APP_URL.rstrip("/")
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Мои заказы"), KeyboardButton(text="📊 Мои отчеты")],
-            [KeyboardButton(text="💧 Мой склад"), KeyboardButton(text="⭐ Мои отзывы")],
+            [
+                KeyboardButton(text="📋 Мои заказы"),
+                KeyboardButton(text="🗺 Карта заказов", web_app=WebAppInfo(url=f"{base}/courier/map")),
+            ],
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📈 Отчет")],
             [KeyboardButton(text="📝 Создать заказ")],
         ],
         resize_keyboard=True,

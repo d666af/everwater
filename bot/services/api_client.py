@@ -523,6 +523,14 @@ async def get_courier_water(courier_id: int):
         return []
 
 
+async def get_courier_report(courier_db_id: int, date_from: str, date_to: str):
+    try:
+        return await _get(f"/couriers/{courier_db_id}/report",
+                          params={"date_from": date_from, "date_to": date_to})
+    except Exception:
+        return {}
+
+
 async def courier_create_order(data: dict):
     return await _post("/couriers/orders", data)
 

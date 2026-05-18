@@ -49,6 +49,7 @@ import ManagerSubscriptions from './pages/manager/ManagerSubscriptions'
 // Courier
 import CourierOrders from './pages/courier/CourierOrders'
 import CourierStats from './pages/courier/CourierStats'
+import CourierMapPage from './pages/courier/CourierMapPage'
 
 // Warehouse
 import WarehouseStock from './pages/warehouse/WarehouseStock'
@@ -224,6 +225,11 @@ export default function App() {
         <Route path="/courier/stats" element={
           <ProtectedRoute allowedRoles={['courier']}>
             <CourierStats />
+          </ProtectedRoute>
+        } />
+        <Route path="/courier/map" element={
+          <ProtectedRoute allowedRoles={['courier']}>
+            <CourierMapPage />
           </ProtectedRoute>
         } />
         {/* Warehouse */}

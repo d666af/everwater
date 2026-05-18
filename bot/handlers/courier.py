@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import quote
 
 from aiogram import Router, F
 from aiogram.types import (
@@ -17,11 +18,19 @@ router = Router()
 STATUS_RU = {
     "new": "🆕 Новый",
     "awaiting_confirmation": "⏳ Ожидает подтверждения",
-    "confirmed": "✅ Подтверждён",
-    "assigned_to_courier": "🚚 Назначен курьеру",
-    "in_delivery": "🚴 В доставке",
+    "confirmed": "⏳ Ожидает",
+    "assigned_to_courier": "⏳ Ожидает",
+    "in_delivery": "🚴 В пути",
     "delivered": "✔️ Доставлен",
     "rejected": "❌ Отклонён",
+}
+
+PAGE_SIZE = 4
+
+TAB_LABELS = {
+    "waiting": ("⏳", "Ожидают"),
+    "enroute": ("🚴", "В пути"),
+    "done":    ("✔️", "Доставлено"),
 }
 
 
@@ -55,16 +64,20 @@ class PaymentIssueReason(StatesGroup):
     waiting_reason = State()
 
 
-# ─── Orders list (single message, edit in place) ──────────────────────────────
+class CourierReport(StatesGroup):
+    waiting_date = State()
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _filter_orders(orders: list, tab: str) -> list:
     if tab == "waiting":
-        return [o for o in orders if o.get("status") in ("assigned_to_courier",)]
+        return [o for o in orders if o.get("status") in ("confirmed", "assigned_to_courier")]
     if tab == "enroute":
         return [o for o in orders if o.get("status") == "in_delivery"]
     if tab == "done":
         return [o for o in orders if o.get("status") == "delivered"]
-    return orders  # "all"
+    return orders
 
 
 def _urgency_suffix(order: dict) -> str:
@@ -82,43 +95,6 @@ def _urgency_suffix(order: dict) -> str:
     except Exception:
         pass
     return ""
-
-
-TAB_LABELS = {
-    "waiting": ("⏳", "Ожидают"),
-    "enroute": ("🚴", "В пути"),
-    "done": ("✔️", "Выполнено"),
-    "all": ("📋", "Все"),
-}
-
-
-def _orders_list_text(orders: list, tab: str) -> str:
-    icon, label = TAB_LABELS.get(tab, ("📋", tab))
-    filtered = _filter_orders(orders, tab)
-    return f"📋 <b>Мои заказы — {label}</b> ({len(filtered)})"
-
-
-def _orders_list_kb(orders: list, tab: str) -> InlineKeyboardMarkup:
-    tab_row = []
-    for t, (icon, _) in TAB_LABELS.items():
-        marker = "·" if t == tab else ""
-        tab_row.append(
-            InlineKeyboardButton(text=f"{marker}{icon}{marker}", callback_data=f"cor:tab:{t}")
-        )
-
-    filtered = _filter_orders(orders, tab)
-    order_rows = []
-    for o in filtered[:10]:
-        brief = _order_brief(o)
-        urgency = _urgency_suffix(o)
-        order_rows.append([
-            InlineKeyboardButton(text=f"{brief}{urgency}", callback_data=f"cor:detail:{o['id']}")
-        ])
-
-    if not order_rows:
-        order_rows = [[InlineKeyboardButton(text="— Нет заказов —", callback_data="cor:noop")]]
-
-    return InlineKeyboardMarkup(inline_keyboard=[tab_row] + order_rows)
 
 
 def _order_detail_text(order: dict) -> str:
@@ -172,16 +148,93 @@ def _order_detail_text(order: dict) -> str:
     )
 
 
-def _is_phone(v: str) -> bool:
-    return bool(v) and v not in ("—", "-", "None") and any(c.isdigit() for c in v)
+# ─── Orders list UI ───────────────────────────────────────────────────────────
+
+def _filter_select_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏳ Ожидают",    callback_data="cor:list:waiting:0"),
+        InlineKeyboardButton(text="🚴 В пути",     callback_data="cor:list:enroute:0"),
+        InlineKeyboardButton(text="✔️ Доставлено", callback_data="cor:list:done:0"),
+    ]])
 
 
-def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> InlineKeyboardMarkup:
-    from urllib.parse import quote
+def _order_btn_text(order: dict) -> str:
+    addr = (order.get("address") or "").split(",")[0].strip()
+    if len(addr) > 28:
+        addr = addr[:27] + "…"
+    urgency = _urgency_suffix(order)
+    total_str = fmt(order.get("total", 0))
+    return f"📍 {addr} · {total_str}{urgency}"
+
+
+def _orders_page_text(filtered: list, tab: str, page: int) -> str:
+    icon, label = TAB_LABELS.get(tab, ("📋", tab))
+    n = len(filtered)
+    if n == 0:
+        return f"{icon} <b>Мои заказы — {label}</b>\n\nЗаказов нет."
+    total_pages = max(1, (n + PAGE_SIZE - 1) // PAGE_SIZE)
+    pg_info = f" · стр. {page + 1}/{total_pages}" if total_pages > 1 else ""
+    return f"{icon} <b>Мои заказы — {label}</b> ({n}){pg_info}\n\nВыберите заказ:"
+
+
+def _orders_page_kb(filtered: list, tab: str, page: int) -> InlineKeyboardMarkup:
+    n = len(filtered)
+    total_pages = max(1, (n + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = filtered[page * PAGE_SIZE: (page + 1) * PAGE_SIZE]
+
     rows = []
-    lat = (order or {}).get("latitude")
-    lng = (order or {}).get("longitude")
-    address = (order or {}).get("address", "")
+    for o in chunk:
+        rows.append([InlineKeyboardButton(
+            text=_order_btn_text(o),
+            callback_data=f"cor:order:{o['id']}:{tab}:{page}",
+        )])
+
+    if not rows:
+        rows.append([InlineKeyboardButton(text="— Заказов нет —", callback_data="cor:noop")])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"cor:list:{tab}:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="cor:noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"cor:list:{tab}:{page + 1}"))
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="cor:filter")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _order_detail_kb(order_id: int, status: str, tab: str, page: int, order: dict) -> InlineKeyboardMarkup:
+    rows = []
+    lat = order.get("latitude")
+    lng = order.get("longitude")
+    address = order.get("address", "")
+
+    if lat and lng:
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
+    elif address:
+        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+
+    if status == "confirmed":
+        rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"corl:accept:{order_id}:{tab}:{page}")])
+    elif status == "assigned_to_courier":
+        rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"corl:in_delivery:{order_id}:{tab}:{page}")])
+    elif status == "in_delivery":
+        rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"corl:done:{order_id}:{tab}:{page}")])
+
+    rows.append([InlineKeyboardButton(text="📋 К списку", callback_data=f"cor:back:{tab}:{page}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ─── Notification-triggered order detail keyboard (no back button) ─────────────
+
+def _notif_detail_kb(order_id: int, status: str, order: dict) -> InlineKeyboardMarkup:
+    rows = []
+    lat = order.get("latitude")
+    lng = order.get("longitude")
+    address = order.get("address", "")
 
     if lat and lng:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
@@ -195,67 +248,79 @@ def _order_detail_kb(order_id: int, status: str, order: dict | None = None) -> I
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@router.message(Command("courier"))
-async def courier_panel(message: Message):
-    courier = await _get_courier(message.from_user.id)
-    if not courier:
-        await message.answer("Вы не зарегистрированы как курьер.")
-        return
-    await message.answer(f"🚴 Панель курьера, {courier['name']}:", reply_markup=courier_menu_kb())
-
+# ─── "Мои заказы" handlers ────────────────────────────────────────────────────
 
 @router.message(F.text == "📋 Мои заказы")
-async def courier_orders(message: Message, state: FSMContext):
+async def courier_orders(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    orders = await api.get_courier_orders(message.from_user.id)
-    await state.update_data(courier_orders=orders, cor_tab="waiting")
     await message.answer(
-        _orders_list_text(orders, "waiting"),
-        reply_markup=_orders_list_kb(orders, "waiting"),
+        "📋 <b>Мои заказы</b>\n\nВыберите раздел:",
+        reply_markup=_filter_select_kb(),
         parse_mode="HTML",
     )
 
 
-@router.callback_query(F.data.startswith("cor:tab:"))
-async def courier_orders_tab(call: CallbackQuery, state: FSMContext):
-    tab = call.data.split(":")[2]
-    data = await state.get_data()
-    orders = data.get("courier_orders")
-    if orders is None:
-        orders = await api.get_courier_orders(call.from_user.id)
-        await state.update_data(courier_orders=orders)
-    await state.update_data(cor_tab=tab)
+@router.callback_query(F.data == "cor:filter")
+async def courier_orders_filter(call: CallbackQuery):
     await call.message.edit_text(
-        _orders_list_text(orders, tab),
-        reply_markup=_orders_list_kb(orders, tab),
+        "📋 <b>Мои заказы</b>\n\nВыберите раздел:",
+        reply_markup=_filter_select_kb(),
         parse_mode="HTML",
     )
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("cor:detail:"))
-async def courier_order_detail(call: CallbackQuery, state: FSMContext):
-    order_id = int(call.data.split(":")[2])
+@router.callback_query(F.data.startswith("cor:list:"))
+async def courier_orders_list(call: CallbackQuery):
+    parts = call.data.split(":")
+    tab = parts[2]
+    page = int(parts[3]) if len(parts) > 3 else 0
+
+    orders = await api.get_courier_orders(call.from_user.id)
+    filtered = _filter_orders(orders, tab)
+    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    await call.message.edit_text(
+        _orders_page_text(filtered, tab, page),
+        reply_markup=_orders_page_kb(filtered, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cor:order:"))
+async def courier_order_detail(call: CallbackQuery):
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "waiting"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
     order = await api.get_order(order_id)
     await call.message.edit_text(
         _order_detail_text(order),
-        reply_markup=_order_detail_kb(order_id, order["status"], order),
+        reply_markup=_order_detail_kb(order_id, order["status"], tab, page, order),
         parse_mode="HTML",
     )
     await call.answer()
 
 
-@router.callback_query(F.data == "cor:back")
-async def courier_orders_back(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    tab = data.get("cor_tab", "waiting")
+@router.callback_query(F.data.startswith("cor:back:"))
+async def courier_orders_back(call: CallbackQuery):
+    parts = call.data.split(":")
+    tab = parts[2] if len(parts) > 2 else "waiting"
+    page = int(parts[3]) if len(parts) > 3 else 0
+
     orders = await api.get_courier_orders(call.from_user.id)
-    await state.update_data(courier_orders=orders)
+    filtered = _filter_orders(orders, tab)
+    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
     await call.message.edit_text(
-        _orders_list_text(orders, tab),
-        reply_markup=_orders_list_kb(orders, tab),
+        _orders_page_text(filtered, tab, page),
+        reply_markup=_orders_page_kb(filtered, tab, page),
         parse_mode="HTML",
     )
     await call.answer()
@@ -266,81 +331,312 @@ async def courier_noop(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Stats ────────────────────────────────────────────────────────────────────
+# ─── List-triggered order actions (preserve tab/page context) ─────────────────
 
-@router.message(F.text == "📊 Мои отчеты")
-async def courier_report(message: Message):
+@router.callback_query(F.data.startswith("corl:accept:"))
+async def list_courier_accept(call: CallbackQuery):
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "waiting"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
+    await api.courier_accept_order(order_id)
+    order = await api.get_order(order_id)
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            brief = _order_brief(order)
+            await call.bot.send_message(client_tg, f"🚴 Курьер принял ваш заказ и скоро выедет!\n{brief}")
+        except Exception:
+            pass
+
+    await call.message.edit_text(
+        _order_detail_text(order),
+        reply_markup=_order_detail_kb(order_id, order["status"], tab, page, order),
+        parse_mode="HTML",
+    )
+    await call.answer("✅ Принято!")
+
+
+@router.callback_query(F.data.startswith("corl:in_delivery:"))
+async def list_courier_in_delivery(call: CallbackQuery):
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "enroute"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
+    await api.start_delivery(order_id, from_bot=True)
+    order = await api.get_order(order_id)
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        try:
+            courier_name = order.get('courier_name') or call.from_user.full_name
+            await call.bot.send_message(client_tg, f"🚴 Курьер «{courier_name}» выехал к вам!")
+        except Exception:
+            pass
+
+    await call.message.edit_text(
+        _order_detail_text(order),
+        reply_markup=_order_detail_kb(order_id, order["status"], tab, page, order),
+        parse_mode="HTML",
+    )
+    await call.answer("🚴 Выехал!")
+
+
+@router.callback_query(F.data.startswith("corl:done:"))
+async def list_courier_done(call: CallbackQuery):
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+
+    result = await api.mark_delivered(order_id, from_bot=True)
+    order = await api.get_order(order_id)
+
+    from keyboards.user import review_kb
+    brief = _order_brief(order)
+    client_tg = order.get("client_telegram_id")
+    bonus = (result or {}).get("bonus", 0) if isinstance(result, dict) else 0
+
+    if client_tg:
+        try:
+            bonus_txt = f"\n🎁 Начислено {fmt(bonus)} сум бонусных баллов!" if bonus and bonus > 0 else ""
+            await call.bot.send_message(client_tg, f"✅ Ваш заказ доставлен!{bonus_txt}")
+            await call.bot.send_message(
+                client_tg,
+                "Пожалуйста, оцените качество доставки:",
+                reply_markup=review_kb(order_id),
+            )
+        except Exception:
+            pass
+
+    await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
+
+    if order.get("payment_collected") is not None:
+        await call.answer()
+        return
+
+    total_fmt = fmt(order.get("total", 0))
+    pay = order.get("payment_method", "cash")
+    if pay == "cash":
+        sent = await call.message.answer(
+            f"💵 Вы получили наличные?\nСумма: {total_fmt}",
+            reply_markup=courier_cash_confirm_kb(order_id),
+        )
+    else:
+        sent = await call.message.answer(
+            f"💳 Вы проверили чек оплаты по карте?\nСумма: {total_fmt}",
+            reply_markup=courier_card_confirm_kb(order_id),
+        )
+    try:
+        await api.store_payment_prompt(order_id, sent.message_id)
+    except Exception:
+        pass
+    await call.answer()
+
+
+# ─── /courier command ─────────────────────────────────────────────────────────
+
+@router.message(Command("courier"))
+async def courier_panel(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         await message.answer("Вы не зарегистрированы как курьер.")
         return
+    await message.answer(f"🚴 Панель курьера, {courier['name']}:", reply_markup=courier_menu_kb())
+
+
+# ─── Quick stats ───────────────────────────────────────────────────────────────
+
+@router.message(F.text == "📊 Статистика")
+async def courier_stats_quick(message: Message):
+    courier = await _get_courier(message.from_user.id)
+    if not courier:
+        return
     stats = await api.get_courier_stats(message.from_user.id)
-    avg = stats.get("avg_rating", 0)
-    stars = "⭐" * round(float(avg)) if avg else "—"
+    avg          = float(stats.get("avg_rating", 0) or 0)
+    review_count = int(stats.get("review_count", 0) or 0)
+    deliveries   = int(stats.get("delivery_count", 0) or stats.get("total_deliveries", 0) or 0)
+    active       = int(stats.get("active_orders", 0) or 0)
+    debt_qty     = int(stats.get("bottles_must_return", 0) or 0)
+    debt_val     = float(stats.get("bottle_debt_value", 0) or 0)
+
+    stars = "⭐" * round(avg) if avg else "—"
+    lines = [
+        "📊 <b>Статистика курьера</b>",
+        "",
+        f"✔️ Всего доставок: <b>{deliveries}</b>",
+        f"🚴 Активных заказов: <b>{active}</b>",
+    ]
+    if debt_qty > 0:
+        debt_val_str = f" · {fmt(debt_val)}" if debt_val > 0 else ""
+        lines.append(f"🫙 Долг бутылок: <b>{debt_qty} шт.</b>{debt_val_str}")
+    if review_count > 0:
+        lines.append(f"⭐ Рейтинг: <b>{avg:.1f}</b> {stars} ({review_count} отзывов)")
+    elif avg > 0:
+        lines.append(f"⭐ Рейтинг: <b>{avg:.1f}</b> {stars}")
+
     site_url = settings.MINI_APP_URL.rstrip("/") + "/courier/stats"
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="📊 Открыть подробный отчёт", web_app=WebAppInfo(url=site_url))
+        InlineKeyboardButton(text="📊 Открыть подробную статистику", web_app=WebAppInfo(url=site_url))
     ]])
-    delivery_rev = stats.get('total_delivery_revenue', 0) or 0
-    delivery_rev_line = f"\n🚚 Доставки (итого): {fmt(delivery_rev)}" if delivery_rev > 0 else ""
+    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+
+# ─── Period report ─────────────────────────────────────────────────────────────
+
+def _report_period_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📅 Сегодня",    callback_data="crep:today"),
+        InlineKeyboardButton(text="📆 Ввести дату", callback_data="crep:pick"),
+    ]])
+
+
+@router.message(F.text == "📈 Отчет")
+async def courier_report_start(message: Message):
+    courier = await _get_courier(message.from_user.id)
+    if not courier:
+        return
     await message.answer(
-        f"📊 <b>Ваша статистика:</b>\n\n"
-        f"✔️ Выполнено доставок: {stats.get('total_deliveries', 0)}\n"
-        f"💰 Общая выручка: {fmt(stats.get('total_revenue', 0))}"
-        f"{delivery_rev_line}\n"
-        f"⭐ Средний рейтинг: {float(avg):.1f} {stars}\n"
-        f"📝 Отзывов: {stats.get('review_count', 0)}\n"
-        f"🚴 Активных заказов: {stats.get('active_orders', 0)}",
+        "📈 <b>Отчет</b>\n\nВыберите период:",
+        reply_markup=_report_period_kb(),
         parse_mode="HTML",
-        reply_markup=kb,
     )
 
 
-# ─── Reviews ──────────────────────────────────────────────────────────────────
+@router.callback_query(F.data == "crep:today")
+async def courier_report_today(call: CallbackQuery):
+    from datetime import date as _date
+    today = _date.today().strftime("%Y-%m-%d")
+    courier = await _get_courier(call.from_user.id)
+    if not courier:
+        await call.answer()
+        return
+    await call.message.edit_text("⏳ Загружаю отчёт...")
+    await _show_report(call.message, courier["id"], call.from_user.id, today, today, "Сегодня")
+    await call.answer()
 
-@router.message(F.text == "⭐ Мои отзывы")
-async def courier_reviews(message: Message):
+
+@router.callback_query(F.data == "crep:pick")
+async def courier_report_pick(call: CallbackQuery, state: FSMContext):
+    await state.set_state(CourierReport.waiting_date)
+    await call.message.edit_text(
+        "📆 Введите дату или период:\n\n"
+        "• <code>15.05.2025</code> — один день\n"
+        "• <code>01.05-15.05.2025</code> — период",
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(CourierReport.waiting_date)
+async def courier_report_date(message: Message, state: FSMContext):
+    await state.clear()
+    text = (message.text or "").strip()
+    try:
+        from datetime import datetime as _dt
+        if "-" in text and len(text) > 10:
+            parts = text.split("-", 1)
+            d1_str, d2_str = parts[0].strip(), parts[1].strip()
+            if len(d1_str.split(".")) == 2:          # "DD.MM" — borrow year from d2
+                year = d2_str.split(".")[-1]
+                d1_str = f"{d1_str}.{year}"
+            d1 = _dt.strptime(d1_str, "%d.%m.%Y")
+            d2 = _dt.strptime(d2_str, "%d.%m.%Y")
+            date_from = d1.strftime("%Y-%m-%d")
+            date_to   = d2.strftime("%Y-%m-%d")
+            label = f"{d1.strftime('%d.%m')} – {d2.strftime('%d.%m.%Y')}"
+        else:
+            d = _dt.strptime(text, "%d.%m.%Y")
+            date_from = date_to = d.strftime("%Y-%m-%d")
+            label = d.strftime("%d.%m.%Y")
+    except Exception:
+        await message.answer(
+            "❌ Неверный формат. Попробуйте:\n"
+            "• <code>15.05.2025</code>\n"
+            "• <code>01.05-15.05.2025</code>",
+            parse_mode="HTML",
+            reply_markup=_report_period_kb(),
+        )
+        return
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    reviews = await api.get_courier_reviews(message.from_user.id)
-    if not reviews:
-        await message.answer("У вас пока нет отзывов.")
+    sent = await message.answer("⏳ Загружаю отчёт...")
+    await _show_report(sent, courier["id"], message.from_user.id, date_from, date_to, label)
+
+
+async def _show_report(msg, courier_db_id: int, tg_id: int,
+                       date_from: str, date_to: str, label: str):
+    try:
+        report, stats, water, products = await _gather(
+            api.get_courier_report(courier_db_id, date_from, date_to),
+            api.get_courier_stats(tg_id),
+            api.get_courier_water(tg_id),
+            api.get_products(),
+        )
+    except Exception:
+        await msg.edit_text("❌ Ошибка загрузки. Попробуйте позже.", reply_markup=_report_period_kb())
         return
-    lines = [f"⭐ <b>Последние отзывы ({len(reviews)}):</b>\n"]
-    for r in reviews[:10]:
-        stars = "⭐" * r["rating"]
-        comment = f"\n   «{r['comment']}»" if r.get("comment") else ""
-        date = r.get("created_at", "")[:10]
-        lines.append(f"• {date} {stars}{comment}")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+
+    prod_map = {p["id"]: p["name"] for p in (products or [])}
+    orders   = report.get("orders", [])
+    n_orders = len(orders)
+    earned   = sum(o.get("total", 0) for o in orders)
+    returned = sum(o.get("return_bottles", 0) for o in orders)
+    warehouse_tx = report.get("warehouse_received", [])
+    reserved_items = [i for i in (stats.get("reserved_items") or []) if (i.get("reserved") or 0) > 0]
+
+    lines = [f"📈 <b>Отчёт — {label}</b>", ""]
+    lines += [f"✔️ Доставок: <b>{n_orders}</b>", f"💰 Заработано: <b>{fmt(earned)}</b>"]
+
+    if water:
+        lines.append("\n💧 <b>Товары на руках:</b>")
+        for w in water:
+            name = prod_map.get(w.get("product_id"), "—")
+            lines.append(f"  • {name}: {w.get('quantity', 0)} шт.")
+
+    if returned > 0:
+        lines.append(f"\n♻️ Возвращённых бутылок: <b>{returned} шт.</b>")
+
+    if reserved_items:
+        lines.append("\n🔒 <b>Забронировано для заказов:</b>")
+        for i in reserved_items:
+            lines.append(f"  • {i.get('product_name', '—')}: {i.get('reserved', 0)} шт.")
+
+    if warehouse_tx:
+        lines.append("\n🏭 <b>Транзакции склада:</b>")
+        for w in warehouse_tx:
+            lines.append(f"  • {w.get('product_name', '—')}: +{w.get('total', 0)} шт.")
+
+    if n_orders == 0 and not water and not warehouse_tx:
+        lines.append("Нет данных за указанный период.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔄 Другой период", callback_data="crep:back")
+    ]])
+    try:
+        await msg.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await msg.answer("\n".join(lines), parse_mode="HTML", reply_markup=kb)
 
 
-# ─── Water inventory ──────────────────────────────────────────────────────────
+async def _gather(*coros):
+    import asyncio
+    return await asyncio.gather(*coros)
 
-@router.message(F.text == "💧 Мой склад")
-async def courier_water(message: Message):
-    courier = await _get_courier(message.from_user.id)
-    if not courier:
-        return
-    water = await api.get_courier_water(message.from_user.id)
-    products = await api.get_products()
-    prod_map = {p["id"]: p["name"] for p in products}
-    if not water:
-        await message.answer("💧 У вас нет воды на руках.")
-        return
-    lines = ["💧 <b>Вода на руках:</b>\n"]
-    for w in water:
-        name = prod_map.get(w["product_id"], f"ID {w['product_id']}")
-        lines.append(f"• {name}: {w['quantity']} шт. (выдано сегодня: {w.get('issued_today', 0)})")
-    await message.answer("\n".join(lines), parse_mode="HTML")
 
+@router.callback_query(F.data == "crep:back")
+async def courier_report_back(call: CallbackQuery):
+    await call.message.edit_text(
+        "📈 <b>Отчет</b>\n\nВыберите период:",
+        reply_markup=_report_period_kb(),
+        parse_mode="HTML",
+    )
+    await call.answer()
 
 
 # ─── Create order ─────────────────────────────────────────────────────────────
 
 def _exch_price(p: dict) -> float:
-    """Display/exchange price: deposit_price for bottle products, price otherwise."""
     if p.get("has_bottle_deposit") and p.get("deposit_price"):
         return float(p["deposit_price"])
     return float(p.get("effective_price") or p.get("price") or 0)
@@ -575,7 +871,7 @@ async def courier_co_cancel(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# ─── Order actions ────────────────────────────────────────────────────────────
+# ─── Notification-triggered order actions ─────────────────────────────────────
 
 @router.callback_query(F.data.startswith("courier:accept:"))
 async def courier_accept(call: CallbackQuery):
@@ -591,7 +887,7 @@ async def courier_accept(call: CallbackQuery):
             pass
     await call.message.edit_text(
         f"✅ Вы приняли заказ.\n{brief}",
-        reply_markup=_order_detail_kb(order_id, "in_delivery", order),
+        reply_markup=_notif_detail_kb(order_id, "in_delivery", order),
     )
     await call.answer()
 
@@ -611,7 +907,7 @@ async def courier_in_delivery(call: CallbackQuery):
     try:
         await call.message.edit_text(
             _order_detail_text(order),
-            reply_markup=_order_detail_kb(order_id, "in_delivery", order),
+            reply_markup=_notif_detail_kb(order_id, "in_delivery", order),
             parse_mode="HTML",
         )
     except Exception:
@@ -633,10 +929,7 @@ async def courier_done(call: CallbackQuery):
     if client_tg:
         try:
             bonus_txt = f"\n🎁 Начислено {fmt(bonus)} сум бонусных баллов!" if bonus and bonus > 0 else ""
-            await call.bot.send_message(
-                client_tg,
-                f"✅ Ваш заказ доставлен!{bonus_txt}",
-            )
+            await call.bot.send_message(client_tg, f"✅ Ваш заказ доставлен!{bonus_txt}")
             await call.bot.send_message(
                 client_tg,
                 "Пожалуйста, оцените качество доставки:",
@@ -647,7 +940,6 @@ async def courier_done(call: CallbackQuery):
 
     await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
 
-    # Skip payment question if already answered (e.g., via website)
     if order.get("payment_collected") is not None:
         await call.answer()
         return
@@ -670,6 +962,8 @@ async def courier_done(call: CallbackQuery):
         pass
     await call.answer()
 
+
+# ─── Payment confirmation ──────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("courier:cash_ok:"))
 async def courier_cash_received(call: CallbackQuery):
@@ -725,5 +1019,4 @@ async def payment_issue_reason_received(message: Message, state: FSMContext):
         await api.set_payment_collected(order_id, False)
     except Exception:
         pass
-    pay_label = "наличные" if payment_method == "cash" else "чек оплаты"
     await message.answer("✅ Сообщение отправлено менеджеру. Причина зафиксирована.")
