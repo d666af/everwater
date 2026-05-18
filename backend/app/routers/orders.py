@@ -225,7 +225,7 @@ async def create_order(
     bottle_surcharge = data.bottle_surcharge if data.bottle_surcharge is not None else \
         calc_bottle_surcharge(items_data, data.return_bottles_count, cfg)
 
-    delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0)
+    delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0) if cfg.get("delivery_enabled", True) else 0.0
     bonus_limit_pct = float(cfg.get("bonus_limit_percent") or 30) / 100
     pre_bonus_total = subtotal + bottle_surcharge - bottle_discount
     max_bonus_by_pct = (pre_bonus_total + delivery_fee) * bonus_limit_pct

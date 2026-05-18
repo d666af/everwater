@@ -34,6 +34,7 @@ export default function AdminSettings() {
     bottle_return_mode: 'max',
     accepted_bottle_companies: [],
     require_bottle_brand_selection: false,
+    delivery_enabled: true,
     delivery_price: 0,
     bonus_per_bottle: 100,
     bonus_expiry_days: 60,
@@ -437,18 +438,48 @@ export default function AdminSettings() {
           title="Доставка"
           hint="Стоимость доставки, добавляемая к каждому заказу"
         >
-          <div style={s.field}>
-            <div style={s.label}>Цена доставки (сум)</div>
-            <input style={{ ...s.input, maxWidth: 200 }} type="number" min="0" {...f('delivery_price')} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Платная доставка</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.delivery_enabled
+                  ? 'К каждому заказу добавляется стоимость доставки'
+                  : 'Доставка бесплатна, цена не отображается нигде'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, delivery_enabled: !p.delivery_enabled }))}
+              style={{
+                width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: form.delivery_enabled ? C : '#ddd',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: form.delivery_enabled ? 25 : 3,
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </button>
           </div>
+          {form.delivery_enabled && (
+            <div style={s.field}>
+              <div style={s.label}>Цена доставки (сум)</div>
+              <input style={{ ...s.input, maxWidth: 200 }} type="number" min="0" {...f('delivery_price')} />
+            </div>
+          )}
           <div style={s.preview}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
               <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            {Number(form.delivery_price) === 0
-              ? 'Доставка бесплатная'
-              : <>Доставка: <b>{Number(form.delivery_price).toLocaleString()} сум</b> к каждому заказу</>}
+            {!form.delivery_enabled
+              ? <span style={{ color: TEXT2 }}>Платная доставка <b>выключена</b> — цена не добавляется и нигде не отображается</span>
+              : Number(form.delivery_price) === 0
+                ? 'Доставка бесплатная'
+                : <>Доставка: <b>{Number(form.delivery_price).toLocaleString()} сум</b> к каждому заказу</>}
           </div>
         </Section>
 

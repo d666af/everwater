@@ -1175,7 +1175,7 @@ async def _show_summary(message: Message, state: FSMContext):
         now_h = datetime.utcnow().hour + 5  # UTC+5 approximate
         if now_h >= late_hour:
             late_warning = f"\n⚠️ <b>Внимание:</b> Заказы после {late_hour}:00 могут быть доставлены на следующий день.\n"
-        delivery_fee = int(cfg.get("delivery_price") or 0)
+        delivery_fee = int(cfg.get("delivery_price") or 0) if cfg.get("delivery_enabled", True) else 0
     except Exception:
         cfg = {}
     pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
