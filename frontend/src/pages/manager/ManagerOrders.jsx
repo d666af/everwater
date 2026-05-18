@@ -747,7 +747,7 @@ function CreateOrderModal({ onClose, onSave }) {
         total: grandTotal,
         items,
         user_id: client?.id || null,
-        return_bottles_count: clampedReturn,
+        return_bottles_count: returnBottles,
         bottle_surcharge: bottleSurcharge,
         latitude: lat,
         longitude: lng,
