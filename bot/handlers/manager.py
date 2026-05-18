@@ -94,28 +94,174 @@ async def manager_panel(message: Message):
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
+MGR_PAGE_SIZE = 5
+
+MGR_TAB_LABELS = {
+    "new":    ("⏳", "Новые"),
+    "active": ("🚀", "В работе"),
+    "done":   ("✔️",  "Доставлено"),
+}
+
+
+def _mgr_filter_orders(orders: list, tab: str) -> list:
+    if tab == "new":
+        return [o for o in orders if o.get("status") in ("new", "awaiting_confirmation")]
+    if tab == "active":
+        return [o for o in orders if o.get("status") in ("confirmed", "assigned_to_courier", "in_delivery")]
+    if tab == "done":
+        return [o for o in orders if o.get("status") == "delivered"]
+    return orders
+
+
+def _mgr_filter_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏳ Новые",    callback_data="mgo:list:new:0"),
+        InlineKeyboardButton(text="🚀 В работе", callback_data="mgo:list:active:0"),
+        InlineKeyboardButton(text="✔️ Готово",   callback_data="mgo:list:done:0"),
+    ]])
+
+
+def _mgr_order_btn_text(o: dict) -> str:
+    STATUS_ICON = {
+        "new": "🆕", "awaiting_confirmation": "⏳", "confirmed": "✅",
+        "assigned_to_courier": "🚚", "in_delivery": "🚴",
+        "delivered": "✔️", "rejected": "❌",
+    }
+    icon = STATUS_ICON.get(o.get("status", ""), "•")
+    addr = (o.get("address") or "").split(",")[0].strip()
+    if len(addr) > 22:
+        addr = addr[:21] + "…"
+    client = (o.get("client_name") or "Клиент").split()[0]
+    return f"{icon} {client} · {addr} · {fmt(o.get('total', 0))}"
+
+
+def _mgr_orders_page_text(filtered: list, tab: str, page: int) -> str:
+    icon, label = MGR_TAB_LABELS.get(tab, ("📋", tab))
+    n = len(filtered)
+    if n == 0:
+        return f"{icon} <b>Заказы — {label}</b>\n\nЗаказов нет."
+    total_pages = max(1, (n + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
+    pg_info = f" · стр. {page + 1}/{total_pages}" if total_pages > 1 else ""
+    return f"{icon} <b>Заказы — {label}</b> ({n}){pg_info}\n\nВыберите заказ:"
+
+
+def _mgr_orders_page_kb(filtered: list, tab: str, page: int) -> InlineKeyboardMarkup:
+    n = len(filtered)
+    total_pages = max(1, (n + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = filtered[page * MGR_PAGE_SIZE: (page + 1) * MGR_PAGE_SIZE]
+
+    rows = []
+    for o in chunk:
+        rows.append([InlineKeyboardButton(
+            text=_mgr_order_btn_text(o),
+            callback_data=f"mgo:order:{o['id']}:{tab}:{page}",
+        )])
+
+    if not rows:
+        rows.append([InlineKeyboardButton(text="— Заказов нет —", callback_data="mgo:noop")])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"mgo:list:{tab}:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="mgo:noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"mgo:list:{tab}:{page + 1}"))
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="mgo:filter")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _mgr_order_text(o: dict) -> str:
     st = STATUS_RU.get(o["status"], o["status"])
-    items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
+    items = o.get("items", [])
+
+    item_lines = [f"  • {i['product_name']} {i['quantity']} шт." for i in items]
+
+    # Bottle surcharge for unreturned bottles
+    surcharge = o.get("bottle_surcharge") or 0
+    if surcharge > 0:
+        qty_19l = sum(i["quantity"] for i in items if (i.get("volume") or 0) >= 18.9)
+        missing = max(0, qty_19l - (o.get("return_bottles_count") or 0))
+        if missing > 0:
+            item_lines.append(f"  • Надбавка (невозврат {missing} бут.) +{fmt(surcharge)}")
+
+    items_text = "\n".join(item_lines) if item_lines else "—"
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
+
+    delivery_fee = o.get("delivery_fee") or 0
+    delivery_part = f"\n🚚 Доставка: +{fmt(delivery_fee)}" if delivery_fee > 0 else ""
+
+    bonus_used = o.get("bonus_used") or 0
+    bonus_part = f"\n🎁 Бонусы: -{fmt(bonus_used)}" if bonus_used > 0 else ""
+
+    balance_used = o.get("balance_used") or 0
+    balance_part = f"\n💰 Баланс: -{fmt(balance_used)}" if balance_used > 0 else ""
+
+    return_count = o.get("return_bottles_count") or 0
+    return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
+
+    bottles_owed = o.get("client_bottles_owed") or 0
+    bottles_line = f"\n🫙 Долг клиента: {bottles_owed} бут." if bottles_owed > 0 else ""
+
     lines = [
         f"📦 <b>{st}</b>",
-        f"Клиент: {o.get('client_name','—')}  |  {o.get('recipient_phone','—')}",
-        f"Адрес: {o.get('address','—')}",
+        f"Клиент: {o.get('client_name', '—')}  |  {o.get('recipient_phone', '—')}",
+        f"Адрес: {o.get('address', '—')}",
     ]
     if o.get("extra_info"):
         lines.append(f"Доп.: {o['extra_info']}")
-    delivery_fee = o.get('delivery_fee') or 0
-    delivery_part = f" (вкл. доставка {fmt(delivery_fee)})" if delivery_fee > 0 else ""
-    lines += [f"\nТовары:\n{items_text}", f"\nСумма: {fmt(o['total'])}{delivery_part}  |  {pay}"]
+
+    lines += [f"\nТовары:\n{items_text}"]
+    lines.append(f"\n💵 Итого: {fmt(o['total'])}  |  {pay}{delivery_part}{bonus_part}{balance_part}")
+
+    if return_line:
+        lines.append(return_line)
+    if bottles_line:
+        lines.append(bottles_line)
+
     if o.get("courier_name"):
         courier_phone = o.get("courier_phone", "")
         phone_part = f"  |  {courier_phone}" if courier_phone else ""
         lines.append(f"Курьер: {o['courier_name']}{phone_part}")
+
     return "\n".join(lines)
 
 
+def _mgr_order_detail_kb(o: dict, tab: str = "", page: int = 0) -> InlineKeyboardMarkup:
+    oid = o["id"]
+    status = o.get("status", "")
+    rows = []
+    client_tg = o.get("client_telegram_id")
+
+    if status == "awaiting_confirmation":
+        rows.append([
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"mgr:confirm:{oid}"),
+            InlineKeyboardButton(text="❌ Отклонить",   callback_data=f"mgr:reject:{oid}"),
+        ])
+    if status == "confirmed":
+        rows.append([InlineKeyboardButton(text="🚴 Назначить курьера", callback_data=f"mgr:assign:{oid}")])
+    if status in ("confirmed", "assigned_to_courier", "in_delivery"):
+        rows.append([InlineKeyboardButton(
+            text="✔️ Отметить доставлен",
+            callback_data=f"mgrl:delivered:{oid}:{tab}:{page}",
+        )])
+    if client_tg:
+        rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", url=f"tg://user?id={client_tg}")])
+    if status not in ("delivered", "rejected"):
+        rows.append([InlineKeyboardButton(
+            text="❌ Отменить заказ",
+            callback_data=f"mgrl:cancel:{oid}:{tab}:{page}",
+        )])
+    if tab:
+        rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data=f"mgo:back:{tab}:{page}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def _mgr_order_kb(o: dict):
+    """Legacy keyboard for non-list contexts (confirm flow, ⏳ Новые заказы)."""
     oid = o["id"]
     status = o.get("status", "")
     rows = []
@@ -123,7 +269,7 @@ def _mgr_order_kb(o: dict):
     if status == "awaiting_confirmation":
         rows.append([
             InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"mgr:confirm:{oid}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"mgr:reject:{oid}"),
+            InlineKeyboardButton(text="❌ Отклонить",   callback_data=f"mgr:reject:{oid}"),
         ])
     if status == "confirmed":
         rows.append([InlineKeyboardButton(text="🚴 Назначить курьера", callback_data=f"mgr:assign:{oid}")])
@@ -140,61 +286,126 @@ def _mgr_order_kb(o: dict):
 async def mgr_all_orders(message: Message):
     if not await is_manager(message.from_user.id):
         return
-    orders = await api.get_all_orders()
-    active = [o for o in orders if o.get("status") not in ("delivered", "rejected")]
+    await message.answer(
+        "📋 <b>Заказы</b>\n\nВыберите раздел:",
+        reply_markup=_mgr_filter_kb(),
+        parse_mode="HTML",
+    )
 
-    subs_on = await api.is_subscriptions_enabled()
-    if subs_on:
-        pending_subs = await api.get_admin_subscriptions(status="pending")
-        active_subs = await api.get_admin_subscriptions(status="active")
-        due_subs = [s for s in active_subs if s.get("due_today") or s.get("overdue")]
-    else:
-        pending_subs = []
-        due_subs = []
 
-    if not active and not pending_subs and not due_subs:
-        await message.answer("Нет активных заказов и подписок." if subs_on else "Нет активных заказов.")
+@router.callback_query(F.data == "mgo:filter")
+async def mgr_orders_filter_cb(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
         return
+    await call.message.edit_text(
+        "📋 <b>Заказы</b>\n\nВыберите раздел:",
+        reply_markup=_mgr_filter_kb(),
+        parse_mode="HTML",
+    )
+    await call.answer()
 
-    for o in active[:15]:
-        try:
-            await message.answer(_mgr_order_text(o), reply_markup=_mgr_order_kb(o), parse_mode="HTML")
-        except Exception as e:
-            await message.answer(f"Заказ #{o.get('id','?')}: ошибка — {e}")
 
-    for s in pending_subs[:5]:
-        try:
-            sub_id = s["id"]
-            text = (
-                f"📅 <b>Подписка #{sub_id} — ожидает подтверждения</b>\n"
-                f"Клиент: {s.get('client_name') or '—'}\n"
-                f"Адрес: {s.get('address') or '—'}\n"
-                f"Тариф: {s.get('plan') or '—'}"
-            )
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin_sub_confirm:{sub_id}"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_sub_reject:{sub_id}"),
-            ]])
-            await message.answer(text, reply_markup=kb, parse_mode="HTML")
-        except Exception:
-            pass
+@router.callback_query(F.data.startswith("mgo:list:"))
+async def mgr_orders_list_cb(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    tab = parts[2]
+    page = int(parts[3]) if len(parts) > 3 else 0
 
-    for s in due_subs[:5]:
-        try:
-            sub_id = s["id"]
-            marker = "🔴 Просрочена" if s.get("overdue") else "📅 Сегодня"
-            text = (
-                f"📅 <b>Подписка #{sub_id} — {marker}</b>\n"
-                f"Клиент: {s.get('client_name') or '—'}\n"
-                f"Адрес: {s.get('address') or '—'}\n"
-                f"Тариф: {s.get('plan') or '—'}"
-            )
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🛒 Создать заказ", callback_data=f"mgr:sub_order:{sub_id}"),
-            ]])
-            await message.answer(text, reply_markup=kb, parse_mode="HTML")
-        except Exception:
-            pass
+    orders = await api.get_all_orders()
+    filtered = _mgr_filter_orders(orders, tab)
+    total_pages = max(1, (len(filtered) + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    await call.message.edit_text(
+        _mgr_orders_page_text(filtered, tab, page),
+        reply_markup=_mgr_orders_page_kb(filtered, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgo:order:"))
+async def mgr_order_detail_cb(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "new"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
+    order = await api.get_order(order_id)
+    await call.message.edit_text(
+        _mgr_order_text(order),
+        reply_markup=_mgr_order_detail_kb(order, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgo:back:"))
+async def mgr_orders_back_cb(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    tab = parts[2] if len(parts) > 2 else "new"
+    page = int(parts[3]) if len(parts) > 3 else 0
+
+    orders = await api.get_all_orders()
+    filtered = _mgr_filter_orders(orders, tab)
+    total_pages = max(1, (len(filtered) + MGR_PAGE_SIZE - 1) // MGR_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    await call.message.edit_text(
+        _mgr_orders_page_text(filtered, tab, page),
+        reply_markup=_mgr_orders_page_kb(filtered, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data == "mgo:noop")
+async def mgr_orders_noop(call: CallbackQuery):
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgrl:delivered:"))
+async def mgrl_mark_delivered(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "active"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
+    await api.mark_delivered(order_id, from_bot=True)
+    order = await api.get_order(order_id)
+    await call.message.edit_text(
+        _mgr_order_text(order),
+        reply_markup=_mgr_order_detail_kb(order, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer("✅ Доставлен")
+
+
+@router.callback_query(F.data.startswith("mgrl:cancel:"))
+async def mgrl_cancel_order(call: CallbackQuery):
+    if not await is_manager(call.from_user.id):
+        return
+    parts = call.data.split(":")
+    order_id = int(parts[2])
+    tab = parts[3] if len(parts) > 3 else "new"
+    page = int(parts[4]) if len(parts) > 4 else 0
+
+    await api.reject_order(order_id, "Отменён менеджером", from_bot=True)
+    order = await api.get_order(order_id)
+    await call.message.edit_text(
+        _mgr_order_text(order),
+        reply_markup=_mgr_order_detail_kb(order, tab, page),
+        parse_mode="HTML",
+    )
+    await call.answer("❌ Отменён")
 
 
 @router.message(F.text == "⏳ Новые заказы")
@@ -206,20 +417,7 @@ async def mgr_pending_orders(message: Message):
         await message.answer("Нет заказов, ожидающих подтверждения.")
         return
     for o in orders[:5]:
-        items_text = "\n".join(f"  • {i['product_name']} {i['quantity']} шт." for i in o.get("items", []))
-        delfee = o.get('delivery_fee') or 0
-        delfee_part = f" (вкл. доставка {fmt(delfee)})" if delfee > 0 else ""
-        text = (
-            f"📦 <b>Заказ #{o['id']}</b>\n"
-            f"Клиент: {o.get('client_name', '—')}\n"
-            f"Телефон: {o.get('recipient_phone', '—')}\n"
-            f"Адрес: {o['address']}\n"
-            f"Товары:\n{items_text}\n"
-            f"Сумма: {fmt(o['total'])}{delfee_part}\n"
-            f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
-            f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
-        )
-        await message.answer(text, reply_markup=mgr_order_kb(o["id"]), parse_mode="HTML")
+        await message.answer(_mgr_order_text(o), reply_markup=_mgr_order_kb(o), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
@@ -438,6 +636,9 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
     order = await api.get_order(order_id)
     await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     await call.answer("❌ Заказ отменён")
+
+
+# ─── ⏳ Новые заказы (quick view, legacy) ─────────────────────────────────────
 
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
