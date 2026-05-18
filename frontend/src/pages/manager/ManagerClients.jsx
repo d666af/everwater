@@ -106,8 +106,15 @@ function ClientDetail({ user, onClose, onTopup }) {
   }, [user.id])
 
   const handleAddCooler = async (data) => {
-    const result = await addClientCooler(user.id, data)
-    setCoolers(prev => [...prev, result])
+    try {
+      const result = await addClientCooler(user.id, data)
+      setCoolers(prev => [...prev, result])
+    } catch {
+      try {
+        const fresh = await getClientCoolers(user.id)
+        setCoolers(fresh)
+      } catch { /* ignore */ }
+    }
     setShowCoolerForm(false)
   }
 
@@ -505,30 +512,33 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(u => (
-            <div key={u.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
+            <div key={u.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
               <div style={{ width: 46, height: 46, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || '?')[0].toUpperCase()}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</div>
-                {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
-                <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: TEXT2, background: '#F2F2F7', padding: '3px 9px', borderRadius: 999, fontWeight: 600 }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                    {u.orders_count || 0} заказов
-                  </span>
-                  {(u.bottles_owed || 0) > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#C92A2A', background: '#FFF5F5', padding: '3px 9px', borderRadius: 999, fontWeight: 700 }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M8 6h8l1 3H7L8 6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><rect x="7" y="9" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>
-                      {u.bottles_owed} бут.
-                    </span>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</span>
                   {u.customer_label === 'permanent' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12, color: '#2B8A3E', background: '#EBFBEE', padding: '3px 9px', borderRadius: 999, fontWeight: 700 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#2B8A3E', background: '#EBFBEE', padding: '2px 8px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(43,138,62,0.2)', flexShrink: 0 }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor"/></svg>
                       Постоянный
                     </span>
                   )}
                   {u.customer_label === 'inactive' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12, color: '#868E96', background: '#F1F3F5', padding: '3px 9px', borderRadius: 999, fontWeight: 600 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, color: '#868E96', background: '#F1F3F5', padding: '2px 8px', borderRadius: 999, fontWeight: 600, border: '1px solid rgba(134,142,150,0.2)', flexShrink: 0 }}>
                       Не активен
+                    </span>
+                  )}
+                </div>
+                {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
+                <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: CD, background: `${C}14`, padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: `1px solid ${C}28` }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                    {u.orders_count || 0} заказов
+                  </span>
+                  {(u.bottles_owed || 0) > 0 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#C92A2A', background: '#FFF5F5', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(201,42,42,0.2)' }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M8 6h8l1 3H7L8 6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><rect x="7" y="9" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>
+                      {u.bottles_owed} бут. долг
                     </span>
                   )}
                 </div>
