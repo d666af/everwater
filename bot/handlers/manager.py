@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
@@ -37,6 +37,11 @@ def fmt(amount):
 async def is_manager(telegram_id: int) -> bool:
     mgr = await api.get_manager_by_telegram(telegram_id)
     return mgr is not None
+
+
+class _IsManagerFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        return await is_manager(message.from_user.id)
 
 
 class MgrReject(StatesGroup):
@@ -558,10 +563,8 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "📊 Статистика", _IsManagerFilter())
 async def mgr_stats_menu(message: Message):
-    if not await is_manager(message.from_user.id):
-        return
     await message.answer("Выберите период:", reply_markup=mgr_stats_period_kb())
 
 
