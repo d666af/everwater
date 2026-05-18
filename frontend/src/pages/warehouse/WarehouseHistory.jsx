@@ -65,7 +65,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       courier_id: courierId === 'all' ? null : Number(courierId),
     }
     getWarehouseHistory(filters)
-      .then(setHistory)
+      .then(data => setHistory([...data].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))))
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [period, customDate, customDateTo, type, productName, courierId])
