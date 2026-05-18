@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats, getAdminStatsExtended } from '../../api'
+import { getAdminStats, getAdminStatsExtended, getCancelledOrders } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -48,18 +48,112 @@ const METRICS = [
       </svg>
     ),
   },
-  {
-    key: 'cancelled',
-    label: 'Отменено',
-    color: '#E03131',
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.8" />
-        <path d="M15 9L9 15M9 9l6 6" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    ),
-  },
 ]
+
+function CancelledCard({ count, period }) {
+  const [expanded, setExpanded] = useState(false)
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  if (!count) return null
+
+  const handleToggle = async () => {
+    if (!expanded && orders.length === 0) {
+      setLoading(true)
+      try {
+        const data = await getCancelledOrders(period)
+        setOrders(data)
+      } catch {}
+      setLoading(false)
+    }
+    setExpanded(prev => !prev)
+  }
+
+  const fmt = (iso) => {
+    const d = new Date(iso)
+    return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 13, background: '#E031311F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="#E03131" strokeWidth="1.8" />
+            <path d="M15 9L9 15M9 9l6 6" stroke="#E03131" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Отменено</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#E03131', lineHeight: 1 }}>{count}</div>
+        </div>
+        {count > 1 && (
+          <button
+            onClick={handleToggle}
+            style={{
+              background: expanded ? '#FFF5F5' : '#F2F2F7',
+              border: 'none',
+              borderRadius: 12,
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: expanded ? '#E03131' : TEXT2,
+              cursor: 'pointer',
+              flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            {expanded ? 'Свернуть' : 'Подробнее'}
+          </button>
+        )}
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 14, borderTop: '1px solid rgba(60,60,67,0.08)', paddingTop: 12 }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2.5px solid rgba(224,49,49,0.2)', borderTopColor: '#E03131', animation: 'evSpin 0.8s linear infinite' }} />
+            </div>
+          ) : orders.length === 0 ? (
+            <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: 12 }}>Нет данных</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {orders.map((o, i) => (
+                <div key={o.id} style={{ background: '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: '3px solid #E03131' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>Заказ #{o.id}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: TEXT2 }}>{o.client_name}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#E03131' }}>
+                      {Math.round(o.total).toLocaleString('ru-RU')} сум
+                    </span>
+                  </div>
+                  {o.address && (
+                    <div style={{ fontSize: 12, color: TEXT2, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {o.address}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
+                      Отменил: {o.cancelled_by}
+                    </span>
+                    <span style={{ fontSize: 11, background: 'rgba(60,60,67,0.06)', borderRadius: 8, padding: '3px 8px', color: TEXT2, fontWeight: 500 }}>
+                      {fmt(o.created_at)}
+                    </span>
+                  </div>
+                  {o.reason && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#C92A2A', fontStyle: 'italic' }}>
+                      Причина: {o.reason}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MetricCard({ metric, value }) {
   const { label, color, format, subtitle, icon } = metric
@@ -174,20 +268,18 @@ function StatusBar({ label, count, total, color }) {
 }
 
 function RevenueContext({ stats, period }) {
-  if (!stats || !stats.revenue) return null
+  if (!stats) return null
 
   const periodLabel =
     period === 'day' ? 'за сегодня' : period === 'week' ? 'за неделю' : 'за месяц'
 
-  const avgPerOrder =
-    stats.order_count > 0
-      ? Math.round(stats.revenue / stats.order_count).toLocaleString('ru-RU')
-      : '—'
-
   const warehouseRows = stats.warehouse_sales || []
   const warehouseTotalQty = warehouseRows.reduce((s, r) => s + r.qty, 0)
+  const warehouseTotalMarket = warehouseRows.reduce((s, r) => s + r.market, 0)
   const warehouseTotalCost = warehouseRows.reduce((s, r) => s + r.cost, 0)
   const hasWarehouseSales = warehouseRows.length > 0
+
+  if (!hasWarehouseSales && !stats.revenue) return null
 
   return (
     <>
@@ -197,58 +289,24 @@ function RevenueContext({ stats, period }) {
           borderRadius: 18,
           padding: '18px 20px',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-          marginTop: 12,
+          marginBottom: 12,
         }}
       >
         <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
           Выручка {periodLabel}
         </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 8,
-            marginBottom: 6,
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: 32, fontWeight: 800, color: TEXT }}>
-            {stats.revenue.toLocaleString('ru-RU')}
+            {Math.round(warehouseTotalCost).toLocaleString('ru-RU')}
           </span>
           <span style={{ fontSize: 14, fontWeight: 500, color: TEXT2 }}>сум</span>
+          <span style={{ fontSize: 12, color: TEXT2, fontWeight: 400, marginLeft: 2 }}>себестоимость</span>
         </div>
-        <div
-          style={{
-            height: 6,
-            borderRadius: 999,
-            background: GRAD,
-            marginBottom: 12,
-            opacity: 0.7,
-          }}
-        />
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Заказов</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>
-              {stats.order_count ?? '—'}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Средний на заказ</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{avgPerOrder} сум</div>
-          </div>
-          {stats.cancelled > 0 && (
-            <div>
-              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Потеряно (отмены)</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#E03131' }}>
-                {stats.cancelled}
-              </div>
-            </div>
-          )}
-        </div>
+        <div style={{ height: 6, borderRadius: 999, background: GRAD, marginBottom: 0, opacity: 0.7 }} />
 
         {hasWarehouseSales && (
           <>
-            <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '16px -20px 14px' }} />
+            <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '14px -20px 12px' }} />
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
               Продажи со склада
             </div>
@@ -269,7 +327,7 @@ function RevenueContext({ stats, period }) {
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{item.qty} шт.</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1971C2', flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
-                    {item.cost > 0 ? `${Math.round(item.cost).toLocaleString('ru-RU')} сум` : '—'}
+                    {item.market > 0 ? `${Math.round(item.market).toLocaleString('ru-RU')} сум` : '—'}
                   </div>
                 </div>
               ))}
@@ -278,12 +336,11 @@ function RevenueContext({ stats, period }) {
               <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#1971C2' }}>{warehouseTotalQty} шт.</div>
               <div style={{ fontSize: 14, fontWeight: 900, color: '#1971C2', minWidth: 90, textAlign: 'right' }}>
-                {Math.round(warehouseTotalCost).toLocaleString('ru-RU')} сум
+                {Math.round(warehouseTotalMarket).toLocaleString('ru-RU')} сум
               </div>
             </div>
             {(stats.bottles_returned_to_warehouse || 0) > 0 && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(60,60,67,0.06)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 14 }}>↩</span>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(60,60,67,0.06)' }}>
                 <span style={{ fontSize: 12, color: '#1971C2', fontWeight: 600 }}>
                   Возврат 19л бутылок: {stats.bottles_returned_to_warehouse} шт.
                 </span>
@@ -463,6 +520,9 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
             </div>
           </div>
 
+          {/* Revenue card — immediately after bottles */}
+          <RevenueContext stats={stats} period={period} />
+
           {/* Courier sales card */}
           {(stats.product_sales?.length > 0 || (stats.bottles_surcharge_count || 0) > 0) && (() => {
             const surchargeRow = (stats.bottles_surcharge_count || 0) > 0
@@ -477,17 +537,10 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи курьеров</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {allRows.map((p, i) => (
-                    <div key={p.name} style={{ padding: '8px 0', borderBottom: i < allRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
-                      </div>
-                      {(p.courier_earning || 0) > 0 && (
-                        <div style={{ fontSize: 11, color: '#6741D9', fontWeight: 600, marginTop: 3 }}>
-                          заработок: +{Math.round(p.courier_earning).toLocaleString('ru-RU')} сум
-                        </div>
-                      )}
+                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < allRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                      <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
                     </div>
                   ))}
                 </div>
@@ -504,8 +557,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   )}
                 </div>
                 {(stats.bottles_returned || 0) > 0 && (
-                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid rgba(60,60,67,0.06)`, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>↩</span>
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid rgba(60,60,67,0.06)` }}>
                     <span style={{ fontSize: 12, color: '#12B886', fontWeight: 600 }}>
                       Возврат 19л бутылок: {stats.bottles_returned} шт.
                     </span>
@@ -532,18 +584,23 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           )}
 
           {/* Key metrics grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            {METRICS.map((m) => (
-              <MetricCard key={m.key} metric={m} value={stats[m.key]} />
-            ))}
-          </div>
+          {METRICS.length > 0 && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              {METRICS.map((m) => (
+                <MetricCard key={m.key} metric={m} value={stats[m.key]} />
+              ))}
+            </div>
+          )}
+
+          {/* Cancelled card with expandable order list */}
+          <CancelledCard count={stats.cancelled} period={period} />
 
           {/* Status breakdown card */}
           {stats.by_status && byStatusTotal > 0 && (
@@ -574,9 +631,6 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 ))}
             </div>
           )}
-
-          {/* Revenue trend context card */}
-          <RevenueContext stats={stats} period={period} />
 
           {/* Extended analytics (admin-only) */}
           {showExtended && extStats && (
