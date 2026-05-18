@@ -1314,7 +1314,11 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
             f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}"
         )
         sent_msgs = []
+        seen_tg: set[int] = set()
         for admin_id in settings.ADMIN_IDS:
+            if admin_id in seen_tg:
+                continue
+            seen_tg.add(admin_id)
             try:
                 msg = await call.bot.send_message(admin_id, notification_text, reply_markup=order_confirm_kb(order_id))
                 sent_msgs.append({"chat_id": admin_id, "message_id": msg.message_id})
@@ -1323,10 +1327,14 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         managers = await api.get_managers()
         for mgr in managers:
             if mgr.get("is_active") and mgr.get("telegram_id"):
+                tid = int(mgr["telegram_id"])
+                if tid in seen_tg:
+                    continue
+                seen_tg.add(tid)
                 try:
-                    msg = await call.bot.send_message(mgr["telegram_id"], notification_text,
+                    msg = await call.bot.send_message(tid, notification_text,
                                                       reply_markup=order_confirm_kb(order_id))
-                    sent_msgs.append({"chat_id": mgr["telegram_id"], "message_id": msg.message_id})
+                    sent_msgs.append({"chat_id": tid, "message_id": msg.message_id})
                 except Exception:
                     pass
         if sent_msgs:

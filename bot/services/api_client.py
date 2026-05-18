@@ -133,7 +133,7 @@ async def delete_product(product_id: int):
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
 async def create_order(data: dict):
-    return await _post("/orders/", data)
+    return await _post("/orders/?from_bot=true", data)
 
 
 async def get_user_orders(user_id: int):
