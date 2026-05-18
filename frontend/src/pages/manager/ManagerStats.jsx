@@ -7,11 +7,11 @@ const CD = '#6CA32F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
-const BG = '#F2F2F7'
-const BORDER = 'rgba(60,60,67,0.08)'
+
+const todayLabel = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 
 const PERIODS = [
-  { key: 'day', label: 'Сегодня' },
+  { key: 'day', label: todayLabel },
   { key: 'week', label: 'Неделя' },
   { key: 'month', label: 'Месяц' },
 ]
@@ -36,19 +36,7 @@ const STATUS_COLORS = {
   rejected: '#E03131',
 }
 
-const METRICS = [
-  {
-    key: 'repeat_customers',
-    label: 'Повторных клиентов',
-    color: '#6741D9',
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8" />
-        <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-]
+const METRICS = []
 
 function CancelledCard({ count, period }) {
   const [expanded, setExpanded] = useState(false)
@@ -211,62 +199,6 @@ function MetricCard({ metric, value }) {
   )
 }
 
-function StatusBar({ label, count, total, color }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <div
-        style={{
-          width: 140,
-          fontSize: 13,
-          color: TEXT,
-          fontWeight: 500,
-          flexShrink: 0,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          height: 10,
-          background: BG,
-          borderRadius: 999,
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${pct}%`,
-            background: color,
-            borderRadius: 999,
-            transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-            minWidth: count > 0 ? 4 : 0,
-          }}
-        />
-      </div>
-      <div
-        style={{
-          minWidth: 60,
-          textAlign: 'right',
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'flex-end',
-          gap: 3,
-        }}
-      >
-        <span style={{ fontWeight: 800, fontSize: 14, color }}>{count}</span>
-        <span style={{ fontWeight: 400, fontSize: 11, color: TEXT2 }}>{pct}%</span>
-      </div>
-    </div>
-  )
-}
-
 function RevenueContext({ stats, period }) {
   if (!stats) return null
 
@@ -350,41 +282,6 @@ function RevenueContext({ stats, period }) {
         )}
       </div>
 
-      {(stats.delivery_revenue > 0 || stats.delivery_orders_count > 0) && (
-        <div
-          style={{
-            background: '#fff',
-            borderRadius: 18,
-            padding: '18px 20px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-            marginTop: 12,
-          }}
-        >
-          <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 14 }}>
-            🚚 Доставка {periodLabel}
-          </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
-              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Выручка с доставки</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#1971C2' }}>
-                {(stats.delivery_revenue || 0).toLocaleString('ru-RU')} сум
-              </div>
-            </div>
-            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
-              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Платных доставок</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#6741D9' }}>
-                {stats.delivery_orders_count ?? 0}
-              </div>
-            </div>
-            <div style={{ background: '#f8f8fa', borderRadius: 14, padding: '12px 16px', flex: 1 }}>
-              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 4 }}>Бесплатных</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#12B886' }}>
-                {stats.free_delivery_count ?? 0}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
@@ -401,11 +298,6 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
     if (showExtended) calls.push(getAdminStatsExtended(period).then(setExtStats).catch(console.error))
     Promise.all(calls).finally(() => setLoading(false))
   }, [period, showExtended])
-
-  const byStatusTotal =
-    stats?.by_status
-      ? Object.values(stats.by_status).reduce((a, b) => a + b, 0)
-      : 0
 
   return (
     <Layout title={title}>
@@ -601,36 +493,6 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
 
           {/* Cancelled card with expandable order list */}
           <CancelledCard count={stats.cancelled} period={period} />
-
-          {/* Status breakdown card */}
-          {stats.by_status && byStatusTotal > 0 && (
-            <div
-              style={{
-                background: '#fff',
-                borderRadius: 18,
-                padding: '20px 20px 18px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
-              }}
-            >
-              <div style={{ fontWeight: 800, fontSize: 16, color: TEXT, marginBottom: 2 }}>
-                Разбивка по статусам
-              </div>
-              {Object.entries(stats.by_status)
-                .sort(([, a], [, b]) => b - a)
-                .map(([status, count]) => (
-                  <StatusBar
-                    key={status}
-                    label={STATUS_LABELS[status] || status}
-                    count={count}
-                    total={byStatusTotal}
-                    color={STATUS_COLORS[status] || TEXT2}
-                  />
-                ))}
-            </div>
-          )}
 
           {/* Extended analytics (admin-only) */}
           {showExtended && extStats && (
