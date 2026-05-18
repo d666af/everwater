@@ -483,7 +483,6 @@ async def admin_confirm(call: CallbackQuery):
         await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, f"✅ <b>Заказ подтверждён</b>\n\n{body}")
     await call.answer()
 
 
@@ -1165,9 +1164,9 @@ async def admin_wh_prod_note(message: Message, state: FSMContext):
 SETTINGS_LABELS = {
     "payment_card": "Номер карты для оплаты",
     "payment_holder": "Получатель платежа",
-    "cashback_percent": "Начисление бонусов (значение)",
+    "cashback_percent": "Кэшбек с заказа (значение)",
     "bonus_expiry_days": "Срок действия бонусов (дней)",
-    "bottle_discount_value": "Размер бонуса за бутылку (значение)",
+    "bottle_discount_value": "Бонус за бутылку (значение)",
 }
 
 
@@ -1191,12 +1190,13 @@ def _settings_display(cfg: dict):
 
     b_icon = "✅" if bonus_on else "❌"
     bo_icon = "✅" if bottle_on else "❌"
-    b_type_label = "Фикс. сумма" if bonus_type == "fixed" else "Процент"
-    bo_type_label = "Фикс. сумма" if bottle_type == "fixed" else "Процент"
+    b_type_label = "фикс." if bonus_type == "fixed" else "%"
+    bo_type_label = "фикс." if bottle_type == "fixed" else "%"
     bonus_val_sfx = " сум" if bonus_type == "fixed" else "%"
     bottle_val_sfx = " сум" if bottle_type == "fixed" else "%"
     bv = f"{bonus_val}{bonus_val_sfx}" if str(bonus_val) != "—" else "—"
     bov = f"{bottle_val}{bottle_val_sfx}" if str(bottle_val) != "—" else "—"
+    expiry_str = f"{expiry} дн." if str(expiry) != "—" else "—"
 
     lines = [
         "⚙️ <b>Настройки</b>\n",
@@ -1204,16 +1204,14 @@ def _settings_display(cfg: dict):
         f"  Карта: {card}",
         f"  Получатель: {holder}",
         "",
-        f"🎁 <b>Бонусная программа</b>: {b_icon}",
-        f"  Тип начисления: {b_type_label}  |  Значение: {bv}",
-        f"  Срок действия: {expiry} дн." if str(expiry) != "—" else "  Срок действия: —",
-        "",
-        f"🫙 <b>Бонус за бутылку</b>: {bo_icon}",
-        f"  Тип: {bo_type_label}  |  Размер: {bov}",
+        "🎁 <b>Бонусы</b>",
+        f"  Кэшбек с заказа: {b_icon}  ({b_type_label}, {bv})",
+        f"  Срок действия бонусов: {expiry_str}",
+        f"  Бонус за бутылку: {bo_icon}  ({bo_type_label}, {bov})",
     ]
 
-    b_tog = "🎁 Выключить" if bonus_on else "🎁 Включить"
-    bo_tog = "🫙 Выключить" if bottle_on else "🫙 Включить"
+    b_tog = "Кэшбек: выкл" if bonus_on else "Кэшбек: вкл"
+    bo_tog = "Бутылка: выкл" if bottle_on else "Бутылка: вкл"
     bf = "✅ Фикс" if bonus_type == "fixed" else "Фикс"
     bp = "✅ %" if bonus_type == "percent" else "%"
     bof = "✅ Фикс" if bottle_type == "fixed" else "Фикс"
@@ -1223,13 +1221,13 @@ def _settings_display(cfg: dict):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Карта", callback_data="admin:set:payment_card"),
          InlineKeyboardButton(text="👤 Получатель", callback_data="admin:set:payment_holder")],
-        [InlineKeyboardButton(text=b_tog, callback_data="admin:tog:bonus_program")],
-        [InlineKeyboardButton(text=bf, callback_data="admin:set_type:bonus:fixed"),
+        [InlineKeyboardButton(text=b_tog, callback_data="admin:tog:bonus_program"),
+         InlineKeyboardButton(text=bf, callback_data="admin:set_type:bonus:fixed"),
          InlineKeyboardButton(text=bp, callback_data="admin:set_type:bonus:percent"),
-         InlineKeyboardButton(text="✏️ Значение", callback_data="admin:set:cashback_percent"),
-         InlineKeyboardButton(text="⏳ Срок (дни)", callback_data="admin:set:bonus_expiry_days")],
-        [InlineKeyboardButton(text=bo_tog, callback_data="admin:tog:bottle_bonus")],
-        [InlineKeyboardButton(text=bof, callback_data="admin:set_type:bottle:fixed"),
+         InlineKeyboardButton(text="✏️ Значение", callback_data="admin:set:cashback_percent")],
+        [InlineKeyboardButton(text="⏳ Срок бонусов (дни)", callback_data="admin:set:bonus_expiry_days")],
+        [InlineKeyboardButton(text=bo_tog, callback_data="admin:tog:bottle_bonus"),
+         InlineKeyboardButton(text=bof, callback_data="admin:set_type:bottle:fixed"),
          InlineKeyboardButton(text=bop, callback_data="admin:set_type:bottle:percent"),
          InlineKeyboardButton(text="✏️ Размер", callback_data="admin:set:bottle_discount_value")],
         [InlineKeyboardButton(text="← Назад", callback_data="admin:back")],
