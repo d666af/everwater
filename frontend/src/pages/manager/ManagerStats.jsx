@@ -38,30 +38,6 @@ const STATUS_COLORS = {
 
 const METRICS = [
   {
-    key: 'order_count',
-    label: 'Заказов доставлено',
-    color: '#2B8A3E',
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="16" rx="3" stroke={c} strokeWidth="1.8" />
-        <path d="M7 9h10M7 13h6" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    key: 'revenue',
-    label: 'Выручка',
-    color: C,
-    format: (v) => (v >= 1000 ? `${Math.round(v / 1000)}к` : String(v)),
-    subtitle: (v) => `${v.toLocaleString('ru-RU')} сум`,
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="2" y="5" width="20" height="14" rx="2" stroke={c} strokeWidth="1.8" />
-        <path d="M2 10h20M8 15h3m5 0h-2" stroke={c} strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     key: 'avg_check',
     label: 'Средний чек',
     color: '#1971C2',
@@ -424,19 +400,20 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         <>
           {/* Bottles card */}
           <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки 19 л</div>
             <div style={{ display: 'flex', gap: 0 }}>
               <div style={{ flex: 1, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Возвращено</div>
                 <div style={{ fontSize: 22, fontWeight: 900, color: '#12B886', lineHeight: 1 }}>{stats.bottles_returned ?? 0}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>за период</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>клиентами курьерам</div>
               </div>
               <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Не возвращено</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottles_surcharge_count || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottles_surcharge_count ?? 0} шт.</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottles_surcharge_total || 0) > 0 ? '#E03131' : TEXT2, marginTop: 2 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Куплено</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottles_surcharge_count || 0) > 0 ? C : TEXT2, lineHeight: 1 }}>{stats.bottles_surcharge_count ?? 0} шт.</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottles_surcharge_total || 0) > 0 ? CD : TEXT2, marginTop: 2 }}>
                   {(stats.bottles_surcharge_total || 0) > 0 ? `${Math.round(stats.bottles_surcharge_total).toLocaleString('ru-RU')} сум` : '—'}
                 </div>
+                <div style={{ fontSize: 9, color: TEXT2, marginTop: 3, lineHeight: 1.3 }}>наценка от клиентов за период</div>
               </div>
               <div style={{ flex: 1, paddingLeft: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Долг</div>
@@ -453,6 +430,31 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
               </div>
             </div>
           </div>
+
+          {/* Product sales card */}
+          {stats.product_sales?.length > 0 && (() => {
+            const totalQty = stats.product_sales.reduce((s, p) => s + p.qty, 0)
+            const totalAmt = stats.product_sales.reduce((s, p) => s + p.total, 0)
+            return (
+              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи по товарам</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {stats.product_sales.map((p, i) => (
+                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < stats.product_sales.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                      <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{p.total >= 1000 ? `${Math.round(p.total / 1000)}к` : Math.round(p.total)} сум</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{totalAmt >= 1000000 ? `${(totalAmt / 1000000).toFixed(1)}M` : totalAmt >= 1000 ? `${Math.round(totalAmt / 1000)}к` : Math.round(totalAmt)} сум</div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Bonus card */}
           {(stats.bonus_earned > 0 || stats.bonus_used > 0) && (
