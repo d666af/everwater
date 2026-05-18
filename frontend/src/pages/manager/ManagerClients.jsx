@@ -29,7 +29,7 @@ const STATUS_STYLE = {
 
 const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', bonus_used: '#E67700' }
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
-const TABS = ['Инфо', 'Заказы', 'Подписки', 'Бутылки', 'Адреса', 'Кулеры']
+const TABS = ['Инфо', 'Заказы', 'Подписки', 'Адреса', 'Кулеры']
 
 function TopupModal({ user, onClose, onConfirm }) {
   const [amount, setAmount] = useState('')
@@ -206,44 +206,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 3) return loadingD ? <Spinner /> : (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={{ fontSize: 48, fontWeight: 900, color: details?.bottles_owed > 0 ? '#E03131' : '#2B8A3E' }}>{details?.bottles_owed || 0}</div>
-          <div style={{ fontSize: 14, color: TEXT2, marginTop: 4 }}>бутылок задолженность</div>
-          {details?.pending_return > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: 13, color: '#E67700' }}>↩️ В процессе возврата: <b>{details.pending_return} шт.</b></div>
-              <div style={{ fontSize: 13, color: '#2B8A3E' }}>✅ Доступно к возврату: <b>{details.available_bottles ?? Math.max(0, details.bottles_owed - details.pending_return)} шт.</b></div>
-            </div>
-          )}
-        </div>
-        {!details?.bottles_history?.length ? <Empty text="Нет истории" /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>История</div>
-            {details.bottles_history.map((h, i) => {
-              const isReturn = h.action === 'returned'
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: isReturn ? '#EBFBEE' : '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {isReturn
-                      ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="#2B8A3E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#E03131" strokeWidth="2" strokeLinecap="round"/></svg>}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{isReturn ? 'Возврат' : 'Получено'} {h.count} бут.</div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{fmtDate(h.date)}{h.order_id ? ` · Заказ #${h.order_id}` : ''}</div>
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: isReturn ? '#2B8A3E' : '#E03131' }}>{isReturn ? '-' : '+'}{h.count}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    )
-
-    if (tab === 4) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет сохранённых адресов" /> : (
+    if (tab === 3) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет сохранённых адресов" /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {details.addresses.map(a => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
@@ -259,7 +222,7 @@ function ClientDetail({ user, onClose, onTopup }) {
       </div>
     )
 
-    if (tab === 5) return loadingC ? <Spinner /> : (
+    if (tab === 4) return loadingC ? <Spinner /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {showCoolerForm && <CoolerForm onCancel={() => setShowCoolerForm(false)} onSave={handleAddCooler} />}
 
@@ -490,30 +453,19 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, balance: (u.balance || 0) + amount } : u))
   }
 
-  const totalBalance = users.reduce((a, u) => a + (u.balance || 0), 0)
-  const totalBonuses = users.reduce((a, u) => a + (u.bonus_points || 0), 0)
-
   return (
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
       {topupUser && <TopupModal user={topupUser} onClose={() => setTopupUser(null)} onConfirm={(amt) => handleTopupConfirm(topupUser.id, amt)} />}
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} onTopup={() => { setTopupUser(selectedUser); setSelectedUser(null) }} />}
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {[[users.length, 'Клиентов'], [Math.round(totalBonuses), 'Бонусов']].map(([v, l]) => (
-          <div key={l} style={{ flex: 1, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 18, padding: '11px 14px', marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 18, padding: '11px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={TEXT2} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/></svg>
         <input style={{ border: 'none', outline: 'none', flex: 1, fontSize: 15, background: 'transparent', color: TEXT }} placeholder="Имя или телефон..." value={search} onChange={e => setSearch(e.target.value)} />
-        {search
-          ? <button style={{ border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setSearch('')}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/></svg></button>
-          : <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>{filtered.length}</span>}
+        {search && <button style={{ border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setSearch('')}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/></svg></button>}
+      </div>
+      <div style={{ fontSize: 12, color: TEXT2, fontWeight: 500, paddingLeft: 4, marginBottom: 12 }}>
+        Клиентов: <b style={{ color: TEXT }}>{filtered.length}</b>
       </div>
 
       {loading ? <Spinner /> : filtered.length === 0 ? (
@@ -524,26 +476,27 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(u => (
-            <div key={u.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
+            <div key={u.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
               <div style={{ width: 46, height: 46, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || '?')[0].toUpperCase()}</div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</div>
-                {u.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{u.phone}</div>}
-                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 2 }}>
-                  {u.is_registered
-                    ? <span style={{ fontSize: 11, background: '#EBFBEE', color: '#2B8A3E', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>Зарегистрирован</span>
-                    : <span style={{ fontSize: 11, background: '#FFF8E6', color: '#E67700', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>Не завершил</span>}
-                  {(u.balance || 0) > 0 && <span style={{ fontSize: 11, background: '#EBFBEE', color: CD, padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>{u.balance.toLocaleString()} сум</span>}
-                  {(u.bonus_points || 0) > 0 && <span style={{ fontSize: 11, background: '#FFF3BF', color: '#E67700', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{Math.round(u.bonus_points)} бон.</span>}
+                {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
+                <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: TEXT2, background: '#F2F2F7', padding: '3px 9px', borderRadius: 999, fontWeight: 600 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                    {u.orders_count || 0} заказов
+                  </span>
+                  {(u.bottles_owed || 0) > 0 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#C92A2A', background: '#FFF5F5', padding: '3px 9px', borderRadius: 999, fontWeight: 700 }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M8 6h8l1 3H7L8 6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><rect x="7" y="9" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>
+                      {u.bottles_owed} бут.
+                    </span>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                {u.phone && (
-                  <button style={{ width: 38, height: 38, borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setPhoneModal({ number: u.phone, label: u.name }) }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-                  </button>
-                )}
-              </div>
+              <button style={{ padding: '7px 14px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
+                Инфо
+              </button>
             </div>
           ))}
         </div>

@@ -269,6 +269,15 @@ async def update_courier(courier_id: int, data: CourierUpdate, db: AsyncSession 
 async def get_all_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
+
+    orders_q = await db.execute(
+        select(Order.user_id, func.count(Order.id).label('cnt')).group_by(Order.user_id)
+    )
+    orders_map = {row.user_id: row.cnt for row in orders_q.all()}
+
+    bottles_q = await db.execute(select(BottleDebt))
+    bottles_map = {b.user_id: b.count for b in bottles_q.scalars().all()}
+
     return [
         {
             "id": u.id,
@@ -279,6 +288,8 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "balance": u.balance,
             "bonus_points": u.bonus_points,
             "created_at": u.created_at,
+            "orders_count": orders_map.get(u.id, 0),
+            "bottles_owed": bottles_map.get(u.id, 0),
         }
         for u in users
     ]

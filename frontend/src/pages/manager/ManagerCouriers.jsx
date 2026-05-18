@@ -89,39 +89,25 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
   const totalDeliveries = details?.delivery_count ?? '—'
 
   return (
-    <div style={{
-      background: '#fff', borderRadius: 18,
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      border: `1px solid ${BORDER}`,
-      opacity: c.is_active ? 1 : 0.55,
-      overflow: 'hidden',
-    }}>
-      <div style={{ padding: '14px 16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-        {/* Header: avatar + info + report btn */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{
-            width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
-            background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5',
-            color: '#fff', fontWeight: 800, fontSize: 20,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {(c.name || 'К')[0]}
-          </div>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, lineHeight: 1.3 }}>{c.name}</div>
-            {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{c.phone}</div>}
-            {(c.vehicle_type || c.vehicle_plate) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                  <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.8" strokeLinejoin="round"/>
-                  <circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
-                  <circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
-                </svg>
-                <span style={{ fontSize: 12, color: TEXT2 }}>
-                  {[c.vehicle_type, c.vehicle_plate].filter(Boolean).join(' · ')}
-                </span>
+    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={toggleExpand}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {(c.name || 'К')[0]}
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
+          {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/><circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{c.delivery_count || 0}</span>
+              <span style={{ fontSize: 11, color: TEXT2 }}>доставок</span>
+            </div>
+            {myActiveOrders.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{myActiveOrders.length}</span>
+                <span style={{ fontSize: 11, color: TEXT2 }}>в работе</span>
               </div>
             )}
           </div>
