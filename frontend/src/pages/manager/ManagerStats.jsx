@@ -38,18 +38,6 @@ const STATUS_COLORS = {
 
 const METRICS = [
   {
-    key: 'avg_check',
-    label: 'Средний чек',
-    color: '#1971C2',
-    format: (v) => (v >= 1000 ? `${Math.round(v / 1000)}к` : String(Math.round(v))),
-    subtitle: (v) => `${Math.round(v).toLocaleString('ru-RU')} сум`,
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M18 20V10M12 20V4M6 20v-6" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     key: 'repeat_customers',
     label: 'Повторных клиентов',
     color: '#6741D9',
@@ -57,17 +45,6 @@ const METRICS = [
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="8" r="4" stroke={c} strokeWidth="1.8" />
         <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    key: 'bottles_returned',
-    label: 'Возврат бутылок',
-    color: '#12B886',
-    icon: (c) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 3v5h5" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   },
@@ -400,7 +377,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         <>
           {/* Bottles card */}
           <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки 19 л</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки 19л</div>
             <div style={{ display: 'flex', gap: 0 }}>
               <div style={{ flex: 1, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Возвращено</div>
@@ -408,12 +385,9 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>клиентами курьерам</div>
               </div>
               <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Куплено</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottles_surcharge_count || 0) > 0 ? C : TEXT2, lineHeight: 1 }}>{stats.bottles_surcharge_count ?? 0} шт.</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottles_surcharge_total || 0) > 0 ? CD : TEXT2, marginTop: 2 }}>
-                  {(stats.bottles_surcharge_total || 0) > 0 ? `${Math.round(stats.bottles_surcharge_total).toLocaleString('ru-RU')} сум` : '—'}
-                </div>
-                <div style={{ fontSize: 9, color: TEXT2, marginTop: 3, lineHeight: 1.3 }}>наценка от клиентов за период</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>На склад</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: (stats.bottles_returned_to_warehouse || 0) > 0 ? '#1971C2' : TEXT2, lineHeight: 1 }}>{stats.bottles_returned_to_warehouse ?? 0}</div>
+                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>возвращено курьерами</div>
               </div>
               <div style={{ flex: 1, paddingLeft: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Долг</div>
@@ -432,25 +406,29 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           </div>
 
           {/* Product sales card */}
-          {stats.product_sales?.length > 0 && (() => {
-            const totalQty = stats.product_sales.reduce((s, p) => s + p.qty, 0)
-            const totalAmt = stats.product_sales.reduce((s, p) => s + p.total, 0)
+          {(stats.product_sales?.length > 0 || (stats.bottles_surcharge_count || 0) > 0) && (() => {
+            const surchargeRow = (stats.bottles_surcharge_count || 0) > 0
+              ? [{ name: 'Бутылка 19л', qty: stats.bottles_surcharge_count, total: stats.bottles_surcharge_total || 0 }]
+              : []
+            const allRows = [...(stats.product_sales || []), ...surchargeRow]
+            const totalQty = allRows.reduce((s, p) => s + p.qty, 0)
+            const totalAmt = allRows.reduce((s, p) => s + p.total, 0)
             return (
               <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи по товарам</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  {stats.product_sales.map((p, i) => (
-                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < stats.product_sales.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                  {allRows.map((p, i) => (
+                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < allRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
                       <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{p.total >= 1000 ? `${Math.round(p.total / 1000)}к` : Math.round(p.total)} сум</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
                   <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
                   <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{totalAmt >= 1000000 ? `${(totalAmt / 1000000).toFixed(1)}M` : totalAmt >= 1000 ? `${Math.round(totalAmt / 1000)}к` : Math.round(totalAmt)} сум</div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
                 </div>
               </div>
             )
