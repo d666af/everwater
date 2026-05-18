@@ -214,6 +214,15 @@ async def update_order_cash_received(order_id: int):
         return {}
 
 
+async def report_payment_issue(order_id: int, payment_method: str, reason: str, courier_name: str):
+    try:
+        return await _post(f"/orders/{order_id}/payment_issue", {
+            "payment_method": payment_method, "reason": reason, "courier_name": courier_name
+        })
+    except Exception:
+        return {}
+
+
 async def create_review(user_id: int, order_id: int, rating: int, comment: str = None):
     return await _post("/orders/reviews/", {
         "user_id": user_id, "order_id": order_id, "rating": rating, "comment": comment

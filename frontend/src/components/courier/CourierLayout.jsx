@@ -141,11 +141,11 @@ const s = {
   content: { padding: 16, paddingTop: 60, flex: 1, overflowY: 'auto' },
   mobileNav: {
     position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
-    padding: '0 6px 8px',
+    padding: '0 20px 8px',
     paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))',
   },
   mobileNavInner: {
-    display: 'flex', maxWidth: 420, margin: '0 auto',
+    display: 'flex', maxWidth: 360, margin: '0 auto',
     background: GRAD, borderRadius: 22,
     padding: '8px 0 10px',
     boxShadow: '0 4px 24px rgba(80,140,20,0.35)',

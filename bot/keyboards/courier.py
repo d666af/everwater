@@ -99,6 +99,13 @@ def courier_order_kb(order_id: int, status: str = "assigned_to_courier") -> Inli
 
 def courier_cash_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, наличные получены", callback_data=f"courier:cash_ok:{order_id}")],
-        [InlineKeyboardButton(text="💳 Безналичная оплата", callback_data=f"courier:cash_skip:{order_id}")],
+        [InlineKeyboardButton(text="✅ Да, получил", callback_data=f"courier:cash_ok:{order_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"courier:cash_no:{order_id}")],
+    ])
+
+
+def courier_card_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, проверил", callback_data=f"courier:card_ok:{order_id}")],
+        [InlineKeyboardButton(text="❌ Нет", callback_data=f"courier:card_no:{order_id}")],
     ])

@@ -152,6 +152,49 @@ async def _notify_low_stock_if_needed(
     await _send_shortage_notification(db, shortage_lines, order_id, extra_chat_ids)
 
 
+async def _reserve_inventory(order, db: AsyncSession):
+    """Move order items from courier's available quantity → reserved."""
+    from app.models.warehouse import CourierWater
+    if not order.courier_id or not order.items:
+        return
+    for item in order.items:
+        if not item.product_id or not item.quantity:
+            continue
+        row_q = await db.execute(
+            select(CourierWater).where(
+                CourierWater.courier_id == order.courier_id,
+                CourierWater.product_id == item.product_id,
+            )
+        )
+        row = row_q.scalar_one_or_none()
+        if row:
+            qty = min(item.quantity, max(0, row.quantity))
+            row.quantity = max(0, row.quantity - qty)
+            row.reserved = (row.reserved or 0) + qty
+
+
+async def _release_inventory(order, db: AsyncSession, consume: bool = False):
+    """Move reserved items back to available (cancel) or simply remove them (deliver)."""
+    from app.models.warehouse import CourierWater
+    if not order.courier_id or not order.items:
+        return
+    for item in order.items:
+        if not item.product_id or not item.quantity:
+            continue
+        row_q = await db.execute(
+            select(CourierWater).where(
+                CourierWater.courier_id == order.courier_id,
+                CourierWater.product_id == item.product_id,
+            )
+        )
+        row = row_q.scalar_one_or_none()
+        if row:
+            qty = min(item.quantity, max(0, row.reserved or 0))
+            row.reserved = max(0, (row.reserved or 0) - qty)
+            if not consume:
+                row.quantity = (row.quantity or 0) + qty
+
+
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
     """LEGACY: pre-surcharge discount calc, kept for compat."""
     if count <= 0:
@@ -381,6 +424,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
         raise HTTPException(status_code=409, detail="Order already rejected")
 
     msg_ids_json = order.notification_msg_ids
+    was_assigned = order.courier_id is not None
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
 
@@ -389,6 +433,8 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     items = _order_items_text(order.items)
     oid = order.id
 
+    if was_assigned:
+        await _release_inventory(order, db, consume=False)
     await db.commit()
 
     from app.services.tg_notify import edit_all_notifications
@@ -524,6 +570,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
             if admin_user and admin_user.phone:
                 order.manager_phone = admin_user.phone
 
+    await _reserve_inventory(order, db)
     await db.commit()
 
     if not from_bot:
@@ -551,13 +598,18 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
 
     client_tg = order.user.telegram_id if order.user else None
     old_msg_id = order.client_status_msg_id
-    items = _order_items_text(order.items)
     oid = order.id
+
+    courier_name = ""
+    if order.courier_id:
+        c_q = await db.execute(select(Courier).where(Courier.id == order.courier_id))
+        c = c_q.scalar_one_or_none()
+        courier_name = c.name if c else ""
 
     await db.commit()
 
     if not from_bot:
-        text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер уже едет к вам!"
+        text = f"🚴 Курьер «{courier_name}» выехал к вам!" if courier_name else "🚴 Курьер выехал к вам!"
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
@@ -630,23 +682,46 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             if courier:
                 courier.total_deliveries += 1
 
-
+        await _release_inventory(order, db, consume=True)
         await db.commit()
 
     if not from_bot and not already_delivered:
-        bonus_txt = f"\n🎁 Начислено {int(bonus):,} бонусных баллов!" if bonus > 0 else ""
-        text = f"✔️ Заказ доставлен!\n{items}{bonus_txt}"
+        bonus_txt = f"\n🎁 Начислено {int(bonus):,} сум бонусных баллов!" if bonus > 0 else ""
+        text = f"✅ Ваш заказ доставлен!{bonus_txt}"
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
-        # Send separate review prompt with star keyboard (handled by the bot)
         review_kb = {"inline_keyboard": [[
             {"text": f"{i}⭐", "callback_data": f"review:{oid}:{i}"} for i in range(1, 6)
         ]]}
         await _tg_send(client_tg, "Пожалуйста, оцените качество доставки:", review_kb)
-        await _notify_admins(db, f"✔️ Заказ доставлен!\n{items}")
 
     return {"ok": True, "bonus": round(bonus, 2)}
+
+
+class PaymentIssueBody(BaseModel):
+    reason: str = ""
+    payment_method: str = "cash"
+    courier_name: str = ""
+
+
+@router.post("/{order_id}/payment_issue")
+async def report_payment_issue(order_id: int, body: PaymentIssueBody, db: AsyncSession = Depends(get_db)):
+    order = await _get_order(order_id, db)
+    courier_name = body.courier_name or (order.courier.name if order.courier else "")
+    client_phone = order.recipient_phone or (order.user.phone if order.user else "")
+    client_name = order.user.name if order.user else ""
+    pay_label = "наличные" if body.payment_method == "cash" else "чек оплаты по карте"
+    total_fmt = f"{int(order.total):,}".replace(",", " ")
+    text = (
+        f"⚠️ Курьер {courier_name} не подтвердил {pay_label}\n"
+        f"Клиент: {client_name + ' ' if client_name else ''}{client_phone}\n"
+        f"Адрес: {order.address}\n"
+        f"Сумма: {total_fmt} сум\n"
+        f"Причина: {body.reason or '—'}"
+    )
+    await _notify_admins(db, text)
+    return {"ok": True}
 
 
 @router.patch("/{order_id}/courier_accept")
@@ -921,6 +996,8 @@ async def confirm_cancellation(order_id: int, db: AsyncSession = Depends(get_db)
             user.bonus_points = max(0.0, user.bonus_points - penalty)
             order.cancellation_penalty = penalty
 
+    if courier_was_assigned:
+        await _release_inventory(order, db, consume=False)
     order.status = OrderStatus.REJECTED
 
     await db.commit()

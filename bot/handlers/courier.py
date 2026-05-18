@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
-from keyboards.courier import courier_menu_kb, courier_cash_confirm_kb
+from keyboards.courier import courier_menu_kb, courier_cash_confirm_kb, courier_card_confirm_kb
 from config import settings
 
 router = Router()
@@ -49,6 +49,10 @@ class CourierOrderCreate(StatesGroup):
     waiting_bottles = State()
     waiting_address = State()
     confirming = State()
+
+
+class PaymentIssueReason(StatesGroup):
+    waiting_reason = State()
 
 
 # ─── Orders list (single message, edit in place) ──────────────────────────────
@@ -600,8 +604,8 @@ async def courier_in_delivery(call: CallbackQuery):
     client_tg = order.get("client_telegram_id")
     if client_tg:
         try:
-            brief = _order_brief(order)
-            await call.bot.send_message(client_tg, f"🚴 Курьер выехал к вам!\n{brief}")
+            courier_name = order.get('courier_name') or call.from_user.full_name
+            await call.bot.send_message(client_tg, f"🚴 Курьер «{courier_name}» выехал к вам!")
         except Exception:
             pass
     try:
@@ -628,37 +632,31 @@ async def courier_done(call: CallbackQuery):
 
     if client_tg:
         try:
-            bonus_txt = f"\n🎁 Начислено {fmt(bonus)} бонусных баллов!" if bonus and bonus > 0 else ""
+            bonus_txt = f"\n🎁 Начислено {fmt(bonus)} сум бонусных баллов!" if bonus and bonus > 0 else ""
             await call.bot.send_message(
                 client_tg,
-                f"✔️ Ваш заказ доставлен!\n{brief}{bonus_txt}\n\nПожалуйста, оцените качество доставки:",
+                f"✅ Ваш заказ доставлен!{bonus_txt}",
+            )
+            await call.bot.send_message(
+                client_tg,
+                "Пожалуйста, оцените качество доставки:",
                 reply_markup=review_kb(order_id),
             )
         except Exception:
             pass
 
-    for admin_id in settings.ADMIN_IDS:
-        try:
-            await call.bot.send_message(
-                admin_id,
-                f"✔️ Доставлено!\nКурьер: {order.get('courier_name') or call.from_user.full_name}\n{brief}",
-            )
-        except Exception:
-            pass
-
-    managers = await api.get_managers()
-    for mgr in managers:
-        if mgr.get("is_active") and mgr.get("telegram_id") and mgr["telegram_id"] not in settings.ADMIN_IDS:
-            try:
-                await call.bot.send_message(mgr["telegram_id"], f"✔️ Доставлено: {brief}")
-            except Exception:
-                pass
-
     await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
-    if order.get("payment_method") == "cash":
+    total_fmt = fmt(order.get("total", 0))
+    pay = order.get("payment_method", "cash")
+    if pay == "cash":
         await call.message.answer(
-            f"💵 Вы получили наличные?\n{brief}",
+            f"💵 Вы получили наличные?\nСумма: {total_fmt}",
             reply_markup=courier_cash_confirm_kb(order_id),
+        )
+    else:
+        await call.message.answer(
+            f"💳 Вы проверили чек оплаты по карте?\nСумма: {total_fmt}",
+            reply_markup=courier_card_confirm_kb(order_id),
         )
     await call.answer()
 
@@ -670,11 +668,45 @@ async def courier_cash_received(call: CallbackQuery):
         await api.update_order_cash_received(order_id)
     except Exception:
         pass
-    await call.message.edit_text("✅ Наличные зафиксированы. Заказ помечен как доставленный!")
+    await call.message.edit_text("✅ Наличные зафиксированы!")
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("courier:cash_skip:"))
-async def courier_cash_skip(call: CallbackQuery):
-    await call.message.edit_text("✔️ Заказ помечен как доставленный! Безналичная оплата зафиксирована.")
+@router.callback_query(F.data.startswith("courier:card_ok:"))
+async def courier_card_received(call: CallbackQuery):
+    await call.message.edit_text("✅ Оплата по карте подтверждена!")
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:cash_no:"))
+async def courier_cash_no(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[2])
+    await state.set_state(PaymentIssueReason.waiting_reason)
+    await state.update_data(order_id=order_id, payment_method="cash", courier_name=call.from_user.full_name)
+    await call.message.edit_text("💬 Укажите причину — почему не получили наличные:")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:card_no:"))
+async def courier_card_no(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[2])
+    await state.set_state(PaymentIssueReason.waiting_reason)
+    await state.update_data(order_id=order_id, payment_method="card", courier_name=call.from_user.full_name)
+    await call.message.edit_text("💬 Укажите причину — почему не проверили чек:")
+    await call.answer()
+
+
+@router.message(PaymentIssueReason.waiting_reason)
+async def payment_issue_reason_received(message: Message, state: FSMContext):
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    payment_method = data.get("payment_method", "cash")
+    courier_name = data.get("courier_name", "")
+    reason = message.text or ""
+    await state.clear()
+    try:
+        await api.report_payment_issue(order_id, payment_method, reason, courier_name)
+    except Exception:
+        pass
+    pay_label = "наличные" if payment_method == "cash" else "чек оплаты"
+    await message.answer(f"✅ Сообщение отправлено менеджеру. Причина зафиксирована.")
