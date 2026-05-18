@@ -64,6 +64,10 @@ class PaymentIssueReason(StatesGroup):
     waiting_reason = State()
 
 
+class CourierReport(StatesGroup):
+    waiting_date = State()
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _filter_orders(orders: list, tab: str) -> list:
@@ -429,7 +433,7 @@ async def list_courier_done(call: CallbackQuery):
     await call.answer()
 
 
-# ─── Stats ────────────────────────────────────────────────────────────────────
+# ─── /courier command ─────────────────────────────────────────────────────────
 
 @router.message(Command("courier"))
 async def courier_panel(message: Message):
@@ -440,72 +444,194 @@ async def courier_panel(message: Message):
     await message.answer(f"🚴 Панель курьера, {courier['name']}:", reply_markup=courier_menu_kb())
 
 
-@router.message(F.text == "📊 Мои отчеты")
-async def courier_report(message: Message):
+# ─── Quick stats ───────────────────────────────────────────────────────────────
+
+@router.message(F.text == "📊 Статистика")
+async def courier_stats_quick(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
-        await message.answer("Вы не зарегистрированы как курьер.")
         return
     stats = await api.get_courier_stats(message.from_user.id)
-    avg = stats.get("avg_rating", 0)
-    stars = "⭐" * round(float(avg)) if avg else "—"
+    avg          = float(stats.get("avg_rating", 0) or 0)
+    review_count = int(stats.get("review_count", 0) or 0)
+    deliveries   = int(stats.get("delivery_count", 0) or stats.get("total_deliveries", 0) or 0)
+    active       = int(stats.get("active_orders", 0) or 0)
+    debt_qty     = int(stats.get("bottles_must_return", 0) or 0)
+    debt_val     = float(stats.get("bottle_debt_value", 0) or 0)
+
+    stars = "⭐" * round(avg) if avg else "—"
+    lines = [
+        "📊 <b>Статистика курьера</b>",
+        "",
+        f"✔️ Всего доставок: <b>{deliveries}</b>",
+        f"🚴 Активных заказов: <b>{active}</b>",
+    ]
+    if debt_qty > 0:
+        debt_val_str = f" · {fmt(debt_val)}" if debt_val > 0 else ""
+        lines.append(f"🫙 Долг бутылок: <b>{debt_qty} шт.</b>{debt_val_str}")
+    if review_count > 0:
+        lines.append(f"⭐ Рейтинг: <b>{avg:.1f}</b> {stars} ({review_count} отзывов)")
+    elif avg > 0:
+        lines.append(f"⭐ Рейтинг: <b>{avg:.1f}</b> {stars}")
+
     site_url = settings.MINI_APP_URL.rstrip("/") + "/courier/stats"
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="📊 Открыть подробный отчёт", web_app=WebAppInfo(url=site_url))
+        InlineKeyboardButton(text="📊 Открыть подробную статистику", web_app=WebAppInfo(url=site_url))
     ]])
-    delivery_rev = stats.get('total_delivery_revenue', 0) or 0
-    delivery_rev_line = f"\n🚚 Доставки (итого): {fmt(delivery_rev)}" if delivery_rev > 0 else ""
+    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+
+# ─── Period report ─────────────────────────────────────────────────────────────
+
+def _report_period_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📅 Сегодня",    callback_data="crep:today"),
+        InlineKeyboardButton(text="📆 Ввести дату", callback_data="crep:pick"),
+    ]])
+
+
+@router.message(F.text == "📈 Отчет")
+async def courier_report_start(message: Message):
+    courier = await _get_courier(message.from_user.id)
+    if not courier:
+        return
     await message.answer(
-        f"📊 <b>Ваша статистика:</b>\n\n"
-        f"✔️ Выполнено доставок: {stats.get('total_deliveries', 0)}\n"
-        f"💰 Общая выручка: {fmt(stats.get('total_revenue', 0))}"
-        f"{delivery_rev_line}\n"
-        f"⭐ Средний рейтинг: {float(avg):.1f} {stars}\n"
-        f"📝 Отзывов: {stats.get('review_count', 0)}\n"
-        f"🚴 Активных заказов: {stats.get('active_orders', 0)}",
+        "📈 <b>Отчет</b>\n\nВыберите период:",
+        reply_markup=_report_period_kb(),
         parse_mode="HTML",
-        reply_markup=kb,
     )
 
 
-# ─── Reviews ──────────────────────────────────────────────────────────────────
+@router.callback_query(F.data == "crep:today")
+async def courier_report_today(call: CallbackQuery):
+    from datetime import date as _date
+    today = _date.today().strftime("%Y-%m-%d")
+    courier = await _get_courier(call.from_user.id)
+    if not courier:
+        await call.answer()
+        return
+    await call.message.edit_text("⏳ Загружаю отчёт...")
+    await _show_report(call.message, courier["id"], call.from_user.id, today, today, "Сегодня")
+    await call.answer()
 
-@router.message(F.text == "⭐ Мои отзывы")
-async def courier_reviews(message: Message):
+
+@router.callback_query(F.data == "crep:pick")
+async def courier_report_pick(call: CallbackQuery, state: FSMContext):
+    await state.set_state(CourierReport.waiting_date)
+    await call.message.edit_text(
+        "📆 Введите дату или период:\n\n"
+        "• <code>15.05.2025</code> — один день\n"
+        "• <code>01.05-15.05.2025</code> — период",
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(CourierReport.waiting_date)
+async def courier_report_date(message: Message, state: FSMContext):
+    await state.clear()
+    text = (message.text or "").strip()
+    try:
+        from datetime import datetime as _dt
+        if "-" in text and len(text) > 10:
+            parts = text.split("-", 1)
+            d1_str, d2_str = parts[0].strip(), parts[1].strip()
+            if len(d1_str.split(".")) == 2:          # "DD.MM" — borrow year from d2
+                year = d2_str.split(".")[-1]
+                d1_str = f"{d1_str}.{year}"
+            d1 = _dt.strptime(d1_str, "%d.%m.%Y")
+            d2 = _dt.strptime(d2_str, "%d.%m.%Y")
+            date_from = d1.strftime("%Y-%m-%d")
+            date_to   = d2.strftime("%Y-%m-%d")
+            label = f"{d1.strftime('%d.%m')} – {d2.strftime('%d.%m.%Y')}"
+        else:
+            d = _dt.strptime(text, "%d.%m.%Y")
+            date_from = date_to = d.strftime("%Y-%m-%d")
+            label = d.strftime("%d.%m.%Y")
+    except Exception:
+        await message.answer(
+            "❌ Неверный формат. Попробуйте:\n"
+            "• <code>15.05.2025</code>\n"
+            "• <code>01.05-15.05.2025</code>",
+            parse_mode="HTML",
+            reply_markup=_report_period_kb(),
+        )
+        return
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
-    reviews = await api.get_courier_reviews(message.from_user.id)
-    if not reviews:
-        await message.answer("У вас пока нет отзывов.")
-        return
-    lines = [f"⭐ <b>Последние отзывы ({len(reviews)}):</b>\n"]
-    for r in reviews[:10]:
-        stars = "⭐" * r["rating"]
-        comment = f"\n   «{r['comment']}»" if r.get("comment") else ""
-        date = r.get("created_at", "")[:10]
-        lines.append(f"• {date} {stars}{comment}")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    sent = await message.answer("⏳ Загружаю отчёт...")
+    await _show_report(sent, courier["id"], message.from_user.id, date_from, date_to, label)
 
 
-# ─── Water inventory ──────────────────────────────────────────────────────────
+async def _show_report(msg, courier_db_id: int, tg_id: int,
+                       date_from: str, date_to: str, label: str):
+    try:
+        report, stats, water, products = await _gather(
+            api.get_courier_report(courier_db_id, date_from, date_to),
+            api.get_courier_stats(tg_id),
+            api.get_courier_water(tg_id),
+            api.get_products(),
+        )
+    except Exception:
+        await msg.edit_text("❌ Ошибка загрузки. Попробуйте позже.", reply_markup=_report_period_kb())
+        return
 
-@router.message(F.text == "💧 Мой склад")
-async def courier_water(message: Message):
-    courier = await _get_courier(message.from_user.id)
-    if not courier:
-        return
-    water = await api.get_courier_water(message.from_user.id)
-    products = await api.get_products()
-    prod_map = {p["id"]: p["name"] for p in products}
-    if not water:
-        await message.answer("💧 У вас нет воды на руках.")
-        return
-    lines = ["💧 <b>Вода на руках:</b>\n"]
-    for w in water:
-        name = prod_map.get(w["product_id"], f"ID {w['product_id']}")
-        lines.append(f"• {name}: {w['quantity']} шт. (выдано сегодня: {w.get('issued_today', 0)})")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    prod_map = {p["id"]: p["name"] for p in (products or [])}
+    orders   = report.get("orders", [])
+    n_orders = len(orders)
+    earned   = sum(o.get("total", 0) for o in orders)
+    returned = sum(o.get("return_bottles", 0) for o in orders)
+    warehouse_tx = report.get("warehouse_received", [])
+    reserved_items = [i for i in (stats.get("reserved_items") or []) if (i.get("reserved") or 0) > 0]
+
+    lines = [f"📈 <b>Отчёт — {label}</b>", ""]
+    lines += [f"✔️ Доставок: <b>{n_orders}</b>", f"💰 Заработано: <b>{fmt(earned)}</b>"]
+
+    if water:
+        lines.append("\n💧 <b>Товары на руках:</b>")
+        for w in water:
+            name = prod_map.get(w.get("product_id"), "—")
+            lines.append(f"  • {name}: {w.get('quantity', 0)} шт.")
+
+    if returned > 0:
+        lines.append(f"\n♻️ Возвращённых бутылок: <b>{returned} шт.</b>")
+
+    if reserved_items:
+        lines.append("\n🔒 <b>Забронировано для заказов:</b>")
+        for i in reserved_items:
+            lines.append(f"  • {i.get('product_name', '—')}: {i.get('reserved', 0)} шт.")
+
+    if warehouse_tx:
+        lines.append("\n🏭 <b>Транзакции склада:</b>")
+        for w in warehouse_tx:
+            lines.append(f"  • {w.get('product_name', '—')}: +{w.get('total', 0)} шт.")
+
+    if n_orders == 0 and not water and not warehouse_tx:
+        lines.append("Нет данных за указанный период.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔄 Другой период", callback_data="crep:back")
+    ]])
+    try:
+        await msg.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await msg.answer("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+
+
+async def _gather(*coros):
+    import asyncio
+    return await asyncio.gather(*coros)
+
+
+@router.callback_query(F.data == "crep:back")
+async def courier_report_back(call: CallbackQuery):
+    await call.message.edit_text(
+        "📈 <b>Отчет</b>\n\nВыберите период:",
+        reply_markup=_report_period_kb(),
+        parse_mode="HTML",
+    )
+    await call.answer()
 
 
 # ─── Create order ─────────────────────────────────────────────────────────────
