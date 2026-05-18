@@ -124,8 +124,9 @@ const s = {
     WebkitTapHighlightColor: 'transparent', width: '100%',
   },
   sqIcon: {
-    width: 44, height: 44, borderRadius: 14, background: '#F2F2F7',
-    color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 14,
+    background: 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)',
+    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   sqLabel: { fontSize: 13, fontWeight: 700, color: TEXT, textAlign: 'center' },
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
@@ -136,8 +137,9 @@ const s = {
     width: '100%', textAlign: 'left',
   },
   rowIcon: {
-    width: 40, height: 40, borderRadius: 12, background: '#F2F2F7',
-    color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    width: 40, height: 40, borderRadius: 12,
+    background: 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)',
+    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   rowLabel: { flex: 1, fontSize: 14, fontWeight: 700, color: TEXT },
 }
