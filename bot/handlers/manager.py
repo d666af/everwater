@@ -89,7 +89,7 @@ async def manager_panel(message: Message):
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
 
-MGR_PAGE_SIZE = 5
+MGR_PAGE_SIZE = 4
 
 MGR_TAB_LABELS = {
     "new":    ("⏳", "Новые"),
@@ -396,16 +396,6 @@ async def mgrl_cancel_order(call: CallbackQuery):
     await call.answer("❌ Отменён")
 
 
-@router.message(F.text == "⏳ Новые заказы")
-async def mgr_pending_orders(message: Message):
-    if not await is_manager(message.from_user.id):
-        return
-    orders = await api.get_all_orders(status="awaiting_confirmation")
-    if not orders:
-        await message.answer("Нет заказов, ожидающих подтверждения.")
-        return
-    for o in orders[:5]:
-        await message.answer(_mgr_order_text(o), reply_markup=_mgr_order_kb(o), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
@@ -625,8 +615,6 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
     await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     await call.answer("❌ Заказ отменён")
 
-
-# ─── ⏳ Новые заказы (quick view, legacy) ─────────────────────────────────────
 
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
