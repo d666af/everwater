@@ -168,10 +168,12 @@ async def _notify_low_stock_if_needed(
 
 
 async def _reserve_inventory(order, db: AsyncSession):
-    """Move order items from courier's available quantity → reserved."""
-    from app.models.warehouse import CourierWater
+    """Move order items from courier's available quantity → reserved.
+    For manager-created orders, create the CourierWater row and WaterTransaction if they don't exist."""
+    from app.models.warehouse import CourierWater, WaterTransaction
     if not order.courier_id or not order.items:
         return
+    is_manager_order = getattr(order, 'creator_role', None) == 'manager'
     for item in order.items:
         if not item.product_id or not item.quantity:
             continue
@@ -182,7 +184,27 @@ async def _reserve_inventory(order, db: AsyncSession):
             )
         )
         row = row_q.scalar_one_or_none()
-        if row:
+        if is_manager_order:
+            if not row:
+                row = CourierWater(
+                    courier_id=order.courier_id,
+                    product_id=item.product_id,
+                    quantity=0,
+                    issued_today=item.quantity,
+                )
+                db.add(row)
+            else:
+                row.issued_today = (row.issued_today or 0) + item.quantity
+            row.reserved = (row.reserved or 0) + item.quantity
+            db.add(WaterTransaction(
+                product_id=item.product_id,
+                courier_id=order.courier_id,
+                order_id=order.id,
+                transaction_type="issue",
+                quantity=item.quantity,
+                note="Заказ создан менеджером",
+            ))
+        elif row:
             qty = min(item.quantity, max(0, row.quantity))
             row.quantity = max(0, row.quantity - qty)
             row.reserved = (row.reserved or 0) + qty
@@ -193,6 +215,9 @@ async def _release_inventory(order, db: AsyncSession, consume: bool = False):
     from app.models.warehouse import CourierWater
     if not order.courier_id or not order.items:
         return
+    # For manager-created orders always consume (items were never physically with the courier before assignment)
+    if getattr(order, 'creator_role', None) == 'manager':
+        consume = True
     for item in order.items:
         if not item.product_id or not item.quantity:
             continue

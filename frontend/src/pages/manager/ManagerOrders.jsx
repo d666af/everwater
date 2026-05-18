@@ -71,6 +71,7 @@ function fmtDateStr(s) {
 }
 
 export default function ManagerOrders({ Layout = ManagerLayout, title = 'Панель' }) {
+  const { user: currentUser } = useAuthStore()
   const [orders, setOrders] = useState([])
   const [stage, setStage] = useState('all')
   const [timeFilter, setTimeFilter] = useState('today')
@@ -123,7 +124,11 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
   const displayed = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
 
   const handleCreateOrder = async (data) => {
-    await courierCreateOrder(data)
+    await courierCreateOrder({
+      ...data,
+      manager_name: currentUser?.name || '',
+      manager_phone: currentUser?.phone || '',
+    })
     load()
   }
 
@@ -154,7 +159,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
       </button>
 
       {/* Stage filter cards — equal width grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
           const active = stage === s.key
           const count = s.key === 'all' ? timeFiltered.length : (counts[s.key] || 0)
