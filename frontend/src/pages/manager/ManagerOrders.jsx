@@ -3,6 +3,7 @@ import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmTopupRequest, rejectTopupRequest, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useAuthStore } from '../../store/auth'
+import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -12,34 +13,27 @@ const BORDER = 'rgba(60,60,67,0.08)'
 
 const STAGES = [
   { key: 'all', label: 'Все заказы' },
-  { key: 'payment', label: 'Проверка оплат' },
-  { key: 'assign', label: 'Назн. курьера' },
-  { key: 'delivery', label: 'Доставка' },
-  { key: 'done', label: 'Готово' },
-  { key: 'cancelled', label: 'Отменённые' },
+  { key: 'new', label: 'Новые' },
+  { key: 'delivery', label: 'Не доставленные' },
+  { key: 'done', label: 'Доставленные' },
 ]
 
 function getStage(order) {
   if (order.status === 'rejected') return 'cancelled'
   if (order.type === 'topup' || order.type === 'subscription') {
-    if (!order.payment_confirmed) return 'payment'
-    if (order.type === 'subscription' && !order.courier_id) return 'assign'
-    if (order.type === 'subscription' && order.status === 'in_delivery') return 'delivery'
-    if (order.type === 'subscription' && order.status === 'assigned_to_courier') return 'delivery'
+    if (!order.payment_confirmed) return 'new'
+    if (order.type === 'subscription' && !order.courier_id) return 'new'
+    if (order.type === 'subscription' && (order.status === 'in_delivery' || order.status === 'assigned_to_courier')) return 'delivery'
     return 'done'
   }
-  if (order.status === 'awaiting_confirmation') {
-    if (order.payment_method === 'card' && !order.payment_confirmed) return 'payment'
-    return 'assign'
-  }
-  if (order.status === 'confirmed') return 'assign'
+  if (order.status === 'awaiting_confirmation' || order.status === 'confirmed') return 'new'
   if (order.status === 'assigned_to_courier' || order.status === 'in_delivery') return 'delivery'
   if (order.status === 'delivered') return 'done'
-  return 'payment'
+  return 'new'
 }
 
 function stageCounts(orders) {
-  const c = { payment: 0, assign: 0, delivery: 0, done: 0, cancelled: 0 }
+  const c = { new: 0, delivery: 0, done: 0 }
   orders.forEach(o => { const s = getStage(o); if (c[s] !== undefined) c[s]++ })
   return c
 }
@@ -51,43 +45,38 @@ const REJECT_SCRIPTS = [
   'Клиент не выходит на связь',
 ]
 
-const TIME_FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'today', label: 'Сегодня' },
-  { key: 'yesterday', label: 'Вчера' },
-  { key: 'week', label: 'Неделя' },
-  { key: 'month', label: 'Месяц' },
-]
-
-function matchesTime(order, timeFilter) {
-  if (timeFilter === 'all') return true
+function matchesTime(order, timeFilter, customDate, customDateTo) {
   const created = order.created_at ? new Date(order.created_at) : null
   if (!created) return true
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  if (timeFilter === 'today') return created >= startOfToday
-  if (timeFilter === 'yesterday') {
-    const startOfYesterday = new Date(startOfToday)
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1)
-    return created >= startOfYesterday && created < startOfToday
+  if (timeFilter === 'today') {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    return created >= startOfToday
   }
-  if (timeFilter === 'week') {
-    const weekAgo = new Date(startOfToday)
-    weekAgo.setDate(weekAgo.getDate() - 7)
-    return created >= weekAgo
-  }
-  if (timeFilter === 'month') {
-    const monthAgo = new Date(startOfToday)
-    monthAgo.setMonth(monthAgo.getMonth() - 1)
-    return created >= monthAgo
+  if (timeFilter === 'custom' && customDate) {
+    const [y, m, d] = String(customDate).split('-').map(Number)
+    const start = new Date(y, m - 1, d)
+    const endStr = customDateTo || customDate
+    const [y2, m2, d2] = String(endStr).split('-').map(Number)
+    const end = new Date(y2, m2 - 1, d2 + 1)
+    return created >= start && created < end
   }
   return true
+}
+
+function fmtDateStr(s) {
+  if (!s) return ''
+  const [y, m, d] = String(s).split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 }
 
 export default function ManagerOrders({ Layout = ManagerLayout, title = 'Панель' }) {
   const [orders, setOrders] = useState([])
   const [stage, setStage] = useState('all')
-  const [timeFilter, setTimeFilter] = useState('all')
+  const [timeFilter, setTimeFilter] = useState('today')
+  const [customDate, setCustomDate] = useState(null)
+  const [customDateTo, setCustomDateTo] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
   const [couriers, setCouriers] = useState([])
@@ -119,7 +108,17 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
     finally { setActionLoading(false) }
   }
 
-  const timeFiltered = orders.filter(o => matchesTime(o, timeFilter))
+  const periodLabel = timeFilter === 'custom'
+    ? (customDate
+        ? (customDateTo && customDateTo !== customDate
+            ? `${fmtDateStr(customDate)} – ${fmtDateStr(customDateTo)}`
+            : fmtDateStr(customDate))
+        : 'Дата')
+    : 'Сегодня'
+
+  const timeFiltered = orders
+    .filter(o => matchesTime(o, timeFilter, customDate, customDateTo))
+    .filter(o => getStage(o) !== 'cancelled')
   const counts = stageCounts(timeFiltered)
   const displayed = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
 
@@ -130,6 +129,14 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
 
   return (
     <Layout title={title}>
+      {pickerOpen && (
+        <DateTimePickerModal
+          initialDate={customDate}
+          initialDateTo={customDateTo}
+          onApply={(start, end) => { setCustomDate(start); setCustomDateTo(end); setTimeFilter('custom') }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
       {showCreate && (
         <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} />
       )}
@@ -147,11 +154,11 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
       </button>
 
       {/* Stage filter cards — equal width grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
         {STAGES.map(s => {
           const active = stage === s.key
           const count = s.key === 'all' ? timeFiltered.length : (counts[s.key] || 0)
-          const newCount = s.key !== 'all' && s.key !== 'done' && s.key !== 'cancelled' ? count : 0
+          const newCount = s.key === 'new' || s.key === 'delivery' ? count : 0
           return (
             <button key={s.key} onClick={() => setStage(s.key)} style={{
               padding: '14px 4px 12px', borderRadius: 16,
@@ -182,23 +189,27 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
 
       {/* Time sub-filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 6, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {TIME_FILTERS.map(t => {
-            const active = timeFilter === t.key
-            return (
-              <button key={t.key} onClick={() => setTimeFilter(t.key)} style={{
-                padding: '6px 14px', borderRadius: 999, flexShrink: 0,
-                border: active ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`,
-                background: active ? `${C}15` : '#fff',
-                color: active ? CD : TEXT2,
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                WebkitTapHighlightColor: 'transparent',
-              }}>
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
+        <button onClick={() => { setTimeFilter('today'); setCustomDate(null); setCustomDateTo(null) }} style={{
+          flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
+          background: timeFilter === 'today' ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+          color: timeFilter === 'today' ? '#fff' : TEXT2,
+          border: timeFilter === 'today' ? 'none' : `1.5px solid ${BORDER}`,
+          fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+        }}>Сегодня</button>
+        <button onClick={() => setPickerOpen(true)} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+          background: timeFilter === 'custom' ? `linear-gradient(135deg, ${C}, ${CD})` : '#fff',
+          color: timeFilter === 'custom' ? '#fff' : TEXT2,
+          border: timeFilter === 'custom' ? 'none' : `1.5px solid ${BORDER}`,
+          fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          WebkitTapHighlightColor: 'transparent',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {timeFilter === 'custom' ? periodLabel : 'Дата'}
+        </button>
         <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
@@ -255,24 +266,23 @@ function OrderCard({
   const [phoneModal, setPhoneModal] = useState(null)
 
   const stageLabel = {
-    payment: 'Проверка оплаты',
-    assign: 'Назначение курьера',
+    new: (order.type === 'topup' || order.type === 'subscription') && !order.payment_confirmed
+      ? 'Проверка оплаты'
+      : 'Новый',
     delivery: order.status === 'in_delivery' ? 'В пути' : 'Курьер назначен',
     done: 'Доставлен',
     cancelled: 'Отменён',
   }[orderStage] || order.status
 
   const stageBg = {
-    payment: `${C}15`,
-    assign: `${C}15`,
+    new: `${C}15`,
     delivery: `${C}15`,
     done: '#EBFBEE',
     cancelled: '#FFF5F5',
   }[orderStage] || '#F2F2F7'
 
   const stageClr = {
-    payment: CD,
-    assign: CD,
+    new: CD,
     delivery: CD,
     done: '#2B8A3E',
     cancelled: '#E03131',
@@ -284,7 +294,7 @@ function OrderCard({
     <div style={{
       background: '#fff', borderRadius: 18, overflow: 'hidden',
       boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-      borderLeft: (orderStage === 'payment' || orderStage === 'assign') ? `3px solid ${C}` : 'none',
+      borderLeft: orderStage === 'new' ? `3px solid ${C}` : 'none',
     }}>
       {/* Header */}
       <div style={{ padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={onToggle}>
@@ -320,12 +330,11 @@ function OrderCard({
       {expanded && (
         <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          {/* ─── PAYMENT STAGE: payment info + actions first ─── */}
-          {orderStage === 'payment' && (<>
-            <PaymentBlock order={order} />
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {order.payment_method === 'card' ? (
+          {/* ─── NEW STAGE (merged payment + assign) ─── */}
+          {orderStage === 'new' && (<>
+            {(order.type === 'topup' || order.type === 'subscription') && !order.payment_confirmed ? (<>
+              <PaymentBlock order={order} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke={CD} strokeWidth="1.8"/><path d="M2 10h20" stroke={CD} strokeWidth="1.5"/></svg>
                   <div>
@@ -333,83 +342,63 @@ function OrderCard({
                     <div style={{ fontSize: 12, color: TEXT2 }}>Проверьте поступление средств</div>
                   </div>
                 </div>
-              ) : (
-                <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke={CD} strokeWidth="1.8"/><path d="M8 12l3 3 5-5" stroke={CD} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Новый заказ</div>
-                    <div style={{ fontSize: 12, color: TEXT2 }}>Примите или отклоните заказ</div>
-                  </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={st.btnPrimary} disabled={actionLoading} onClick={() =>
+                    act(() => order.type === 'topup' ? confirmTopupRequest(order.id) : confirmSubscription(order.id))}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Оплата получена
+                  </button>
+                  <button style={st.btnDanger} disabled={actionLoading} onClick={() =>
+                    order.type === 'topup' ? act(() => rejectTopupRequest(order.id)) : act(() => rejectSubscription(order.id))}>
+                    Отклонить
+                  </button>
                 </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button style={st.btnPrimary} disabled={actionLoading} onClick={() =>
-                  act(() => order.type === 'topup'
-                    ? confirmTopupRequest(order.id)
-                    : order.type === 'subscription'
-                      ? confirmSubscription(order.id)
-                      : confirmOrder(order.id))}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  {order.payment_method === 'card' ? 'Оплата получена' : 'Принять'}
-                </button>
-                <button style={st.btnDanger} disabled={actionLoading} onClick={() => {
-                  if (order.type === 'topup') { act(() => rejectTopupRequest(order.id)); return }
-                  if (order.type === 'subscription') { act(() => rejectSubscription(order.id)); return }
-                  setRejectingId(order.id); setRejectReason('')
-                }}>
-                  Отклонить
-                </button>
               </div>
-            </div>
-
-            {/* Collapsed: delivery + items */}
-            <Collapsible label="Доставка и состав" open={showMore} onToggle={() => setShowMore(v => !v)}>
+              <Collapsible label="Доставка и состав" open={showMore} onToggle={() => setShowMore(v => !v)}>
+                <ItemsBlock order={order} />
+                <DeliveryBlock order={order} />
+                <BottlesBlock order={order} />
+              </Collapsible>
+            </>) : (<>
               <ItemsBlock order={order} />
               <DeliveryBlock order={order} />
               <BottlesBlock order={order} />
-            </Collapsible>
-          </>)}
-
-          {/* ─── ASSIGN STAGE: delivery info + items first ─── */}
-          {orderStage === 'assign' && (<>
-            <ItemsBlock order={order} />
-            <DeliveryBlock order={order} />
-            <BottlesBlock order={order} />
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={CD} strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={CD} strokeWidth="1.8" strokeLinecap="round"/></svg>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Назначьте курьера</div>
-                  <div style={{ fontSize: 12, color: TEXT2 }}>Выберите свободного курьера</div>
-                </div>
-              </div>
-              {assigningId === order.id ? (
-                <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}` }}>
-                  <select style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={selectedCourier} onChange={e => setSelectedCourier(e.target.value)}>
-                    <option value="">-- Выберите курьера --</option>
-                    {couriers.filter(c => c.is_active !== false).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setAssigningId(null)}>Отмена</button>
-                    <button style={{ ...st.btnPrimary, opacity: !selectedCourier ? 0.5 : 1 }} disabled={actionLoading || !selectedCourier} onClick={() => act(() => assignCourier(order.id, selectedCourier).then(() => setAssigningId(null)))}>
-                      Назначить
-                    </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke={CD} strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={CD} strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Назначьте курьера</div>
+                    <div style={{ fontSize: 12, color: TEXT2 }}>Выберите свободного курьера</div>
                   </div>
                 </div>
-              ) : (
-                <button style={st.btnSecondary} onClick={() => { setAssigningId(order.id); setSelectedCourier('') }}>
-                  Выбрать курьера
-                </button>
-              )}
-            </div>
-
-            {/* Collapsed: payment */}
-            <Collapsible label="Оплата" open={showMore} onToggle={() => setShowMore(v => !v)}>
-              <PaymentBlock order={order} />
-            </Collapsible>
+                {assigningId === order.id ? (
+                  <div style={{ background: '#F8F9FA', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: `1px solid ${BORDER}` }}>
+                    <select style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={selectedCourier} onChange={e => setSelectedCourier(e.target.value)}>
+                      <option value="">-- Выберите курьера --</option>
+                      {couriers.filter(c => c.is_active !== false).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setAssigningId(null)}>Отмена</button>
+                      <button style={{ ...st.btnPrimary, opacity: !selectedCourier ? 0.5 : 1 }} disabled={actionLoading || !selectedCourier} onClick={() => act(() => {
+                        const doAssign = () => assignCourier(order.id, selectedCourier).then(() => setAssigningId(null))
+                        return order.status === 'awaiting_confirmation' ? confirmOrder(order.id).then(doAssign) : doAssign()
+                      })}>
+                        Назначить
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button style={st.btnSecondary} onClick={() => { setAssigningId(order.id); setSelectedCourier('') }}>
+                    Выбрать курьера
+                  </button>
+                )}
+              </div>
+              <Collapsible label="Оплата" open={showMore} onToggle={() => setShowMore(v => !v)}>
+                <PaymentBlock order={order} />
+              </Collapsible>
+            </>)}
           </>)}
 
           {/* ─── DELIVERY STAGE ─── */}
@@ -453,8 +442,8 @@ function OrderCard({
             </Collapsible>
           </>)}
 
-          {/* ─── DONE / CANCELLED: show all ─── */}
-          {(orderStage === 'done' || orderStage === 'cancelled') && (<>
+          {/* ─── DONE: show all ─── */}
+          {orderStage === 'done' && (<>
             <ItemsBlock order={order} />
             <DeliveryBlock order={order} />
             <PaymentBlock order={order} />
@@ -508,7 +497,7 @@ function OrderCard({
                 Курьер
               </button>
             )}
-            {orderStage !== 'done' && rejectingId !== order.id && (
+            {orderStage !== 'done' && orderStage !== 'cancelled' && rejectingId !== order.id && (
               <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} onClick={() => { setRejectingId(order.id); setRejectReason('') }}>
                 Отменить заказ
               </button>
