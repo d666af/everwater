@@ -4,6 +4,7 @@ import CourierLayout from '../../components/courier/CourierLayout'
 import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue, setPaymentCollected } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
+import CourierOrdersMap from '../../components/courier/CourierOrdersMap'
 
 const tg = window.Telegram?.WebApp
 
@@ -706,6 +707,14 @@ export default function CourierOrders() {
           50% { box-shadow: 0 0 0 6px rgba(224,49,49,0.12); }
         }
       `}</style>
+
+      {/* Map preview */}
+      <CourierOrdersMap
+        orders={orders}
+        onAction={doAction}
+        onDeliverConfirm={doDeliverConfirm}
+        actionLoading={actionLoading}
+      />
 
       {/* Create order button */}
       <button style={{
