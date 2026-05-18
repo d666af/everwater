@@ -112,9 +112,9 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     else:
         bottles_surcharge_count = 0
 
-    # "Долг": current outstanding bottle debt from BottleDebt table (global)
+    # "Долг": current outstanding bottle debt — clients + couriers (global)
     bottle_debt_count_q = await db.execute(select(func.sum(BottleDebt.count)))
-    bottle_debt_count = int(bottle_debt_count_q.scalar() or 0)
+    client_debt_count = int(bottle_debt_count_q.scalar() or 0)
 
     bottle_surcharge_price_q = await db.execute(
         select(Product.bottle_surcharge).where(
@@ -122,6 +122,31 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         ).order_by(Product.bottle_surcharge.desc()).limit(1)
     )
     bottle_surcharge_price = float(bottle_surcharge_price_q.scalar() or 0)
+
+    # Courier debt: 19L issued via WaterTransaction - returned via bottle_return
+    prod_19l_q = await db.execute(select(Product.id).where(Product.volume >= 18.9))
+    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
+    if prod_19l_ids:
+        courier_issued_q = await db.execute(
+            select(func.sum(WaterTransaction.quantity)).where(
+                and_(WaterTransaction.transaction_type == "issue",
+                     WaterTransaction.product_id.in_(prod_19l_ids))
+            )
+        )
+    else:
+        courier_issued_q = None
+    courier_returned_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            WaterTransaction.transaction_type == "bottle_return"
+        )
+    )
+    courier_debt_count = max(
+        0,
+        ((courier_issued_q.scalar() if courier_issued_q else None) or 0)
+        - (courier_returned_q.scalar() or 0)
+    )
+
+    bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
     return {
@@ -142,6 +167,8 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bottles_surcharge_total": bottles_surcharge_total,
         "bottle_debt_count": bottle_debt_count,
         "bottle_debt_value": bottle_debt_value,
+        "bottle_debt_clients": client_debt_count,
+        "bottle_debt_couriers": courier_debt_count,
     }
 
 

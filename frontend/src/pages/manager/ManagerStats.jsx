@@ -444,6 +444,12 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                 <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottle_debt_value || 0) > 0 ? '#E03131' : TEXT2, marginTop: 2 }}>
                   {(stats.bottle_debt_value || 0) > 0 ? `${Math.round(stats.bottle_debt_value).toLocaleString('ru-RU')} сум` : '—'}
                 </div>
+                {((stats.bottle_debt_clients || 0) > 0 || (stats.bottle_debt_couriers || 0) > 0) && (
+                  <div style={{ fontSize: 10, color: TEXT2, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {(stats.bottle_debt_clients || 0) > 0 && <span>Клиенты: {stats.bottle_debt_clients} шт.</span>}
+                    {(stats.bottle_debt_couriers || 0) > 0 && <span>Курьеры: {stats.bottle_debt_couriers} шт.</span>}
+                  </div>
+                )}
               </div>
             </div>
           </div>
