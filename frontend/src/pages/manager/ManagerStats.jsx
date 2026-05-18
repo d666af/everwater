@@ -494,6 +494,34 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           {/* Cancelled card with expandable order list */}
           <CancelledCard count={stats.cancelled} period={period} />
 
+          {/* Customer classification cards */}
+          {((stats.permanent_customers || 0) > 0 || (stats.inactive_customers || 0) > 0) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#EBFBEE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="4" stroke="#2B8A3E" strokeWidth="1.8"/>
+                    <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke="#2B8A3E" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M18 5l1.5 1.5L22 4" stroke="#2B8A3E" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#2B8A3E', lineHeight: 1 }}>{stats.permanent_customers || 0}</div>
+                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Постоянных клиентов</div>
+              </div>
+              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#F1F3F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="4" stroke="#868E96" strokeWidth="1.8"/>
+                    <path d="M4 20C4 17 7.6 15 12 15s8 2 8 5" stroke="#868E96" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M19 9v4M19 16h.01" stroke="#868E96" strokeWidth="1.7" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#868E96', lineHeight: 1 }}>{stats.inactive_customers || 0}</div>
+                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, lineHeight: 1.3 }}>Не активных клиентов</div>
+              </div>
+            </div>
+          )}
+
           {/* Extended analytics (admin-only) */}
           {showExtended && extStats && (
             <div style={{ background: '#fff', borderRadius: 18, padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12 }}>

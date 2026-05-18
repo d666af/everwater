@@ -42,6 +42,9 @@ DEFAULTS: dict[str, Any] = {
     # configured by the admin instead of the chat UI.
     "support_chat_enabled": True,
     "support_contacts_text": "📞 Телефон поддержки: +998 90 000-00-00\n📨 Telegram: @everwater_support\n🕐 Часы работы: 09:00–22:00",
+    # Customer classification
+    "permanent_customer_min_orders": 5,   # delivered orders threshold for "постоянный"
+    "inactive_customer_days": 60,         # days since last delivered order for "не активный"
 }
 
 

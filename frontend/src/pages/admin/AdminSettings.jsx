@@ -49,6 +49,8 @@ export default function AdminSettings() {
     subscriptions_enabled: true,
     support_chat_enabled: true,
     support_contacts_text: '',
+    permanent_customer_min_orders: 5,
+    inactive_customer_days: 60,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -682,6 +684,49 @@ export default function AdminSettings() {
             {form.delivery_reminder_enabled
               ? <>Напоминания включены: 1-е при просрочке, 2-е через <b>{form.delivery_reminder_2_delay} мин</b>.</>
               : <span style={{ color: TEXT2 }}>Напоминания отключены.</span>}
+          </div>
+        </Section>
+
+        {/* Customer classification */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="9" cy="7" r="4" stroke="#2B8A3E" strokeWidth="1.8"/>
+              <path d="M3 21C3 18 5.7 16 9 16" stroke="#2B8A3E" strokeWidth="1.8" strokeLinecap="round"/>
+              <circle cx="16" cy="11" r="3" stroke="#868E96" strokeWidth="1.8"/>
+              <path d="M13 21C13 19 14.3 17 16 17C17.7 17 19 19 19 21" stroke="#868E96" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          }
+          title="Классификация клиентов"
+          hint="Пороги для меток «Постоянный клиент» и «Не активен»"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Постоянный клиент (мин. заказов)</div>
+              <input
+                style={{ ...s.input, maxWidth: 200 }}
+                type="number" min="1"
+                value={form.permanent_customer_min_orders}
+                onChange={e => setForm(p => ({ ...p, permanent_customer_min_orders: Number(e.target.value) }))}
+              />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Не активен (дней без заказа)</div>
+              <input
+                style={{ ...s.input, maxWidth: 200 }}
+                type="number" min="1"
+                value={form.inactive_customer_days}
+                onChange={e => setForm(p => ({ ...p, inactive_customer_days: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Клиент с <b>≥{form.permanent_customer_min_orders} доставленных</b> заказов — «Постоянный».
+            {' '}Клиент без заказов более <b>{form.inactive_customer_days} дней</b> — «Не активен».
           </div>
         </Section>
 

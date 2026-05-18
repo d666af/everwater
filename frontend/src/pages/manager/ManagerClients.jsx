@@ -492,6 +492,16 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                       {u.bottles_owed} бут.
                     </span>
                   )}
+                  {u.customer_label === 'permanent' && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12, color: '#2B8A3E', background: '#EBFBEE', padding: '3px 9px', borderRadius: 999, fontWeight: 700 }}>
+                      Постоянный
+                    </span>
+                  )}
+                  {u.customer_label === 'inactive' && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12, color: '#868E96', background: '#F1F3F5', padding: '3px 9px', borderRadius: 999, fontWeight: 600 }}>
+                      Не активен
+                    </span>
+                  )}
                 </div>
               </div>
               <button style={{ padding: '7px 14px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
