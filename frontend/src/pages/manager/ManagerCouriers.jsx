@@ -97,18 +97,15 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
           {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.5" strokeLinejoin="round"/><circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/><circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/></svg>
-              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{c.delivery_count || 0}</span>
-              <span style={{ fontSize: 11, color: TEXT2 }}>доставок</span>
-            </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2, background: '#F2F2F7', padding: '2px 10px', borderRadius: 999 }}>
+              {c.delivery_count || 0} доставок
+            </span>
             {myActiveOrders.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: CD }}>{myActiveOrders.length}</span>
-                <span style={{ fontSize: 11, color: TEXT2 }}>в работе</span>
-              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: CD, background: `${C}18`, padding: '2px 10px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: C, display: 'inline-block' }} />
+                {myActiveOrders.length} в работе
+              </span>
             )}
           </div>
 
