@@ -186,7 +186,7 @@ async def _notify_order_staff(bot, caller_id: int, text: str):
             pass
 
 
-@router.message(F.text == "📋 Заказы")
+@router.message(F.text == "🗂 Заказы")
 async def admin_text_orders(message: Message):
     if not is_admin(message.from_user.id):
         return

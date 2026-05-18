@@ -8,7 +8,7 @@ def _site(path: str = "") -> str:
 
 def admin_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
-        [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
+        [KeyboardButton(text="🗂 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
         [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
         [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
         [KeyboardButton(text="📦 Товары")],
