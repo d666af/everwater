@@ -194,9 +194,8 @@ export default function Checkout() {
       })
       setCreatedOrder(order)
 
-      // Track bottles: add ordered 20L, subtract returned
+      // Track bottles: add ordered 20L (don't subtract return promise — debt only clears on delivery)
       if (qty20L > 0) userStore.addBottlesOwed(qty20L)
-      if (effectiveReturnCount > 0) userStore.returnBottles(effectiveReturnCount)
 
       if (form.paymentMethod === 'cash') {
         await paymentConfirmed(order.id)

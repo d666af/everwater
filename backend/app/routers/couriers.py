@@ -716,6 +716,8 @@ class CourierOrderCreate(BaseModel):
     total: float | None = None
     return_bottles_count: int = 0
     bottle_surcharge: float = 0.0
+    latitude: float | None = None
+    longitude: float | None = None
     courier_telegram_id: int | None = None  # set when a courier creates the order
     creator_role: str = "manager"           # "courier" | "manager" | "admin"
 
@@ -776,6 +778,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         bottle_surcharge=bottle_surcharge,
         payment_method=body.payment_method,
         return_bottles_count=body.return_bottles_count,
+        latitude=body.latitude,
+        longitude=body.longitude,
         status=OrderStatus.CONFIRMED,
     )
     db.add(order)
@@ -861,12 +865,25 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
 
         # Notify client that order was created
         if client_tg:
+            def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
+            items_lines_fmt = "\n".join(
+                f"  • {p.name} {q} шт. — {_fmt_n(p.price * q)} сум"
+                for p, q in items_data
+            ) if items_data else "  —"
+            return_block = (
+                f"\n\nВозврат:\n• Бутылки 19л — {body.return_bottles_count} шт."
+                if body.return_bottles_count else ""
+            )
             await _tg(client_tg, (
-                f"✅ Ваш заказ #{oid} создан!\n"
-                f"Адрес: {body.address}\n"
-                f"Состав: {items_text}\n"
-                f"Сумма: {total_int:,} сум\n"
-                f"Ожидайте подтверждения и назначения курьера."
+                f"✅ Для вас создан заказ!\n\n"
+                f"Состав:\n{items_lines_fmt}"
+                f"{return_block}\n\n"
+                f"Сумма: {_fmt_n(total_int)} сум\n"
+                f"Адрес: {body.address}"
+            ))
+            await _tg(client_tg, (
+                f"✅ Заказ передан на подтверждение.\n"
+                f"Мы уведомим вас когда подтвердят."
             ))
 
         # Notify admins/managers with "assign courier" inline button

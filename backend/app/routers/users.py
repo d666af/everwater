@@ -125,7 +125,7 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
         "order_count": order_count,
         "bottles_owed": bottles_owed,
         "pending_return": pending_return,
-        "available_bottles": max(0, bottles_owed - pending_return),
+        "available_bottles": bottles_owed,
         "addresses": [
             {"id": i, "address": a.get("address", ""), "label": a.get("label", "")}
             for i, a in enumerate(addresses)

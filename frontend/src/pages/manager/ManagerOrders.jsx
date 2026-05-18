@@ -639,12 +639,13 @@ function Row({ k, v, accent }) {
 
 /* ─── Create order modal (manager) ─────────────────────────────────────────── */
 
-function Stepper({ value, onDec, onInc, min = 0 }) {
+function Stepper({ value, onDec, onInc, min = 0, max = Infinity }) {
+  const canInc = value < max
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <button onClick={onDec} disabled={value <= min} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${value > min ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: value > min ? C : TEXT2, cursor: value > min ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
       <span style={{ fontSize: 15, fontWeight: 800, minWidth: 24, textAlign: 'center', color: TEXT }}>{value}</span>
-      <button onClick={onInc} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C}`, background: `${C}15`, fontSize: 16, fontWeight: 700, color: CD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+      <button onClick={canInc ? onInc : undefined} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${canInc ? C : BORDER}`, background: canInc ? `${C}15` : '#F2F2F7', fontSize: 16, fontWeight: 700, color: canInc ? CD : TEXT2, cursor: canInc ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
     </div>
   )
 }
@@ -656,6 +657,8 @@ function CreateOrderModal({ onClose, onSave }) {
   const [notFound, setNotFound] = useState(false)
   const [address, setAddress] = useState('')
   const [extraInfo, setExtraInfo] = useState('')
+  const [lat, setLat] = useState(null)
+  const [lng, setLng] = useState(null)
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
@@ -745,6 +748,8 @@ function CreateOrderModal({ onClose, onSave }) {
         user_id: client?.id || null,
         return_bottles_count: clampedReturn,
         bottle_surcharge: bottleSurcharge,
+        latitude: lat,
+        longitude: lng,
         creator_role: 'manager',
       })
       onClose()
@@ -782,20 +787,17 @@ function CreateOrderModal({ onClose, onSave }) {
           {/* Client card */}
           {client && (
             <div style={{ background: '#F8FFED', borderRadius: 14, border: `1px solid ${C}33`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{client.name || 'Клиент'}</div>
-                <div style={{ fontSize: 11, color: TEXT2 }}>{client.phone}</div>
+                <div style={{ fontSize: 12, color: TEXT2 }}>{client.phone}</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Chip label="Доставок" value={client.order_count ?? 0} />
                 {client.bottles_owed > 0 && (
-                  <Chip label="Долг бутылок" value={client.bottles_owed} accent="#E03131" />
+                  <Chip label="Долг бутылок" value={client.available_bottles ?? client.bottles_owed} accent="#E03131" />
                 )}
                 {client.pending_return > 0 && (
                   <Chip label="В возврате" value={client.pending_return} accent={TEXT2} />
-                )}
-                {client.bottles_owed > 0 && (
-                  <Chip label="Доступно вернуть" value={client.available_bottles ?? Math.max(0, client.bottles_owed - (client.pending_return || 0))} accent={CD} />
                 )}
               </div>
             </div>
@@ -804,6 +806,9 @@ function CreateOrderModal({ onClose, onSave }) {
             <div style={{ fontSize: 12, color: TEXT2, padding: '6px 10px', background: '#F8F9FA', borderRadius: 10 }}>Клиент не найден — заказ сохранится по номеру телефона</div>
           )}
         </div>
+
+        {/* ── Everything below only after lookup ── */}
+        {(client || notFound) && <>
 
         {/* ── Address ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -815,7 +820,7 @@ function CreateOrderModal({ onClose, onSave }) {
               {allAddresses.map((a, i) => {
                 const active = address === a.address
                 return (
-                  <button key={i} onClick={() => { setAddress(a.address); setExtraInfo(a.extra_info || '') }} style={{
+                  <button key={i} onClick={() => { setAddress(a.address); setExtraInfo(a.extra_info || ''); setLat(a.lat || null); setLng(a.lng || null) }} style={{
                     flexShrink: 0, padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     background: active ? `${C}18` : '#F2F2F7',
                     color: active ? CD : TEXT2,
@@ -831,7 +836,7 @@ function CreateOrderModal({ onClose, onSave }) {
             </div>
           )}
 
-          <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
+          <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => { setAddress(e.target.value); setLat(null); setLng(null) }} />
           <input style={{ ...s.inp, fontSize: 13 }} placeholder="Ориентир (необязательно)" value={extraInfo} onChange={e => setExtraInfo(e.target.value)} />
         </div>
 
@@ -881,7 +886,7 @@ function CreateOrderModal({ onClose, onSave }) {
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Stepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(Math.min(maxReturn, clampedReturn + 1))} />
+              <Stepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(clampedReturn + 1)} max={maxReturn} />
               <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>
             </div>
             {missingBottles > 0 && surchargePerBottle > 0 && (
@@ -915,6 +920,8 @@ function CreateOrderModal({ onClose, onSave }) {
         <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: canSave ? 'pointer' : 'not-allowed', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', border: 'none', boxShadow: '0 4px 14px rgba(141,198,63,0.35)', opacity: canSave ? 1 : 0.45 }} disabled={!canSave || loading} onClick={handle}>
           {loading ? 'Создаю...' : `Создать заказ · ${Number(grandTotal).toLocaleString()} сум`}
         </button>
+
+        </> /* end lookup guard */}
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>
     </div>
