@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminCouriers, createCourier, deleteCourier, getOrders, getCourierDetails } from '../../api'
-import PhonePopup from '../../components/PhonePopup'
 import CourierReportModal from '../../components/CourierReportModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
-const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
@@ -15,12 +13,22 @@ function AddCourierModal({ onClose, onSave }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [tgId, setTgId] = useState('')
+  const [vehicleType, setVehicleType] = useState('')
+  const [vehiclePlate, setVehiclePlate] = useState('')
   const [loading, setLoading] = useState(false)
   const handle = async () => {
     if (!name.trim() || !phone.trim() || !tgId.trim()) return
     setLoading(true)
-    try { await onSave({ name: name.trim(), phone: phone.trim(), telegram_id: Number(tgId) }); onClose() }
-    catch { alert('Ошибка при создании') }
+    try {
+      await onSave({
+        name: name.trim(),
+        phone: phone.trim(),
+        telegram_id: Number(tgId),
+        vehicle_type: vehicleType.trim() || undefined,
+        vehicle_plate: vehiclePlate.trim() || undefined,
+      })
+      onClose()
+    } catch { alert('Ошибка при создании') }
     finally { setLoading(false) }
   }
   const dis = !name.trim() || !phone.trim() || !tgId.trim()
@@ -29,184 +37,163 @@ function AddCourierModal({ onClose, onSave }) {
       <div style={st.sheet}>
         <div style={st.handle} />
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Добавить курьера</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={st.label}>Имя *</div>
-          <input style={st.input} placeholder="Имя курьера" value={name} onChange={e => setName(e.target.value)} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={st.label}>Телефон *</div>
-          <input style={st.input} placeholder="+998 90 000-00-00" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <div style={st.label}>Telegram ID *</div>
-          <input style={st.input} placeholder="Числовой ID" value={tgId} onChange={e => setTgId(e.target.value)} inputMode="numeric" />
-          <div style={{ fontSize: 12, color: TEXT2 }}>Клиент должен написать боту /start чтобы получить ID</div>
-        </div>
-        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none' } : {}) }} disabled={dis || loading} onClick={handle}>
+        {[
+          ['Имя *', 'Имя курьера', name, setName, 'text'],
+          ['Телефон *', '+998 90 000-00-00', phone, setPhone, 'tel'],
+          ['Telegram ID *', 'Числовой ID', tgId, setTgId, 'numeric'],
+          ['Тип авто', 'Мотоцикл / Авто / Велосипед', vehicleType, setVehicleType, 'text'],
+          ['Номер авто', 'A 000 AA', vehiclePlate, setVehiclePlate, 'text'],
+        ].map(([label, placeholder, value, setter, mode]) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={st.label}>{label}</div>
+            <input style={st.input} placeholder={placeholder} value={value}
+              onChange={e => setter(e.target.value)} inputMode={mode} />
+          </div>
+        ))}
+        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none' } : {}) }}
+          disabled={dis || loading} onClick={handle}>
           {loading ? 'Создаю...' : 'Добавить курьера'}
         </button>
-        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+          onClick={onClose}>Отмена</button>
       </div>
     </div>
   )
 }
 
-function CourierCard({ courier: c, allOrders, onDeactivate, onActivate }) {
-  const [expanded, setExpanded] = useState(false)
+function StatChip({ icon, value, label, color = CD, bg = '#F0FFF4', borderColor }) {
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+      background: bg, borderRadius: 12, padding: '10px 6px',
+      border: `1px solid ${borderColor || 'transparent'}`,
+    }}>
+      <span style={{ fontSize: 14 }}>{icon}</span>
+      <div style={{ fontSize: 18, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+    </div>
+  )
+}
+
+function CourierCard({ courier: c, onDeactivate, onActivate }) {
   const [details, setDetails] = useState(null)
-  const [loadingD, setLoadingD] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [phoneModal, setPhoneModal] = useState(null)
   const [showReport, setShowReport] = useState(false)
 
-  const myActiveOrders = allOrders.filter(o => o.courier_id === c.id && ['assigned_to_courier', 'in_delivery'].includes(o.status))
+  useEffect(() => {
+    getCourierDetails(c.id).then(setDetails).catch(() => {})
+  }, [c.id])
 
-  const toggleExpand = () => {
-    if (!expanded && !details) {
-      setLoadingD(true)
-      getCourierDetails(c.id).then(setDetails).catch(() => {}).finally(() => setLoadingD(false))
-    }
-    setExpanded(e => !e)
-  }
+  const debt = details?.bottles_must_return || 0
+  const rating = details?.avg_rating > 0 ? Number(details.avg_rating).toFixed(1) : '—'
+  const totalDeliveries = details?.delivery_count ?? '—'
 
   return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={toggleExpand}>
-        <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {(c.name || 'К')[0]}
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
-          {c.phone && <div style={{ fontSize: 13, color: TEXT2 }}>{c.phone}</div>}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-            <span style={{ fontSize: 11, background: '#F0FFF4', color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-              {c.delivery_count || 0} доставок
-            </span>
-            {myActiveOrders.length > 0 && (
-              <span style={{ fontSize: 11, background: `${C}15`, color: CD, padding: '2px 9px', borderRadius: 999, fontWeight: 600 }}>
-                {myActiveOrders.length} в работе
-              </span>
+    <div style={{
+      background: '#fff', borderRadius: 18,
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      border: `1px solid ${BORDER}`,
+      opacity: c.is_active ? 1 : 0.55,
+      overflow: 'hidden',
+    }}>
+      <div style={{ padding: '14px 16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* Header: avatar + info + report btn */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{
+            width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+            background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5',
+            color: '#fff', fontWeight: 800, fontSize: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {(c.name || 'К')[0]}
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, lineHeight: 1.3 }}>{c.name}</div>
+            {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{c.phone}</div>}
+            {(c.vehicle_type || c.vehicle_plate) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.8" strokeLinejoin="round"/>
+                  <circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
+                  <circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
+                </svg>
+                <span style={{ fontSize: 12, color: TEXT2 }}>
+                  {[c.vehicle_type, c.vehicle_plate].filter(Boolean).join(' · ')}
+                </span>
+              </div>
             )}
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
-          {c.phone && (
-            <button style={{ width: 40, height: 40, borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#F0FFF4', color: C, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setPhoneModal({ number: c.phone, label: c.name }) }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
-            </button>
-          )}
+
           <button
-            style={{ height: 36, padding: '0 10px', borderRadius: 10, border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, flexShrink: 0 }}
-            onClick={e => { e.stopPropagation(); setShowReport(true) }}
+            style={{
+              height: 34, padding: '0 10px', borderRadius: 10, flexShrink: 0,
+              border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD,
+              display: 'flex', alignItems: 'center', gap: 5,
+              cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            }}
+            onClick={() => setShowReport(true)}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
               <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
             </svg>
             Отчёт
           </button>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}><path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+
+        {/* Stat chips */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" />
+          <StatChip
+            icon="🫙" value={debt > 0 ? `${debt} шт.` : '0'}
+            label="Долг" color={debt > 0 ? '#E03131' : TEXT2}
+            bg={debt > 0 ? '#FFF5F5' : '#F8F9FA'}
+            borderColor={debt > 0 ? 'rgba(224,49,49,0.2)' : undefined}
+          />
+          <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" />
+        </div>
+
+        {/* Deactivate / Activate */}
+        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+          {c.is_active ? (
+            !confirming ? (
+              <button
+                style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
+                onClick={() => setConfirming(true)}
+              >Деактивировать</button>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {c.name}?</span>
+                <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                  onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
+                <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
+                  onClick={() => setConfirming(false)}>Нет</button>
+              </div>
+            )
+          ) : (
+            <button
+              style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+              onClick={() => onActivate(c.id)}
+            >Активировать</button>
+          )}
         </div>
       </div>
 
       {showReport && <CourierReportModal courierId={c.id} courierName={c.name} onClose={() => setShowReport(false)} />}
-
-      {expanded && (
-        <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {loadingD ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
-            </div>
-          ) : details ? (
-            <>
-              {/* Stats row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {[
-                  [details.total_deliveries || 0, 'Всего'],
-                  [details.today_deliveries || 0, 'Сегодня'],
-                  [myActiveOrders.length, 'В работе'],
-                ].map(([v, l]) => (
-                  <div key={l} style={{ background: '#F8F9FA', borderRadius: 12, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{v}</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Rating & earnings */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                {details.avg_rating > 0 && (
-                  <div style={{ flex: 1, background: '#FFFBEE', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(230,119,0,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>⭐</span>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>{Number(details.avg_rating).toFixed(1)}</div>
-                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>Рейтинг ({details.rating_count || 0} отзывов)</div>
-                    </div>
-                  </div>
-                )}
-                {(details.total_revenue || 0) > 0 && (
-                  <div style={{ flex: 1, background: '#F0FFF4', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(43,138,62,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>💰</span>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: '#2B8A3E', lineHeight: 1 }}>{Math.round((details.total_revenue || 0) / 1000)}к</div>
-                      <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>Выручка всего</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Active orders list */}
-              {myActiveOrders.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Текущие заказы ({myActiveOrders.length})</div>
-                  {myActiveOrders.map(o => (
-                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 10, background: '#F8F9FA', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 11, color: TEXT2, background: '#fff', padding: '2px 6px', borderRadius: 6, flexShrink: 0 }}>#{o.id}</span>
-                      <span style={{ color: TEXT, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: CD, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : null}
-
-          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {c.is_active ? (
-              !confirming ? (
-                <button style={{ background: 'none', border: '1.5px solid rgba(224,49,49,0.4)', color: '#E03131', padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setConfirming(true)}>Деактивировать</button>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 13, color: '#E03131', flex: 1 }}>Деактивировать {c.name}?</span>
-                  <button style={{ padding: '7px 14px', borderRadius: 10, border: 'none', background: '#E03131', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }} onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
-                  <button style={{ padding: '7px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 13, cursor: 'pointer' }} onClick={() => setConfirming(false)}>Нет</button>
-                </div>
-              )
-            ) : (
-              <button style={{ background: 'none', border: `1.5px solid ${C}`, color: CD, padding: '7px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => onActivate(c.id)}>
-                Активировать
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
 export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры' }) {
   const [couriers, setCouriers] = useState([])
-  const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
 
   const load = () => {
     setLoading(true)
-    Promise.allSettled([getAdminCouriers(), getOrders()])
-      .then(([c, o]) => {
-        if (c.status === 'fulfilled') setCouriers(c.value || [])
-        if (o.status === 'fulfilled') setAllOrders(o.value || [])
-      })
+    getAdminCouriers()
+      .then(data => setCouriers(data || []))
       .finally(() => setLoading(false))
   }
 
@@ -214,37 +201,28 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
 
   const handleCreate = async (data) => { await createCourier(data); load() }
   const handleDeactivate = async (id) => { await deleteCourier(id); load() }
-  const handleActivate = async (id) => {
+  const handleActivate = (id) => {
     setCouriers(prev => prev.map(c => c.id === id ? { ...c, is_active: true } : c))
   }
 
   const active = couriers.filter(c => c.is_active)
   const deactivated = couriers.filter(c => !c.is_active)
-  const inDeliveryOrders = allOrders.filter(o => ['assigned_to_courier', 'in_delivery'].includes(o.status))
 
   return (
     <Layout title={title}>
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
-      {/* Stats — full width */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[[couriers.length, 'Курьеров'], [inDeliveryOrders.length, 'В пути'], [active.length, 'Активных']].map(([v, l]) => (
-          <div key={l} style={{ flex: 1, minWidth: 70, background: '#fff', borderRadius: 18, padding: '14px 10px', textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: TEXT }}>{v}</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 3, fontWeight: 500 }}>{l}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Add button — under stats */}
       <button style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         width: '100%', padding: '12px 14px', borderRadius: 14, border: 'none',
-        background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 15, fontWeight: 700,
-        cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', WebkitTapHighlightColor: 'transparent',
-        marginBottom: 20,
+        background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff',
+        fontSize: 15, fontWeight: 700, cursor: 'pointer',
+        boxShadow: '0 4px 14px rgba(141,198,63,0.3)',
+        WebkitTapHighlightColor: 'transparent', marginBottom: 20,
       }} onClick={() => setShowAdd(true)}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+        </svg>
         Добавить курьера
       </button>
 
@@ -254,21 +232,32 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
         </div>
       ) : couriers.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 14 }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.2 }}><circle cx="12" cy="8" r="4" stroke={TEXT} strokeWidth="1.5"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.2 }}>
+            <circle cx="12" cy="8" r="4" stroke={TEXT} strokeWidth="1.5"/>
+            <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke={TEXT} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
           <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Курьеров пока нет</div>
         </div>
       ) : (
         <>
           {active.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Активные · {active.length}</div>
-              {active.map(c => <CourierCard key={c.id} courier={c} allOrders={allOrders} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Активные · {active.length}
+              </div>
+              {active.map(c => (
+                <CourierCard key={c.id} courier={c} onDeactivate={handleDeactivate} onActivate={handleActivate} />
+              ))}
             </div>
           )}
           {deactivated.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 6px' }}>Деактивированные · {deactivated.length}</div>
-              {deactivated.map(c => <CourierCard key={c.id} courier={c} allOrders={[]} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Деактивированные · {deactivated.length}
+              </div>
+              {deactivated.map(c => (
+                <CourierCard key={c.id} courier={c} onDeactivate={handleDeactivate} onActivate={handleActivate} />
+              ))}
             </div>
           )}
         </>
