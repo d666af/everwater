@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
 import { getCourierStats, getCourierWater, getCourierReport } from '../../api'
 import { useAuthStore } from '../../store/auth'
-import CourierReportModal from '../../components/CourierReportModal'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
 const tg = window.Telegram?.WebApp
@@ -54,7 +53,6 @@ export default function CourierStats() {
   const [report, setReport]             = useState(null)
   const [loading, setLoading]           = useState(true)
   const [reportLoading, setReportLoad]  = useState(false)
-  const [showReport, setShowReport]     = useState(false)
   const [pickerOpen, setPickerOpen]     = useState(false)
   const [period, setPeriod]             = useState('today')
   const [customDate, setCustomDate]     = useState(null)
@@ -129,51 +127,22 @@ export default function CourierStats() {
       {pickerOpen && (
         <DateTimePickerModal initialDate={customDate} initialDateTo={customDateTo} onApply={applyCustom} onClose={() => setPickerOpen(false)} />
       )}
-      {showReport && stats?.courier_id && (
-        <CourierReportModal courierId={stats.courier_id} courierName={stats.name || 'Курьер'} onClose={() => setShowReport(false)} />
-      )}
 
-      {/* ── 1. Rating (full width, horizontal) ── */}
-      <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 14 }}>
-        {/* Left: number + stars */}
-        <div style={{ flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill={C}>
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={CD} strokeWidth="1" strokeLinejoin="round"/>
+      {/* ── 1. Courier info ── */}
+      <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px', marginBottom: 10 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{stats.name || 'Курьер'}</div>
+        {(stats.vehicle_type || stats.vehicle_plate) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7V8z" stroke={TEXT2} strokeWidth="1.7" strokeLinejoin="round"/>
+              <circle cx="5.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
+              <circle cx="18.5" cy="18.5" r="2.5" stroke={TEXT2} strokeWidth="1.5"/>
             </svg>
-            <span style={{ fontSize: 32, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
-              {stats.rating > 0 ? stats.rating.toFixed(1) : '—'}
+            <span style={{ fontSize: 13, color: TEXT2 }}>
+              {[stats.vehicle_type, stats.vehicle_plate].filter(Boolean).join(' · ')}
             </span>
           </div>
-          {/* Mini star row */}
-          <div style={{ display: 'flex', gap: 2 }}>
-            {[1,2,3,4,5].map(i => {
-              const filled = stats.rating >= i
-              const half = !filled && stats.rating >= i - 0.5
-              return (
-                <svg key={i} width="12" height="12" viewBox="0 0 24 24" fill={filled || half ? C : 'none'}>
-                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={filled || half ? CD : BORDER.replace('rgba','rgb').replace(',0.08)','')} strokeWidth="1.5" strokeLinejoin="round"/>
-                </svg>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Right: bar + message */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Progress bar */}
-          <div style={{ height: 5, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden', marginBottom: 7 }}>
-            <div style={{ height: '100%', width: `${((stats.rating || 0) / 5) * 100}%`, background: GRAD, borderRadius: 99, transition: 'width 0.5s ease' }} />
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 2 }}>
-            {stats.rating > 0 ? ratingMsg(stats.rating) : 'Нет оценок пока'}
-          </div>
-          <div style={{ fontSize: 11, color: TEXT2 }}>
-            {stats.review_count > 0
-              ? `${stats.review_count} ${plural(stats.review_count, 'отзыв', 'отзыва', 'отзывов')} · из 5.0`
-              : 'Нет отзывов'}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* ── 2. Deliveries + Debt (2-col) ── */}
@@ -212,13 +181,43 @@ export default function CourierStats() {
         )}
       </div>
 
-      {/* ── 3. Report button ── */}
-      {stats?.courier_id && (
-        <button onClick={() => setShowReport(true)} style={{ width: '100%', padding: '12px', borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Скачать отчёт
-        </button>
-      )}
+      {/* ── 3. Rating (full width, horizontal) ── */}
+      <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={C}>
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={CD} strokeWidth="1" strokeLinejoin="round"/>
+            </svg>
+            <span style={{ fontSize: 32, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
+              {stats.rating > 0 ? stats.rating.toFixed(1) : '—'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 2 }}>
+            {[1,2,3,4,5].map(i => {
+              const filled = stats.rating >= i
+              const half = !filled && stats.rating >= i - 0.5
+              return (
+                <svg key={i} width="12" height="12" viewBox="0 0 24 24" fill={filled || half ? C : 'none'}>
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke={filled || half ? CD : BORDER.replace('rgba','rgb').replace(',0.08)','')} strokeWidth="1.5" strokeLinejoin="round"/>
+                </svg>
+              )
+            })}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ height: 5, background: '#F2F2F7', borderRadius: 99, overflow: 'hidden', marginBottom: 7 }}>
+            <div style={{ height: '100%', width: `${((stats.rating || 0) / 5) * 100}%`, background: GRAD, borderRadius: 99, transition: 'width 0.5s ease' }} />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 2 }}>
+            {stats.rating > 0 ? ratingMsg(stats.rating) : 'Нет оценок пока'}
+          </div>
+          <div style={{ fontSize: 11, color: TEXT2 }}>
+            {stats.review_count > 0
+              ? `${stats.review_count} ${plural(stats.review_count, 'отзыв', 'отзыва', 'отзывов')} · из 5.0`
+              : 'Нет отзывов'}
+          </div>
+        </div>
+      </div>
 
       {/* ── 4. Filters ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -249,7 +248,7 @@ export default function CourierStats() {
           <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, display: 'flex' }}>
             <div style={{ flex: 1, padding: '14px 16px', borderRight: `1px solid ${BORDER}` }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Заработано</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: CD, lineHeight: 1 }}>
+              <div style={{ fontSize: 34, fontWeight: 900, color: CD, lineHeight: 1 }}>
                 {report.total_earned > 0 ? Number(Math.round(report.total_earned)).toLocaleString() : '0'}
               </div>
               <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>сум · {periodLabel}</div>

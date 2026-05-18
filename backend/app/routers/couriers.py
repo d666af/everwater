@@ -139,6 +139,8 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     return {
         "courier_id": courier.id,
         "name": courier.name,
+        "vehicle_type": courier.vehicle_type,
+        "vehicle_plate": courier.vehicle_plate,
         "delivery_count": total_delivered,
         "total_deliveries": total_delivered,
         "today_count": today_count,
