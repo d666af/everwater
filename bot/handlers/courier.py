@@ -447,7 +447,7 @@ async def courier_panel(message: Message):
 
 # ─── Quick stats ───────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "📊 Мои данные")
 async def courier_stats_quick(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
@@ -491,13 +491,13 @@ def _report_period_kb() -> InlineKeyboardMarkup:
     ]])
 
 
-@router.message(F.text == "📈 Отчет")
+@router.message(F.text == "📈 Отчёт")
 async def courier_report_start(message: Message):
     courier = await _get_courier(message.from_user.id)
     if not courier:
         return
     await message.answer(
-        "📈 <b>Отчет</b>\n\nВыберите период:",
+        "📈 <b>Отчёт</b>\n\nВыберите период:",
         reply_markup=_report_period_kb(),
         parse_mode="HTML",
     )
@@ -628,7 +628,7 @@ async def _gather(*coros):
 @router.callback_query(F.data == "crep:back")
 async def courier_report_back(call: CallbackQuery):
     await call.message.edit_text(
-        "📈 <b>Отчет</b>\n\nВыберите период:",
+        "📈 <b>Отчёт</b>\n\nВыберите период:",
         reply_markup=_report_period_kb(),
         parse_mode="HTML",
     )
@@ -826,7 +826,7 @@ async def _cco_show_confirm(target, state: FSMContext):
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📝 Создать заказ")
+@router.message(F.text == "📝 Новый заказ")
 async def courier_create_order_start(message: Message, state: FSMContext):
     courier = await _get_courier(message.from_user.id)
     if not courier:

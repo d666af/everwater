@@ -885,10 +885,8 @@ async def mgr_sub_create_order(call: CallbackQuery):
 from aiogram.types import ReplyKeyboardRemove
 
 
-@router.message(F.text == "📝 Создать заказ")
+@router.message(F.text == "📝 Создать заказ", _IsManagerFilter())
 async def mgr_create_order_start(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
-        return
     await state.update_data(mco_items={})
     await state.set_state(MgrOrderCreate.waiting_phone)
     await message.answer("Введите номер телефона клиента:", reply_markup=ReplyKeyboardRemove())
