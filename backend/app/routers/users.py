@@ -94,6 +94,26 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
 
     addresses = _json.loads(user.saved_addresses) if user.saved_addresses else []
 
+    # All unique past order addresses
+    past_orders_q = await db.execute(
+        select(Order.address, Order.extra_info, Order.latitude, Order.longitude)
+        .where(Order.user_id == user.id)
+        .order_by(Order.created_at.desc())
+        .limit(50)
+    )
+    seen_addr: set[str] = set()
+    order_addresses = []
+    for row in past_orders_q.all():
+        key = (row[0] or '').strip()
+        if key and key not in seen_addr:
+            seen_addr.add(key)
+            order_addresses.append({
+                "address": row[0] or '',
+                "extra_info": row[1] or '',
+                "lat": float(row[2]) if row[2] else None,
+                "lng": float(row[3]) if row[3] else None,
+            })
+
     return {
         "id": user.id,
         "telegram_id": user.telegram_id,
@@ -111,6 +131,7 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
             for i, a in enumerate(addresses)
         ],
         "saved_addresses": user.saved_addresses,
+        "order_addresses": order_addresses,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 

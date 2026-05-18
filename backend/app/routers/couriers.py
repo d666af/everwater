@@ -715,6 +715,7 @@ class CourierOrderCreate(BaseModel):
     note: str | None = None
     total: float | None = None
     return_bottles_count: int = 0
+    bottle_surcharge: float = 0.0
     courier_telegram_id: int | None = None  # set when a courier creates the order
     creator_role: str = "manager"           # "courier" | "manager" | "admin"
 
@@ -757,10 +758,11 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     if not subtotal and body.total:
         subtotal = body.total
 
-    # Apply bottle return discount (same as normal order flow)
+    # Apply bottle return discount and optional surcharge (same as normal order flow)
     settings_cfg = await get_all_settings(db)
     bottle_discount = calc_bottle_discount(body.return_bottles_count, subtotal, settings_cfg)
-    total = max(0.0, subtotal - bottle_discount)
+    bottle_surcharge = body.bottle_surcharge or 0.0
+    total = max(0.0, subtotal + bottle_surcharge - bottle_discount)
 
     order = Order(
         user_id=user.id if user else None,
@@ -771,6 +773,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         subtotal=subtotal,
         total=total,
         bottle_discount=bottle_discount,
+        bottle_surcharge=bottle_surcharge,
         payment_method=body.payment_method,
         return_bottles_count=body.return_bottles_count,
         status=OrderStatus.CONFIRMED,
