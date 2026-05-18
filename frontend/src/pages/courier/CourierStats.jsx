@@ -110,6 +110,9 @@ export default function CourierStats() {
     return acc
   }, {})
   const totalReturnedFromClients = deliveryRows.reduce((s, o) => s + (o.return_bottles || 0), 0)
+  const bottleSurcharge = report?.bottle_surcharge || 0
+  const unreturnedInPeriod = Math.max(0, (report?.total_bottles_19l_delivered || 0) - (report?.total_bottles_returned || 0))
+  const unreturnedPeriodValue = Math.round(unreturnedInPeriod * bottleSurcharge)
 
   const reservedItems = (stats?.reserved_items || []).filter(i => (i.reserved || 0) > 0 || (i.available || 0) > 0)
   const hasReserved   = reservedItems.some(i => i.reserved > 0)
@@ -319,6 +322,22 @@ export default function CourierStats() {
             </div>
           )}
 
+          {/* ── 6a2. Unreturned bottles in period ── */}
+          {unreturnedInPeriod > 0 && (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid rgba(224,49,49,0.2)`, borderLeft: '3px solid #E03131', marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#E03131', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Невозвращённые бутылки</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>Бутылки 19л · не возвращены</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#E03131' }}>−{unreturnedInPeriod} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
+              </div>
+              {unreturnedPeriodValue > 0 && (
+                <div style={{ fontSize: 12, color: '#E03131', marginTop: 4, textAlign: 'right', opacity: 0.8 }}>
+                  {Number(unreturnedPeriodValue).toLocaleString()} сум
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── 6b. Reserved for orders ── */}
           {hasReserved && (
             <div style={{ background: '#fff', borderRadius: 16, border: `1.5px solid rgba(230,119,0,0.3)`, borderLeft: '3px solid #E67700', marginBottom: 10, padding: '12px 16px' }}>
@@ -418,6 +437,9 @@ export default function CourierStats() {
                     const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : (o.delivered_at || '').slice(-5)
                     const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : (o.delivered_at || '').slice(0, 6)
                     const orderItems = (o.items || []).filter(it => it.quantity > 0)
+                    const bottles19l = orderItems.reduce((s, it) => (it.volume || 0) >= 19 ? s + it.quantity : s, 0)
+                    const unreturnedOrder = Math.max(0, bottles19l - (o.return_bottles || 0))
+                    const unreturnedOrderValue = Math.round(unreturnedOrder * bottleSurcharge)
                     return (
                       <div key={o.order_id} style={{ padding: '11px 0', borderBottom: i < deliveryRows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -435,7 +457,7 @@ export default function CourierStats() {
                             {Number(o.total).toLocaleString()} сум
                           </div>
                         </div>
-                        {(orderItems.length > 0 || o.return_bottles > 0) && (
+                        {(orderItems.length > 0 || o.return_bottles > 0 || unreturnedOrder > 0) && (
                           <div style={{ marginTop: 6, paddingLeft: 27, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {orderItems.map((it, j) => (
                               <div key={j} style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
@@ -447,6 +469,14 @@ export default function CourierStats() {
                               <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
                                 <span style={{ color: '#12B886', fontWeight: 700 }}>+{o.return_bottles} шт.</span>
                                 <span>Возврат бутылок</span>
+                              </div>
+                            )}
+                            {unreturnedOrder > 0 && (
+                              <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
+                                <span style={{ color: '#E03131', fontWeight: 700 }}>−{unreturnedOrder} шт. не возвращено</span>
+                                {unreturnedOrderValue > 0 && (
+                                  <span style={{ color: '#E03131', fontWeight: 700 }}>· {Number(unreturnedOrderValue).toLocaleString()} сум</span>
+                                )}
                               </div>
                             )}
                           </div>

@@ -350,6 +350,13 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         if total_bottle_returns_in_period > 0 else []
     )
 
+    surcharge_q = await db.execute(
+        select(Product.bottle_surcharge).where(
+            and_(Product.volume >= 18.9, Product.bottle_surcharge.isnot(None))
+        ).order_by(Product.bottle_surcharge.desc()).limit(1)
+    )
+    bottle_surcharge = float(surcharge_q.scalar() or 0)
+
     return {
         "deliveries": len(orders),
         "total_revenue": round(total_revenue, 2),
@@ -365,6 +372,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         "warehouse_received": warehouse_received,
         "bottle_returns_in_period": bottle_returns_in_period,
         "total_bottle_returns_in_period": total_bottle_returns_in_period,
+        "bottle_surcharge": bottle_surcharge,
         "orders": rows,
     }
 

@@ -43,13 +43,15 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
     a.click()
   }
 
-  const payLabel = { cash: 'Нал.', card: 'Карта', online: 'Онлайн' }
-
   const periodLabel = dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`
 
   const totalReturnedFromClients = (data?.orders || []).reduce((s, o) => s + (o.return_bottles || 0), 0)
   const hasWarehouse = (data?.warehouse_received || []).length > 0
   const hasBottleReturns = (data?.bottle_returns_in_period || []).length > 0
+
+  const bottleSurcharge = data?.bottle_surcharge || 0
+  const unreturnedCount = Math.max(0, (data?.total_bottles_19l_delivered || 0) - (data?.total_bottles_returned || 0))
+  const unreturnedValue = Math.round(unreturnedCount * bottleSurcharge)
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -114,25 +116,21 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                 </div>
               </div>
 
-              {/* Extra KPIs: revenue, rating */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, background: '#F8F9FA', borderRadius: 12, padding: '10px 12px', border: `1px solid ${BORDER}`, textAlign: 'center' }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{Math.round((data.total_revenue || 0) / 1000)}к</div>
-                  <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Выручка (сум)</div>
+              {/* Невозвращённые бутылки */}
+              {unreturnedCount > 0 && (
+                <div style={{ background: '#fff', borderRadius: 14, border: '1px solid rgba(224,49,49,0.2)', borderLeft: '3px solid #E03131', padding: '12px 16px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#E03131', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Невозвращённые бутылки</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>Бутылки 19л · не возвращены</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: '#E03131' }}>−{unreturnedCount} шт.</span>
+                  </div>
+                  {unreturnedValue > 0 && (
+                    <div style={{ fontSize: 12, color: '#E03131', marginTop: 4, textAlign: 'right', opacity: 0.8 }}>
+                      {Number(unreturnedValue).toLocaleString()} сум
+                    </div>
+                  )}
                 </div>
-                {data.avg_rating != null && (
-                  <div style={{ flex: 1, background: '#FFFBEE', borderRadius: 12, padding: '10px 12px', border: '1px solid rgba(230,119,0,0.15)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>{data.avg_rating} ⭐</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Рейтинг</div>
-                  </div>
-                )}
-                {(data.total_delivery_revenue || 0) > 0 && (
-                  <div style={{ flex: 1, background: '#EBF4FF', borderRadius: 12, padding: '10px 12px', border: '1px solid #BFDBFE', textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{data.paid_delivery_orders || 0}</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 3 }}>Платных дост.</div>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Транзакции склада */}
               {(hasWarehouse || hasBottleReturns) && (
@@ -191,6 +189,9 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                       const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
                       const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''
                       const orderItems = (o.items || []).filter(it => it.quantity > 0)
+                      const bottles19l = orderItems.reduce((s, it) => (it.volume || 0) >= 19 ? s + it.quantity : s, 0)
+                      const unreturned = Math.max(0, bottles19l - (o.return_bottles || 0))
+                      const unreturnedOrderValue = unreturned * bottleSurcharge
                       return (
                         <div key={o.order_id} style={{ padding: '11px 0', borderBottom: i < data.orders.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -209,7 +210,7 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                               {o.rating != null && <div style={{ fontSize: 11, color: '#E67700' }}>{'★'.repeat(o.rating)}{'☆'.repeat(5 - o.rating)}</div>}
                             </div>
                           </div>
-                          {(orderItems.length > 0 || o.return_bottles > 0) && (
+                          {(orderItems.length > 0 || o.return_bottles > 0 || unreturned > 0) && (
                             <div style={{ marginTop: 6, paddingLeft: 26, display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {orderItems.map((it, j) => (
                                 <div key={j} style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
@@ -221,6 +222,14 @@ export default function CourierReportModal({ courierId, courierName, onClose }) 
                                 <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
                                   <span style={{ color: '#12B886', fontWeight: 700 }}>+{o.return_bottles} шт.</span>
                                   <span>Возврат бутылок</span>
+                                </div>
+                              )}
+                              {unreturned > 0 && (
+                                <div style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
+                                  <span style={{ color: '#E03131', fontWeight: 700 }}>−{unreturned} шт. не возвращено</span>
+                                  {unreturnedOrderValue > 0 && (
+                                    <span style={{ color: '#E03131', fontWeight: 700 }}>· {Number(Math.round(unreturnedOrderValue)).toLocaleString()} сум</span>
+                                  )}
                                 </div>
                               )}
                             </div>
