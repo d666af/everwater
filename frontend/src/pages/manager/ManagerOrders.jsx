@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmTopupRequest, rejectTopupRequest, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
@@ -639,32 +639,59 @@ function Row({ k, v, accent }) {
 
 /* ─── Create order modal (manager) ─────────────────────────────────────────── */
 
+function Stepper({ value, onDec, onInc, min = 0 }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button onClick={onDec} disabled={value <= min} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${value > min ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: value > min ? C : TEXT2, cursor: value > min ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+      <span style={{ fontSize: 15, fontWeight: 800, minWidth: 24, textAlign: 'center', color: TEXT }}>{value}</span>
+      <button onClick={onInc} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${C}`, background: `${C}15`, fontSize: 16, fontWeight: 700, color: CD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+    </div>
+  )
+}
+
 function CreateOrderModal({ onClose, onSave }) {
-  const { user } = useAuthStore()
   const [phone, setPhone] = useState('')
   const [client, setClient] = useState(null)
-  const [lookingUp, setLookingUp] = useState(false)
-  const [looked, setLooked] = useState(false)
+  const [looking, setLooking] = useState(false)
+  const [notFound, setNotFound] = useState(false)
   const [address, setAddress] = useState('')
+  const [extraInfo, setExtraInfo] = useState('')
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
   const [loading, setLoading] = useState(false)
+  const debounceRef = useRef(null)
 
   useEffect(() => {
     getProducts().then(p => setProducts((p || []).filter(x => x.is_active !== false))).catch(() => {})
   }, [])
 
-  const doLookup = async () => {
-    const raw = phone.replace(/\D/g, '')
-    if (raw.length < 9) { setClient(null); setLooked(false); return }
-    setLookingUp(true)
-    try {
-      const result = await lookupClientByPhone(phone)
-      setClient(result)
-      if (result?.addresses?.[0]?.address) setAddress(result.addresses[0].address)
-    } catch { setClient(null) }
-    finally { setLookingUp(false); setLooked(true) }
+  const handlePhoneChange = (val) => {
+    setPhone(val)
+    setClient(null)
+    setNotFound(false)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const digits = val.replace(/\D/g, '')
+    if (digits.length >= 9) {
+      debounceRef.current = setTimeout(async () => {
+        setLooking(true)
+        try {
+          const result = await lookupClientByPhone(val)
+          setClient(result)
+          setNotFound(false)
+          // Pre-fill most recent order address
+          const firstAddr = result?.order_addresses?.[0] || result?.addresses?.[0]
+          if (firstAddr) {
+            setAddress(firstAddr.address || '')
+            setExtraInfo(firstAddr.extra_info || '')
+          }
+        } catch {
+          setClient(null)
+          setNotFound(true)
+        }
+        finally { setLooking(false) }
+      }, 500)
+    }
   }
 
   const add = (id) => setSelected(p => ({ ...p, [id]: (p[id] || 0) + 1 }))
@@ -674,27 +701,36 @@ function CreateOrderModal({ onClose, onSave }) {
     return n
   })
 
-  // Exchange price: deposit_price for bottle products, effective_price otherwise
-  const effPrice = (p) => (p.has_bottle_deposit && p.deposit_price) ? p.deposit_price : (p.effective_price ?? p.price)
+  // 19L deposit products ordered
+  const deposit19L = products.filter(p => p.has_bottle_deposit)
+  const qty19L = deposit19L.reduce((s, p) => s + (selected[p.id] || 0), 0)
+  const hasDeposit = qty19L > 0
 
-  const total = Object.entries(selected).reduce((sum, [id, qty]) => {
+  // Bottle return constraints
+  const availReturn = client?.available_bottles ?? 0
+  const maxReturn = Math.min(qty19L, availReturn)
+  const clampedReturn = Math.min(returnBottles, maxReturn)
+
+  // Bottle surcharge for bottles not returned
+  const surchargePerBottle = deposit19L.find(p => p.bottle_surcharge > 0)?.bottle_surcharge || 0
+  const missingBottles = Math.max(0, qty19L - clampedReturn)
+  const bottleSurcharge = missingBottles * surchargePerBottle
+
+  // Product subtotal (always at p.price)
+  const subtotal = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
-    return sum + (p ? effPrice(p) * qty : 0)
+    return sum + (p ? p.price * qty : 0)
   }, 0)
+  const grandTotal = subtotal + bottleSurcharge
 
   const items = Object.entries(selected)
     .filter(([, qty]) => qty > 0)
     .map(([id, qty]) => {
       const p = products.find(p => p.id === Number(id))
-      return p ? { product_id: p.id, quantity: qty, price: effPrice(p) } : null
+      return p ? { product_id: p.id, quantity: qty, price: p.price } : null
     }).filter(Boolean)
 
-  const hasDepositItems = items.some(item => {
-    const p = products.find(p => p.id === item.product_id)
-    return p?.has_bottle_deposit
-  })
-
-  const canSave = phone.trim() && address.trim() && items.length > 0
+  const canSave = phone.replace(/\D/g, '').length >= 9 && address.trim() && items.length > 0
 
   const handle = async () => {
     if (!canSave) return
@@ -703,11 +739,12 @@ function CreateOrderModal({ onClose, onSave }) {
       await onSave({
         phone: phone.trim(),
         address: address.trim(),
-        total,
+        note: extraInfo.trim() || null,
+        total: grandTotal,
         items,
-        courier_id: null,
         user_id: client?.id || null,
-        return_bottles_count: hasDepositItems ? returnBottles : 0,
+        return_bottles_count: clampedReturn,
+        bottle_surcharge: bottleSurcharge,
         creator_role: 'manager',
       })
       onClose()
@@ -715,93 +752,118 @@ function CreateOrderModal({ onClose, onSave }) {
     finally { setLoading(false) }
   }
 
+  const phoneDigits = phone.replace(/\D/g, '')
+  const allAddresses = client?.order_addresses?.length
+    ? client.order_addresses
+    : (client?.addresses || []).map(a => ({ address: a.address, extra_info: '', lat: null, lng: null }))
+
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...s.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={s.sheetHandle} />
         <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
 
-        {/* Phone */}
+        {/* ── Phone ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Телефон клиента</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...s.inp, flex: 1 }} placeholder="+998 90 123-45-67" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" onKeyDown={e => e.key === 'Enter' && doLookup()} />
-            <button style={{ padding: '0 16px', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }} onClick={doLookup} disabled={lookingUp}>
-              {lookingUp ? '...' : 'Найти'}
-            </button>
+          <Label>Телефон клиента</Label>
+          <div style={{ position: 'relative' }}>
+            <input
+              style={{ ...s.inp, paddingRight: looking ? 36 : undefined }}
+              placeholder="+998 90 123-45-67"
+              value={phone}
+              onChange={e => handlePhoneChange(e.target.value)}
+              inputMode="tel"
+            />
+            {looking && (
+              <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', width: 18, height: 18, borderRadius: '50%', border: `2px solid rgba(141,198,63,0.25)`, borderTop: `2px solid ${C}`, animation: 'spin 0.7s linear infinite' }} />
+            )}
           </div>
-          {looked && client && (
-            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#2B8A3E' }}>✅ {client.name}</div>
-              <div style={{ fontSize: 12, color: '#555' }}>📞 {client.phone}</div>
-              {client.balance > 0 && <div style={{ fontSize: 12, color: '#555' }}>💰 Баланс: {client.balance?.toLocaleString()} сум</div>}
-              {client.bonus_points > 0 && <div style={{ fontSize: 12, color: '#555' }}>🎁 Бонусы: {client.bonus_points?.toLocaleString()} сум</div>}
-              {client.order_count != null && <div style={{ fontSize: 12, color: '#555' }}>📦 Заказов: {client.order_count}</div>}
-              {client.bottles_owed > 0 && (
-                <div style={{ fontSize: 12, color: '#E03131', fontWeight: 600 }}>
-                  ⚠️ Долг: {client.bottles_owed} бут.
-                  {client.pending_return > 0 && ` | В возврате: ${client.pending_return} | Доступно: ${client.available_bottles ?? Math.max(0, client.bottles_owed - client.pending_return)}`}
-                </div>
-              )}
+
+          {/* Client card */}
+          {client && (
+            <div style={{ background: '#F8FFED', borderRadius: 14, border: `1px solid ${C}33`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{client.name || 'Клиент'}</div>
+                <div style={{ fontSize: 11, color: TEXT2 }}>{client.phone}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Chip label="Доставок" value={client.order_count ?? 0} />
+                {client.bottles_owed > 0 && (
+                  <Chip label="Долг бутылок" value={client.bottles_owed} accent="#E03131" />
+                )}
+                {client.pending_return > 0 && (
+                  <Chip label="В возврате" value={client.pending_return} accent={TEXT2} />
+                )}
+                {client.bottles_owed > 0 && (
+                  <Chip label="Доступно вернуть" value={client.available_bottles ?? Math.max(0, client.bottles_owed - (client.pending_return || 0))} accent={CD} />
+                )}
+              </div>
             </div>
           )}
-          {looked && !client && (
-            <div style={{ fontSize: 12, color: TEXT2, fontStyle: 'italic' }}>Клиент не найден — заказ сохранится по номеру телефона</div>
+          {notFound && phoneDigits.length >= 9 && (
+            <div style={{ fontSize: 12, color: TEXT2, padding: '6px 10px', background: '#F8F9FA', borderRadius: 10 }}>Клиент не найден — заказ сохранится по номеру телефона</div>
           )}
         </div>
 
-        {/* Address */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Адрес доставки</div>
-          {client?.addresses?.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {client.addresses.map(a => (
-                <button key={a.id} onClick={() => setAddress(a.address)} style={{
-                  padding: '6px 12px', borderRadius: 10, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  background: address === a.address ? `${C}15` : '#F8F9FA',
-                  color: address === a.address ? CD : TEXT2,
-                  border: address === a.address ? `1px solid ${C}` : `1px solid ${BORDER}`,
-                }}>{a.label || a.address?.split(',')[0] || a.address}</button>
-              ))}
+        {/* ── Address ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Label>Адрес доставки</Label>
+
+          {/* Past order addresses */}
+          {allAddresses.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+              {allAddresses.map((a, i) => {
+                const active = address === a.address
+                return (
+                  <button key={i} onClick={() => { setAddress(a.address); setExtraInfo(a.extra_info || '') }} style={{
+                    flexShrink: 0, padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    background: active ? `${C}18` : '#F2F2F7',
+                    color: active ? CD : TEXT2,
+                    border: active ? `1.5px solid ${C}` : '1.5px solid transparent',
+                    maxWidth: 200, textAlign: 'left',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }} title={[a.address, a.extra_info].filter(Boolean).join(' — ')}>
+                    {a.address}
+                    {a.extra_info && <span style={{ opacity: 0.65 }}> · {a.extra_info}</span>}
+                  </button>
+                )
+              })}
             </div>
           )}
+
           <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => setAddress(e.target.value)} />
+          <input style={{ ...s.inp, fontSize: 13 }} placeholder="Ориентир (необязательно)" value={extraInfo} onChange={e => setExtraInfo(e.target.value)} />
         </div>
 
-        {/* Products */}
+        {/* ── Products ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав заказа</div>
+          <Label>Состав заказа</Label>
           {products.length === 0 ? (
             <div style={{ color: TEXT2, fontSize: 13, padding: 8 }}>Загрузка...</div>
           ) : (
-            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {products.map(p => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, overflow: 'hidden' }}>
+              {products.map((p, i) => {
                 const qty = selected[p.id] || 0
-                const price = effPrice(p)
                 return (
                   <div key={p.id} style={{
-                    borderRadius: 12, border: qty ? `1.5px solid ${C}` : `1.5px solid #e5e5ea`,
-                    background: qty ? `${C}06` : '#fff', padding: '10px 12px',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 14px',
+                    borderBottom: i < products.length - 1 ? `1px solid ${BORDER}` : 'none',
+                    background: qty > 0 ? `${C}07` : 'transparent',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}{p.volume ? ` (${p.volume}л)` : ''}</div>
-                        <div style={{ fontSize: 11, color: TEXT2 }}>
-                          {price.toLocaleString()} сум{p.has_bottle_deposit && p.deposit_price ? ' ♻' : ''}
-                          {p.has_bottle_deposit && p.deposit_price ? <span style={{ color: TEXT2 }}> (без возврата: {p.price.toLocaleString()} сум)</span> : null}
-                        </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: TEXT2 }}>
+                        {Number(p.price).toLocaleString()} сум
+                        {p.bottle_surcharge > 0 && <span style={{ color: '#E03131' }}> · +{Number(p.bottle_surcharge).toLocaleString()} без возврата</span>}
                       </div>
-                      {qty === 0 ? (
-                        <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: `${C}15`, fontSize: 18, fontWeight: 700, color: CD, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => add(p.id)}>+</button>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => rem(p.id)}>−</button>
-                          <span style={{ fontSize: 15, fontWeight: 800, minWidth: 20, textAlign: 'center', color: TEXT }}>{qty}</span>
-                          <button style={{ width: 28, height: 28, borderRadius: 8, border: `1.5px solid ${C}`, background: '#fff', fontSize: 14, fontWeight: 700, color: C, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => add(p.id)}>+</button>
-                        </div>
-                      )}
                     </div>
-                    {qty > 0 && <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 4, textAlign: 'right' }}>{(price * qty).toLocaleString()} сум</div>}
+                    {qty > 0 && (
+                      <div style={{ fontSize: 12, fontWeight: 700, color: CD, whiteSpace: 'nowrap' }}>
+                        {(p.price * qty).toLocaleString()} сум
+                      </div>
+                    )}
+                    <Stepper value={qty} onDec={() => rem(p.id)} onInc={() => add(p.id)} />
                   </div>
                 )
               })}
@@ -809,31 +871,66 @@ function CreateOrderModal({ onClose, onSave }) {
           )}
         </div>
 
-        {/* Bottle return (only when deposit items selected) */}
-        {hasDepositItems && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>🪣 Возврат бутылей (19л)</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: '#fff', fontSize: 18, fontWeight: 700, color: C, cursor: 'pointer' }} onClick={() => setReturnBottles(Math.max(0, returnBottles - 1))}>−</button>
-              <span style={{ fontSize: 18, fontWeight: 800, color: TEXT, minWidth: 40, textAlign: 'center' }}>{returnBottles}</span>
-              <button style={{ width: 36, height: 36, borderRadius: 10, border: `1.5px solid ${C}`, background: '#fff', fontSize: 18, fontWeight: 700, color: C, cursor: 'pointer' }} onClick={() => setReturnBottles(returnBottles + 1)}>+</button>
-              <span style={{ fontSize: 13, color: TEXT2 }}>шт.</span>
+        {/* ── Bottle return ── */}
+        {hasDeposit && (
+          <div style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Label>Возврат бутылок 19л</Label>
+              {client && availReturn > 0 && (
+                <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Stepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(Math.min(maxReturn, clampedReturn + 1))} />
+              <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>
+            </div>
+            {missingBottles > 0 && surchargePerBottle > 0 && (
+              <div style={{ fontSize: 12, color: '#E03131', background: '#FFF0F0', borderRadius: 8, padding: '6px 10px', fontWeight: 600 }}>
+                {missingBottles} бут. не возвращается — надбавка +{Number(bottleSurcharge).toLocaleString()} сум
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Total ── */}
+        {items.length > 0 && (
+          <div style={{ background: '#F8FFED', borderRadius: 12, padding: '12px 14px', border: `1px solid ${C}33`, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: TEXT2 }}>
+              <span>Товары</span>
+              <span>{Number(subtotal).toLocaleString()} сум</span>
+            </div>
+            {bottleSurcharge > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#E03131' }}>
+                <span>Надбавка за бутылки</span>
+                <span>+{Number(bottleSurcharge).toLocaleString()} сум</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 800, color: TEXT, borderTop: `1px solid ${C}22`, paddingTop: 6, marginTop: 2 }}>
+              <span>Итого</span>
+              <span style={{ color: CD }}>{Number(grandTotal).toLocaleString()} сум</span>
             </div>
           </div>
         )}
 
-        {total > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 12, padding: '12px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
-            <span style={{ fontSize: 13, color: TEXT2 }}>Итого (наличные)</span>
-            <span style={{ fontWeight: 800, fontSize: 20, color: C }}>{total.toLocaleString()} сум</span>
-          </div>
-        )}
-
         <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: canSave ? 'pointer' : 'not-allowed', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', border: 'none', boxShadow: '0 4px 14px rgba(141,198,63,0.35)', opacity: canSave ? 1 : 0.45 }} disabled={!canSave || loading} onClick={handle}>
-          {loading ? 'Создаю...' : `Создать заказ · ${total.toLocaleString()} сум`}
+          {loading ? 'Создаю...' : `Создать заказ · ${Number(grandTotal).toLocaleString()} сум`}
         </button>
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>Отмена</button>
       </div>
+    </div>
+  )
+}
+
+function Label({ children }) {
+  return <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>{children}</div>
+}
+
+function Chip({ label, value, accent }) {
+  const clr = accent || CD
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: `${clr}12`, borderRadius: 8, padding: '4px 10px', minWidth: 56 }}>
+      <span style={{ fontSize: 14, fontWeight: 800, color: clr }}>{value}</span>
+      <span style={{ fontSize: 10, color: clr, opacity: 0.8, whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   )
 }
