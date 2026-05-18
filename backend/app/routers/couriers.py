@@ -818,18 +818,19 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
         qty19L_c = sum(q for p, q in items_data if p.has_bottle_deposit)
         missing_c = max(0, qty19L_c - body.return_bottles_count)
-        items_lines_c = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
-        if body.return_bottles_count > 0:
-            items_lines_c += f"\n  • Возврат бутылок 19л — {body.return_bottles_count} шт."
+        client_phone_display = (user.phone if user and user.phone else None) or body.phone
+        items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
         if missing_c > 0 and bottle_surcharge > 0:
             items_lines_c += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n(bottle_surcharge)} сум"
         courier_text = (
             f"🚴 <b>Вы создали новый заказ!</b>\n\n"
             f"📍 {body.address}\n"
-            f"👤 {body.phone}\n\n"
-            f"Состав:\n{items_lines_c}\n\n"
-            f"Итого: · {_fmt_n(total_int)} сум"
+            f"👤 {client_phone_display}\n\n"
+            f"Состав:\n{items_lines_c}"
         )
+        if body.return_bottles_count > 0:
+            courier_text += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
+        courier_text += f"\n\nИтого: {_fmt_n(total_int)} сум"
         from urllib.parse import quote as url_quote
         kb_rows = []
         if body.address:
@@ -839,25 +840,49 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         courier_kb = {"inline_keyboard": kb_rows}
         await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
 
-        # Notify client about created+assigned order
+        # Notify client about created+assigned order (two messages)
         if client_tg:
+            def _fmt_n2(n): return f"{int(n):,}".replace(',', ' ')
+            items_lines_client = "\n".join(
+                f"  • {p.name} {q} шт. — {_fmt_n2(p.price * q)} сум"
+                for p, q in items_data
+            ) if items_data else "  —"
+            return_block_c = (
+                f"\n\nВозврат:\n• Бутылки 19л — {body.return_bottles_count} шт."
+                if body.return_bottles_count else ""
+            )
+            await _tg(client_tg, (
+                f"✅ Для вас создан заказ!\n\n"
+                f"Состав:\n{items_lines_client}"
+                f"{return_block_c}\n\n"
+                f"Сумма: {_fmt_n2(total_int)} сум\n"
+                f"Адрес: {body.address}"
+            ))
             phone_line = f"\nТелефон курьера: {courier_phone}" if courier_phone else ""
             await _tg(client_tg, (
-                f"✅ Ваш заказ #{oid} создан и передан курьеру!\n"
-                f"Курьер: {courier_name}{phone_line}\n"
-                f"Адрес: {body.address}\n"
-                f"Состав: {items_text}\n"
-                f"Сумма: {total_int:,} сум"
+                f"🚴 Курьер {courier_name} назначен на ваш заказ!\n"
+                f"Ожидайте доставку.{phone_line}"
             ))
 
         # Inform admins/managers (no action needed)
+        def _fmt_n3(n): return f"{int(n):,}".replace(',', ' ')
+        client_name_display = (user.name if user and user.name else None) or ""
+        client_identity = f"{client_name_display} | {client_phone_display}".strip(" |") if client_name_display else client_phone_display
+        admin_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n3(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+        if missing_c > 0 and bottle_surcharge > 0:
+            admin_items_lines += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n3(bottle_surcharge)} сум"
+        return_block_adm = (
+            f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
+            if body.return_bottles_count else ""
+        )
         info_text = (
-            f"📦 Новый заказ #{oid} (курьер {courier_name})\n"
-            f"Клиент: {body.phone}\n"
-            f"Адрес: {body.address}\n"
-            f"Состав: {items_text}\n"
-            f"Сумма: {total_int:,} сум\n"
-            f"✅ Курьер назначен автоматически"
+            f"🆕 Новый заказ! Создан курьером {courier_name}\n"
+            f"Клиент: {client_identity}\n"
+            f"Адрес: {body.address}\n\n"
+            f"Состав:\n{admin_items_lines}"
+            f"{return_block_adm}\n\n"
+            f"Сумма: {_fmt_n3(total_int)} сум\n\n"
+            f"✅ Курьер {courier_name} назначен автоматически"
         )
         for aid in cfg.ADMIN_IDS:
             await _tg(aid, info_text)
@@ -893,12 +918,26 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             ))
 
         # Notify admins/managers with "assign courier" inline button
+        def _fmt_nm(n): return f"{int(n):,}".replace(',', ' ')
+        mgr_client_name = (user.name if user and user.name else None) or ""
+        mgr_client_phone = (user.phone if user and user.phone else None) or body.phone
+        mgr_client_identity = f"{mgr_client_name} | {mgr_client_phone}".strip(" |") if mgr_client_name else mgr_client_phone
+        mgr_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+        qty19L_m = sum(q for p, q in items_data if p.has_bottle_deposit)
+        missing_m = max(0, qty19L_m - body.return_bottles_count)
+        if missing_m > 0 and bottle_surcharge > 0:
+            mgr_items_lines += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
+        mgr_return_block = (
+            f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
+            if body.return_bottles_count else ""
+        )
         text = (
-            f"🆕 Новый заказ #{oid} (создан {role_label})\n"
-            f"Клиент: {body.phone}\n"
-            f"Адрес: {body.address}\n"
-            f"Состав: {items_text}\n"
-            f"Сумма: {total_int:,} сум\n"
+            f"🆕 Новый заказ! Создан {role_label}\n"
+            f"Клиент: {mgr_client_identity}\n"
+            f"Адрес: {body.address}\n\n"
+            f"Состав:\n{mgr_items_lines}"
+            f"{mgr_return_block}\n\n"
+            f"Сумма: {_fmt_nm(total_int)} сум\n\n"
             f"Назначьте курьера!"
         )
         kb = {"inline_keyboard": [

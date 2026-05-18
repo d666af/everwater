@@ -301,12 +301,18 @@ function CChip({ label, value, accent }) {
   )
 }
 
-function CStepper({ value, onDec, onInc, min = 0, max = Infinity }) {
+function CStepper({ value, onDec, onInc, onChange, min = 0, max = Infinity }) {
+  const canDec = value > min
   const canInc = value < max
+  const handleInput = (e) => {
+    const v = parseInt(e.target.value.replace(/\D/g, ''))
+    const clamped = Math.max(min, Math.min(max === Infinity ? (isNaN(v) ? 0 : v) : max, isNaN(v) ? 0 : v))
+    onChange?.(clamped)
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <button onClick={onDec} disabled={value <= min} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${value > min ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: value > min ? C : TEXT2, cursor: value > min ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-      <span style={{ fontSize: 15, fontWeight: 800, minWidth: 24, textAlign: 'center', color: TEXT }}>{value}</span>
+      <button onClick={canDec ? onDec : undefined} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${canDec ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: canDec ? C : TEXT2, cursor: canDec ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+      <input type="text" inputMode="numeric" pattern="[0-9]*" value={value} onChange={handleInput} style={{ width: 44, textAlign: 'center', fontSize: 16, fontWeight: 800, border: `1.5px solid ${BORDER}`, borderRadius: 8, padding: '4px 0', color: TEXT, background: '#fff', fontFamily: 'inherit', outline: 'none' }} />
       <button onClick={canInc ? onInc : undefined} style={{ width: 30, height: 30, borderRadius: 8, border: `1.5px solid ${canInc ? C : BORDER}`, background: canInc ? `${C}15` : '#F2F2F7', fontSize: 16, fontWeight: 700, color: canInc ? CD : TEXT2, cursor: canInc ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
     </div>
   )
@@ -415,7 +421,10 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...s.sheet, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={s.sheetHandle} />
-        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Новый заказ</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>Новый заказ</div>
+          <button onClick={onClose} style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, borderRadius: '50%', border: 'none', background: '#F2F2F7', color: TEXT2, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>✕</button>
+        </div>
 
         {/* ── Phone ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -465,7 +474,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
             </div>
           )}
           <input style={s.inp} placeholder="Улица, дом, квартира" value={address} onChange={e => { setAddress(e.target.value); setLat(null); setLng(null) }} />
-          <input style={{ ...s.inp, fontSize: 13 }} placeholder="Ориентир (необязательно)" value={extraInfo} onChange={e => setExtraInfo(e.target.value)} />
+          <input style={s.inp} placeholder="Ориентир (необязательно)" value={extraInfo} onChange={e => setExtraInfo(e.target.value)} />
         </div>
 
         {/* ── Products ── */}
@@ -487,7 +496,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
                       </div>
                     </div>
                     {qty > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: CD, whiteSpace: 'nowrap' }}>{(p.price * qty).toLocaleString()} сум</div>}
-                    <CStepper value={qty} onDec={() => rem(p.id)} onInc={() => add(p.id)} />
+                    <CStepper value={qty} onDec={() => rem(p.id)} onInc={() => add(p.id)} onChange={v => setSelected(prev => v === 0 ? (({ [p.id]: _, ...rest }) => rest)(prev) : { ...prev, [p.id]: v })} />
                   </div>
                 )
               })}
@@ -503,7 +512,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
               {client && availReturn > 0 && <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <CStepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(clampedReturn + 1)} max={maxReturn} />
+              <CStepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(clampedReturn + 1)} onChange={v => setReturnBottles(v)} max={maxReturn} />
               <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>
             </div>
             {missingBottles > 0 && surchargePerBottle > 0 && (
@@ -701,7 +710,7 @@ const s = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
   sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
   sheetHandle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
-  inp: { border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 15, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' },
+  inp: { border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' },
   contactBtn: {
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
     padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${BORDER}`,
