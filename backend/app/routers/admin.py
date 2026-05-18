@@ -158,22 +158,56 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
     bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
-    # Product sales breakdown for the period
+    # Product sales breakdown for the period (with courier earning per product)
     product_sales_q = await db.execute(
         select(
             Product.name,
+            Product.courier_earning,
             func.sum(OrderItem.quantity).label("qty"),
             func.sum(OrderItem.quantity * OrderItem.price).label("total"),
         )
         .join(OrderItem, OrderItem.product_id == Product.id)
         .join(Order, Order.id == OrderItem.order_id)
         .where(and_(Order.status == OrderStatus.DELIVERED, Order.created_at >= since))
-        .group_by(Product.name)
+        .group_by(Product.id, Product.name, Product.courier_earning)
         .order_by(func.sum(OrderItem.quantity).desc())
     )
     product_sales = [
-        {"name": row.name, "qty": int(row.qty or 0), "total": round(float(row.total or 0), 2)}
+        {
+            "name": row.name,
+            "qty": int(row.qty or 0),
+            "total": round(float(row.total or 0), 2),
+            "courier_earning": round(float(row.courier_earning or 0) * int(row.qty or 0), 2),
+        }
         for row in product_sales_q.all()
+    ]
+
+    # Warehouse sales: items issued from warehouse in the period, valued at cost price
+    warehouse_sales_q = await db.execute(
+        select(
+            Product.name,
+            Product.cost_price,
+            func.sum(WaterTransaction.quantity).label("qty"),
+        )
+        .join(Product, Product.id == WaterTransaction.product_id)
+        .where(
+            and_(
+                WaterTransaction.transaction_type == "issue",
+                WaterTransaction.created_at >= since,
+                WaterTransaction.product_id.isnot(None),
+            )
+        )
+        .group_by(Product.id, Product.name, Product.cost_price)
+        .order_by(func.sum(WaterTransaction.quantity).desc())
+    )
+    warehouse_sales = [
+        {
+            "name": row.name,
+            "qty": int(row.qty or 0),
+            "cost": round(float(row.cost_price or 0) * int(row.qty or 0), 2),
+            "cost_price": round(float(row.cost_price or 0), 2),
+        }
+        for row in warehouse_sales_q.all()
     ]
 
     return {
@@ -193,6 +227,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bottles_surcharge_count": bottles_surcharge_count,
         "bottles_surcharge_total": bottles_surcharge_total,
         "product_sales": product_sales,
+        "warehouse_sales": warehouse_sales,
         "bottle_debt_count": bottle_debt_count,
         "bottle_debt_value": bottle_debt_value,
         "bottle_debt_clients": client_debt_count,

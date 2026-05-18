@@ -184,6 +184,11 @@ function RevenueContext({ stats, period }) {
       ? Math.round(stats.revenue / stats.order_count).toLocaleString('ru-RU')
       : '—'
 
+  const warehouseRows = stats.warehouse_sales || []
+  const warehouseTotalQty = warehouseRows.reduce((s, r) => s + r.qty, 0)
+  const warehouseTotalCost = warehouseRows.reduce((s, r) => s + r.cost, 0)
+  const hasWarehouseSales = warehouseRows.length > 0
+
   return (
     <>
       <div
@@ -240,6 +245,52 @@ function RevenueContext({ stats, period }) {
             </div>
           )}
         </div>
+
+        {hasWarehouseSales && (
+          <>
+            <div style={{ height: 1, background: 'rgba(60,60,67,0.1)', margin: '16px -20px 14px' }} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              Продажи со склада
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {warehouseRows.map((item, i) => (
+                <div
+                  key={item.name}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '7px 0',
+                    borderBottom: i < warehouseRows.length - 1 ? '1px solid rgba(60,60,67,0.06)' : 'none',
+                  }}
+                >
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{item.qty} шт.</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1971C2', flexShrink: 0, minWidth: 90, textAlign: 'right' }}>
+                    {item.cost > 0 ? `${Math.round(item.cost).toLocaleString('ru-RU')} сум` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, marginTop: 4, borderTop: '1.5px solid rgba(60,60,67,0.1)' }}>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#1971C2' }}>{warehouseTotalQty} шт.</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: '#1971C2', minWidth: 90, textAlign: 'right' }}>
+                {Math.round(warehouseTotalCost).toLocaleString('ru-RU')} сум
+              </div>
+            </div>
+            {(stats.bottles_returned_to_warehouse || 0) > 0 && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(60,60,67,0.06)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 14 }}>↩</span>
+                <span style={{ fontSize: 12, color: '#1971C2', fontWeight: 600 }}>
+                  Возврат 19л бутылок: {stats.bottles_returned_to_warehouse} шт.
+                </span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {(stats.delivery_revenue > 0 || stats.delivery_orders_count > 0) && (
@@ -375,61 +426,91 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         </div>
       ) : (
         <>
-          {/* Bottles card */}
+          {/* Bottles card — debt only */}
           <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Бутылки 19л</div>
-            <div style={{ display: 'flex', gap: 0 }}>
-              <div style={{ flex: 1, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Возвращено</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: '#12B886', lineHeight: 1 }}>{stats.bottles_returned ?? 0}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>клиентами курьерам</div>
-              </div>
-              <div style={{ flex: 1, paddingLeft: 12, paddingRight: 12, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>На склад</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: (stats.bottles_returned_to_warehouse || 0) > 0 ? '#1971C2' : TEXT2, lineHeight: 1 }}>{stats.bottles_returned_to_warehouse ?? 0}</div>
-                <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>возвращено курьерами</div>
-              </div>
-              <div style={{ flex: 1, paddingLeft: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12 }}>Бутылки 19л</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: TEXT2, marginBottom: 4 }}>Долг</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: (stats.bottle_debt_count || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>{stats.bottle_debt_count ?? 0} шт.</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: (stats.bottle_debt_value || 0) > 0 ? '#E03131' : TEXT2, marginTop: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                  <span style={{ fontSize: 30, fontWeight: 900, color: (stats.bottle_debt_count || 0) > 0 ? '#E03131' : TEXT2, lineHeight: 1 }}>
+                    {stats.bottle_debt_count ?? 0}
+                  </span>
+                  <span style={{ fontSize: 14, color: TEXT2, fontWeight: 500 }}>шт.</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: (stats.bottle_debt_value || 0) > 0 ? '#E03131' : TEXT2, marginTop: 4 }}>
                   {(stats.bottle_debt_value || 0) > 0 ? `${Math.round(stats.bottle_debt_value).toLocaleString('ru-RU')} сум` : '—'}
                 </div>
-                {((stats.bottle_debt_clients || 0) > 0 || (stats.bottle_debt_couriers || 0) > 0) && (
-                  <div style={{ fontSize: 10, color: TEXT2, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {(stats.bottle_debt_clients || 0) > 0 && <span>Клиенты: {stats.bottle_debt_clients} шт.</span>}
-                    {(stats.bottle_debt_couriers || 0) > 0 && <span>Курьеры: {stats.bottle_debt_couriers} шт.</span>}
-                  </div>
-                )}
               </div>
+              {((stats.bottle_debt_clients || 0) > 0 || (stats.bottle_debt_couriers || 0) > 0) && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(stats.bottle_debt_clients || 0) > 0 && (
+                    <div style={{ background: '#FFF5F5', borderRadius: 12, padding: '8px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: '#E03131', fontWeight: 600, marginBottom: 3 }}>Клиенты</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: '#E03131' }}>{stats.bottle_debt_clients}</div>
+                      <div style={{ fontSize: 10, color: '#E03131' }}>шт.</div>
+                    </div>
+                  )}
+                  {(stats.bottle_debt_couriers || 0) > 0 && (
+                    <div style={{ background: '#FFF5F5', borderRadius: 12, padding: '8px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: '#E03131', fontWeight: 600, marginBottom: 3 }}>Курьеры</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: '#E03131' }}>{stats.bottle_debt_couriers}</div>
+                      <div style={{ fontSize: 10, color: '#E03131' }}>шт.</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Product sales card */}
+          {/* Courier sales card */}
           {(stats.product_sales?.length > 0 || (stats.bottles_surcharge_count || 0) > 0) && (() => {
             const surchargeRow = (stats.bottles_surcharge_count || 0) > 0
-              ? [{ name: 'Бутылка 19л', qty: stats.bottles_surcharge_count, total: stats.bottles_surcharge_total || 0 }]
+              ? [{ name: 'Бутылка 19л', qty: stats.bottles_surcharge_count, total: stats.bottles_surcharge_total || 0, courier_earning: 0 }]
               : []
             const allRows = [...(stats.product_sales || []), ...surchargeRow]
             const totalQty = allRows.reduce((s, p) => s + p.qty, 0)
             const totalAmt = allRows.reduce((s, p) => s + p.total, 0)
+            const totalEarning = allRows.reduce((s, p) => s + (p.courier_earning || 0), 0)
             return (
               <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи по товарам</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи курьеров</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {allRows.map((p, i) => (
-                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < allRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
-                      <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
+                    <div key={p.name} style={{ padding: '8px 0', borderBottom: i < allRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
+                      </div>
+                      {(p.courier_earning || 0) > 0 && (
+                        <div style={{ fontSize: 11, color: '#6741D9', fontWeight: 600, marginTop: 3 }}>
+                          заработок: +{Math.round(p.courier_earning).toLocaleString('ru-RU')} сум
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
+                <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
+                  </div>
+                  {totalEarning > 0 && (
+                    <div style={{ fontSize: 12, color: '#6741D9', fontWeight: 700, marginTop: 5 }}>
+                      Заработок курьеров: +{Math.round(totalEarning).toLocaleString('ru-RU')} сум
+                    </div>
+                  )}
                 </div>
+                {(stats.bottles_returned || 0) > 0 && (
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid rgba(60,60,67,0.06)`, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 14 }}>↩</span>
+                    <span style={{ fontSize: 12, color: '#12B886', fontWeight: 600 }}>
+                      Возврат 19л бутылок: {stats.bottles_returned} шт.
+                    </span>
+                  </div>
+                )}
               </div>
             )
           })()}
