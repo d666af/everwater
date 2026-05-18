@@ -813,10 +813,35 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
 
-    # Reserve inventory for courier-assigned orders
-    if order.courier_id:
-        from app.routers.orders import _reserve_inventory
-        await _reserve_inventory(order, db)
+    is_return_only = not items_data and body.return_bottles_count > 0
+
+    if is_return_only:
+        # No products — auto-deliver and record bottle return
+        order.status = OrderStatus.DELIVERED
+        order.delivered_at = datetime.utcnow()
+        if creator_courier:
+            from app.models.warehouse import WaterTransaction
+            db.add(WaterTransaction(
+                courier_id=creator_courier.id,
+                transaction_type="bottle_return",
+                quantity=body.return_bottles_count,
+                order_id=order.id,
+            ))
+    elif order.courier_id and items_data:
+        # Inline reservation — order.items relationship not loaded yet, use items_data directly
+        from app.models.warehouse import CourierWater
+        for product, quantity in items_data:
+            row_q = await db.execute(
+                select(CourierWater).where(
+                    CourierWater.courier_id == order.courier_id,
+                    CourierWater.product_id == product.id,
+                )
+            )
+            row = row_q.scalar_one_or_none()
+            if row:
+                qty = min(quantity, max(0, row.quantity))
+                row.quantity = max(0, row.quantity - qty)
+                row.reserved = (row.reserved or 0) + qty
     await db.commit()
 
     oid = order.id
@@ -826,6 +851,35 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
 
     client_tg = user.telegram_id if user else None
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+
+    # ── Return-only order: no products, auto-delivered ──
+    if is_return_only:
+        client_phone_r = (user.phone if user and user.phone else None) or body.phone
+        client_name_r = (user.name if user else None) or ""
+        client_identity_r = f"{client_name_r} | {client_phone_r}".strip(" |") if client_name_r else client_phone_r
+
+        if creator_courier:
+            await _tg(creator_courier.telegram_id, (
+                f"♻️ Возврат бутылок оформлен!\n\n"
+                f"👤 {client_identity_r}\n"
+                f"📍 {body.address}\n"
+                f"Бутылки 19л: {body.return_bottles_count} шт."
+            ))
+
+        courier_line = f"\nКурьер: {creator_courier.name} ({creator_courier.phone or '—'})" if creator_courier else ""
+        info_text_r = (
+            f"♻️ Возврат бутылок\n"
+            f"Клиент: {client_identity_r}\n"
+            f"Адрес: {body.address}\n"
+            f"Бутылки 19л: {body.return_bottles_count} шт."
+            f"{courier_line}"
+        )
+        for aid in cfg.ADMIN_IDS:
+            await _tg(aid, info_text_r)
+        for m in mgrs:
+            if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                await _tg(m.telegram_id, info_text_r)
+        return {"id": oid, "status": "delivered"}
 
     # ── Courier-created order (already assigned) ──
     if body.creator_role == "courier" and creator_courier:

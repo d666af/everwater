@@ -524,7 +524,6 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
                       <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{p.name}</div>
                       <div style={{ fontSize: 12, color: TEXT2 }}>
                         {Number(p.price).toLocaleString()} сум
-                        {p.bottle_surcharge > 0 && <span style={{ color: '#E03131' }}> · +{Number(p.bottle_surcharge).toLocaleString()} без возврата</span>}
                       </div>
                     </div>
                     {qty > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: CD, whiteSpace: 'nowrap' }}>{(p.price * qty).toLocaleString()} сум</div>}
