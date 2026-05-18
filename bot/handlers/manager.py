@@ -12,7 +12,7 @@ from keyboards.manager import (
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text
+from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text, _order_detail_lines, _notify_order_staff
 from config import settings
 
 router = Router()
@@ -238,14 +238,13 @@ async def mgr_confirm(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     kb = mgr_courier_select_kb(couriers, order_id)
+    body = _order_detail_lines(order)
+    confirm_text = f"✅ <b>Заказ подтверждён</b>\n\n{body}\n\nВыберите курьера:"
     try:
-        await call.message.edit_text(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
-        )
+        await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(
-            f"✅ Заказ #{order_id} подтверждён!\n\nВыберите курьера:", reply_markup=kb,
-        )
+        await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
+    await _notify_order_staff(call.bot, call.from_user.id, f"✅ <b>Заказ подтверждён</b>\n\n{body}")
     await call.answer()
 
 
@@ -396,19 +395,16 @@ async def mgr_set_courier(call: CallbackQuery):
     else:
         client_err = "нет telegram_id у клиента"
 
-    result_text = f"✅ Курьер назначен на заказ #{order_id}."
-    if courier_notified:
-        result_text += "\n📨 Курьер уведомлён."
-    else:
-        result_text += f"\n⚠️ Курьер НЕ уведомлён ({courier_err})."
-    if client_notified:
-        result_text += "\n📨 Клиент уведомлён."
-    else:
-        result_text += f"\n⚠️ Клиент НЕ уведомлён ({client_err})."
+    courier_name = courier["name"] if courier else "?"
+    courier_phone = courier.get("phone", "") if courier else ""
+    phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
+    body = _order_detail_lines(order)
+    result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
     try:
-        await call.message.edit_text(result_text)
+        await call.message.edit_text(result_text, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text)
+        await call.message.answer(result_text, parse_mode="HTML")
+    await _notify_order_staff(call.bot, call.from_user.id, result_text)
     await call.answer()
 
 

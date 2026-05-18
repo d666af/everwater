@@ -1048,7 +1048,7 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
     return_bottles = data.get("co_return_bottles", 0)
     surcharge = _calc_surcharge(data["co_items"], products, return_bottles)
     try:
-        result = await api.courier_create_order({
+        await api.courier_create_order({
             "phone": data["co_phone"],
             "address": data["co_address"],
             "items": items_list,
@@ -1058,12 +1058,17 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
             "courier_telegram_id": call.from_user.id,
             "creator_role": "courier",
         })
-        oid = result.get("order_id", "?")
-        await call.message.edit_text(f"✅ Заказ #{oid} создан!\nКлиент: {data['co_phone']}")
     except Exception:
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
+        await state.clear()
+        await call.answer()
+        return
     await state.clear()
     await call.answer()
+    try:
+        await call.message.delete()
+    except Exception:
+        await call.message.edit_reply_markup(reply_markup=None)
     await call.message.answer("Панель курьера:", reply_markup=courier_menu_kb())
 
 
