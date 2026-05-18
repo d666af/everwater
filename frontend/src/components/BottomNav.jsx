@@ -162,7 +162,7 @@ const st = {
     transition: 'color 0.3s ease',
   },
   switchFab: {
-    position: 'fixed', bottom: 82, right: 16, zIndex: 300,
+    position: 'fixed', bottom: 106, right: 16, zIndex: 300,
     display: 'flex', alignItems: 'center', gap: 6,
     background: GRAD, color: '#fff',
     border: 'none', borderRadius: 20,
