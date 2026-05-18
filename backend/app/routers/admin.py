@@ -59,6 +59,8 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         cfg = {}
     bonus_per_bottle = float(cfg.get("bonus_per_bottle") or 0)
     cashback_pct = float(cfg.get("cashback_percent") or 0)
+    permanent_min_orders = int(cfg.get("permanent_customer_min_orders") or 5)
+    inactive_days_val = int(cfg.get("inactive_customer_days") or 60)
     if bonus_per_bottle > 0 and orders:
         order_ids = [o.id for o in orders]
         bottles_q = await db.execute(
@@ -212,6 +214,28 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         for row in warehouse_sales_q.all()
     ]
 
+    # Customer classification counts (all-time, not period-bound)
+    permanent_sq = (
+        select(Order.user_id)
+        .where(Order.status == OrderStatus.DELIVERED)
+        .group_by(Order.user_id)
+        .having(func.count(Order.id) >= permanent_min_orders)
+        .subquery()
+    )
+    permanent_customers_q = await db.execute(select(func.count()).select_from(permanent_sq))
+    permanent_customers = permanent_customers_q.scalar() or 0
+
+    inactive_cutoff = now - timedelta(days=inactive_days_val)
+    inactive_sq = (
+        select(Order.user_id)
+        .where(Order.status == OrderStatus.DELIVERED)
+        .group_by(Order.user_id)
+        .having(func.max(Order.created_at) < inactive_cutoff)
+        .subquery()
+    )
+    inactive_customers_q = await db.execute(select(func.count()).select_from(inactive_sq))
+    inactive_customers = inactive_customers_q.scalar() or 0
+
     return {
         "period": period,
         "order_count": len(orders),
@@ -235,6 +259,8 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bottle_debt_clients": client_debt_count,
         "bottle_debt_couriers": courier_debt_count,
         "bottles_returned_to_warehouse": bottles_returned_to_warehouse,
+        "permanent_customers": permanent_customers,
+        "inactive_customers": inactive_customers,
     }
 
 
@@ -467,6 +493,36 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
     bottles_q = await db.execute(select(BottleDebt))
     bottles_map = {b.user_id: b.count for b in bottles_q.scalars().all()}
 
+    # Delivered order counts and last delivered date per user for classification
+    delivered_counts_q = await db.execute(
+        select(Order.user_id, func.count(Order.id).label('delivered_cnt'))
+        .where(Order.status == OrderStatus.DELIVERED)
+        .group_by(Order.user_id)
+    )
+    delivered_counts_map = {row.user_id: row.delivered_cnt for row in delivered_counts_q.all()}
+
+    last_order_q = await db.execute(
+        select(Order.user_id, func.max(Order.created_at).label('last_at'))
+        .where(Order.status == OrderStatus.DELIVERED)
+        .group_by(Order.user_id)
+    )
+    last_order_map = {row.user_id: row.last_at for row in last_order_q.all()}
+
+    from app.services.settings_service import get_all_settings
+    cfg = await get_all_settings(db)
+    permanent_min = int(cfg.get("permanent_customer_min_orders") or 5)
+    inactive_days_val = int(cfg.get("inactive_customer_days") or 60)
+    inactive_cutoff = datetime.utcnow() - timedelta(days=inactive_days_val)
+
+    def _label(user_id):
+        cnt = delivered_counts_map.get(user_id, 0)
+        last_at = last_order_map.get(user_id)
+        if cnt >= permanent_min:
+            return "permanent"
+        if last_at is not None and last_at < inactive_cutoff:
+            return "inactive"
+        return None
+
     return [
         {
             "id": u.id,
@@ -479,6 +535,8 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "created_at": u.created_at,
             "orders_count": orders_map.get(u.id, 0),
             "bottles_owed": bottles_map.get(u.id, 0),
+            "last_order_at": last_order_map.get(u.id),
+            "customer_label": _label(u.id),
         }
         for u in users
     ]
