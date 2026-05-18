@@ -50,7 +50,7 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "quantity": tx.quantity,
         "note": tx.note,
         "batch_id": tx.batch_id,
-        "created_at": tx.created_at.isoformat(),
+        "created_at": tx.created_at.isoformat() + "Z",
     }
 
 
@@ -85,13 +85,18 @@ async def _resolve_product(db: AsyncSession, product_id: int | None, product_nam
     raise HTTPException(status_code=404, detail=f"Product not found: {product_name or product_id}")
 
 
+_LOCAL_TZ_OFFSET = timedelta(hours=5)  # UTC+5 (Tashkent)
+
+
 def _period_range(period: str, date_str: str | None, time_from: str | None, time_to: str | None, date_to_str: str | None = None):
     """Return (since, until) UTC datetimes for the given period descriptor."""
     now = datetime.utcnow()
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Compute local "today" midnight in UTC (UTC+5 offset)
+    local_now = now + _LOCAL_TZ_OFFSET
+    today = local_now.replace(hour=0, minute=0, second=0, microsecond=0) - _LOCAL_TZ_OFFSET
 
     def end_of(d: datetime) -> datetime:
-        return d.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return d + timedelta(hours=24) - timedelta(microseconds=1)
 
     if period == "today":
         return today, end_of(today)
@@ -109,7 +114,7 @@ def _period_range(period: str, date_str: str | None, time_from: str | None, time
         try:
             d = datetime.fromisoformat(date_str.split("T")[0]).replace(
                 hour=0, minute=0, second=0, microsecond=0
-            )
+            ) - _LOCAL_TZ_OFFSET
         except Exception:
             d = today
         s = d
@@ -118,7 +123,7 @@ def _period_range(period: str, date_str: str | None, time_from: str | None, time
             try:
                 d_end = datetime.fromisoformat(date_to_str.split("T")[0]).replace(
                     hour=0, minute=0, second=0, microsecond=0
-                )
+                ) - _LOCAL_TZ_OFFSET
                 e = end_of(d_end)
             except Exception:
                 pass

@@ -819,10 +819,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     is_return_only = not items_data and body.return_bottles_count > 0
 
     if is_return_only:
-        # No products — auto-deliver and record bottle return
-        order.status = OrderStatus.DELIVERED
-        order.delivered_at = datetime.utcnow()
         if creator_courier:
+            # Courier-created return-only: auto-deliver and record bottle return immediately
+            order.status = OrderStatus.DELIVERED
+            order.delivered_at = datetime.utcnow()
             from app.models.warehouse import WaterTransaction
             db.add(WaterTransaction(
                 courier_id=creator_courier.id,
@@ -830,6 +830,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 quantity=body.return_bottles_count,
                 order_id=order.id,
             ))
+        # Manager-created return-only: stay as CONFIRMED so manager can assign a courier
+        # WaterTransaction will be created in assign_courier
     elif order.courier_id and items_data:
         # Inline reservation — order.items relationship not loaded yet, use items_data directly
         from app.models.warehouse import CourierWater
@@ -855,40 +857,51 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     client_tg = user.telegram_id if user else None
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
 
-    # ── Return-only order: no products, auto-delivered ──
+    # ── Return-only order ──
     if is_return_only:
         client_phone_r = (user.phone if user and user.phone else None) or body.phone
         client_name_r = (user.name if user else None) or ""
         client_identity_r = f"{client_name_r} | {client_phone_r}".strip(" |") if client_name_r else client_phone_r
 
         if creator_courier:
+            # Courier-created: auto-delivered, notify courier + admins
             await _tg(creator_courier.telegram_id, (
                 f"♻️ Возврат бутылок оформлен!\n\n"
                 f"👤 {client_identity_r}\n"
                 f"📍 {body.address}\n"
                 f"Бутылки 19л: {body.return_bottles_count} шт."
             ))
-
-        if creator_courier:
             extra_line = f"\nКурьер: {creator_courier.name} ({creator_courier.phone or '—'})"
-        elif body.creator_role == "manager" and body.manager_name:
-            phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
-            extra_line = f"\nМенеджер: {body.manager_name}{phone_part}"
+            info_text_r = (
+                f"♻️ Возврат бутылок\n"
+                f"Клиент: {client_identity_r}\n"
+                f"Адрес: {body.address}\n"
+                f"Бутылки 19л: {body.return_bottles_count} шт."
+                f"{extra_line}"
+            )
+            for aid in cfg.ADMIN_IDS:
+                await _tg(aid, info_text_r)
+            for m in mgrs:
+                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                    await _tg(m.telegram_id, info_text_r)
+            return {"id": oid, "status": "delivered"}
         else:
-            extra_line = ""
-        info_text_r = (
-            f"♻️ Возврат бутылок\n"
-            f"Клиент: {client_identity_r}\n"
-            f"Адрес: {body.address}\n"
-            f"Бутылки 19л: {body.return_bottles_count} шт."
-            f"{extra_line}"
-        )
-        for aid in cfg.ADMIN_IDS:
-            await _tg(aid, info_text_r)
-        for m in mgrs:
-            if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
-                await _tg(m.telegram_id, info_text_r)
-        return {"id": oid, "status": "delivered"}
+            # Manager-created: order stays CONFIRMED — notify admins/managers to assign courier
+            phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
+            mgr_line = f"\nМенеджер: {body.manager_name}{phone_part}" if body.manager_name else ""
+            info_text_r = (
+                f"♻️ Возврат бутылок (нужен курьер)\n"
+                f"Клиент: {client_identity_r}\n"
+                f"Адрес: {body.address}\n"
+                f"Бутылки 19л: {body.return_bottles_count} шт."
+                f"{mgr_line}"
+            )
+            for aid in cfg.ADMIN_IDS:
+                await _tg(aid, info_text_r)
+            for m in mgrs:
+                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                    await _tg(m.telegram_id, info_text_r)
+            return {"id": oid, "status": "confirmed"}
 
     # ── Courier-created order (already assigned) ──
     if body.creator_role == "courier" and creator_courier:

@@ -610,6 +610,30 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
             if admin_user and admin_user.phone:
                 order.manager_phone = admin_user.phone
 
+    # Return-only manager orders: record bottle return and auto-deliver on courier assignment
+    is_return_only_manager = (
+        not order.items
+        and (order.return_bottles_count or 0) > 0
+        and getattr(order, 'creator_role', None) == 'manager'
+    )
+    if is_return_only_manager:
+        from app.models.warehouse import WaterTransaction
+        db.add(WaterTransaction(
+            courier_id=courier_id,
+            transaction_type="bottle_return",
+            quantity=order.return_bottles_count,
+            order_id=order.id,
+        ))
+        order.status = OrderStatus.DELIVERED
+        order.delivered_at = datetime.utcnow()
+        await db.commit()
+        await _tg(courier_tg,
+                  f"♻️ Вам записан возврат бутылок!\n\n"
+                  f"Клиент: {order_phone}\n"
+                  f"Адрес: {order_address}\n"
+                  f"Бутылки 19л: {order.return_bottles_count} шт.")
+        return {"ok": True}
+
     await _reserve_inventory(order, db)
     await db.commit()
 
