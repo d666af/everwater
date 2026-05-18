@@ -140,6 +140,15 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
             WaterTransaction.transaction_type == "bottle_return"
         )
     )
+    bottles_returned_to_warehouse_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.transaction_type == "bottle_return",
+                WaterTransaction.created_at >= since,
+            )
+        )
+    )
+    bottles_returned_to_warehouse = int(bottles_returned_to_warehouse_q.scalar() or 0)
     courier_debt_count = max(
         0,
         ((courier_issued_q.scalar() if courier_issued_q else None) or 0)
@@ -188,6 +197,7 @@ async def get_stats(period: str = "month", db: AsyncSession = Depends(get_db)):
         "bottle_debt_value": bottle_debt_value,
         "bottle_debt_clients": client_debt_count,
         "bottle_debt_couriers": courier_debt_count,
+        "bottles_returned_to_warehouse": bottles_returned_to_warehouse,
     }
 
 
