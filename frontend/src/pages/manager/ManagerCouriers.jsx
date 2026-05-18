@@ -86,9 +86,10 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
 
   const rating = details?.avg_rating > 0 ? Number(details.avg_rating).toFixed(1) : '—'
   const totalDeliveries = details?.total_deliveries ?? (c.delivery_count ?? '—')
+  const bottleDebt = details ? (details.bottles_must_return ?? 0) : null
 
   return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', opacity: c.is_active ? 1 : 0.6 }}>
+    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: c.is_active ? 1 : 0.6 }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: c.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -116,8 +117,18 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
 
       {/* Stat chips row */}
       <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>
-        <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" />
-        <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" />
+        <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" borderColor="rgba(141,198,63,0.18)" />
+        <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" borderColor="rgba(230,119,0,0.18)" />
+        {bottleDebt !== null && (
+          <StatChip
+            icon="🫙"
+            value={bottleDebt}
+            label="Долг бут."
+            color={bottleDebt > 0 ? '#E03131' : CD}
+            bg={bottleDebt > 0 ? '#FFF5F5' : '#F0FFF4'}
+            borderColor={bottleDebt > 0 ? 'rgba(224,49,49,0.2)' : 'rgba(141,198,63,0.18)'}
+          />
+        )}
       </div>
 
       {/* Deactivate / Activate */}
