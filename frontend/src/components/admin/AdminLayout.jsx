@@ -95,7 +95,7 @@ export default function AdminLayout({ children, noPadding = false, title }) {
         <div style={{
           ...s.content,
           paddingBottom: 100,
-          paddingTop: isSubPage && !noPadding ? 72 : 60,
+          paddingTop: isSubPage && !noPadding ? 72 : 16,
           ...(noPadding ? { padding: 0, paddingBottom: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : {}),
         }}>
           {children}
@@ -153,7 +153,7 @@ export default function AdminLayout({ children, noPadding = false, title }) {
 }
 
 const s = {
-  content: { padding: 16, paddingTop: 60, flex: 1, overflowY: 'auto' },
+  content: { padding: 16, paddingTop: 16, flex: 1, overflowY: 'auto' },
   mobileNav: {
     position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
     padding: '0 6px 8px',

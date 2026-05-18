@@ -1,20 +1,28 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminStats, getAdminStatsExtended, getCancelledOrders } from '../../api'
+import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
 const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
+const BORDER = 'rgba(60,60,67,0.12)'
 
-const todayDate = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+function toISODate(d) {
+  if (!d) return null
+  const dt = d instanceof Date ? d : new Date(d)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
 
-const PERIODS = [
-  { key: 'day', label: 'Сегодня', sub: todayDate },
-  { key: 'week', label: 'Неделя' },
-  { key: 'month', label: 'Месяц' },
-]
+function fmtDate(s) {
+  if (!s) return ''
+  const [y, m, d] = String(s).split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+}
+
+function todayISO() { return toISODate(new Date()) }
 
 const STATUS_LABELS = {
   new: 'Новые',
@@ -38,7 +46,7 @@ const STATUS_COLORS = {
 
 const METRICS = []
 
-function CancelledCard({ count, period }) {
+function CancelledCard({ count, dateParams }) {
   const [expanded, setExpanded] = useState(false)
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
@@ -49,7 +57,7 @@ function CancelledCard({ count, period }) {
     if (!expanded && orders.length === 0) {
       setLoading(true)
       try {
-        const data = await getCancelledOrders(period)
+        const data = await getCancelledOrders(dateParams)
         setOrders(data)
       } catch {}
       setLoading(false)
@@ -287,64 +295,84 @@ function RevenueContext({ stats, period }) {
 }
 
 export default function ManagerStats({ Layout = ManagerLayout, title = 'Статистика', showExtended = false }) {
-  const [period, setPeriod] = useState('day')
+  const [dateFrom, setDateFrom] = useState(todayISO)
+  const [dateTo, setDateTo] = useState(todayISO)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [stats, setStats] = useState(null)
   const [extStats, setExtStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const isToday = dateFrom === todayISO() && dateTo === todayISO()
+
+  const dateParams = { date_from: dateFrom, date_to: dateTo }
+
+  const periodLabel = isToday
+    ? `Сегодня, ${fmtDate(dateFrom)}`
+    : dateFrom === dateTo
+      ? fmtDate(dateFrom)
+      : `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
+
   useEffect(() => {
     setLoading(true)
-    const calls = [getAdminStats(period).then(setStats).catch(console.error)]
-    if (showExtended) calls.push(getAdminStatsExtended(period).then(setExtStats).catch(console.error))
+    const calls = [getAdminStats(dateParams).then(setStats).catch(console.error)]
+    if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
     Promise.all(calls).finally(() => setLoading(false))
-  }, [period, showExtended])
+  }, [dateFrom, dateTo, showExtended]) // eslint-disable-line
 
   return (
     <Layout title={title}>
       {/* Keyframes for spinner */}
       <style>{`@keyframes evSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
-      {/* Period segmented control */}
-      <div
-        style={{
-          display: 'flex',
-          background: '#fff',
-          borderRadius: 18,
-          padding: 4,
-          marginBottom: 20,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-        }}
-      >
-        {PERIODS.map((p) => {
-          const active = period === p.key
-          return (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              style={{
-                flex: 1,
-                padding: '8px 6px',
-                borderRadius: 12,
-                border: 'none',
-                background: active ? GRAD : 'none',
-                color: active ? '#fff' : TEXT2,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: active ? '0 2px 10px rgba(141,198,63,0.4)' : 'none',
-                WebkitTapHighlightColor: 'transparent',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <span>{p.label}</span>
-              {p.sub && <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>{p.sub}</span>}
-            </button>
-          )
-        })}
+      {/* Date filter — Panel style */}
+      {pickerOpen && (
+        <DateTimePickerModal
+          initialDate={dateFrom}
+          initialDateTo={dateTo !== dateFrom ? dateTo : null}
+          onClose={() => setPickerOpen(false)}
+          onApply={(start, end) => {
+            setDateFrom(toISODate(start))
+            setDateTo(toISODate(end || start))
+            setPickerOpen(false)
+          }}
+        />
+      )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
+        <button
+          onClick={() => { const t = todayISO(); setDateFrom(t); setDateTo(t) }}
+          style={{
+            flex: 1, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+            background: isToday ? GRAD : '#fff',
+            color: isToday ? '#fff' : TEXT2,
+            border: isToday ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 13, fontWeight: 700,
+            boxShadow: isToday ? '0 2px 10px rgba(141,198,63,0.4)' : '0 1px 4px rgba(0,0,0,0.04)',
+            WebkitTapHighlightColor: 'transparent',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+          }}
+        >
+          <span>Сегодня</span>
+          <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.85 }}>{fmtDate(todayISO())}</span>
+        </button>
+        <button
+          onClick={() => setPickerOpen(true)}
+          style={{
+            flex: 1, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+            background: !isToday ? GRAD : '#fff',
+            color: !isToday ? '#fff' : TEXT2,
+            border: !isToday ? 'none' : `1.5px solid ${BORDER}`,
+            fontSize: 13, fontWeight: 700,
+            boxShadow: !isToday ? '0 2px 10px rgba(141,198,63,0.4)' : '0 1px 4px rgba(0,0,0,0.04)',
+            WebkitTapHighlightColor: 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          {!isToday ? periodLabel : 'Дата'}
+        </button>
       </div>
 
       {loading ? (
@@ -497,7 +525,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           )}
 
           {/* Cancelled card with expandable order list */}
-          <CancelledCard count={stats.cancelled} period={period} />
+          <CancelledCard count={stats.cancelled} dateParams={dateParams} />
 
           {/* Customer classification cards */}
           {((stats.permanent_customers || 0) > 0 || (stats.inactive_customers || 0) > 0) && (
