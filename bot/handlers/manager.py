@@ -175,13 +175,9 @@ def _mgr_order_text(o: dict) -> str:
 
     item_lines = [f"  • {i['product_name']} {i['quantity']} шт." for i in items]
 
-    # Bottle surcharge for unreturned bottles
     surcharge = o.get("bottle_surcharge") or 0
     if surcharge > 0:
-        qty_19l = sum(i["quantity"] for i in items if (i.get("volume") or 0) >= 18.9)
-        missing = max(0, qty_19l - (o.get("return_bottles_count") or 0))
-        if missing > 0:
-            item_lines.append(f"  • Надбавка (невозврат {missing} бут.) +{fmt(surcharge)}")
+        item_lines.append(f"  • Надбавка за невозврат +{fmt(surcharge)}")
 
     items_text = "\n".join(item_lines) if item_lines else "—"
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
