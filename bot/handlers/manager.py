@@ -7,7 +7,7 @@ import services.api_client as api
 from keyboards.manager import (
     manager_menu_kb, mgr_order_kb, mgr_courier_select_kb,
     mgr_stats_period_kb, mgr_client_kb,
-    mgr_order_reject_kb, mgr_topup_presets_kb, mgr_support_chat_kb, mgr_support_quick_kb,
+    mgr_order_reject_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
@@ -27,7 +27,7 @@ STATUS_RU = {
     "rejected": "❌ Отклонён",
 }
 
-PAY_RU = {"cash": "💵 Наличные", "card": "💳 Карта", "balance": "💰 Баланс"}
+PAY_RU = {"cash": "💵 Наличные", "card": "💳 Карта"}
 
 
 def fmt(amount):
@@ -46,11 +46,6 @@ class _IsManagerFilter(Filter):
 
 class MgrReject(StatesGroup):
     waiting_reason = State()
-
-
-class MgrTopup(StatesGroup):
-    waiting_user_id = State()
-    waiting_amount = State()
 
 
 class MgrClientSearch(StatesGroup):
@@ -197,9 +192,6 @@ def _mgr_order_text(o: dict) -> str:
     bonus_used = o.get("bonus_used") or 0
     bonus_part = f"\n🎁 Бонусы: -{fmt(bonus_used)}" if bonus_used > 0 else ""
 
-    balance_used = o.get("balance_used") or 0
-    balance_part = f"\n💰 Баланс: -{fmt(balance_used)}" if balance_used > 0 else ""
-
     return_count = o.get("return_bottles_count") or 0
     return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
 
@@ -215,7 +207,7 @@ def _mgr_order_text(o: dict) -> str:
         lines.append(f"Доп.: {o['extra_info']}")
 
     lines += [f"\nТовары:\n{items_text}"]
-    lines.append(f"\n💵 Итого: {fmt(o['total'])}  |  {pay}{delivery_part}{bonus_part}{balance_part}")
+    lines.append(f"\n💵 Итого: {fmt(o['total'])}  |  {pay}{delivery_part}{bonus_part}")
 
     if return_line:
         lines.append(return_line)
@@ -668,68 +660,10 @@ async def mgr_client_search(message: Message, state: FSMContext):
         text = (
             f"👤 <b>{u.get('name', '—')}</b>\n"
             f"Телефон: {u.get('phone', '—')}\n"
-            f"Баланс: {fmt(u.get('balance', 0))}\n"
             f"Бонусы: {fmt(u.get('bonus_points', 0))}"
         )
         await message.answer(text, reply_markup=mgr_client_kb(u["id"], u.get("telegram_id")),
                              parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("mgr:topup:"))
-async def mgr_topup_start(call: CallbackQuery, state: FSMContext):
-    if not await is_manager(call.from_user.id):
-        return
-    user_id = int(call.data.split(":")[2])
-    await state.update_data(topup_user_id=user_id)
-    await call.message.answer(
-        f"Выберите сумму пополнения для клиента ID {user_id}:",
-        reply_markup=mgr_topup_presets_kb(user_id),
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgr:tp_p:"))
-async def mgr_topup_preset(call: CallbackQuery, state: FSMContext):
-    if not await is_manager(call.from_user.id):
-        return
-    parts = call.data.split(":")
-    user_id, amount = int(parts[2]), int(parts[3])
-    result = await api.topup_user(user_id, amount)
-    new_balance = result.get("new_balance", 0)
-    await call.message.edit_text(
-        f"✅ Баланс пополнен на {fmt(amount)}.\nНовый баланс: {fmt(new_balance)}"
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("mgr:topup_manual:"))
-async def mgr_topup_manual(call: CallbackQuery, state: FSMContext):
-    if not await is_manager(call.from_user.id):
-        return
-    user_id = int(call.data.split(":")[2])
-    await state.update_data(topup_user_id=user_id)
-    await state.set_state(MgrTopup.waiting_amount)
-    await call.message.answer(f"Введите сумму пополнения для клиента ID {user_id}:")
-    await call.answer()
-
-
-@router.message(MgrTopup.waiting_amount)
-async def mgr_topup_amount(message: Message, state: FSMContext):
-    if not await is_manager(message.from_user.id):
-        return
-    text = message.text.strip().replace(" ", "")
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("Введите корректную сумму.")
-        return
-    amount = int(text)
-    data = await state.get_data()
-    user_id = data["topup_user_id"]
-    result = await api.topup_user(user_id, amount)
-    await state.clear()
-    new_balance = result.get("new_balance", 0)
-    await message.answer(
-        f"✅ Баланс пополнен на {fmt(amount)}.\nНовый баланс: {fmt(new_balance)}"
-    )
 
 
 @router.callback_query(F.data.startswith("mgr:msg_client:"))
@@ -1098,7 +1032,6 @@ async def mgr_co_phone(message: Message, state: FSMContext):
     await state.set_state(MgrOrderCreate.choosing_product)
 
     if client:
-        balance_line = f"\n  💰 Баланс: {fmt(client['balance'])}" if client.get("balance", 0) else ""
         bonus_line = f"\n  🎁 Бонусы: {fmt(client['bonus_points'])}" if client.get("bonus_points", 0) else ""
         orders_line = f"\n  📦 Заказов: {client.get('order_count', '—')}" if client.get("order_count") is not None else ""
         bottles_owed = client.get('bottles_owed', 0)
@@ -1115,7 +1048,7 @@ async def mgr_co_phone(message: Message, state: FSMContext):
             f"✅ <b>Клиент найден</b>\n"
             f"  👤 {client.get('name', '—')}\n"
             f"  📞 {client.get('phone', phone)}"
-            f"{balance_line}{bonus_line}{orders_line}{bottle_line}"
+            f"{bonus_line}{orders_line}{bottle_line}"
         )
     else:
         info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"

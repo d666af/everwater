@@ -79,7 +79,7 @@ export const MOCK_ORDERS = [
     delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
     total: 50000, recipient_phone: '+998 90 123-45-67',
     client_name: 'Алишер Каримов', client_telegram_id: '987654321',
-    payment_method: 'balance', payment_confirmed: true,
+    payment_method: 'cash', payment_confirmed: true,
     courier_id: 1, courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
     items: [{ id: 1, product_name: 'Вода 20л', quantity: 2, price: 25000 }],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 0, bottles_owed: 2,
@@ -121,7 +121,7 @@ export const MOCK_ORDERS = [
     delivery_date: 'Сегодня', delivery_period: 'После обеда (13:00–18:00)',
     total: 33000, recipient_phone: '+998 91 777-88-99',
     client_name: 'Санжар Тоиров', client_telegram_id: '444888333',
-    payment_method: 'balance', payment_confirmed: true,
+    payment_method: 'cash', payment_confirmed: true,
     courier_id: 1, courier_name: 'Жавлон К.', courier_phone: '+998 91 222-33-44',
     latitude: 41.312345, longitude: 69.278901,
     items: [
@@ -136,21 +136,11 @@ export const MOCK_ORDERS = [
     delivery_date: 'Сегодня', delivery_period: 'После обеда (13:00–18:00)',
     total: 25000, recipient_phone: '+998 95 333-44-55',
     client_name: 'Дилшод Умаров', client_telegram_id: '666777888',
-    payment_method: 'balance', payment_confirmed: true,
+    payment_method: 'cash', payment_confirmed: true,
     items: [{ id: 5, product_name: 'Вода 20л', quantity: 1, price: 25000 }],
     bottle_discount: 0, bonus_used: 500, return_bottles_count: 0, bottles_owed: 0,
     latitude: 41.2253, longitude: 69.2284,
     created_at: '2026-04-06T10:20:00',
-  },
-  // Topup awaiting confirmation
-  {
-    id: 2001, type: 'topup', status: 'awaiting_confirmation',
-    client_name: 'Мария Петрова', client_telegram_id: '123456789',
-    recipient_phone: '+998 93 456-78-90',
-    total: 50000,
-    payment_method: 'card', payment_confirmed: false,
-    payment_details: { card_last4: '9012', paid_at: '2026-04-06T10:45:00', amount: 50000 },
-    created_at: '2026-04-06T10:45:00',
   },
   // Subscription delivery for today
   {
@@ -159,7 +149,7 @@ export const MOCK_ORDERS = [
     delivery_date: 'Сегодня', delivery_period: 'До обеда (9:00–13:00)',
     total: 50000, recipient_phone: '+998 90 123-45-67',
     client_name: 'Алишер Каримов', client_telegram_id: '987654321',
-    payment_method: 'balance', payment_confirmed: true,
+    payment_method: 'cash', payment_confirmed: true,
     items: [{ id: 1, product_name: 'Вода 20л', quantity: 2, price: 25000 }],
     bottle_discount: 0, bonus_used: 0, return_bottles_count: 0, bottles_owed: 2,
     latitude: 41.3547, longitude: 69.2848,
@@ -221,11 +211,9 @@ export const MOCK_SETTINGS = {
 
 export const MOCK_NOTIFICATIONS = [
   { id: 1, type: 'payment', title: 'Оплата заказа #1003', body: 'Клиент Алишер подтвердил оплату заказа на 75 000 сум', time: new Date(Date.now() - 3 * 60000), read: false, order_id: 1003, user_name: 'Алишер Каримов' },
-  { id: 2, type: 'topup', title: 'Запрос пополнения баланса', body: 'Мария Петрова запросила пополнение на 50 000 сум', time: new Date(Date.now() - 12 * 60000), read: false, amount: 50000, user_name: 'Мария Петрова', user_id: 2 },
   { id: 3, type: 'payment', title: 'Оплата заказа #1005', body: 'Клиент Бобур подтвердил оплату заказа на 39 000 сум', time: new Date(Date.now() - 25 * 60000), read: false, order_id: 1005, user_name: 'Бобур Рашидов' },
   { id: 4, type: 'courier', title: 'Заказ #1002 доставлен', body: 'Курьер Жавлон завершил доставку заказа #1002', time: new Date(Date.now() - 40 * 60000), read: true, order_id: 1002 },
   { id: 5, type: 'new_order', title: 'Новый заказ #1006', body: 'Поступил новый заказ на 25 000 сум', time: new Date(Date.now() - 65 * 60000), read: true, order_id: 1006, user_name: 'Санжар Тоиров' },
-  { id: 6, type: 'topup', title: 'Запрос пополнения баланса', body: 'Алишер Каримов запросил пополнение на 100 000 сум', time: new Date(Date.now() - 2 * 3600000), read: true, amount: 100000, user_name: 'Алишер Каримов', user_id: 1 },
 ]
 
 export const MOCK_SUPPORT_CHATS = [
@@ -268,7 +256,6 @@ export const MOCK_CLIENT_DETAILS = {
     ],
     transactions: [
       { id: 1, type: 'payment', amount: -50000, date: '2026-03-28T14:30:00', order_id: 1001, desc: 'Оплата заказа #1001' },
-      { id: 2, type: 'topup', amount: 100000, date: '2026-03-25T10:00:00', desc: 'Пополнение баланса' },
       { id: 3, type: 'cashback', amount: 2500, date: '2026-03-23T16:00:00', order_id: 998, desc: 'Кэшбэк 5% за заказ #998' },
       { id: 4, type: 'payment', amount: -75000, date: '2026-03-20T12:15:00', order_id: 998, desc: 'Оплата заказа #998' },
       { id: 5, type: 'bonus_used', amount: -500, date: '2026-03-18T09:00:00', order_id: 995, desc: 'Списание бонусов' },
@@ -288,7 +275,6 @@ export const MOCK_CLIENT_DETAILS = {
     ],
     transactions: [
       { id: 1, type: 'payment', amount: -39000, date: '2026-03-26T11:00:00', order_id: 1002, desc: 'Оплата заказа #1002' },
-      { id: 2, type: 'topup', amount: 50000, date: '2026-03-20T14:00:00', desc: 'Пополнение баланса' },
     ],
     subscriptions: [],
     addresses: [
@@ -364,9 +350,9 @@ export const MOCK_WAREHOUSE = {
 
 // Demo users for login (phone → role)
 export const DEMO_USERS = {
-  '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, balance: 50000, order_count: 7 },
-  '+998 90 000-00-02': { id: 2, name: 'Администратор',   phone: '+998 90 000-00-02', role: 'admin',   bonus_points: 0,    balance: 0 },
-  '+998 90 000-00-03': { id: 3, name: 'Менеджер',        phone: '+998 90 000-00-03', role: 'manager', bonus_points: 0,    balance: 0 },
-  '+998 90 000-00-04': { id: 4, name: 'Жавлон Курьер',   phone: '+998 90 000-00-04', role: 'courier', bonus_points: 0,    balance: 0 },
-  '+998 90 000-00-05': { id: 5, name: 'Завсклад',        phone: '+998 90 000-00-05', role: 'warehouse', bonus_points: 0,  balance: 0 },
+  '+998 90 000-00-01': { id: 1, name: 'Алишер Каримов',  phone: '+998 90 000-00-01', role: 'client',  bonus_points: 3500, order_count: 7 },
+  '+998 90 000-00-02': { id: 2, name: 'Администратор',   phone: '+998 90 000-00-02', role: 'admin',   bonus_points: 0 },
+  '+998 90 000-00-03': { id: 3, name: 'Менеджер',        phone: '+998 90 000-00-03', role: 'manager', bonus_points: 0 },
+  '+998 90 000-00-04': { id: 4, name: 'Жавлон Курьер',   phone: '+998 90 000-00-04', role: 'courier', bonus_points: 0 },
+  '+998 90 000-00-05': { id: 5, name: 'Завсклад',        phone: '+998 90 000-00-05', role: 'warehouse', bonus_points: 0 },
 }

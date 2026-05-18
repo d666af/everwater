@@ -73,7 +73,7 @@ class SubscriptionBody(BaseModel):
     phone: str | None = None
     day: str | None = None
     time_slot: str | None = Field(default=None, alias="time")
-    payment_method: str = "balance"
+    payment_method: str = "cash"
     latitude: float | None = None
     longitude: float | None = None
 
@@ -126,7 +126,7 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
     u = user_q.scalar_one_or_none()
     client_name = u.name if u else str(user_id)
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
-    pay_label = {"cash": "Наличные", "card": "Карта", "balance": "Баланс"}
+    pay_label = {"cash": "Наличные", "card": "Карта"}
     plan_name = plan_label.get(body.plan, body.plan)
     total_str = f"\nСумма: {int(body.total):,} сум" if body.total > 0 else ""
     text = (

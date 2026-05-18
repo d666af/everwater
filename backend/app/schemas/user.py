@@ -11,7 +11,6 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     name: str | None = None
     phone: str | None = None
-    balance: float | None = None
     bonus_points: float | None = None
     site_password: str | None = None
 
@@ -22,7 +21,6 @@ class UserOut(BaseModel):
     name: str | None
     phone: str | None
     is_registered: bool
-    balance: float
     bonus_points: float
     created_at: datetime
 

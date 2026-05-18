@@ -20,7 +20,6 @@ class OrderCreate(BaseModel):
     return_bottles_volume: float = 0.0
     items: list[OrderItemCreate]
     bonus_used: float = 0.0
-    balance_used: float = 0.0
     payment_method: str = "cash"
     bottle_discount: float | None = None  # legacy clients
     bottle_surcharge: float | None = None
@@ -56,7 +55,6 @@ class OrderOut(BaseModel):
     subtotal: float
     total: float
     bonus_used: float
-    balance_used: float
     payment_method: str
     cash_collected: bool
     rejection_reason: str | None

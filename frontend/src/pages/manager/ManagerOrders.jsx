@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmTopupRequest, rejectTopupRequest, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
+import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useAuthStore } from '../../store/auth'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
@@ -20,10 +20,10 @@ const STAGES = [
 
 function getStage(order) {
   if (order.status === 'rejected') return 'cancelled'
-  if (order.type === 'topup' || order.type === 'subscription') {
+  if (order.type === 'subscription') {
     if (!order.payment_confirmed) return 'new'
-    if (order.type === 'subscription' && !order.courier_id) return 'new'
-    if (order.type === 'subscription' && (order.status === 'in_delivery' || order.status === 'assigned_to_courier')) return 'delivery'
+    if (!order.courier_id) return 'new'
+    if (order.status === 'in_delivery' || order.status === 'assigned_to_courier') return 'delivery'
     return 'done'
   }
   if (order.status === 'awaiting_confirmation' || order.status === 'confirmed') return 'new'
@@ -271,7 +271,7 @@ function OrderCard({
   const [phoneModal, setPhoneModal] = useState(null)
 
   const stageLabel = {
-    new: (order.type === 'topup' || order.type === 'subscription') && !order.payment_confirmed
+    new: order.type === 'subscription' && !order.payment_confirmed
       ? 'Проверка оплаты'
       : 'Новый',
     delivery: order.status === 'in_delivery' ? 'В пути' : 'Курьер назначен',
@@ -293,7 +293,7 @@ function OrderCard({
     cancelled: '#E03131',
   }[orderStage] || TEXT2
 
-  const typeLabel = order.type === 'topup' ? 'Пополнение' : order.type === 'subscription' ? 'Подписка' : 'Заказ'
+  const typeLabel = order.type === 'subscription' ? 'Подписка' : 'Заказ'
 
   return (
     <div style={{
@@ -313,9 +313,6 @@ function OrderCard({
               )}
               {order.payment_method === 'card' && (
                 <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>Карта</span>
-              )}
-              {order.payment_method === 'balance' && (
-                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#F8F9FA', color: TEXT2 }}>Баланс</span>
               )}
             </div>
             {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
@@ -337,7 +334,7 @@ function OrderCard({
 
           {/* ─── NEW STAGE (merged payment + assign) ─── */}
           {orderStage === 'new' && (<>
-            {(order.type === 'topup' || order.type === 'subscription') && !order.payment_confirmed ? (<>
+            {order.type === 'subscription' && !order.payment_confirmed ? (<>
               <PaymentBlock order={order} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ background: `${C}10`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -348,13 +345,11 @@ function OrderCard({
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button style={st.btnPrimary} disabled={actionLoading} onClick={() =>
-                    act(() => order.type === 'topup' ? confirmTopupRequest(order.id) : confirmSubscription(order.id))}>
+                  <button style={st.btnPrimary} disabled={actionLoading} onClick={() => act(() => confirmSubscription(order.id))}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     Оплата получена
                   </button>
-                  <button style={st.btnDanger} disabled={actionLoading} onClick={() =>
-                    order.type === 'topup' ? act(() => rejectTopupRequest(order.id)) : act(() => rejectSubscription(order.id))}>
+                  <button style={st.btnDanger} disabled={actionLoading} onClick={() => act(() => rejectSubscription(order.id))}>
                     Отклонить
                   </button>
                 </div>
@@ -553,7 +548,7 @@ function DeliveryBlock({ order }) {
   )
 }
 
-const PAY_LABEL = { cash: 'Наличными курьеру', card: 'Карта', balance: 'Баланс' }
+const PAY_LABEL = { cash: 'Наличными курьеру', card: 'Карта' }
 
 function PaymentBlock({ order }) {
   return (
@@ -565,7 +560,6 @@ function PaymentBlock({ order }) {
         <Row k="Сумма" v={`${(order.payment_details.amount || 0).toLocaleString()} сум`} />
         <Row k="Статус" v={order.payment_confirmed ? 'Подтверждена' : 'Ожидает проверки'} accent={order.payment_confirmed ? '#2B8A3E' : CD} />
       </>)}
-      {order.payment_method === 'balance' && <Row k="Статус" v="Списано с баланса" accent="#2B8A3E" />}
       {order.bonus_used > 0 && <Row k="Бонусы" v={`-${order.bonus_used} бон.`} />}
       {order.bottle_discount > 0 && <Row k="Скидка" v={`-${(order.bottle_discount).toLocaleString()} сум`} />}
       {(order.delivery_fee || 0) > 0 && <Row k="Доставка" v={`+${(order.delivery_fee).toLocaleString()} сум`} accent="#1971C2" />}

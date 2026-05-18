@@ -56,7 +56,6 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
     name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or ""
     phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or ""
     uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None)
-    balance = float(user.balance) if user else 0.0
     bonus = float(user.bonus_points) if user else 0.0
     is_reg = user.is_registered if user else True
 
@@ -67,7 +66,6 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
         "phone": phone,
         "role": primary_role,
         "roles": all_roles,
-        "balance": balance,
         "bonus_points": bonus,
         "is_registered": is_reg,
     }

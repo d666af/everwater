@@ -913,29 +913,6 @@ const s = {
   profileName: { fontSize: 20, fontWeight: 700, color: '#1a1a1a' },
   profilePhone: { fontSize: 14, color: '#8e8e93' },
 
-  /* Balance */
-  balanceCard: {
-    background: GRAD, margin: '0 16px',
-    borderRadius: 18, padding: '16px 16px',
-    boxShadow: '0 4px 16px rgba(100,160,30,0.3)',
-  },
-  balanceTop: {
-    display: 'flex', alignItems: 'center', gap: 12,
-  },
-  balanceIconWrap: {
-    width: 42, height: 42, borderRadius: 14,
-    background: 'rgba(255,255,255,0.2)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  balanceLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600 },
-  balanceAmount: { fontSize: 22, fontWeight: 800, color: '#fff' },
-  balanceCurrency: { fontSize: 14, fontWeight: 400, color: 'rgba(255,255,255,0.6)' },
-  topupBtn: {
-    background: 'rgba(255,255,255,0.22)', color: '#fff', border: 'none', borderRadius: 12,
-    padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-  },
-
   /* Bonus */
   bonusCard: {
     background: '#fff', margin: '0 16px',

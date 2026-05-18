@@ -64,7 +64,6 @@ def mgr_stats_period_kb() -> InlineKeyboardMarkup:
 
 def mgr_client_kb(user_id: int, tg_id: int | None) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data=f"mgr:topup:{user_id}")],
         [InlineKeyboardButton(text="📦 Заказы клиента", callback_data=f"mgr:client_orders:{user_id}")],
         [InlineKeyboardButton(text="💳 Транзакции", callback_data=f"mgr:client_tx:{user_id}")],
         [InlineKeyboardButton(text="📋 Подписки", callback_data=f"mgr:client_subs:{user_id}")],
@@ -74,20 +73,6 @@ def mgr_client_kb(user_id: int, tg_id: int | None) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="✉️ Написать клиенту", callback_data=f"mgr:msg_client:{tg_id}")])
     rows.append([InlineKeyboardButton(text="🌐 Клиент на сайте", url=_site("/manager/clients"))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def mgr_topup_presets_kb(user_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="5 000", callback_data=f"mgr:tp_p:{user_id}:5000"),
-            InlineKeyboardButton(text="10 000", callback_data=f"mgr:tp_p:{user_id}:10000"),
-        ],
-        [
-            InlineKeyboardButton(text="25 000", callback_data=f"mgr:tp_p:{user_id}:25000"),
-            InlineKeyboardButton(text="50 000", callback_data=f"mgr:tp_p:{user_id}:50000"),
-        ],
-        [InlineKeyboardButton(text="✏️ Другая сумма", callback_data=f"mgr:topup:{user_id}")],
-    ])
 
 
 

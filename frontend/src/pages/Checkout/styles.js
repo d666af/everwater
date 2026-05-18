@@ -124,12 +124,6 @@ const s = {
   },
   payMethodLabel: { fontSize: 15, fontWeight: 600 },
 
-  // Balance note
-  balanceNote: {
-    background: `${C}10`, borderRadius: 14, padding: '12px 14px',
-    display: 'flex', alignItems: 'center', gap: 8,
-  },
-
   // Total
   totalSection: {
     padding: '8px 16px 8px',

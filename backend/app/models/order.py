@@ -51,7 +51,7 @@ class Order(Base):
     balance_used: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Payment
-    payment_method: Mapped[str] = mapped_column(String(32), default="cash")  # cash | card | balance | balance_card
+    payment_method: Mapped[str] = mapped_column(String(32), default="cash")  # cash | card
     cash_collected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Delivery fee
