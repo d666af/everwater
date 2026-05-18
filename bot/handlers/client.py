@@ -1132,14 +1132,39 @@ async def _ask_bonus(message: Message, state: FSMContext):
             await state.update_data(co_bonus=0)
             await _ask_payment(message, state)
             return
+
+        # Compute the actual cap: min(balance, total * limit_pct, total)
+        cart = data.get("cart", {})
+        subtotal = sum(item["price"] * item["qty"] for item in cart.values())
+        co_qty_20l = data.get("co_qty_20l", 0)
+        co_return = data.get("co_return", 0)
+        co_surcharge = int(data.get("co_surcharge") or 0)
+        bottle_surcharge_total = max(0, co_qty_20l - co_return) * co_surcharge
+        pre_total = subtotal + bottle_surcharge_total
+        bonus_limit_pct = float(cfg.get("bonus_limit_percent") or 30) / 100
+        max_bonus = int(min(bonus, pre_total, pre_total * bonus_limit_pct))
+        max_bonus = max(0, max_bonus)
+
+        if max_bonus < 1:
+            await state.update_data(co_bonus=0)
+            await _ask_payment(message, state)
+            return
+
         await state.set_state(CheckoutState.asking_bonus)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=f"Использовать {fmt(bonus)}", callback_data=f"ub:{int(bonus)}"),
+            InlineKeyboardButton(text=f"Использовать {fmt(max_bonus)}", callback_data=f"ub:{max_bonus}"),
             InlineKeyboardButton(text="Не использовать", callback_data="ub:0"),
         ]])
+        limit_note = (
+            f"\n⚠️ Лимит: не более {int(bonus_limit_pct * 100)}% от суммы заказа."
+            if bonus > max_bonus else ""
+        )
         await message.answer(
-            f"У вас {fmt(bonus)} бонусных баллов. Использовать при оплате?",
+            f"💎 У вас <b>{fmt(int(bonus))}</b> бонусных баллов.\n"
+            f"Можно применить скидку: <b>{fmt(max_bonus)} сум</b>{limit_note}\n\n"
+            f"Использовать при оплате?",
             reply_markup=kb,
+            parse_mode="HTML",
         )
     else:
         await state.update_data(co_bonus=0)
@@ -1219,14 +1244,27 @@ async def _show_summary(message: Message, state: FSMContext):
 
     geo = "✅ указана" if data.get("co_lat") else "—"
     grand_total = total + bottle_surcharge_total
+    co_bonus = int(data.get("co_bonus", 0))
+    bonus_discount = min(co_bonus, grand_total)
+    after_bonus = max(0, grand_total - bonus_discount)
+    final_total = after_bonus + delivery_fee
     if delivery_fee > 0:
+        lines.append(f"\nТовары: {fmt(grand_total)}")
+        if bonus_discount > 0:
+            lines.append(f"💎 Бонусы: −{fmt(bonus_discount)}")
         lines += [
-            f"\nТовары: {fmt(grand_total)}",
             f"Доставка: +{fmt(delivery_fee)}",
-            f"<b>Итого: {fmt(grand_total + delivery_fee)}</b>",
+            f"<b>Итого: {fmt(final_total)}</b>",
         ]
     else:
-        lines.append(f"\nСумма: {fmt(grand_total)}")
+        if bonus_discount > 0:
+            lines += [
+                f"\nТовары: {fmt(grand_total)}",
+                f"💎 Бонусы: −{fmt(bonus_discount)}",
+                f"<b>Итого: {fmt(after_bonus)}</b>",
+            ]
+        else:
+            lines.append(f"\n<b>Итого: {fmt(grand_total)}</b>")
     lines.append(f"Адрес: {data.get('co_address', '—')}")
     if data.get("co_extra"):
         lines.append(f"Ориентир: {data['co_extra']}")
@@ -1235,8 +1273,6 @@ async def _show_summary(message: Message, state: FSMContext):
         f"Телефон: {data.get('co_phone', '—')}",
         f"Оплата: {pay_labels.get(data.get('co_pay', ''), '—')}",
     ]
-    if data.get("co_bonus", 0) > 0:
-        lines.append(f"Бонусы: −{fmt(data['co_bonus'])}")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Подтвердить", callback_data="co_confirm")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="co_cancel")],
@@ -1306,12 +1342,16 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
     if pay_method != "card":
         from keyboards.admin import order_confirm_kb
         cart_info = _cart_summary(cart)
+        order_bonus_used = float(order.get("bonus_used") or 0)
+        order_total = float(order.get("total") or 0)
+        bonus_line = f"\n💎 Бонусы: −{fmt(int(order_bonus_used))}" if order_bonus_used > 0 else ""
         notification_text = (
             f"🆕 Новый заказ!\n"
             f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
             f"Адрес: {addr}\n"
             f"Заказ: {cart_info}\n"
-            f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}"
+            f"Оплата: {PAY_LABELS.get(pay_method, pay_method)}\n"
+            f"Итого: {fmt(int(order_total))}{bonus_line}"
         )
         sent_msgs = []
         seen_tg: set[int] = set()
