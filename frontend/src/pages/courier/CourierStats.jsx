@@ -105,6 +105,14 @@ export default function CourierStats() {
 
   const deliveryRows  = (report?.orders || []).filter(o => payFilter === 'all' || o.payment_method === payFilter)
   const deliveryTotal = deliveryRows.reduce((s, o) => s + (o.total || 0), 0)
+  const deliveryItemTotals = deliveryRows.reduce((acc, o) => {
+    (o.items || []).forEach(it => { acc[it.name] = (acc[it.name] || 0) + it.quantity })
+    return acc
+  }, {})
+
+  const reservedItems = (stats?.reserved_items || []).filter(i => (i.reserved || 0) > 0 || (i.available || 0) > 0)
+  const hasReserved   = reservedItems.some(i => i.reserved > 0)
+
   const waterEntries  = Object.entries(water).filter(([, v]) => v > 0)
   const waterTotal    = waterEntries.reduce((s, [, v]) => s + v, 0)
   const hasWarehouse  = (report?.warehouse_received?.length || 0) > 0
@@ -263,20 +271,53 @@ export default function CourierStats() {
           </div>
 
           {/* ── 6. Water on hand ── */}
-          {waterEntries.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, padding: '12px 16px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Товары на руках</div>
+          {(waterEntries.length > 0 || reservedItems.length > 0) && (() => {
+            // Merge water (available) with reserved_items
+            const nameSet = new Set([...waterEntries.map(([n]) => n), ...reservedItems.map(i => i.name)])
+            const waterMap = Object.fromEntries(waterEntries)
+            const reservedMap = Object.fromEntries(reservedItems.map(i => [i.name, i.reserved || 0]))
+            const merged = [...nameSet].map(name => ({
+              name,
+              available: waterMap[name] || 0,
+              reserved: reservedMap[name] || 0,
+              total: (waterMap[name] || 0) + (reservedMap[name] || 0),
+            })).filter(r => r.total > 0)
+            const grandTotal = merged.reduce((s, r) => s + r.total, 0)
+            return (
+              <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, marginBottom: 10, padding: '12px 16px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Товары на руках</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {merged.map((r, i) => (
+                    <div key={r.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < merged.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                      <div>
+                        <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>{r.name}</span>
+                        {r.reserved > 0 && (
+                          <span style={{ fontSize: 11, color: '#E67700', fontWeight: 600, marginLeft: 6, background: 'rgba(230,119,0,0.1)', borderRadius: 5, padding: '1px 6px' }}>{r.reserved} бронь</span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: CD }}>{r.total} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, marginTop: 2, borderTop: `1px solid ${BORDER}` }}>
+                  <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Итого</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: C }}>{grandTotal} шт.</span>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* ── 6b. Reserved for orders ── */}
+          {hasReserved && (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1.5px solid rgba(230,119,0,0.3)`, borderLeft: '3px solid #E67700', marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Забронировано для заказов</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {waterEntries.map(([name, qty], i) => (
-                  <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < waterEntries.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-                    <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>{name}</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: CD }}>{qty} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
+                {reservedItems.filter(i => i.reserved > 0).map((r, i, arr) => (
+                  <div key={r.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                    <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>{r.name}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#E67700' }}>{r.reserved} <span style={{ fontSize: 11, fontWeight: 500, color: TEXT2 }}>шт.</span></span>
                   </div>
                 ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, marginTop: 2, borderTop: `1px solid ${BORDER}` }}>
-                <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Итого</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: C }}>{waterTotal} шт.</span>
               </div>
             </div>
           )}
@@ -364,29 +405,52 @@ export default function CourierStats() {
                     const dt = o.delivered_at_iso ? new Date(o.delivered_at_iso) : null
                     const timeStr = dt ? dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : (o.delivered_at || '').slice(-5)
                     const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : (o.delivered_at || '').slice(0, 6)
+                    const orderItems = (o.items || []).filter(it => it.quantity > 0)
                     return (
-                      <div key={o.order_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: i < deliveryRows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-                        {/* Payment icon */}
-                        <div style={{ flexShrink: 0, color: TEXT2 }}>
-                          {isCash
-                            ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 7v10M9 9.5C9 8.12 10.34 7 12 7s3 1.12 3 2.5S13.66 12 12 12s-3 1.12-3 2.5S10.34 17 12 17s3-1.12 3-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/></svg>
-                            : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M6 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                          }
+                      <div key={o.order_id} style={{ padding: '11px 0', borderBottom: i < deliveryRows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ flexShrink: 0, color: TEXT2 }}>
+                            {isCash
+                              ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 7v10M9 9.5C9 8.12 10.34 7 12 7s3 1.12 3 2.5S13.66 12 12 12s-3 1.12-3 2.5S10.34 17 12 17s3-1.12 3-2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5"/></svg>
+                              : <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M2 10h20M6 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            }
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
+                            <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{dateStr} · {timeStr} · {isCash ? 'Наличные' : 'Карта'}</div>
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, flexShrink: 0 }}>
+                            {Number(o.total).toLocaleString()} сум
+                          </div>
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.address}</div>
-                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{dateStr} · {timeStr} · {isCash ? 'Наличные' : 'Карта'}</div>
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, flexShrink: 0 }}>
-                          {Number(o.total).toLocaleString()} сум
-                        </div>
+                        {orderItems.length > 0 && (
+                          <div style={{ marginTop: 6, paddingLeft: 27, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {orderItems.map((it, j) => (
+                              <div key={j} style={{ fontSize: 12, color: TEXT2, display: 'flex', gap: 4 }}>
+                                <span style={{ color: '#E03131', fontWeight: 700 }}>−{it.quantity} шт.</span>
+                                <span>{it.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 0' }}>
-                  <span style={{ fontSize: 12, color: TEXT2 }}>{deliveryRows.length} {plural(deliveryRows.length, 'доставка', 'доставки', 'доставок')}</span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{Number(Math.round(deliveryTotal)).toLocaleString()} сум</span>
+                <div style={{ padding: '10px 16px 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: Object.keys(deliveryItemTotals).length > 0 ? 6 : 0 }}>
+                    <span style={{ fontSize: 12, color: TEXT2 }}>{deliveryRows.length} {plural(deliveryRows.length, 'доставка', 'доставки', 'доставок')}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{Number(Math.round(deliveryTotal)).toLocaleString()} сум</span>
+                  </div>
+                  {Object.keys(deliveryItemTotals).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {Object.entries(deliveryItemTotals).map(([name, qty]) => (
+                        <div key={name} style={{ fontSize: 11, color: TEXT2, background: '#F2F2F7', borderRadius: 7, padding: '3px 8px' }}>
+                          <span style={{ color: '#E03131', fontWeight: 700 }}>−{qty}</span> {name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}

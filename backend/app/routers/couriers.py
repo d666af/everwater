@@ -137,6 +137,20 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     bottle_debt_value = bottles_must_return * float(bottle_surcharge_val)
 
     return {
+    # Inventory: available + reserved per product
+    water_q = await db.execute(
+        select(CourierWater, Product.name)
+        .join(Product, Product.id == CourierWater.product_id)
+        .where(CourierWater.courier_id == courier.id)
+    )
+    reserved_items = []
+    for w, pname in water_q.all():
+        res = int(w.reserved or 0)
+        avail = int(w.quantity or 0)
+        if res > 0 or avail > 0:
+            reserved_items.append({"name": pname, "reserved": res, "available": avail})
+
+    return {
         "courier_id": courier.id,
         "name": courier.name,
         "vehicle_type": courier.vehicle_type,
@@ -153,6 +167,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
         "active_orders": active_orders,
         "bottles_must_return": bottles_must_return,
         "bottle_debt_value": round(bottle_debt_value, 2),
+        "reserved_items": reserved_items,
     }
 
 
@@ -799,6 +814,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
 
+    # Reserve inventory for courier-assigned orders
+    if order.courier_id:
+        from app.routers.orders import _reserve_inventory
+        await _reserve_inventory(order, db)
     await db.commit()
 
     oid = order.id

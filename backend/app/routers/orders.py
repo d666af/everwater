@@ -152,6 +152,49 @@ async def _notify_low_stock_if_needed(
     await _send_shortage_notification(db, shortage_lines, order_id, extra_chat_ids)
 
 
+async def _reserve_inventory(order, db: AsyncSession):
+    """Move order items from courier's available quantity → reserved."""
+    from app.models.warehouse import CourierWater
+    if not order.courier_id or not order.items:
+        return
+    for item in order.items:
+        if not item.product_id or not item.quantity:
+            continue
+        row_q = await db.execute(
+            select(CourierWater).where(
+                CourierWater.courier_id == order.courier_id,
+                CourierWater.product_id == item.product_id,
+            )
+        )
+        row = row_q.scalar_one_or_none()
+        if row:
+            qty = min(item.quantity, max(0, row.quantity))
+            row.quantity = max(0, row.quantity - qty)
+            row.reserved = (row.reserved or 0) + qty
+
+
+async def _release_inventory(order, db: AsyncSession, consume: bool = False):
+    """Move reserved items back to available (cancel) or simply remove them (deliver)."""
+    from app.models.warehouse import CourierWater
+    if not order.courier_id or not order.items:
+        return
+    for item in order.items:
+        if not item.product_id or not item.quantity:
+            continue
+        row_q = await db.execute(
+            select(CourierWater).where(
+                CourierWater.courier_id == order.courier_id,
+                CourierWater.product_id == item.product_id,
+            )
+        )
+        row = row_q.scalar_one_or_none()
+        if row:
+            qty = min(item.quantity, max(0, row.reserved or 0))
+            row.reserved = max(0, (row.reserved or 0) - qty)
+            if not consume:
+                row.quantity = (row.quantity or 0) + qty
+
+
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
     """LEGACY: pre-surcharge discount calc, kept for compat."""
     if count <= 0:
@@ -381,6 +424,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
         raise HTTPException(status_code=409, detail="Order already rejected")
 
     msg_ids_json = order.notification_msg_ids
+    was_assigned = order.courier_id is not None
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
 
@@ -389,6 +433,8 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     items = _order_items_text(order.items)
     oid = order.id
 
+    if was_assigned:
+        await _release_inventory(order, db, consume=False)
     await db.commit()
 
     from app.services.tg_notify import edit_all_notifications
@@ -524,6 +570,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
             if admin_user and admin_user.phone:
                 order.manager_phone = admin_user.phone
 
+    await _reserve_inventory(order, db)
     await db.commit()
 
     if not from_bot:
@@ -635,7 +682,7 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             if courier:
                 courier.total_deliveries += 1
 
-
+        await _release_inventory(order, db, consume=True)
         await db.commit()
 
     if not from_bot and not already_delivered:
@@ -949,6 +996,8 @@ async def confirm_cancellation(order_id: int, db: AsyncSession = Depends(get_db)
             user.bonus_points = max(0.0, user.bonus_points - penalty)
             order.cancellation_penalty = penalty
 
+    if courier_was_assigned:
+        await _release_inventory(order, db, consume=False)
     order.status = OrderStatus.REJECTED
 
     await db.commit()
