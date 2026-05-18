@@ -710,22 +710,17 @@ function CreateOrderModal({ onClose, onSave }) {
     return n
   })
 
-  // 19L deposit products ordered
   const deposit19L = products.filter(p => p.has_bottle_deposit)
   const qty19L = deposit19L.reduce((s, p) => s + (selected[p.id] || 0), 0)
-  const hasDeposit = qty19L > 0
 
-  // Bottle return constraints
+  // Auto-set return to match 19L qty when products change
+  useEffect(() => { setReturnBottles(qty19L) }, [qty19L])
+
   const availReturn = client?.available_bottles ?? 0
-  const maxReturn = Math.min(qty19L, availReturn)
-  const clampedReturn = Math.min(returnBottles, maxReturn)
-
-  // Bottle surcharge for bottles not returned
   const surchargePerBottle = deposit19L.find(p => p.bottle_surcharge > 0)?.bottle_surcharge || 0
-  const missingBottles = Math.max(0, qty19L - clampedReturn)
-  const bottleSurcharge = missingBottles * surchargePerBottle
+  const missingBottles = Math.max(0, qty19L - returnBottles)
+  const bottleSurcharge = missingBottles > 0 ? missingBottles * surchargePerBottle : 0
 
-  // Product subtotal (always at p.price)
   const subtotal = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
     return sum + (p ? p.price * qty : 0)
@@ -739,7 +734,7 @@ function CreateOrderModal({ onClose, onSave }) {
       return p ? { product_id: p.id, quantity: qty, price: p.price } : null
     }).filter(Boolean)
 
-  const canSave = phone.replace(/\D/g, '').length >= 9 && address.trim() && items.length > 0
+  const canSave = phone.replace(/\D/g, '').length >= 9 && address.trim() && (items.length > 0 || returnBottles > 0)
 
   const handle = async () => {
     if (!canSave) return
@@ -886,28 +881,26 @@ function CreateOrderModal({ onClose, onSave }) {
         </div>
 
         {/* ── Bottle return ── */}
-        {hasDeposit && (
-          <div style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Label>Возврат бутылок 19л</Label>
-              {client && availReturn > 0 && (
-                <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Stepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(clampedReturn + 1)} onChange={v => setReturnBottles(v)} max={maxReturn} />
-              <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>
-            </div>
-            {missingBottles > 0 && surchargePerBottle > 0 && (
-              <div style={{ fontSize: 12, color: '#E03131', background: '#FFF0F0', borderRadius: 8, padding: '6px 10px', fontWeight: 600 }}>
-                {missingBottles} бут. не возвращается — надбавка +{Number(bottleSurcharge).toLocaleString()} сум
-              </div>
+        <div style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Label>Возврат бутылок 19л</Label>
+            {client && availReturn > 0 && (
+              <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>
             )}
           </div>
-        )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Stepper value={returnBottles} onDec={() => setReturnBottles(Math.max(0, returnBottles - 1))} onInc={() => setReturnBottles(returnBottles + 1)} onChange={v => setReturnBottles(v)} />
+            {qty19L > 0 && <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>}
+          </div>
+          {missingBottles > 0 && surchargePerBottle > 0 && (
+            <div style={{ fontSize: 12, color: '#E03131', background: '#FFF0F0', borderRadius: 8, padding: '6px 10px', fontWeight: 600 }}>
+              {missingBottles} бут. не возвращается — надбавка +{Number(bottleSurcharge).toLocaleString()} сум
+            </div>
+          )}
+        </div>
 
         {/* ── Total ── */}
-        {items.length > 0 && (
+        {(items.length > 0 || bottleSurcharge > 0) && (
           <div style={{ background: '#F8FFED', borderRadius: 12, padding: '12px 14px', border: `1px solid ${C}33`, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: TEXT2 }}>
               <span>Товары</span>

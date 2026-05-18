@@ -265,6 +265,12 @@ export const markDelivered = (orderId, cashCollected) =>
 export const courierInDelivery = markInDelivery
 export const courierDelivered = markDelivered
 
+export const reportPaymentIssue = (orderId, paymentMethod, reason, courierName) =>
+  safeCall(
+    () => http.post(`/orders/${orderId}/payment_issue`, { payment_method: paymentMethod, reason, courier_name: courierName }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const courierAccept = (orderId) =>
   safeCall(
     () => http.patch(`/orders/${orderId}/courier_accept`).then(r => r.data),

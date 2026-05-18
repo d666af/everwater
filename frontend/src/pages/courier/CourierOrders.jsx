@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 
@@ -55,9 +55,8 @@ const PhoneIcon = () => (
 )
 
 /* ── OrderCard ───────────────────────────────────────────────────────────────── */
-function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
+function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoading }) {
   const [open, setOpen] = useState(false)
-  const [cashConfirm, setCashConfirm] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
   const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
   const isActive = ['confirmed', 'assigned_to_courier', 'in_delivery'].includes(order.status)
@@ -253,29 +252,11 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
                   Выехал
                 </button>
               )}
-              {order.status === 'in_delivery' && !cashConfirm && (
-                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => {
-                  if (isCash) setCashConfirm(true)
-                  else onAction(courierDelivered, order.id)
-                }}>
+              {order.status === 'in_delivery' && (
+                <button style={s.btnSuccess} disabled={actionLoading} onClick={() => onDeliverConfirm(order)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Доставлено
                 </button>
-              )}
-              {cashConfirm && (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ background: '#FFF8E6', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#E67700', textAlign: 'center' }}>
-                    Вы получили {(order.total || 0).toLocaleString()} сум наличными?
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button style={s.btnSuccess} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, true); setCashConfirm(false) }}>
-                      Да, получил
-                    </button>
-                    <button style={{ ...s.btnAccent, flex: 1, background: '#FFF5F5', color: '#E03131', border: '1.5px solid rgba(224,49,49,0.2)' }} disabled={actionLoading} onClick={() => { onDeliverCash(order.id, false); setCashConfirm(false) }}>
-                      Нет
-                    </button>
-                  </div>
-                </div>
               )}
             </div>
           )}
@@ -286,6 +267,56 @@ function OrderCard({ order, onAction, onDeliverCash, actionLoading }) {
 }
 
 /* ── Create Order Modal ──────────────────────────────────────────────────────── */
+
+/* ── Payment confirmation modal ──────────────────────────────────────────────── */
+function PaymentConfirmModal({ order, onYes, onNo }) {
+  const [step, setStep] = useState('confirm') // 'confirm' | 'reason'
+  const [reason, setReason] = useState('')
+  const isCash = order.payment_method === 'cash'
+  const totalFmt = Number(order.total || 0).toLocaleString()
+
+  const question = isCash
+    ? `💵 Вы получили наличные?`
+    : `💳 Вы проверили чек оплаты по карте?`
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '20px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px' }} />
+
+        {step === 'confirm' && <>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, textAlign: 'center' }}>{question}</div>
+          <div style={{ background: '#F8F9FA', borderRadius: 12, padding: '12px 16px', textAlign: 'center', fontSize: 22, fontWeight: 800, color: TEXT }}>
+            {totalFmt} сум
+          </div>
+          <button style={{ padding: '14px 0', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.35)' }} onClick={onYes}>
+            {isCash ? '✅ Да, получил' : '✅ Да, проверил'}
+          </button>
+          <button style={{ padding: '14px 0', borderRadius: 14, border: '1.5px solid rgba(224,49,49,0.25)', background: '#FFF5F5', color: '#E03131', fontSize: 16, fontWeight: 700, cursor: 'pointer' }} onClick={() => setStep('reason')}>
+            Нет
+          </button>
+        </>}
+
+        {step === 'reason' && <>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Укажите причину</div>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder={isCash ? 'Например: клиент отказался платить' : 'Например: чек не был предоставлен'}
+            style={{ border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', minHeight: 100, resize: 'none' }}
+            autoFocus
+          />
+          <button style={{ padding: '14px 0', borderRadius: 14, border: 'none', background: '#E03131', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' }} onClick={() => onNo(reason.trim())}>
+            Отправить
+          </button>
+          <button style={{ padding: '14px 0', borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={() => setStep('confirm')}>
+            Назад
+          </button>
+        </>}
+      </div>
+    </div>
+  )
+}
 
 function CLabel({ children }) {
   return <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>{children}</div>
@@ -371,13 +402,14 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
 
   const deposit19L = products.filter(p => p.has_bottle_deposit)
   const qty19L = deposit19L.reduce((s, p) => s + (selected[p.id] || 0), 0)
-  const hasDeposit = qty19L > 0
+
+  // Auto-set return to match 19L qty when products change
+  useEffect(() => { setReturnBottles(qty19L) }, [qty19L])
+
   const availReturn = client?.available_bottles ?? 0
-  const maxReturn = Math.min(qty19L, availReturn)
-  const clampedReturn = Math.min(returnBottles, maxReturn)
   const surchargePerBottle = deposit19L.find(p => p.bottle_surcharge > 0)?.bottle_surcharge || 0
-  const missingBottles = Math.max(0, qty19L - clampedReturn)
-  const bottleSurcharge = missingBottles * surchargePerBottle
+  const missingBottles = Math.max(0, qty19L - returnBottles)
+  const bottleSurcharge = missingBottles > 0 ? missingBottles * surchargePerBottle : 0
   const subtotal = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
     return sum + (p ? p.price * qty : 0)
@@ -389,7 +421,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   }).filter(Boolean)
 
   const phoneDigits = phone.replace(/\D/g, '')
-  const canSave = phoneDigits.length >= 9 && address.trim() && items.length > 0
+  const canSave = phoneDigits.length >= 9 && address.trim() && (items.length > 0 || returnBottles > 0)
   const allAddresses = client?.order_addresses?.length
     ? client.order_addresses
     : (client?.addresses || []).map(a => ({ address: a.address, extra_info: '', lat: null, lng: null }))
@@ -505,26 +537,24 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         </div>
 
         {/* ── Bottle return ── */}
-        {hasDeposit && (
-          <div style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <CLabel>Возврат бутылок 19л</CLabel>
-              {client && availReturn > 0 && <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <CStepper value={clampedReturn} onDec={() => setReturnBottles(Math.max(0, clampedReturn - 1))} onInc={() => setReturnBottles(clampedReturn + 1)} onChange={v => setReturnBottles(v)} max={maxReturn} />
-              <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>
-            </div>
-            {missingBottles > 0 && surchargePerBottle > 0 && (
-              <div style={{ fontSize: 12, color: '#E03131', background: '#FFF0F0', borderRadius: 8, padding: '6px 10px', fontWeight: 600 }}>
-                {missingBottles} бут. не возвращается — надбавка +{Number(bottleSurcharge).toLocaleString()} сум
-              </div>
-            )}
+        <div style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <CLabel>Возврат бутылок 19л</CLabel>
+            {client && availReturn > 0 && <span style={{ fontSize: 11, color: TEXT2 }}>Долг: {availReturn} шт.</span>}
           </div>
-        )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <CStepper value={returnBottles} onDec={() => setReturnBottles(Math.max(0, returnBottles - 1))} onInc={() => setReturnBottles(returnBottles + 1)} onChange={v => setReturnBottles(v)} />
+            {qty19L > 0 && <span style={{ fontSize: 13, color: TEXT2 }}>из {qty19L} заказанных</span>}
+          </div>
+          {missingBottles > 0 && surchargePerBottle > 0 && (
+            <div style={{ fontSize: 12, color: '#E03131', background: '#FFF0F0', borderRadius: 8, padding: '6px 10px', fontWeight: 600 }}>
+              {missingBottles} бут. не возвращается — надбавка +{Number(bottleSurcharge).toLocaleString()} сум
+            </div>
+          )}
+        </div>
 
         {/* ── Total ── */}
-        {items.length > 0 && (
+        {(items.length > 0 || bottleSurcharge > 0) && (
           <div style={{ background: '#F8FFED', borderRadius: 12, padding: '12px 14px', border: `1px solid ${C}33`, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: TEXT2 }}>
               <span>Товары</span><span>{Number(subtotal).toLocaleString()} сум</span>
@@ -558,9 +588,11 @@ export default function CourierOrders() {
   const [actionLoading, setActionLoading] = useState(false)
   const [filter, setFilter] = useState('waiting')
   const [showCreate, setShowCreate] = useState(false)
+  const [confirmOrder, setConfirmOrder] = useState(null)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
+  const courierName = user?.name || ''
 
   const load = useCallback(() => {
     if (!courierId) { setLoading(false); return }
@@ -588,6 +620,30 @@ export default function CourierOrders() {
   const doDeliverCash = async (orderId, cashCollected) => {
     setActionLoading(true)
     try { await courierDelivered(orderId, cashCollected); load() }
+    catch { alert('Ошибка операции') }
+    finally { setActionLoading(false) }
+  }
+
+  const doDeliverConfirm = (order) => {
+    setConfirmOrder(order)
+  }
+
+  const handlePaymentYes = async (order) => {
+    setConfirmOrder(null)
+    setActionLoading(true)
+    try { await courierDelivered(order.id, true); load() }
+    catch { alert('Ошибка операции') }
+    finally { setActionLoading(false) }
+  }
+
+  const handlePaymentNo = async (order, reason) => {
+    setConfirmOrder(null)
+    setActionLoading(true)
+    try {
+      await courierDelivered(order.id, false)
+      await reportPaymentIssue(order.id, order.payment_method, reason, courierName)
+      load()
+    }
     catch { alert('Ошибка операции') }
     finally { setActionLoading(false) }
   }
@@ -624,6 +680,13 @@ export default function CourierOrders() {
   return (
     <CourierLayout title="Заказы">
       {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} courierId={courierId} />}
+      {confirmOrder && (
+        <PaymentConfirmModal
+          order={confirmOrder}
+          onYes={() => handlePaymentYes(confirmOrder)}
+          onNo={(reason) => handlePaymentNo(confirmOrder, reason)}
+        />
+      )}
 
       {/* CSS for urgency pulse animation */}
       <style>{`
@@ -698,7 +761,7 @@ export default function CourierOrders() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map(order => (
-            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} actionLoading={actionLoading} />
+            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} onDeliverConfirm={doDeliverConfirm} actionLoading={actionLoading} />
           ))}
         </div>
       )}

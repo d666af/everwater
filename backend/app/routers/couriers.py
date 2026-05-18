@@ -730,7 +730,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     from app.config import settings as cfg
     from app.models.manager import Manager
     from app.services.tg_notify import notify_all
-    from app.routers.orders import _tg, _tg_send, calc_bottle_discount
+    from app.routers.orders import _tg, _tg_send
     from app.services.settings_service import get_all_settings
     from sqlalchemy import update as sa_update
 
@@ -760,11 +760,11 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     if not subtotal and body.total:
         subtotal = body.total
 
-    # Apply bottle return discount and optional surcharge (same as normal order flow)
+    # Apply surcharge only — no legacy bottle return discount in this flow
     settings_cfg = await get_all_settings(db)
-    bottle_discount = calc_bottle_discount(body.return_bottles_count, subtotal, settings_cfg)
+    bottle_discount = 0.0
     bottle_surcharge = body.bottle_surcharge or 0.0
-    total = max(0.0, subtotal + bottle_surcharge - bottle_discount)
+    total = max(0.0, subtotal + bottle_surcharge)
 
     order = Order(
         user_id=user.id if user else None,
