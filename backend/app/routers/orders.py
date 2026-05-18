@@ -441,8 +441,7 @@ async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession 
     await db.commit()
 
     from app.services.tg_notify import edit_all_notifications
-    if not from_bot:
-        await edit_all_notifications(msg_ids_json, f"✅ Заказ #{oid} подтверждён")
+    await edit_all_notifications(msg_ids_json, f"✅ Заказ #{oid} подтверждён")
 
     if not from_bot:
         text = f"✅ Заказ подтверждён!\n{items}\nСкоро назначим курьера."
@@ -480,8 +479,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 
     from app.services.tg_notify import edit_all_notifications
     reason_part = f" · {body.reason}" if body.reason else ""
-    if not from_bot:
-        await edit_all_notifications(msg_ids_json, f"❌ Заказ #{oid} отклонён{reason_part}")
+    await edit_all_notifications(msg_ids_json, f"❌ Заказ #{oid} отклонён{reason_part}")
 
     if not from_bot:
         reason_txt = f"\nПричина: {body.reason}" if body.reason else ""

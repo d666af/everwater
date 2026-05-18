@@ -244,7 +244,6 @@ async def mgr_confirm(call: CallbackQuery):
         await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, f"✅ <b>Заказ подтверждён</b>\n\n{body}")
     await call.answer()
 
 
