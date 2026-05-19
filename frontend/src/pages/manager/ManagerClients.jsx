@@ -12,6 +12,14 @@ const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
 
+const STORAGE_KEY = 'crm_client_tags'
+const PRESET_TAGS = ['VIP', 'Офис', 'Оптовик', 'Проблемный', 'Корпоратив', 'Друг', 'Оптом']
+
+const loadStoredTags = () => {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} }
+}
+const saveStoredTags = (data) => localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+
 const STATUS_LABELS = {
   new: 'Новый', awaiting_confirmation: 'Ожидает', confirmed: 'Подтверждён',
   assigned_to_courier: 'У курьера', in_delivery: 'В доставке',
@@ -31,7 +39,7 @@ const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', b
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
 const TABS = ['Инфо', 'Заказы', 'Подписки', 'Адреса', 'Кулеры']
 
-function ClientDetail({ user, onClose }) {
+function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
   const [tab, setTab] = useState(0)
   const [orders, setOrders] = useState([])
   const [details, setDetails] = useState(null)
@@ -79,6 +87,20 @@ function ClientDetail({ user, onClose }) {
 
   const fmtDate = (d) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
 
+  const [customTag, setCustomTag] = useState('')
+
+  const toggleTag = (tag) => {
+    const next = userTags.includes(tag) ? userTags.filter(t => t !== tag) : [...userTags, tag]
+    onTagsChange?.(next)
+  }
+
+  const addCustomTag = () => {
+    const t = customTag.trim()
+    if (!t || userTags.includes(t)) { setCustomTag(''); return }
+    onTagsChange?.([...userTags, t])
+    setCustomTag('')
+  }
+
   const renderTab = () => {
     if (tab === 0) return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -97,6 +119,47 @@ function ClientDetail({ user, onClose }) {
             <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{v}</span>
           </div>
         ))}
+
+        {/* Tag management */}
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Теги клиента</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 10 }}>
+            {PRESET_TAGS.map(tag => {
+              const active = userTags.includes(tag)
+              return (
+                <button key={tag} onClick={() => toggleTag(tag)} style={{
+                  padding: '5px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  background: active ? `${C}22` : '#F2F2F7',
+                  color: active ? CD : TEXT2,
+                  outline: active ? `2px solid ${C}66` : 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                }}>
+                  {active && '✓ '}{tag}
+                </button>
+              )
+            })}
+          </div>
+          {userTags.filter(t => !PRESET_TAGS.includes(t)).map(tag => (
+            <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: `${C}22`, color: CD, marginRight: 6, marginBottom: 6 }}>
+              {tag}
+              <button onClick={() => toggleTag(tag)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: TEXT2 }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+              </button>
+            </span>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <input
+              style={{ flex: 1, border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', background: '#FAFAFA', color: TEXT }}
+              placeholder="Свой тег..."
+              value={customTag}
+              onChange={e => setCustomTag(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addCustomTag()}
+            />
+            <button onClick={addCustomTag} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              Добавить
+            </button>
+          </div>
+        </div>
       </div>
     )
 
@@ -401,6 +464,13 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [labelFilter, setLabelFilter] = useState('all')
   const [selectedUser, setSelectedUser] = useState(null)
   const [phoneModal, setPhoneModal] = useState(null)
+  const [clientTags, setClientTags] = useState(() => loadStoredTags())
+
+  const setUserTags = (userId, tags) => {
+    const next = { ...clientTags, [userId]: tags }
+    setClientTags(next)
+    saveStoredTags(next)
+  }
 
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
@@ -413,7 +483,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   return (
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
-      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} />}
+      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 18, padding: '11px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={TEXT2} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -458,53 +528,62 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filtered.map(u => (
-            <div key={u.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
-              <div style={{ width: 46, height: 46, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || '?')[0].toUpperCase()}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
-                  <span style={{ fontWeight: 700, fontSize: 15, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</span>
-                  {u.customer_label === 'permanent' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#2B8A3E', background: '#EBFBEE', padding: '2px 8px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(43,138,62,0.2)', flexShrink: 0 }}>
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor"/></svg>
-                      Постоянный
-                    </span>
-                  )}
-                  {u.customer_label === 'inactive' && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, color: '#868E96', background: '#F1F3F5', padding: '2px 8px', borderRadius: 999, fontWeight: 600, border: '1px solid rgba(134,142,150,0.2)', flexShrink: 0 }}>
-                      Не активен
-                    </span>
-                  )}
+          {filtered.map(u => {
+            const tags = clientTags[u.id] || []
+            const isNew = !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
+            return (
+              <div key={u.id} style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || '?')[0].toUpperCase()}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</span>
+                      {u.customer_label === 'permanent' && (
+                        <span style={{ fontSize: 10, color: '#2B8A3E', background: '#EBFBEE', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>★ Пост.</span>
+                      )}
+                      {u.customer_label === 'inactive' && (
+                        <span style={{ fontSize: 10, color: '#868E96', background: '#F1F3F5', padding: '1px 7px', borderRadius: 999, fontWeight: 600, flexShrink: 0 }}>Не актив.</span>
+                      )}
+                      {isNew && (
+                        <span style={{ fontSize: 10, color: '#1971C2', background: '#E8F4FD', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>Новый</span>
+                      )}
+                    </div>
+                    {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
+                  </div>
+                  <button style={{ padding: '6px 12px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
+                    Инфо
+                  </button>
                 </div>
-                {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
-                <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: CD, background: `${C}14`, padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: `1px solid ${C}28` }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                    {u.orders_count || 0} заказов
-                  </span>
-                  {!u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2 && (
-                    <span style={{ fontSize: 12, color: '#1971C2', background: '#E8F4FD', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(25,113,194,0.2)' }}>
-                      Новый
-                    </span>
-                  )}
-                  {(u.bonus_points || 0) > 0 && (
-                    <span style={{ fontSize: 12, color: '#E67700', background: '#FFF3D9', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(230,119,0,0.2)' }}>
-                      Бонусы: {Math.round(u.bonus_points)}
-                    </span>
-                  )}
-                  {(u.bottles_owed || 0) > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#C92A2A', background: '#FFF5F5', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(201,42,42,0.2)' }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M8 6h8l1 3H7L8 6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><rect x="7" y="9" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>
-                      {u.bottles_owed} бут. долг
-                    </span>
-                  )}
+
+                {/* Stat cards */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <div style={{ flex: 1, background: '#F8F9FA', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{u.orders_count || 0}</div>
+                    <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Заказов</div>
+                  </div>
+                  <div style={{ flex: 1, background: (u.bonus_points || 0) > 0 ? '#FFFBEE' : '#F8F9FA', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: `1px solid ${(u.bonus_points || 0) > 0 ? 'rgba(230,119,0,0.18)' : BORDER}` }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: (u.bonus_points || 0) > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{Math.round(u.bonus_points || 0)}</div>
+                    <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Бонусы</div>
+                  </div>
+                  <div style={{ flex: 1, background: (u.bottles_owed || 0) > 0 ? '#FFF5F5' : '#F8F9FA', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: `1px solid ${(u.bottles_owed || 0) > 0 ? 'rgba(201,42,42,0.2)' : BORDER}` }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: (u.bottles_owed || 0) > 0 ? '#C92A2A' : TEXT2, lineHeight: 1 }}>{u.bottles_owed || 0}</div>
+                    <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Долг бут.</div>
+                  </div>
                 </div>
+
+                {/* Custom tags */}
+                {tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                    {tags.map(tag => (
+                      <span key={tag} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: `${C}18`, color: CD }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <button style={{ padding: '7px 14px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
-                Инфо
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </Layout>
