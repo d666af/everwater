@@ -59,67 +59,9 @@ const AUDIENCE_TAGS = {
   ],
 }
 
-const TAG_INFO = [
-  {
-    group: 'Клиенты',
-    tags: [
-      { label: 'Постоянный',  desc: 'Более 1 заказа за последние 7 дней. Ядро базы — лояльные, регулярные покупатели.' },
-      { label: 'Неактивный',  desc: 'Нет заказов более 30 дней. Требуют реактивации — скидка, бонусы или персональное напоминание.' },
-      { label: 'Новый',       desc: '1–2 заказа. Ключевой момент для удержания — предложите подписку или приветственный бонус.' },
-      { label: 'Есть бонусы', desc: 'Накопленные бонусные баллы на счёте. Напомните потратить, пока не сгорели.' },
-      { label: 'Долг бут.',   desc: 'Не вернул 19л бутылки. Напомните о возврате — это прямые потери бизнеса.' },
-      { label: 'VIP',         desc: 'Ручная метка для особо ценных клиентов. Индивидуальный подход и приоритет обслуживания.' },
-      { label: 'Офис',        desc: 'Корпоративный клиент, заказы на офис. Удобны регулярные подписки и счета.' },
-      { label: 'Оптовик',     desc: 'Крупные объёмы заказов. Стоит предлагать оптовые скидки и отдельные условия.' },
-      { label: 'Проблемный',  desc: 'Клиент с конфликтами или частыми возвратами. Требует особого внимания менеджера.' },
-      { label: 'Корпоратив',  desc: 'Корпоративный договор или тендер. Возможно выставление счетов и актов.' },
-    ],
-  },
-  {
-    group: 'Курьеры',
-    tags: [
-      { label: 'Топ-курьер', desc: 'Рейтинг 4.5+ и 50+ доставок. Приоритет на сложные или срочные заказы.' },
-      { label: 'Новичок',    desc: 'Менее 50 доставок. Нуждается в поддержке и мотивации на старте.' },
-      { label: 'Ветеран',    desc: '500+ доставок. Опытный и надёжный — хорош для наставничества новых курьеров.' },
-      { label: 'Долг бут.',  desc: 'Не сданные 19л бутылки на складе. Напомните сдать при следующем заезде.' },
-    ],
-  },
-]
+const TAG_INFO = []
 
 const FragmentLayout = ({ children }) => <>{children}</>
-
-function TagInfoModal({ onClose }) {
-  return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={s.infoSheet}>
-        <div style={s.infoHandle} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Теги и сегменты</div>
-          <button onClick={onClose} style={s.closeBtn}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2.2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
-        <div style={{ overflowY: 'auto', flex: 1 }}>
-          {TAG_INFO.map(group => (
-            <div key={group.group} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>{group.group}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {group.tags.map(tag => (
-                  <div key={tag.label} style={{ background: '#FAFAFA', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: `${C}18`, color: CD, flexShrink: 0, marginTop: 1 }}>{tag.label}</span>
-                    <span style={{ fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>{tag.desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function ManagersTab() {
   const [managers, setManagers] = useState([])
@@ -242,7 +184,6 @@ function ManagersTab() {
 export default function AdminCRM() {
   const [tab, setTab] = useState('clients')
   const [showBroadcast, setShowBroadcast] = useState(false)
-  const [showTagInfo, setShowTagInfo] = useState(false)
   const [broadcastText, setBroadcastText] = useState('')
   const [broadcastAudience, setBroadcastAudience] = useState(null)
   const [broadcastTarget, setBroadcastTarget] = useState('clients')
@@ -268,8 +209,6 @@ export default function AdminCRM() {
     <AdminLayout title="CRM">
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
 
-      {showTagInfo && <TagInfoModal onClose={() => setShowTagInfo(false)} />}
-
       {/* Tab switcher */}
       <div style={s.tabRow}>
         {TABS.map(t => (
@@ -283,7 +222,7 @@ export default function AdminCRM() {
         ))}
       </div>
 
-      {/* Broadcast button row */}
+      {/* Broadcast button */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button style={{ ...s.broadcastBtn, ...(showBroadcast ? { background: `${C}18`, borderColor: `${C}55`, color: CD } : {}) }}
           onClick={() => { setShowBroadcast(v => !v); if (showBroadcast) setBroadcastAudience(null) }}>
@@ -294,12 +233,6 @@ export default function AdminCRM() {
           Рассылка
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
             <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        <button style={s.infoBtn} onClick={() => setShowTagInfo(true)} title="Инфо по тегам">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
       </div>
