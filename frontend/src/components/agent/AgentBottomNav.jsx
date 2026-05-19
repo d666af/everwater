@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../store/auth'
 import { useAdminRoleStore } from '../../store/adminRole'
 
-const GRAD = 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)'
+const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
 
 const NAV = [
   {
@@ -92,12 +92,12 @@ export default function AgentBottomNav() {
                 onClick={() => navigate(path)}
                 aria-label={label}
               >
-                <div style={{ ...st.iconWrap, color: active ? '#be185d' : 'rgba(255,255,255,0.85)' }}>
+                <div style={{ ...st.iconWrap, color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)' }}>
                   {icon}
                 </div>
                 <span style={{
                   ...st.label,
-                  color: active ? '#be185d' : 'rgba(255,255,255,0.85)',
+                  color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
                   fontWeight: active ? 700 : 500,
                 }}>
                   {label}
@@ -121,7 +121,7 @@ const st = {
     display: 'flex', maxWidth: 420, margin: '0 auto',
     background: GRAD, borderRadius: 22,
     padding: '8px 0 10px',
-    boxShadow: '0 4px 24px rgba(190,24,93,0.35)',
+    boxShadow: '0 4px 24px rgba(80,140,20,0.35)',
     position: 'relative',
   },
   pill: {
@@ -153,6 +153,6 @@ const st = {
     border: 'none', borderRadius: 20,
     padding: '8px 14px', fontSize: 12, fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 3px 12px rgba(190,24,93,0.3)',
+    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
   },
 }

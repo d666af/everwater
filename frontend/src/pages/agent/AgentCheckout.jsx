@@ -181,9 +181,9 @@ export default function AgentCheckout() {
 
   if (success) {
     return (
-      <div style={{ minHeight: '100vh', background: '#F5F5F5', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ minHeight: '100vh', background: '#e4e4e8', display: 'flex', flexDirection: 'column' }}>
         <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
-        <div style={{ background: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ background: '#e4e4e8', padding: '16px 20px', display: 'flex', alignItems: 'center' }}>
           <div style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, color: TEXT }}>Оформление заказа</div>
         </div>
         <SuccessScreen orderTotal={lastTotal} onNewOrder={handleReset} />
@@ -192,11 +192,11 @@ export default function AgentCheckout() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F5F5F5', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: '#e4e4e8', display: 'flex', flexDirection: 'column' }}>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
 
       {/* Header */}
-      <div style={{ background: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ background: '#e4e4e8', padding: '16px 20px', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, color: TEXT }}>Оформление заказа</div>
       </div>
 
