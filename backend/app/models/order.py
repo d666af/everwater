@@ -23,7 +23,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
 
     status: Mapped[OrderStatus] = mapped_column(
