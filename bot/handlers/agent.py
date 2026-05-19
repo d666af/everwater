@@ -309,7 +309,7 @@ async def aco_start(message: Message, state: FSMContext):
         "<i>1 строка — кол-во 19л бутылей\n"
         "2 строка — адрес доставки\n"
         "3 строка — телефон клиента\n"
-        "4 строка — кол-во невозвращённых бутылок (число = только для них, текст/пусто = для всех)</i>",
+        "4 строка — число = надбавка только для N бутылок; б/баклажка = для всех; пусто = возврат всех</i>",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -334,9 +334,6 @@ async def aco_input(message: Message, state: FSMContext):
 
         quick_addr = lines[1]
         phone = lines[2]
-        # 4th line: number = surcharge for that many non-returned bottles
-        #           "баклажка"/text = surcharge for ALL bottles
-        #           absent = no surcharge (all returned)
         non_return = 0
         if len(lines) > 3:
             fourth = lines[3].strip()
@@ -344,10 +341,19 @@ async def aco_input(message: Message, state: FSMContext):
                 non_return = max(0, int(fourth))
                 return_bottles = max(0, qty - non_return)
             except ValueError:
-                non_return = qty
-                return_bottles = 0
+                if fourth.lstrip()[:1].lower() in ("б", "b"):
+                    non_return = qty
+                    return_bottles = 0
+                else:
+                    return_bottles = qty
         else:
             return_bottles = qty
+
+        main_product = next(
+            (p for p in products if p.get("has_bottle_deposit") and float(p.get("volume") or 0) >= 18),
+            None,
+        )
+        items = {str(main_product["id"]): qty} if main_product else {}
 
         client = await api.lookup_user_by_phone(phone)
         addr_options = [quick_addr]
