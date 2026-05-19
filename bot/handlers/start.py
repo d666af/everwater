@@ -153,7 +153,11 @@ _COURIER_STATE_PREFIXES = ("CourierOrderCreate:", "CourierReport:", "PaymentIssu
 _MANAGER_STATE_PREFIXES = ("MgrOrderCreate:", "MgrRejectCustom:", "MgrReject:",
                            "MgrClientSearch:", "MgrMsgClient:", "MgrSupportReply:")
 _ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:",
-                           "AdminMsgUser:", "AdminBroadcast:")
+                           "AdminMsgUser:", "AdminBroadcast:",
+                           "AdminOrderCreate:", "AdminManagerCreate:",
+                           "AdminWarehouseStaff:", "AdminWarehouseProd:",
+                           "AdminSettings:", "AdminProductCreate:",
+                           "AdminProductEdit:")
 _WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:",)
 _AGENT_STATE_PREFIXES    = ("AcoOrderCreate:",)
 
@@ -1157,14 +1161,19 @@ async def process_review_comment(message: Message, state: FSMContext):
 
 @router.message(StateFilter(None), ~F.text.startswith("/"), ~F.text.in_(_ALL_MENU_BUTTONS))
 async def restore_menu_on_lost_state(message: Message):
-    """Restore the reply keyboard when user sends any text with no active FSM state.
-
-    Recovers users whose keyboard disappeared after a bot restart mid-checkout
-    (which leaves ReplyKeyboardRemove in effect with no main menu).
-    """
-    role = await get_primary_role(message.from_user.id)
+    """Restore the reply keyboard when user sends any text with no active FSM state."""
+    roles = await get_user_roles(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
     sup_on = await api.is_support_chat_enabled()
+    # Multi-role users: show role picker so they choose their context explicitly
+    if len(roles) > 1:
+        labels = " | ".join(ROLE_LABELS[r] for r in roles)
+        await message.answer(
+            f"Ваши роли: {labels}\n\nВыберите режим:",
+            reply_markup=roles_inline_kb(roles),
+        )
+        return
+    role = roles[0] if roles else "client"
     if role == "admin":
         from keyboards.admin import admin_menu_kb
         await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
