@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from config import settings
 
 
@@ -7,9 +7,16 @@ def _site(path: str = "") -> str:
 
 
 def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> ReplyKeyboardMarkup:
+    base = settings.MINI_APP_URL.rstrip("/")
     rows = [
-        [KeyboardButton(text="📋 Заказы"), KeyboardButton(text="👥 Клиенты")],
-        [KeyboardButton(text="🚴 Курьеры"), KeyboardButton(text="📊 Статистика")],
+        [
+            KeyboardButton(text="📋 Заказы", web_app=WebAppInfo(url=f"{base}/manager")),
+            KeyboardButton(text="👥 Клиенты", web_app=WebAppInfo(url=f"{base}/manager/clients")),
+        ],
+        [
+            KeyboardButton(text="🚴 Курьеры", web_app=WebAppInfo(url=f"{base}/manager/couriers")),
+            KeyboardButton(text="📊 Статистика", web_app=WebAppInfo(url=f"{base}/manager/stats")),
+        ],
     ]
     third = []
     if subs_enabled:

@@ -163,17 +163,6 @@ def _app(path: str = "") -> str:
     return settings.MINI_APP_URL.rstrip("/") + path
 
 
-@router.message(F.text == "📋 Заказы", _IsManagerFilter())
-async def mgr_all_orders(message: Message):
-    await message.answer(
-        "Открыть заказы в приложении:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📋 Заказы", url=_app("/manager")),
-        ]]),
-    )
-
-
-
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
 async def mgr_confirm(call: CallbackQuery):
@@ -441,15 +430,6 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
 
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
-@router.message(F.text == "👥 Клиенты", _IsManagerFilter())
-async def mgr_clients(message: Message):
-    await message.answer(
-        "Открыть клиентов в приложении:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="👥 Клиенты", url=_app("/manager/clients")),
-        ]]),
-    )
-
 
 @router.callback_query(F.data.startswith("mgr:msg_client:"))
 async def mgr_msg_client_start(call: CallbackQuery, state: FSMContext):
@@ -477,25 +457,6 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
-
-@router.message(F.text == "📊 Статистика", _IsManagerFilter())
-async def mgr_stats_menu(message: Message):
-    await message.answer(
-        "Открыть статистику в приложении:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📊 Статистика", url=_app("/manager/stats")),
-        ]]),
-    )
-
-
-@router.message(F.text == "🚴 Курьеры", _IsManagerFilter())
-async def mgr_couriers_link(message: Message):
-    await message.answer(
-        "Открыть курьеров в приложении:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🚴 Курьеры", url=_app("/manager/couriers")),
-        ]]),
-    )
 
 
 # ─── Client detail tabs ───────────────────────────────────────────────────────
