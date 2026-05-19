@@ -123,7 +123,7 @@ def _mgr_order_text(o: dict) -> str:
         lines.append(f"Доп.: {o['extra_info']}")
 
     lines += [f"\nТовары:\n{items_text}"]
-    lines.append(f"\n💵 Итого: {fmt(o['total'])}  |  {pay}{delivery_part}{bonus_part}")
+    lines.append(f"\n💵 Итого: {fmt(o.get('total') or 0)}  |  {pay}{delivery_part}{bonus_part}")
 
     if return_line:
         lines.append(return_line)

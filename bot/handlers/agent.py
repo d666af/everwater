@@ -607,7 +607,10 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
+    try:
+        await call.message.delete()
+    except Exception:
+        await call.message.edit_text("✅")
     await call.message.answer("Панель агента:", reply_markup=agent_webapp_kb())
 
 

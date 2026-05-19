@@ -39,7 +39,7 @@ class OrderItemOut(BaseModel):
 
 class OrderOut(BaseModel):
     id: int
-    user_id: int
+    user_id: int | None
     courier_id: int | None
     status: OrderStatus
     recipient_phone: str
