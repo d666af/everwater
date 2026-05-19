@@ -334,6 +334,9 @@ async def aco_input(message: Message, state: FSMContext):
 
         quick_addr = lines[1]
         phone = lines[2]
+        if sum(1 for c in phone if c.isdigit()) < 9:
+            await message.answer("❌ 3 строка — неверный номер телефона. Введите минимум 9 цифр.\nПопробуйте ещё раз.")
+            return
         non_return = 0
         if len(lines) > 3:
             fourth = lines[3].strip()
@@ -392,6 +395,9 @@ async def aco_input(message: Message, state: FSMContext):
     else:
         # Normal mode: phone only → show product catalog
         phone = text
+        if sum(1 for c in phone if c.isdigit()) < 9:
+            await message.answer("❌ Неверный номер телефона — введите минимум 9 цифр.\nПопробуйте ещё раз.")
+            return
         client = await api.lookup_user_by_phone(phone)
         await state.update_data(
             aco_phone=phone,

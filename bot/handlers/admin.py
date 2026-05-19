@@ -1877,6 +1877,8 @@ async def _aco_show_confirm(target, state: FSMContext):
 
 @router.message(F.text == "📝 Создать заказ")
 async def admin_create_order_start(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
     await state.update_data(aco_items={})
     await state.set_state(AdminOrderCreate.waiting_input)
     await message.answer(
@@ -1914,6 +1916,9 @@ async def admin_co_input(message: Message, state: FSMContext):
 
         quick_addr = lines[1]
         phone = lines[2]
+        if sum(1 for c in phone if c.isdigit()) < 9:
+            await message.answer("❌ 3 строка — неверный номер телефона. Введите минимум 9 цифр.\nПопробуйте ещё раз.")
+            return
         non_return = 0
         if len(lines) > 3:
             fourth = lines[3].strip()
@@ -1971,6 +1976,9 @@ async def admin_co_input(message: Message, state: FSMContext):
 
     else:
         phone = text
+        if sum(1 for c in phone if c.isdigit()) < 9:
+            await message.answer("❌ Неверный номер телефона — введите минимум 9 цифр.\nПопробуйте ещё раз.")
+            return
         client = await api.lookup_user_by_phone(phone)
 
         await state.update_data(

@@ -1165,6 +1165,10 @@ async def restore_menu_on_lost_state(message: Message):
     roles = await get_user_roles(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
     sup_on = await api.is_support_chat_enabled()
+    # Courier/agent roles: don't show a text menu, just prompt to use buttons
+    if "courier" in roles or "agent" in roles:
+        await message.answer("Используйте кнопки выше или нажмите /menu для возврата в меню.")
+        return
     # Multi-role users: show role picker so they choose their context explicitly
     if len(roles) > 1:
         labels = " | ".join(ROLE_LABELS[r] for r in roles)
@@ -1174,20 +1178,16 @@ async def restore_menu_on_lost_state(message: Message):
         )
         return
     role = roles[0] if roles else "client"
-    if role == "admin":
+    if role in ("courier", "agent"):
+        await message.answer("Используйте кнопки выше или нажмите /menu для возврата в меню.")
+    elif role == "admin":
         from keyboards.admin import admin_menu_kb
         await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     elif role == "manager":
         from keyboards.manager import manager_menu_kb
         await message.answer("Главное меню:", reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on))
-    elif role == "courier":
-        from keyboards.courier import courier_menu_kb
-        await message.answer("Главное меню:", reply_markup=courier_menu_kb())
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
         await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
-    elif role == "agent":
-        from handlers.agent import agent_webapp_kb
-        await message.answer("Панель агента:", reply_markup=agent_webapp_kb())
     else:
         await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
