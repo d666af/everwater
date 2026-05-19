@@ -1182,7 +1182,10 @@ async def courier_cash_received(call: CallbackQuery):
         await api.set_payment_collected(order_id, True)
     except Exception:
         pass
-    await call.message.edit_text("✅ Наличные зафиксированы!")
+    try:
+        await call.message.edit_text("✅ Наличные зафиксированы!")
+    except Exception:
+        await call.message.answer("✅ Наличные зафиксированы!")
     await call.answer()
 
 
@@ -1193,7 +1196,10 @@ async def courier_card_received(call: CallbackQuery):
         await api.set_payment_collected(order_id, True)
     except Exception:
         pass
-    await call.message.edit_text("✅ Оплата по карте подтверждена!")
+    try:
+        await call.message.edit_text("✅ Оплата по карте подтверждена!")
+    except Exception:
+        await call.message.answer("✅ Оплата по карте подтверждена!")
     await call.answer()
 
 
