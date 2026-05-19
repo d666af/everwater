@@ -20,19 +20,99 @@ const GRADIENTS = [
   'linear-gradient(135deg,#12B886,#0FA07A)',
 ]
 
-const BROADCAST_TARGETS = [
-  { key: 'all', label: 'Всем' },
-  { key: 'managers', label: 'Менеджерам' },
-  { key: 'couriers', label: 'Курьерам' },
-]
-
 const TABS = [
   { key: 'clients', label: 'Клиенты' },
   { key: 'couriers', label: 'Курьеры' },
   { key: 'managers', label: 'Менеджеры' },
 ]
 
+// Broadcast target groups with descriptions
+const BROADCAST_GROUPS = [
+  {
+    title: 'Клиенты',
+    items: [
+      { key: 'clients',              label: 'Все клиенты',   color: '#1971C2', bg: '#E8F4FD' },
+      { key: 'clients:permanent',    label: 'Постоянные',    color: '#2B8A3E', bg: '#EBFBEE' },
+      { key: 'clients:inactive',     label: 'Неактивные',    color: '#868E96', bg: '#F1F3F5' },
+      { key: 'clients:bonus',        label: 'С бонусами',    color: '#E67700', bg: '#FFF3D9' },
+      { key: 'clients:bottle_debt',  label: 'Должники',      color: '#C92A2A', bg: '#FFF5F5' },
+    ],
+  },
+  {
+    title: 'Персонал',
+    items: [
+      { key: 'couriers',   label: 'Курьеры',    color: '#6741D9', bg: '#F3F0FF' },
+      { key: 'managers',   label: 'Менеджеры',  color: '#862E9C', bg: '#F8F0FC' },
+      { key: 'all',        label: 'Все',         color: TEXT,      bg: '#F2F2F7' },
+    ],
+  },
+]
+
+// Tag info data used in info modal
+const TAG_INFO = [
+  {
+    group: 'Клиенты',
+    tags: [
+      { label: 'Постоянный',   color: '#2B8A3E', bg: '#EBFBEE', desc: 'Совершил 5 и более заказов за последние 90 дней. Ядро базы — лояльные покупатели.' },
+      { label: 'Неактивный',   color: '#868E96', bg: '#F1F3F5', desc: 'Нет заказов больше 60 дней. Требуют реактивации — скидка, бонусы или напоминание.' },
+      { label: 'Новый',        color: '#1971C2', bg: '#E8F4FD', desc: '1–2 заказа. Самый важный момент для удержания — предложите подписку или бонус.' },
+      { label: 'Есть бонусы',  color: '#E67700', bg: '#FFF3D9', desc: 'Накопленные бонусные баллы на счёте. Напомните потратить, пока не сгорели.' },
+      { label: 'Долг бут.',    color: '#C92A2A', bg: '#FFF5F5', desc: 'Не вернул 19л бутылки. Напомните о возврате — это прямые потери бизнеса.' },
+    ],
+  },
+  {
+    group: 'Курьеры',
+    tags: [
+      { label: 'Топ-курьер',   color: '#E67700', bg: '#FFF3D9', desc: 'Рейтинг 4.5+ и 50+ доставок. Лучшие — первыми получают сложные или крупные заказы.' },
+      { label: 'Новичок',      color: '#1971C2', bg: '#E8F4FD', desc: 'Менее 50 доставок. Нуждаются в поддержке, инструкциях и мотивации на старте.' },
+      { label: 'Ветеран',      color: '#6741D9', bg: '#F3F0FF', desc: '500+ доставок. Опытные и надёжные — хороши для наставничества новичков.' },
+      { label: 'Долг бут.',    color: '#C92A2A', bg: '#FFF5F5', desc: 'Не сданные 19л бутылки на складе. Напомните сдать при следующем заезде.' },
+    ],
+  },
+  {
+    group: 'Персонал (рассылка)',
+    tags: [
+      { label: 'Курьеры',   color: '#6741D9', bg: '#F3F0FF', desc: 'Все активные курьеры. Используйте для оперативных уведомлений о маршрутах, складе, изменениях.' },
+      { label: 'Менеджеры', color: '#862E9C', bg: '#F8F0FC', desc: 'Все активные менеджеры. Для внутренних анонсов, обновлений регламентов.' },
+      { label: 'Все',       color: TEXT,      bg: '#F2F2F7', desc: 'Клиенты + курьеры + менеджеры. Для общих новостей компании (акции, изменения работы).' },
+    ],
+  },
+]
+
 const FragmentLayout = ({ children }) => <>{children}</>
+
+function TagInfoModal({ onClose }) {
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.infoSheet}>
+        <div style={s.infoHandle} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Теги и сегменты</div>
+          <button onClick={onClose} style={s.closeBtn}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2.2" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {TAG_INFO.map(group => (
+            <div key={group.group} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>{group.group}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {group.tags.map(tag => (
+                  <div key={tag.label} style={{ background: '#FAFAFA', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: tag.bg, color: tag.color, flexShrink: 0, marginTop: 1 }}>{tag.label}</span>
+                    <span style={{ fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>{tag.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ManagersTab() {
   const [managers, setManagers] = useState([])
@@ -155,8 +235,9 @@ function ManagersTab() {
 export default function AdminCRM() {
   const [tab, setTab] = useState('clients')
   const [showBroadcast, setShowBroadcast] = useState(false)
+  const [showTagInfo, setShowTagInfo] = useState(false)
   const [broadcastText, setBroadcastText] = useState('')
-  const [broadcastTarget, setBroadcastTarget] = useState('all')
+  const [broadcastTarget, setBroadcastTarget] = useState('clients')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
 
@@ -170,9 +251,13 @@ export default function AdminCRM() {
     } catch { alert('Ошибка при отправке') } finally { setSending(false) }
   }
 
+  const selectedGroup = BROADCAST_GROUPS.flatMap(g => g.items).find(i => i.key === broadcastTarget)
+
   return (
     <AdminLayout title="CRM">
-      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+
+      {showTagInfo && <TagInfoModal onClose={() => setShowTagInfo(false)} />}
 
       {/* Tab switcher */}
       <div style={s.tabRow}>
@@ -187,33 +272,63 @@ export default function AdminCRM() {
         ))}
       </div>
 
-      {/* Broadcast button */}
-      <button style={s.broadcastBtn} onClick={() => setShowBroadcast(v => !v)}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        Рассылка
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
-          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
+      {/* Broadcast button row */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button style={s.broadcastBtn} onClick={() => setShowBroadcast(v => !v)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Рассылка
+          {selectedGroup && (
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: selectedGroup.bg, color: selectedGroup.color, marginLeft: 4 }}>
+              {selectedGroup.label}
+            </span>
+          )}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
+            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <button style={s.infoBtn} onClick={() => setShowTagInfo(true)} title="Инфо по тегам">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
 
       {/* Broadcast panel */}
       {showBroadcast && (
         <div style={s.broadcastPanel}>
+          {/* Target selector */}
           <div style={s.field}>
             <div style={s.label}>Получатели</div>
-            <div style={s.segmented}>
-              {BROADCAST_TARGETS.map(t => (
-                <button key={t.key}
-                  style={{ ...s.segBtn, ...(broadcastTarget === t.key ? s.segBtnActive : {}) }}
-                  onClick={() => setBroadcastTarget(t.key)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            {BROADCAST_GROUPS.map(group => (
+              <div key={group.title} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, marginBottom: 6, paddingLeft: 2 }}>{group.title}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {group.items.map(item => (
+                    <button
+                      key={item.key}
+                      onClick={() => setBroadcastTarget(item.key)}
+                      style={{
+                        padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                        fontSize: 13, fontWeight: 700,
+                        background: broadcastTarget === item.key ? item.bg : '#F2F2F7',
+                        color: broadcastTarget === item.key ? item.color : TEXT2,
+                        outline: broadcastTarget === item.key ? `2px solid ${item.color}40` : 'none',
+                        transition: 'all 0.15s',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
+
           <div style={s.field}>
             <div style={s.label}>Сообщение</div>
             <textarea style={s.textarea} rows={3} placeholder="Введите сообщение для рассылки..."
@@ -229,7 +344,7 @@ export default function AdminCRM() {
           )}
           <div style={s.formActions}>
             <button style={s.cancelBtn} onClick={() => setShowBroadcast(false)}>Отмена</button>
-            <button style={{ ...s.saveBtn, ...(sending ? { opacity: 0.6 } : {}) }}
+            <button style={{ ...s.saveBtn, ...(sending || !broadcastText.trim() ? { opacity: 0.5 } : {}) }}
               onClick={sendBroadcast} disabled={sending || !broadcastText.trim()}>
               {sending ? 'Отправляю...' : 'Отправить'}
             </button>
@@ -248,29 +363,43 @@ export default function AdminCRM() {
 }
 
 const s = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
+  infoSheet: {
+    background: '#fff', borderRadius: '20px 20px 0 0',
+    width: '100%', maxHeight: '88vh',
+    padding: '10px 20px 40px',
+    display: 'flex', flexDirection: 'column',
+    animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)',
+  },
+  infoHandle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 14px', display: 'block' },
+  closeBtn: {
+    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: '#F2F2F7', border: 'none', borderRadius: 10, cursor: 'pointer', color: TEXT2,
+  },
+
   tabRow: { display: 'flex', gap: 6, marginBottom: 10 },
   broadcastBtn: {
-    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+    flex: 1, display: 'flex', alignItems: 'center', gap: 10,
     padding: '12px 16px', borderRadius: 14,
     background: '#fff', border: '1.5px solid rgba(60,60,67,0.08)',
     fontSize: 14, fontWeight: 600, color: TEXT,
     cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
     WebkitTapHighlightColor: 'transparent',
   },
+  infoBtn: {
+    width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: '#fff', border: '1.5px solid rgba(60,60,67,0.08)',
+    borderRadius: 14, cursor: 'pointer', color: TEXT2, flexShrink: 0,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    WebkitTapHighlightColor: 'transparent',
+  },
   broadcastPanel: {
     background: '#fff', borderRadius: 14, padding: 16, marginTop: 8,
     border: '1.5px solid rgba(60,60,67,0.08)', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-    display: 'flex', flexDirection: 'column', gap: 12,
+    display: 'flex', flexDirection: 'column', gap: 14,
   },
-  field: { display: 'flex', flexDirection: 'column', gap: 6 },
+  field: { display: 'flex', flexDirection: 'column', gap: 8 },
   label: { fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 },
-  segmented: { display: 'flex', background: '#F2F2F7', borderRadius: 10, padding: 3, gap: 2 },
-  segBtn: {
-    flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none',
-    background: 'none', color: TEXT2, fontSize: 13, fontWeight: 600,
-    cursor: 'pointer', transition: 'all 0.15s',
-  },
-  segBtnActive: { background: '#fff', color: TEXT, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' },
   textarea: {
     border: `1.5px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px',
     fontSize: 15, outline: 'none', resize: 'vertical', background: '#FAFAFA',
