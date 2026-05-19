@@ -1,3 +1,4 @@
+import logging
 from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery,
@@ -10,6 +11,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import settings
 import services.api_client as api
+
+log = logging.getLogger(__name__)
 
 router = Router()
 
@@ -585,8 +588,8 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
     agent_id = data.get("aco_agent_id")
     try:
         result = await api.courier_create_order({
-            "phone": data["aco_phone"],
-            "address": data["aco_address"],
+            "phone": data.get("aco_phone", ""),
+            "address": data.get("aco_address", ""),
             "items": items_list,
             "payment_method": "cash",
             "return_bottles_count": return_bottles,
@@ -596,6 +599,7 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
         })
         oid = result.get("order_id") or result.get("id", "?")
     except Exception:
+        log.exception("aco_confirm failed for agent_id=%s", agent_id)
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
         await state.clear()
         await call.answer()

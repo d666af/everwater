@@ -1135,4 +1135,31 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
             await db.commit()
 
+        # Notify the agent who created the order
+        if body.creator_role == "agent" and body.agent_id:
+            from app.models.agent import Agent
+            agent_row = (await db.execute(
+                select(Agent).where(Agent.id == body.agent_id)
+            )).scalar_one_or_none()
+            if agent_row and agent_row.telegram_id:
+                def _fmt_na(n): return f"{int(n):,}".replace(',', ' ')
+                agent_items = "\n".join(
+                    f"  • {p.name} {q} шт. — {_fmt_na(p.price * q)} сум"
+                    for p, q in items_data
+                ) if items_data else "  —"
+                agent_return = (
+                    f"\n♻️ Возврат: {body.return_bottles_count} шт."
+                    if body.return_bottles_count else ""
+                )
+                if missing_m > 0 and bottle_surcharge > 0:
+                    agent_items += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
+                await _tg(agent_row.telegram_id, (
+                    f"✅ Заказ #{oid} создан!\n\n"
+                    f"📍 {body.address}\n"
+                    f"👤 {mgr_client_identity}\n\n"
+                    f"Состав:\n{agent_items}"
+                    f"{agent_return}\n\n"
+                    f"Итого: {_fmt_na(total_int)} сум"
+                ))
+
     return {"ok": True, "order_id": oid}

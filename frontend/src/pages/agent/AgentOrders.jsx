@@ -62,17 +62,35 @@ function OrderCard({ order }) {
           </div>
         </div>
       </div>
-      {open && order.items?.length > 0 && (
+      {open && (
         <div style={{ borderTop: `1px solid ${BORDER}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав</div>
-          {order.items.map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
-              <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
-              <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity} шт.</span>
+          {order.items?.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Состав</div>
+              {order.items.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                  <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
+                  <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity} шт.</span>
+                </div>
+              ))}
+            </>
+          )}
+          {(order.return_bottles_count > 0 || order.bottle_surcharge > 0) && (
+            <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {order.return_bottles_count > 0 && (
+                <div style={{ fontSize: 12, color: TEXT2 }}>
+                  ♻️ Возврат бутылок: <strong>{order.return_bottles_count} шт.</strong>
+                </div>
+              )}
+              {order.bottle_surcharge > 0 && (
+                <div style={{ fontSize: 12, color: '#E67700' }}>
+                  🫙 Надбавка за невозврат: <strong>+{order.bottle_surcharge.toLocaleString()} сум</strong>
+                </div>
+              )}
             </div>
-          ))}
-          {(order.client_name) && (
+          )}
+          {order.client_name && (
             <div style={{ marginTop: 4, fontSize: 12, color: TEXT2 }}>Клиент: <strong>{order.client_name}</strong></div>
           )}
         </div>
