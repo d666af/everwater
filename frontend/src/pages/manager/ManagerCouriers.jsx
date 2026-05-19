@@ -98,22 +98,6 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
           {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{c.phone}</div>}
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
-            {(() => {
-              const deliveries = details?.total_deliveries ?? (c.delivery_count ?? 0)
-              const rating = details?.avg_rating ?? 0
-              const tags = []
-              if (deliveries >= 500) tags.push({ label: 'Ветеран', color: '#6741D9', bg: '#F3F0FF' })
-              else if (deliveries < 50) tags.push({ label: 'Новичок', color: '#1971C2', bg: '#E8F4FD' })
-              if (rating >= 4.5 && deliveries >= 50) tags.push({ label: 'Топ-курьер', color: '#E67700', bg: '#FFF3D9' })
-              if (!c.is_active) tags.push({ label: 'Деактивирован', color: '#868E96', bg: '#F1F3F5' })
-              return tags.map(tag => (
-                <span key={tag.label} style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: tag.bg, color: tag.color }}>
-                  {tag.label}
-                </span>
-              ))
-            })()}
-          </div>
         </div>
         <button
           style={{

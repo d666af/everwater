@@ -26,55 +26,62 @@ const TABS = [
   { key: 'managers', label: 'Менеджеры' },
 ]
 
-// Broadcast target groups with descriptions
-const BROADCAST_GROUPS = [
+const AUDIENCES = [
   {
-    title: 'Клиенты',
-    items: [
-      { key: 'clients',              label: 'Все клиенты',   color: '#1971C2', bg: '#E8F4FD' },
-      { key: 'clients:permanent',    label: 'Постоянные',    color: '#2B8A3E', bg: '#EBFBEE' },
-      { key: 'clients:inactive',     label: 'Неактивные',    color: '#868E96', bg: '#F1F3F5' },
-      { key: 'clients:bonus',        label: 'С бонусами',    color: '#E67700', bg: '#FFF3D9' },
-      { key: 'clients:bottle_debt',  label: 'Должники',      color: '#C92A2A', bg: '#FFF5F5' },
-    ],
+    key: 'clients', label: 'Клиентам',
+    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>,
   },
   {
-    title: 'Персонал',
-    items: [
-      { key: 'couriers',   label: 'Курьеры',    color: '#6741D9', bg: '#F3F0FF' },
-      { key: 'managers',   label: 'Менеджеры',  color: '#862E9C', bg: '#F8F0FC' },
-      { key: 'all',        label: 'Все',         color: TEXT,      bg: '#F2F2F7' },
-    ],
+    key: 'couriers', label: 'Курьерам',
+    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="1" y="3" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.8"/><path d="M16 8h3l3 3v5h-6V8z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><circle cx="5.5" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="1.8"/><circle cx="18.5" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="1.8"/></svg>,
+  },
+  {
+    key: 'managers', label: 'Менеджерам',
+    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.8"/><path d="M2 20c0-3 3.1-5.5 7-5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="17" cy="13" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M14 20c0-2.2 1.3-4 3-4s3 1.8 3 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>,
   },
 ]
 
-// Tag info data used in info modal
+const AUDIENCE_TAGS = {
+  clients: [
+    { key: 'clients',             label: 'Все' },
+    { key: 'clients:permanent',   label: 'Постоянные' },
+    { key: 'clients:inactive',    label: 'Неактивные' },
+    { key: 'clients:bonus',       label: 'С бонусами' },
+    { key: 'clients:bottle_debt', label: 'Должники' },
+    { key: 'clients:new',         label: 'Новые' },
+  ],
+  couriers: [
+    { key: 'couriers', label: 'Все курьеры' },
+  ],
+  managers: [
+    { key: 'managers', label: 'Все менеджеры' },
+    { key: 'all',      label: 'Весь персонал' },
+  ],
+}
+
 const TAG_INFO = [
   {
     group: 'Клиенты',
     tags: [
-      { label: 'Постоянный',   color: '#2B8A3E', bg: '#EBFBEE', desc: 'Совершил 5 и более заказов за последние 90 дней. Ядро базы — лояльные покупатели.' },
-      { label: 'Неактивный',   color: '#868E96', bg: '#F1F3F5', desc: 'Нет заказов больше 60 дней. Требуют реактивации — скидка, бонусы или напоминание.' },
-      { label: 'Новый',        color: '#1971C2', bg: '#E8F4FD', desc: '1–2 заказа. Самый важный момент для удержания — предложите подписку или бонус.' },
-      { label: 'Есть бонусы',  color: '#E67700', bg: '#FFF3D9', desc: 'Накопленные бонусные баллы на счёте. Напомните потратить, пока не сгорели.' },
-      { label: 'Долг бут.',    color: '#C92A2A', bg: '#FFF5F5', desc: 'Не вернул 19л бутылки. Напомните о возврате — это прямые потери бизнеса.' },
+      { label: 'Постоянный',  desc: 'Более 1 заказа за последние 7 дней. Ядро базы — лояльные, регулярные покупатели.' },
+      { label: 'Неактивный',  desc: 'Нет заказов более 30 дней. Требуют реактивации — скидка, бонусы или персональное напоминание.' },
+      { label: 'Новый',       desc: '1–2 заказа. Ключевой момент для удержания — предложите подписку или приветственный бонус.' },
+      { label: 'Есть бонусы', desc: 'Накопленные бонусные баллы на счёте. Напомните потратить, пока не сгорели.' },
+      { label: 'Долг бут.',   desc: 'Не вернул 19л бутылки. Напомните о возврате — это прямые потери бизнеса.' },
+      { label: 'VIP',         desc: 'Ручная метка для особо ценных клиентов. Индивидуальный подход и приоритет обслуживания.' },
+      { label: 'Офис',        desc: 'Корпоративный клиент, заказы на офис. Удобны регулярные подписки и счета.' },
+      { label: 'Оптовик',     desc: 'Крупные объёмы заказов. Стоит предлагать оптовые скидки и отдельные условия.' },
+      { label: 'Проблемный',  desc: 'Клиент с конфликтами или частыми возвратами. Требует особого внимания менеджера.' },
+      { label: 'Корпоратив',  desc: 'Корпоративный договор или тендер. Возможно выставление счетов и актов.' },
     ],
   },
   {
     group: 'Курьеры',
     tags: [
-      { label: 'Топ-курьер',   color: '#E67700', bg: '#FFF3D9', desc: 'Рейтинг 4.5+ и 50+ доставок. Лучшие — первыми получают сложные или крупные заказы.' },
-      { label: 'Новичок',      color: '#1971C2', bg: '#E8F4FD', desc: 'Менее 50 доставок. Нуждаются в поддержке, инструкциях и мотивации на старте.' },
-      { label: 'Ветеран',      color: '#6741D9', bg: '#F3F0FF', desc: '500+ доставок. Опытные и надёжные — хороши для наставничества новичков.' },
-      { label: 'Долг бут.',    color: '#C92A2A', bg: '#FFF5F5', desc: 'Не сданные 19л бутылки на складе. Напомните сдать при следующем заезде.' },
-    ],
-  },
-  {
-    group: 'Персонал (рассылка)',
-    tags: [
-      { label: 'Курьеры',   color: '#6741D9', bg: '#F3F0FF', desc: 'Все активные курьеры. Используйте для оперативных уведомлений о маршрутах, складе, изменениях.' },
-      { label: 'Менеджеры', color: '#862E9C', bg: '#F8F0FC', desc: 'Все активные менеджеры. Для внутренних анонсов, обновлений регламентов.' },
-      { label: 'Все',       color: TEXT,      bg: '#F2F2F7', desc: 'Клиенты + курьеры + менеджеры. Для общих новостей компании (акции, изменения работы).' },
+      { label: 'Топ-курьер', desc: 'Рейтинг 4.5+ и 50+ доставок. Приоритет на сложные или срочные заказы.' },
+      { label: 'Новичок',    desc: 'Менее 50 доставок. Нуждается в поддержке и мотивации на старте.' },
+      { label: 'Ветеран',    desc: '500+ доставок. Опытный и надёжный — хорош для наставничества новых курьеров.' },
+      { label: 'Долг бут.',  desc: 'Не сданные 19л бутылки на складе. Напомните сдать при следующем заезде.' },
     ],
   },
 ]
@@ -101,7 +108,7 @@ function TagInfoModal({ onClose }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {group.tags.map(tag => (
                   <div key={tag.label} style={{ background: '#FAFAFA', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: tag.bg, color: tag.color, flexShrink: 0, marginTop: 1 }}>{tag.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: `${C}18`, color: CD, flexShrink: 0, marginTop: 1 }}>{tag.label}</span>
                     <span style={{ fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>{tag.desc}</span>
                   </div>
                 ))}
@@ -237,21 +244,25 @@ export default function AdminCRM() {
   const [showBroadcast, setShowBroadcast] = useState(false)
   const [showTagInfo, setShowTagInfo] = useState(false)
   const [broadcastText, setBroadcastText] = useState('')
+  const [broadcastAudience, setBroadcastAudience] = useState(null)
   const [broadcastTarget, setBroadcastTarget] = useState('clients')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
 
   const sendBroadcast = async () => {
-    if (!broadcastText.trim()) return
+    if (!broadcastText.trim() || !broadcastAudience) return
     setSending(true)
     try {
       await broadcastMessage(broadcastText, broadcastTarget)
       setSent(true); setBroadcastText('')
-      setTimeout(() => { setSent(false); setShowBroadcast(false) }, 2000)
+      setTimeout(() => { setSent(false); setShowBroadcast(false); setBroadcastAudience(null) }, 2000)
     } catch { alert('Ошибка при отправке') } finally { setSending(false) }
   }
 
-  const selectedGroup = BROADCAST_GROUPS.flatMap(g => g.items).find(i => i.key === broadcastTarget)
+  const selectAudience = (key) => {
+    setBroadcastAudience(key)
+    setBroadcastTarget(AUDIENCE_TAGS[key][0].key)
+  }
 
   return (
     <AdminLayout title="CRM">
@@ -274,17 +285,13 @@ export default function AdminCRM() {
 
       {/* Broadcast button row */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button style={s.broadcastBtn} onClick={() => setShowBroadcast(v => !v)}>
+        <button style={{ ...s.broadcastBtn, ...(showBroadcast ? { background: `${C}18`, borderColor: `${C}55`, color: CD } : {}) }}
+          onClick={() => { setShowBroadcast(v => !v); if (showBroadcast) setBroadcastAudience(null) }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Рассылка
-          {selectedGroup && (
-            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: selectedGroup.bg, color: selectedGroup.color, marginLeft: 4 }}>
-              {selectedGroup.label}
-            </span>
-          )}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
             <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -300,55 +307,77 @@ export default function AdminCRM() {
       {/* Broadcast panel */}
       {showBroadcast && (
         <div style={s.broadcastPanel}>
-          {/* Target selector */}
+          {/* Step 1: Audience */}
           <div style={s.field}>
-            <div style={s.label}>Получатели</div>
-            {BROADCAST_GROUPS.map(group => (
-              <div key={group.title} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, marginBottom: 6, paddingLeft: 2 }}>{group.title}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {group.items.map(item => (
-                    <button
-                      key={item.key}
-                      onClick={() => setBroadcastTarget(item.key)}
-                      style={{
-                        padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                        fontSize: 13, fontWeight: 700,
-                        background: broadcastTarget === item.key ? item.bg : '#F2F2F7',
-                        color: broadcastTarget === item.key ? item.color : TEXT2,
-                        outline: broadcastTarget === item.key ? `2px solid ${item.color}40` : 'none',
-                        transition: 'all 0.15s',
-                        WebkitTapHighlightColor: 'transparent',
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <div style={s.label}>Кому</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {AUDIENCES.map(aud => (
+                <button
+                  key={aud.key}
+                  onClick={() => selectAudience(aud.key)}
+                  style={{
+                    padding: '14px 8px', borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: broadcastAudience === aud.key ? GRAD : '#F2F2F7',
+                    color: broadcastAudience === aud.key ? '#fff' : TEXT2,
+                    fontWeight: 700, fontSize: 13,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
+                    transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {aud.icon}
+                  {aud.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div style={s.field}>
-            <div style={s.label}>Сообщение</div>
-            <textarea style={s.textarea} rows={3} placeholder="Введите сообщение для рассылки..."
-              value={broadcastText} onChange={e => setBroadcastText(e.target.value)} />
-          </div>
-          {sent && (
-            <div style={s.successMsg}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17L4 12" stroke="#2B8A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Отправлено!
+          {/* Step 2: Tag carousel */}
+          {broadcastAudience && AUDIENCE_TAGS[broadcastAudience].length > 1 && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}>
+              {AUDIENCE_TAGS[broadcastAudience].map(tag => (
+                <button
+                  key={tag.key}
+                  onClick={() => setBroadcastTarget(tag.key)}
+                  style={{
+                    padding: '7px 16px', borderRadius: 999, border: 'none', flexShrink: 0,
+                    cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                    background: broadcastTarget === tag.key ? `${C}22` : '#F2F2F7',
+                    color: broadcastTarget === tag.key ? CD : TEXT2,
+                    outline: broadcastTarget === tag.key ? `2px solid ${C}66` : 'none',
+                    transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {tag.label}
+                </button>
+              ))}
             </div>
           )}
-          <div style={s.formActions}>
-            <button style={s.cancelBtn} onClick={() => setShowBroadcast(false)}>Отмена</button>
-            <button style={{ ...s.saveBtn, ...(sending || !broadcastText.trim() ? { opacity: 0.5 } : {}) }}
-              onClick={sendBroadcast} disabled={sending || !broadcastText.trim()}>
-              {sending ? 'Отправляю...' : 'Отправить'}
-            </button>
-          </div>
+
+          {/* Step 3: Message */}
+          {broadcastAudience && (
+            <>
+              <div style={s.field}>
+                <div style={s.label}>Сообщение</div>
+                <textarea style={s.textarea} rows={3} placeholder="Введите сообщение для рассылки..."
+                  value={broadcastText} onChange={e => setBroadcastText(e.target.value)} />
+              </div>
+              {sent && (
+                <div style={s.successMsg}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M20 6L9 17L4 12" stroke="#2B8A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Отправлено!
+                </div>
+              )}
+              <div style={s.formActions}>
+                <button style={s.cancelBtn} onClick={() => { setShowBroadcast(false); setBroadcastAudience(null) }}>Отмена</button>
+                <button style={{ ...s.saveBtn, ...(sending || !broadcastText.trim() ? { opacity: 0.5 } : {}) }}
+                  onClick={sendBroadcast} disabled={sending || !broadcastText.trim()}>
+                  {sending ? 'Отправляю...' : 'Отправить'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
