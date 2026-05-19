@@ -1,37 +1,34 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useState, useEffect, useRef, useLayoutEffect } from 'react'
-import { useAuthStore } from '../store/auth'
-import { useAdminRoleStore } from '../store/adminRole'
-import { useSubscriptionsEnabled } from '../hooks/useSubscriptionsEnabled'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { useAuthStore } from '../../store/auth'
+import { useAdminRoleStore } from '../../store/adminRole'
 
-const GRAD = 'linear-gradient(135deg, #A8D86D 0%, #7EC840 50%, #5EAE2E 100%)'
+const GRAD = 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)'
 
-const HOME_NAV = { path: '/', label: 'Главная', icon: (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-    <path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-  </svg>
-)}
-const ORDERS_NAV = { path: '/orders', label: 'Заказы', icon: (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
-    <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-  </svg>
-)}
-const SUB_NAV = { path: '/subscription', label: 'Подписка', icon: (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-    <path d="M12 22V12M12 12L3.27 7M12 12l8.73-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-)}
-const PROFILE_NAV = { path: '/profile', label: 'Профиль', icon: (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
-    <path d="M4 21c0-3.5 3.6-6 8-6s8 2.5 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-  </svg>
-)}
+const NAV = [
+  {
+    path: '/agent/checkout',
+    label: 'Заказ',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    path: '/agent/orders',
+    label: 'История',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+        <path d="M8 8h8M8 12h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+]
 
-export default function BottomNav() {
+export default function AgentBottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
@@ -41,22 +38,11 @@ export default function BottomNav() {
   const navRef = useRef(null)
   const [pillStyle, setPillStyle] = useState({})
   const [ready, setReady] = useState(false)
-  const subsEnabled = useSubscriptionsEnabled()
-  const NAV = subsEnabled === false
-    ? [HOME_NAV, ORDERS_NAV, PROFILE_NAV]
-    : [HOME_NAV, ORDERS_NAV, SUB_NAV, PROFILE_NAV]
 
-  const hidden = ['/checkout', '/support'].some(p => location.pathname.startsWith(p))
-    || location.pathname.startsWith('/admin')
-    || location.pathname.startsWith('/courier')
-    || location.pathname.startsWith('/manager')
-    || location.pathname.startsWith('/warehouse')
-    || location.pathname.startsWith('/agent')
-    || location.pathname === '/login'
+  const visible = location.pathname.startsWith('/agent')
 
-  // Calculate pill position — covers the entire button (icon + text)
   useLayoutEffect(() => {
-    if (hidden) return
+    if (!visible) return
     const activeEl = itemRefs.current[location.pathname]
     const navEl = navRef.current
     if (activeEl && navEl) {
@@ -69,9 +55,9 @@ export default function BottomNav() {
       })
       if (!ready) setTimeout(() => setReady(true), 50)
     }
-  }, [location.pathname, hidden, subsEnabled])
+  }, [location.pathname, visible])
 
-  if (hidden) return null
+  if (!visible) return null
 
   return (
     <>
@@ -87,7 +73,6 @@ export default function BottomNav() {
       <div style={{ height: 90 }} />
       <nav style={st.nav}>
         <div style={st.inner} ref={navRef}>
-          {/* Animated white pill — covers icon + text */}
           <div style={{
             ...st.pill,
             left: pillStyle.left ?? 0,
@@ -97,7 +82,6 @@ export default function BottomNav() {
               ? 'left 0.35s cubic-bezier(0.4, 0, 0.2, 1), width 0.35s cubic-bezier(0.4, 0, 0.2, 1)'
               : 'none',
           }} />
-
           {NAV.map(({ path, label, icon }) => {
             const active = location.pathname === path
             return (
@@ -108,12 +92,12 @@ export default function BottomNav() {
                 onClick={() => navigate(path)}
                 aria-label={label}
               >
-                <div style={{ ...st.iconWrap, color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)' }}>
+                <div style={{ ...st.iconWrap, color: active ? '#be185d' : 'rgba(255,255,255,0.85)' }}>
                   {icon}
                 </div>
                 <span style={{
                   ...st.label,
-                  color: active ? '#2d7a0f' : 'rgba(255,255,255,0.85)',
+                  color: active ? '#be185d' : 'rgba(255,255,255,0.85)',
                   fontWeight: active ? 700 : 500,
                 }}>
                   {label}
@@ -137,7 +121,7 @@ const st = {
     display: 'flex', maxWidth: 420, margin: '0 auto',
     background: GRAD, borderRadius: 22,
     padding: '8px 0 10px',
-    boxShadow: '0 4px 24px rgba(80,140,20,0.35)',
+    boxShadow: '0 4px 24px rgba(190,24,93,0.35)',
     position: 'relative',
   },
   pill: {
@@ -169,6 +153,6 @@ const st = {
     border: 'none', borderRadius: 20,
     padding: '8px 14px', fontSize: 12, fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 3px 12px rgba(80,140,20,0.3)',
+    boxShadow: '0 3px 12px rgba(190,24,93,0.3)',
   },
 }

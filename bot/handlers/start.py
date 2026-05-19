@@ -225,16 +225,6 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     tg_id = message.from_user.id
 
-    # Check if this Telegram ID is already a linked agent
-    agent = await api.get_agent_by_telegram(tg_id)
-    if agent:
-        from handlers.agent import agent_webapp_kb
-        await message.answer(
-            f"🤝 Привет, {agent.get('name', 'Агент')}! Выберите действие:",
-            reply_markup=agent_webapp_kb(),
-        )
-        return
-
     user = await api.get_user(tg_id)
     if not user:
         user = await api.create_or_get_user(tg_id)
@@ -247,20 +237,15 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    # Already-registered user: check if their phone matches an unlinked agent
+    # Auto-link unlinked agent by phone (silent, fall through to role picker)
     user_phone = user.get("phone", "")
     if user_phone:
-        agent = await api.get_agent_by_phone(user_phone)
-        if agent:
-            linked = await api.link_agent_telegram(agent["id"], tg_id)
-            if linked:
-                from handlers.agent import agent_webapp_kb
-                await message.answer(
-                    f"🤝 Привет, {agent.get('name', user['name'])}! "
-                    f"Вы теперь зарегистрированы как агент.",
-                    reply_markup=agent_webapp_kb(),
-                )
-                return
+        unlinked_agent = await api.get_agent_by_phone(user_phone)
+        if unlinked_agent:
+            await api.link_agent_telegram(unlinked_agent["id"], tg_id)
+            await message.answer(
+                f"🤝 Аккаунт привязан к профилю агента «{unlinked_agent['name']}»."
+            )
 
     roles = await get_user_roles(tg_id)
     if len(roles) > 1:
