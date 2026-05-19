@@ -225,7 +225,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     tg_id = message.from_user.id
 
-    # Check if this Telegram ID is a linked agent
+    # Check if this Telegram ID is already a linked agent
     agent = await api.get_agent_by_telegram(tg_id)
     if agent:
         from handlers.agent import agent_webapp_kb
@@ -246,6 +246,21 @@ async def cmd_start(message: Message, state: FSMContext):
             "Для заказов нам нужно несколько данных.\n\nКак вас зовут?"
         )
         return
+
+    # Already-registered user: check if their phone matches an unlinked agent
+    user_phone = user.get("phone", "")
+    if user_phone:
+        agent = await api.get_agent_by_phone(user_phone)
+        if agent:
+            linked = await api.link_agent_telegram(agent["id"], tg_id)
+            if linked:
+                from handlers.agent import agent_webapp_kb
+                await message.answer(
+                    f"🤝 Привет, {agent.get('name', user['name'])}! "
+                    f"Вы теперь зарегистрированы как агент.",
+                    reply_markup=agent_webapp_kb(),
+                )
+                return
 
     roles = await get_user_roles(tg_id)
     if len(roles) > 1:
@@ -347,6 +362,9 @@ async def _finish_registration(message: Message, state: FSMContext, phone: str):
     if agent:
         linked = await api.link_agent_telegram(agent["id"], tg_id)
         if linked:
+            alphabet = string.ascii_uppercase + string.digits
+            password = ''.join(secrets.choice(alphabet) for _ in range(8))
+            await api.update_user(tg_id, name=agent["name"], phone=phone, is_registered=True, site_password=password)
             await state.clear()
             from handlers.agent import agent_webapp_kb
             await message.answer(
