@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deactivateAgent, activateAgent } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
 
 const C = '#8DC63F'
@@ -161,7 +161,148 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
   )
 }
 
+function AddAgentModal({ onClose, onSave }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [loading, setLoading] = useState(false)
+  const handle = async () => {
+    if (!name.trim() || !phone.trim()) return
+    setLoading(true)
+    try {
+      await onSave({ name: name.trim(), phone: phone.trim() })
+      onClose()
+    } catch { alert('Ошибка при создании') }
+    finally { setLoading(false) }
+  }
+  const dis = !name.trim() || !phone.trim()
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={st.sheet}>
+        <div style={st.handle} />
+        <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, textAlign: 'center' }}>Добавить агента</div>
+        {[
+          ['Имя *', 'Имя агента', name, setName, 'text'],
+          ['Телефон *', '+998 90 000-00-00', phone, setPhone, 'tel'],
+        ].map(([label, placeholder, value, setter, mode]) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={st.label}>{label}</div>
+            <input style={st.input} placeholder={placeholder} value={value}
+              onChange={e => setter(e.target.value)} inputMode={mode} />
+          </div>
+        ))}
+        <div style={{ fontSize: 12, color: TEXT2, background: '#F8F9FA', borderRadius: 10, padding: '8px 12px' }}>
+          Агент привяжет Telegram сам при первом запуске бота
+        </div>
+        <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none' } : {}) }}
+          disabled={dis || loading} onClick={handle}>
+          {loading ? 'Создаю...' : 'Добавить агента'}
+        </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+          onClick={onClose}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
+function AgentCard({ agent: a, onDeactivate, onActivate }) {
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: a.is_active ? 1 : 0.6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: a.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {(a.name || 'А')[0]}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{a.name}</div>
+          {a.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{a.phone}</div>}
+          <div style={{ marginTop: 4 }}>
+            {a.telegram_id ? (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#EBFBEE', color: '#2B8A3E', fontWeight: 600 }}>Telegram привязан</span>
+            ) : (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#FFF3BF', color: '#E67700', fontWeight: 600 }}>Telegram не привязан</span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
+        {a.is_active ? (
+          !confirming ? (
+            <button style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
+              onClick={() => setConfirming(true)}>Деактивировать</button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {a.name}?</span>
+              <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                onClick={() => { onDeactivate(a.id); setConfirming(false) }}>Да</button>
+              <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
+                onClick={() => setConfirming(false)}>Нет</button>
+            </div>
+          )
+        ) : (
+          <button style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+            onClick={() => onActivate(a.id)}>Активировать</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AgentsList() {
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    getAgents().then(data => setAgents(data || [])).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const handleCreate = async (data) => { await createAgent(data); load() }
+  const handleDeactivate = async (id) => { await deactivateAgent(id); load() }
+  const handleActivate = async (id) => { await activateAgent(id); load() }
+
+  const active = agents.filter(a => a.is_active)
+  const inactive = agents.filter(a => !a.is_active)
+
+  return (
+    <div>
+      {showAdd && <AddAgentModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
+      <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '12px 14px', borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(141,198,63,0.3)', marginBottom: 20 }}
+        onClick={() => setShowAdd(true)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        Добавить агента
+      </button>
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', border: '3px solid rgba(141,198,63,0.2)', borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      ) : agents.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Агентов пока нет</div>
+        </div>
+      ) : (
+        <>
+          {active.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Активные · {active.length}</div>
+              {active.map(a => <AgentCard key={a.id} agent={a} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
+            </div>
+          )}
+          {inactive.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деактивированные · {inactive.length}</div>
+              {inactive.map(a => <AgentCard key={a.id} agent={a} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры' }) {
+  const [tab, setTab] = useState('couriers')
   const [couriers, setCouriers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -186,8 +327,25 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
 
   return (
     <Layout title={title}>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
+      {/* Курьеры / Агенты toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: '#F2F2F7', borderRadius: 14, padding: 4 }}>
+        {[{ key: 'couriers', label: 'Курьеры' }, { key: 'agents', label: 'Агенты' }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            flex: 1, padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
+            fontSize: 14, fontWeight: 700,
+            background: tab === t.key ? `linear-gradient(135deg, ${C}, ${CD})` : 'transparent',
+            color: tab === t.key ? '#fff' : '#8E8E93',
+            transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'agents' && <AgentsList />}
+
+      {tab === 'couriers' && <>
       <button style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         width: '100%', padding: '12px 14px', borderRadius: 14, border: 'none',
@@ -238,6 +396,7 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
           )}
         </>
       )}
+      </>}
     </Layout>
   )
 }

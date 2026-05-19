@@ -741,9 +741,10 @@ class CourierOrderCreate(BaseModel):
     longitude: float | None = None
     courier_telegram_id: int | None = None  # set when a courier creates the order
     courier_id: int | None = None           # set when manager pre-selects courier
-    creator_role: str = "manager"           # "courier" | "manager" | "admin"
+    creator_role: str = "manager"           # "courier" | "manager" | "admin" | "agent"
     manager_name: str | None = None
     manager_phone: str | None = None
+    agent_id: int | None = None             # set when an agent creates the order
 
 
 @router.post("/orders")
@@ -806,6 +807,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         longitude=body.longitude,
         status=OrderStatus.CONFIRMED,
         creator_role=body.creator_role,
+        agent_id=body.agent_id,
     )
     db.add(order)
     await db.flush()

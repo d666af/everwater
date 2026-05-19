@@ -11,10 +11,11 @@ from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
 from app.models.warehouse import WarehouseStaff
+from app.models.agent import Agent
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_PRIORITY = ["admin", "warehouse", "manager", "courier", "client"]
+_PRIORITY = ["admin", "warehouse", "manager", "courier", "agent", "client"]
 
 
 async def _check_warehouse(tid: int | None, db: AsyncSession) -> bool:
@@ -32,11 +33,12 @@ async def _check_warehouse(tid: int | None, db: AsyncSession) -> bool:
     return row is not None
 
 
-def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: bool = False):
+def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: bool = False, agent=None):
     tid = tg_id or (
         (user.telegram_id if user else None)
         or (courier.telegram_id if courier else None)
         or (manager.telegram_id if manager else None)
+        or (agent.telegram_id if agent else None)
     )
     all_roles: list[str] = []
     if tid and tid in settings.ADMIN_IDS:
@@ -47,17 +49,20 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
         all_roles.append("manager")
     if courier:
         all_roles.append("courier")
+    if agent:
+        all_roles.append("agent")
     if user:
         all_roles.append("client")
     if not all_roles:
         all_roles = ["client"]
 
     primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
-    name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or ""
-    phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or ""
-    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None)
+    name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or (agent.name if agent else None) or ""
+    phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or (agent.phone if agent else None) or ""
+    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None) or (agent.id if agent else None)
     bonus = float(user.bonus_points) if user else 0.0
-    is_reg = user.is_registered if user else True
+    is_reg = (user.is_registered if user else None) if user else True
+    agent_id = agent.id if agent else None
 
     return {
         "id": uid,
@@ -68,6 +73,7 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
         "roles": all_roles,
         "bonus_points": bonus,
         "is_registered": is_reg,
+        "agent_id": agent_id,
     }
 
 
@@ -92,17 +98,20 @@ async def telegram_auth(body: InitDataBody, db: AsyncSession = Depends(get_db)):
     manager = (await db.execute(
         select(Manager).where(Manager.telegram_id == tg_id, Manager.is_active == True)
     )).scalar_one_or_none()
+    agent = (await db.execute(
+        select(Agent).where(Agent.telegram_id == tg_id, Agent.is_active == True)
+    )).scalar_one_or_none()
 
     is_wh = await _check_warehouse(tg_id, db)
 
-    if not user and not courier and not manager and not is_wh and tg_id not in settings.ADMIN_IDS:
+    if not user and not courier and not manager and not agent and not is_wh and tg_id not in settings.ADMIN_IDS:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Block access for incomplete registrations (started bot but didn't finish)
-    if user and not user.is_registered and not courier and not manager and not is_wh and tg_id not in settings.ADMIN_IDS:
+    if user and not user.is_registered and not courier and not manager and not agent and not is_wh and tg_id not in settings.ADMIN_IDS:
         raise HTTPException(status_code=403, detail="Registration incomplete")
 
-    return _build_response(user, courier, manager, tg_id, is_warehouse=is_wh)
+    return _build_response(user, courier, manager, tg_id, is_warehouse=is_wh, agent=agent)
 
 
 class PhoneLoginBody(BaseModel):

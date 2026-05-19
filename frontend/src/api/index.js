@@ -662,6 +662,37 @@ export const courierCreateOrder = (data) =>
     }
   )
 
+// ─── Agents ──────────────────────────────────────────────────────────────────
+export const getAgents = () =>
+  safeCall(
+    () => http.get('/agents/').then(r => r.data),
+    () => []
+  )
+
+export const createAgent = (data) =>
+  safeCall(
+    () => http.post('/agents/', data).then(r => r.data),
+    () => ({ id: Date.now(), ...data, is_active: true, created_at: new Date().toISOString() })
+  )
+
+export const deactivateAgent = (id) =>
+  safeCall(
+    () => http.patch(`/agents/${id}/deactivate`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const activateAgent = (id) =>
+  safeCall(
+    () => http.patch(`/agents/${id}/activate`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getAgentOrders = (agentId, params = {}) =>
+  safeCall(
+    () => http.get(`/agents/${agentId}/orders`, { params }).then(r => r.data),
+    () => []
+  )
+
 // ─── Cooler management ──────────────────────────────────────────────────────
 export const getClientCoolers = (userId) =>
   safeCall(

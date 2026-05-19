@@ -7,7 +7,7 @@ import { authByInitData, getUserByTelegram } from '../api'
 const tg = window.Telegram?.WebApp
 
 const ROLE_HOME = {
-  client: '/', admin: '/admin', manager: '/manager', courier: '/courier', warehouse: '/warehouse',
+  client: '/', admin: '/admin', manager: '/manager', courier: '/courier', warehouse: '/warehouse', agent: '/agent/checkout',
 }
 
 export function useTelegramAuth() {
