@@ -186,9 +186,13 @@ async def login_by_phone(body: PhoneLoginBody, db: AsyncSession = Depends(get_db
 @router.get("/roles")
 async def get_roles_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
     user, courier, manager = await _lookup_by_phone(phone, db)
-    if not user and not courier and not manager:
+    suffix = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")[-9:]
+    agent = (await db.execute(
+        select(Agent).where(Agent.phone.contains(suffix), Agent.is_active == True)
+    )).scalar_one_or_none()
+    if not user and not courier and not manager and not agent:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    tid = (user.telegram_id if user else None) or (courier.telegram_id if courier else None) or (manager.telegram_id if manager else None)
+    tid = (user.telegram_id if user else None) or (courier.telegram_id if courier else None) or (manager.telegram_id if manager else None) or (agent.telegram_id if agent else None)
     is_wh = await _check_warehouse(tid, db)
-    return _build_response(user, courier, manager, is_warehouse=is_wh)
+    return _build_response(user, courier, manager, tid, is_warehouse=is_wh, agent=agent)
 

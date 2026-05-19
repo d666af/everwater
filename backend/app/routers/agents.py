@@ -4,6 +4,7 @@ from sqlalchemy import select
 from datetime import datetime
 from app.database import get_db
 from app.models.agent import Agent
+from app.models.user import User
 from app.models.order import Order
 from app.routers.orders import _order_opts, _order_to_out
 from app.schemas.agent import AgentCreate, AgentOut
@@ -19,13 +20,22 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 
 @router.post("/", response_model=AgentOut)
 async def create_agent(body: AgentCreate, db: AsyncSession = Depends(get_db)):
-    if body.telegram_id:
+    telegram_id = body.telegram_id
+    if telegram_id:
         existing = (await db.execute(
-            select(Agent).where(Agent.telegram_id == body.telegram_id)
+            select(Agent).where(Agent.telegram_id == telegram_id)
         )).scalar_one_or_none()
         if existing:
             raise HTTPException(status_code=400, detail="Telegram ID already linked to another agent")
-    agent = Agent(name=body.name, phone=body.phone, telegram_id=body.telegram_id)
+    else:
+        # Auto-link: find a registered user with matching phone
+        suffix = body.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")[-9:]
+        user = (await db.execute(
+            select(User).where(User.phone.contains(suffix), User.telegram_id.isnot(None))
+        )).scalar_one_or_none()
+        if user:
+            telegram_id = user.telegram_id
+    agent = Agent(name=body.name, phone=body.phone, telegram_id=telegram_id)
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
