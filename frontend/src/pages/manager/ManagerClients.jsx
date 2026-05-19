@@ -482,6 +482,16 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                     {u.orders_count || 0} заказов
                   </span>
+                  {!u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2 && (
+                    <span style={{ fontSize: 12, color: '#1971C2', background: '#E8F4FD', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(25,113,194,0.2)' }}>
+                      Новый
+                    </span>
+                  )}
+                  {(u.bonus_points || 0) > 0 && (
+                    <span style={{ fontSize: 12, color: '#E67700', background: '#FFF3D9', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(230,119,0,0.2)' }}>
+                      Бонусы: {Math.round(u.bonus_points)}
+                    </span>
+                  )}
                   {(u.bottles_owed || 0) > 0 && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#C92A2A', background: '#FFF5F5', padding: '4px 10px', borderRadius: 999, fontWeight: 700, border: '1px solid rgba(201,42,42,0.2)' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M8 6h8l1 3H7L8 6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><rect x="7" y="9" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>
