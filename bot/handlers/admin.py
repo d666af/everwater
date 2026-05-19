@@ -1891,7 +1891,7 @@ async def admin_create_order_start(message: Message, state: FSMContext):
         "<i>1 строка — кол-во 19л бутылей\n"
         "2 строка — адрес доставки\n"
         "3 строка — телефон клиента\n"
-        "4 строка — «баклажка» (надбавка за невозврат, необязательно)</i>",
+        "4 строка — кол-во невозвращённых бутылок (число = только для них, текст/пусто = для всех)</i>",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -1914,14 +1914,17 @@ async def admin_co_input(message: Message, state: FSMContext):
 
         quick_addr = lines[1]
         phone = lines[2]
-        baklajka = len(lines) > 3 and lines[3].lstrip()[:1].lower() in ("б", "b")
-
-        main_product = next(
-            (p for p in products if p.get("has_bottle_deposit") and float(p.get("volume") or 0) >= 18),
-            None,
-        )
-        items = {str(main_product["id"]): qty} if main_product else {}
-        return_bottles = 0 if baklajka else qty
+        non_return = 0
+        if len(lines) > 3:
+            fourth = lines[3].strip()
+            try:
+                non_return = max(0, int(fourth))
+                return_bottles = max(0, qty - non_return)
+            except ValueError:
+                non_return = qty
+                return_bottles = 0
+        else:
+            return_bottles = qty
 
         client = await api.lookup_user_by_phone(phone)
         addr_options = [quick_addr]
@@ -1949,8 +1952,8 @@ async def admin_co_input(message: Message, state: FSMContext):
 
         if main_product:
             items_info = f"\n🛒 {main_product['name']} {qty} шт."
-            if baklajka:
-                items_info += " · надбавка за невозврат"
+            if non_return > 0:
+                items_info += f" · надбавка за {non_return} бут."
         else:
             items_info = "\n⚠️ 19л продукт не найден — добавьте состав вручную"
 
