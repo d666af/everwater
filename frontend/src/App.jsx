@@ -55,6 +55,7 @@ import CourierMapPage from './pages/courier/CourierMapPage'
 // Agent
 import AgentCheckout from './pages/agent/AgentCheckout'
 import AgentOrders from './pages/agent/AgentOrders'
+import AgentBottomNav from './components/agent/AgentBottomNav'
 
 // Warehouse
 import WarehouseStock from './pages/warehouse/WarehouseStock'
@@ -286,6 +287,7 @@ export default function App() {
       </Routes>
       <CartWidget />
       <BottomNav />
+      <AgentBottomNav />
       <WelcomeSurvey />
       <AutoReviewPopup />
     </>

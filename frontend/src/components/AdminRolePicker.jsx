@@ -3,11 +3,12 @@ import { useAuthStore } from '../store/auth'
 import { useAdminRoleStore } from '../store/adminRole'
 
 const ROLES = [
-  { id: 'admin',     label: 'Администратор', icon: '🔧', path: '/admin',     color: '#6366f1' },
-  { id: 'manager',   label: 'Менеджер',      icon: '🧑‍💼', path: '/manager',   color: '#0ea5e9' },
-  { id: 'courier',   label: 'Курьер',        icon: '🚴', path: '/courier',   color: '#f59e0b' },
-  { id: 'warehouse', label: 'Склад',         icon: '🏭', path: '/warehouse', color: '#10b981' },
-  { id: 'client',    label: 'Клиент',        icon: '👤', path: '/',          color: '#8b5cf6' },
+  { id: 'admin',     label: 'Администратор', icon: '🔧', path: '/admin',          color: '#6366f1' },
+  { id: 'manager',   label: 'Менеджер',      icon: '🧑‍💼', path: '/manager',        color: '#0ea5e9' },
+  { id: 'courier',   label: 'Курьер',        icon: '🚴', path: '/courier',        color: '#f59e0b' },
+  { id: 'warehouse', label: 'Склад',         icon: '🏭', path: '/warehouse',      color: '#10b981' },
+  { id: 'agent',     label: 'Агент',         icon: '🤝', path: '/agent/checkout', color: '#ec4899' },
+  { id: 'client',    label: 'Клиент',        icon: '👤', path: '/',               color: '#8b5cf6' },
 ]
 
 export default function AdminRolePicker() {
