@@ -129,6 +129,8 @@ async def show_role_menu(target, role: str):
 
 
 _ALL_MENU_BUTTONS = frozenset({
+    # agent
+    "📋 Оформить заказ",
     # client
     "🛒 Заказать", "🔁 Повторить заказ", "🎁 Бонусы", "💬 Поддержка",
     # client (legacy buttons — kept so cached old keyboards still escape FSM properly)
@@ -153,6 +155,7 @@ _MANAGER_STATE_PREFIXES = ("MgrOrderCreate:", "MgrRejectCustom:", "MgrReject:",
 _ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:",
                            "AdminMsgUser:", "AdminBroadcast:")
 _WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:",)
+_AGENT_STATE_PREFIXES    = ("AcoOrderCreate:",)
 
 
 def _role_from_state(state_str: str | None) -> str | None:
@@ -166,6 +169,8 @@ def _role_from_state(state_str: str | None) -> str | None:
         return "admin"
     if any(state_str.startswith(p) for p in _WAREHOUSE_STATE_PREFIXES):
         return "warehouse"
+    if any(state_str.startswith(p) for p in _AGENT_STATE_PREFIXES):
+        return "agent"
     return None
 
 
@@ -190,6 +195,9 @@ async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
         await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
+    elif role == "agent":
+        from handlers.agent import agent_webapp_kb
+        await message.answer("Панель агента:", reply_markup=agent_webapp_kb())
     else:
         await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
 
@@ -214,6 +222,9 @@ async def cmd_menu(message: Message, state: FSMContext):
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
         await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
+    elif role == "agent":
+        from handlers.agent import agent_webapp_kb
+        await message.answer("Панель агента:", reply_markup=agent_webapp_kb())
     else:
         await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
 
@@ -1166,5 +1177,8 @@ async def restore_menu_on_lost_state(message: Message):
     elif role == "warehouse":
         from keyboards.warehouse import warehouse_menu_kb
         await message.answer("Главное меню:", reply_markup=warehouse_menu_kb(subs_enabled=subs_on))
+    elif role == "agent":
+        from handlers.agent import agent_webapp_kb
+        await message.answer("Панель агента:", reply_markup=agent_webapp_kb())
     else:
         await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
