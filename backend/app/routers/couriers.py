@@ -1030,7 +1030,8 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
 
     # ── Manager/admin-created order ──
     else:
-        role_label = "менеджером" if body.creator_role == "manager" else "администратором"
+        _ROLE_LABELS_RU = {"manager": "менеджером", "admin": "администратором", "agent": "агентом"}
+        role_label = _ROLE_LABELS_RU.get(body.creator_role, "администратором")
 
         def _fmt_nm(n): return f"{int(n):,}".replace(',', ' ')
         mgr_client_name = (user.name if user and user.name else None) or ""
