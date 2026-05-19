@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from config import settings
 
 
@@ -7,18 +7,25 @@ def _site(path: str = "") -> str:
 
 
 def admin_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
+    base = settings.MINI_APP_URL.rstrip("/")
     rows = [
-        [KeyboardButton(text="🗂 Заказы"), KeyboardButton(text="⏳ Новые заказы")],
-        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🚴 Курьеры")],
-        [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="🏭 Склад")],
-        [KeyboardButton(text="📦 Товары")],
+        [
+            KeyboardButton(text="📄 Заказы", web_app=WebAppInfo(url=f"{base}/admin/orders")),
+            KeyboardButton(text="📈 Статистика", web_app=WebAppInfo(url=f"{base}/admin/stats")),
+        ],
+        [
+            KeyboardButton(text="👥 CRM", web_app=WebAppInfo(url=f"{base}/admin/crm")),
+            KeyboardButton(text="📦 Продукты", web_app=WebAppInfo(url=f"{base}/admin/products")),
+        ],
+        [
+            KeyboardButton(text="🗄️ Настройки", web_app=WebAppInfo(url=f"{base}/admin/settings")),
+            KeyboardButton(text="🧮 Склад", web_app=WebAppInfo(url=f"{base}/admin/warehouse")),
+        ],
+        [
+            KeyboardButton(text="📝 История склада", web_app=WebAppInfo(url=f"{base}/admin/warehouse/history")),
+            KeyboardButton(text="📒 Отзывы", web_app=WebAppInfo(url=f"{base}/admin/reviews")),
+        ],
     ]
-    if subs_enabled:
-        rows.append([KeyboardButton(text="📅 Подписки"), KeyboardButton(text="🧑‍💼 Менеджеры")])
-    else:
-        rows.append([KeyboardButton(text="🧑‍💼 Менеджеры")])
-    rows.append([KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📣 Рассылка")])
-    rows.append([KeyboardButton(text="🔄 Роль")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
