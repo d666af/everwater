@@ -973,7 +973,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         _m = _map_url(body.address, body.latitude, body.longitude)
         if _m:
             kb_rows.append([{"text": "🗺 На карте", "url": _m}])
-        kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
+        kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
         await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
@@ -1067,7 +1067,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             _m = _map_url(body.address, body.latitude, body.longitude)
             if _m:
                 kb_rows.append([{"text": "🗺 На карте", "url": _m}])
-            kb_rows.append([{"text": "🚴 Выехал", "callback_data": f"courier:in_delivery:{oid}"}])
+            kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
             await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
 
             if client_tg:

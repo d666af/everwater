@@ -218,7 +218,7 @@ def _order_detail_kb(order_id: int, status: str, tab: str, page: int, order: dic
     if status == "confirmed":
         rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"corl:accept:{order_id}:{tab}:{page}")])
     elif status == "assigned_to_courier":
-        rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"corl:in_delivery:{order_id}:{tab}:{page}")])
+        rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"corl:in_delivery:{order_id}:{tab}:{page}")])
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"corl:done:{order_id}:{tab}:{page}")])
 
@@ -240,7 +240,7 @@ def _notif_detail_kb(order_id: int, status: str, order: dict) -> InlineKeyboardM
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
 
     if status == "assigned_to_courier":
-        rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
+        rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -378,7 +378,7 @@ async def list_courier_in_delivery(call: CallbackQuery):
         reply_markup=_order_detail_kb(order_id, order["status"], tab, page, order),
         parse_mode="HTML",
     )
-    await call.answer("🚴 Выехал!")
+    await call.answer("🚴 В пути!")
 
 
 @router.callback_query(F.data.startswith("corl:done:"))
@@ -1121,7 +1121,7 @@ async def courier_in_delivery(call: CallbackQuery):
         )
     except Exception:
         pass
-    await call.answer("🚴 Выехал!")
+    await call.answer("🚴 В пути!")
 
 
 @router.callback_query(F.data.startswith("courier:done:"))

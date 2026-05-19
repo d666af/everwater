@@ -212,7 +212,7 @@ function OrderSheet({ order, onClose, onAction, onDeliverConfirm, actionLoading 
           <button disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}
             style={{ ...btnSt, background: 'linear-gradient(135deg,#1C7ED6,#1864AB)' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            Выехал
+            В пути
           </button>
         )}
         {order.status === 'in_delivery' && (
