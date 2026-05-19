@@ -75,7 +75,7 @@ def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
     elif address:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
-    rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
+    rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -97,7 +97,7 @@ def courier_menu_kb() -> ReplyKeyboardMarkup:
 def courier_order_kb(order_id: int, status: str = "assigned_to_courier") -> InlineKeyboardMarkup:
     rows = []
     if status == "assigned_to_courier":
-        rows.append([InlineKeyboardButton(text="🚴 Выехал", callback_data=f"courier:in_delivery:{order_id}")])
+        rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

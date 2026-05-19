@@ -262,7 +262,7 @@ function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoa
               {order.status === 'assigned_to_courier' && (
                 <button style={urgency !== 'none' ? s.btnUrgent : s.btnPrimary} disabled={actionLoading} onClick={() => onAction(courierInDelivery, order.id)}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="19" cy="18" r="2" stroke="currentColor" strokeWidth="1.6"/><path d="M5 18H3V10l4-5h9l3 5v3M7 18h10M14 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Выехал
+                  В пути
                 </button>
               )}
               {order.status === 'in_delivery' && (
@@ -695,7 +695,7 @@ export default function CourierOrders() {
 
   const emptyMsg = {
     waiting: { title: 'Нет ожидающих заказов', hint: 'Ожидайте назначения от менеджера' },
-    enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "Выехал" чтобы начать доставку' },
+    enroute: { title: 'Нет заказов в пути', hint: 'Нажмите "В пути" чтобы начать доставку' },
     done:    { title: 'Нет доставленных', hint: 'Выполненные заказы появятся здесь' },
   }[filter]
 
