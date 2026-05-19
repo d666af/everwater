@@ -1877,8 +1877,6 @@ async def _aco_show_confirm(target, state: FSMContext):
 
 @router.message(F.text == "📝 Создать заказ")
 async def admin_create_order_start(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
     await state.update_data(aco_items={})
     await state.set_state(AdminOrderCreate.waiting_input)
     await message.answer(

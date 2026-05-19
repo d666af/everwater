@@ -20,9 +20,11 @@ async def main():
 
     # Order matters: FSM-state handlers must beat catch-all text handlers.
     # start contains Registration FSM and review FSM — register first.
+    # manager before admin so admin+manager users hit manager handlers first
+    # (manager handlers carry _IsManagerFilter so admin-only users pass through).
     dp.include_router(start.router)
-    dp.include_router(admin.router)
     dp.include_router(manager.router)
+    dp.include_router(admin.router)
     dp.include_router(warehouse.router)
     dp.include_router(courier.router)
     dp.include_router(agent.router)
