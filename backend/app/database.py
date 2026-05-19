@@ -31,6 +31,11 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_collected BOOLEAN",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_prompt_msg_id BIGINT",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS creator_role VARCHAR(32)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS notification_msg_ids TEXT",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS manager_phone VARCHAR(30)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_status_msg_id INTEGER",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)",
+            "ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL",
         ):
             try:
                 await conn.execute(text(stmt))
