@@ -25,6 +25,7 @@ def admin_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
             KeyboardButton(text="📝 История склада", web_app=WebAppInfo(url=f"{base}/admin/warehouse/history")),
             KeyboardButton(text="📒 Отзывы", web_app=WebAppInfo(url=f"{base}/admin/reviews")),
         ],
+        [KeyboardButton(text="📝 Создать заказ")],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 

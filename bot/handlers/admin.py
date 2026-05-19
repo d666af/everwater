@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -1637,4 +1637,588 @@ async def admin_sub_create_order(call: CallbackQuery):
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await call.answer()
+
+
+# ─── Admin manual order creation ──────────────────────────────────────────────
+
+class AdminOrderCreate(StatesGroup):
+    waiting_input = State()
+    choosing_product = State()
+    waiting_bottles = State()
+    choosing_address = State()
+    waiting_address = State()
+    confirming = State()
+
+
+def _aco_exch_price(p: dict) -> float:
+    if p.get("has_bottle_deposit") and p.get("deposit_price"):
+        return float(p["deposit_price"])
+    return float(p.get("effective_price") or p.get("price") or 0)
+
+
+def _aco_full_price(p: dict) -> float:
+    return float(p.get("price") or 0)
+
+
+def _aco_spc(products: list) -> float:
+    for p in products:
+        if p.get("has_bottle_deposit") and p.get("bottle_surcharge"):
+            return float(p["bottle_surcharge"])
+    for p in products:
+        if p.get("has_bottle_deposit"):
+            diff = _aco_full_price(p) - _aco_exch_price(p)
+            if diff > 0:
+                return diff
+    return 0.0
+
+
+def _aco_qty19(items: dict, products: list) -> int:
+    prod_map = {str(p["id"]): p for p in products}
+    return sum(qty for pid, qty in items.items() if prod_map.get(pid, {}).get("has_bottle_deposit"))
+
+
+def _aco_calc_surcharge(items: dict, products: list, return_bottles: int) -> float:
+    missing = max(0, _aco_qty19(items, products) - return_bottles)
+    return missing * _aco_spc(products)
+
+
+def _aco_client_addrs(client: dict | None) -> list:
+    if not client:
+        return []
+    for key in ("order_addresses", "addresses"):
+        raw = client.get(key) or []
+        if raw:
+            result = []
+            for a in raw:
+                addr = (a.get("address") or "") if isinstance(a, dict) else str(a)
+                if addr and addr not in result:
+                    result.append(addr)
+            if result:
+                return result
+    return []
+
+
+def _aco_grid_kb(products: list, items: dict) -> InlineKeyboardMarkup:
+    rows = []
+    pair = []
+    for p in products:
+        if not p.get("is_active", True):
+            continue
+        pid = str(p["id"])
+        qty = items.get(pid, 0)
+        name = p.get("name", "?")
+        label = f"✅ {name} ×{qty}" if qty > 0 else f"➕ {name}"
+        pair.append(InlineKeyboardButton(text=label, callback_data=f"aco:cp:{pid}"))
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
+    if items:
+        total_qty = sum(items.values())
+        prod_map = {str(p["id"]): p for p in products}
+        total_price = sum(_aco_exch_price(prod_map[pid]) * qty for pid, qty in items.items() if pid in prod_map)
+        rows.append([InlineKeyboardButton(
+            text=f"▶ Далее  {total_qty} шт. · {fmt(total_price)}",
+            callback_data="aco:done",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _aco_grid_text(items: dict, products: list) -> str:
+    if not items:
+        return "🛒 <b>Состав заказа</b>\n\nВыберите товары:"
+    prod_map = {str(p["id"]): p for p in products}
+    lines = ["🛒 <b>Состав заказа</b>", ""]
+    total = 0
+    for pid, qty in items.items():
+        p = prod_map.get(pid, {})
+        ep = _aco_exch_price(p)
+        fp = _aco_full_price(p)
+        s = ep * qty
+        total += s
+        dep = " ♻" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep}")
+    lines.append(f"\n<b>Итого: {fmt(total)}</b>")
+    return "\n".join(lines)
+
+
+def _aco_qty_kb(pid: str, qty: int) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="➖", callback_data=f"aco:qd:{pid}:-1"),
+            InlineKeyboardButton(text=f"{qty} шт.", callback_data="aco:noop"),
+            InlineKeyboardButton(text="➕", callback_data=f"aco:qd:{pid}:1"),
+        ],
+        [
+            InlineKeyboardButton(text="1", callback_data=f"aco:qs:{pid}:1"),
+            InlineKeyboardButton(text="2", callback_data=f"aco:qs:{pid}:2"),
+            InlineKeyboardButton(text="3", callback_data=f"aco:qs:{pid}:3"),
+        ],
+        [
+            InlineKeyboardButton(text="5", callback_data=f"aco:qs:{pid}:5"),
+            InlineKeyboardButton(text="10", callback_data=f"aco:qs:{pid}:10"),
+            InlineKeyboardButton(text="20", callback_data=f"aco:qs:{pid}:20"),
+        ],
+    ]
+    actions = []
+    if qty > 0:
+        actions.append(InlineKeyboardButton(text="🗑 Убрать", callback_data=f"aco:qremove:{pid}"))
+    actions.append(InlineKeyboardButton(text="◀ Назад", callback_data="aco:back_catalog"))
+    rows.append(actions)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _aco_qty_text(pid: str, products: list, items: dict) -> str:
+    p = next((x for x in products if str(x["id"]) == pid), {})
+    ep = _aco_exch_price(p)
+    fp = _aco_full_price(p)
+    qty = items.get(pid, 0)
+    vol = p.get("volume", "")
+    vol_str = f" {vol}л" if vol else ""
+    dep_hint = f"\n<i>♻ Цена с обменом. Без обмена: {fmt(fp)}</i>" if p.get("has_bottle_deposit") and ep < fp else ""
+    lines = [f"<b>{p.get('name', '?')}{vol_str}</b>", f"💵 {fmt(ep)} за шт.{dep_hint}"]
+    if qty > 0:
+        lines.append(f"\n📦 В заказе: {qty} шт. — {fmt(ep * qty)}")
+    lines.append("\nВыберите количество:")
+    return "\n".join(lines)
+
+
+def _aco_confirm_text(data: dict, products: list) -> str:
+    client = data.get("aco_client")
+    phone = data.get("aco_phone", "—")
+    address = data.get("aco_address", "—")
+    items = data.get("aco_items", {})
+    return_bottles = data.get("aco_return_bottles", 0)
+    prod_map = {str(p["id"]): p for p in products}
+    surcharge = _aco_calc_surcharge(items, products, return_bottles)
+
+    lines = ["📋 <b>Подтверждение заказа</b>\n"]
+    if client:
+        lines.append(f"👤 {client.get('name', '—')} · {phone}")
+    else:
+        lines.append(f"👤 {phone}")
+    lines.append(f"📍 {address}")
+    lines.append("\nТовары:")
+
+    total = 0
+    for pid, qty in items.items():
+        p = prod_map.get(pid, {})
+        ep = _aco_exch_price(p)
+        fp = _aco_full_price(p)
+        s = ep * qty
+        total += s
+        dep = " ♻" if p.get("has_bottle_deposit") and ep < fp else ""
+        lines.append(f"  • {p.get('name', pid)} {qty} шт. — {fmt(s)}{dep}")
+
+    if return_bottles > 0:
+        lines.append(f"\n♻️ Возврат: {return_bottles} шт.")
+    if surcharge > 0:
+        missing = max(0, _aco_qty19(items, products) - return_bottles)
+        lines.append(f"🫙 Надбавка за невозврат {missing} бут.: +{fmt(surcharge)}")
+        total += surcharge
+
+    lines.append(f"\n<b>Итого: {fmt(total)}</b>")
+    return "\n".join(lines)
+
+
+def _aco_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ Состав", callback_data="aco:edit:items"),
+            InlineKeyboardButton(text="♻️ Возврат", callback_data="aco:edit:bottles"),
+            InlineKeyboardButton(text="📍 Адрес", callback_data="aco:edit:address"),
+        ],
+        [InlineKeyboardButton(text="✅ Создать заказ", callback_data="aco:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="aco:cancel")],
+    ])
+
+
+def _aco_addr_kb(options: list) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"📍 {addr[:45]}", callback_data=f"aco:adr:{i}")]
+        for i, addr in enumerate(options)
+    ]
+    rows.append([InlineKeyboardButton(text="✏️ Другой адрес", callback_data="aco:adr:custom")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _aco_show_addr(target, state: FSMContext):
+    data = await state.get_data()
+    options = data.get("aco_addr_options", [])
+    if options:
+        await state.set_state(AdminOrderCreate.choosing_address)
+        text = "📍 Выберите адрес доставки:"
+        if isinstance(target, CallbackQuery):
+            await target.message.edit_text(text, reply_markup=_aco_addr_kb(options))
+        else:
+            await target.answer(text, reply_markup=_aco_addr_kb(options))
+    else:
+        await state.set_state(AdminOrderCreate.waiting_address)
+        text = "📍 Введите адрес доставки:"
+        if isinstance(target, CallbackQuery):
+            await target.message.edit_text(text)
+        else:
+            await target.answer(text)
+
+
+async def _aco_show_confirm(target, state: FSMContext):
+    data = await state.get_data()
+    products = data.get("aco_products", [])
+    text = _aco_confirm_text(data, products)
+    kb = _aco_confirm_kb()
+    await state.set_state(AdminOrderCreate.confirming)
+    if isinstance(target, CallbackQuery):
+        await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await target.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(F.text == "📝 Создать заказ")
+async def admin_create_order_start(message: Message, state: FSMContext):
+    await state.update_data(aco_items={})
+    await state.set_state(AdminOrderCreate.waiting_input)
+    await message.answer(
+        "📝 <b>Создать заказ</b>\n\n"
+        "Введите номер телефона клиента:\n"
+        "<code>+998 90 123-45-67</code>\n\n"
+        "Или быстрый ввод (3–4 строки через Enter):\n"
+        "<code>5\n"
+        "Балгарский, ул. Навои 12\n"
+        "+998 91-551-51-44\n"
+        "баклажка</code>\n\n"
+        "<i>1 строка — кол-во 19л бутылей\n"
+        "2 строка — адрес доставки\n"
+        "3 строка — телефон клиента\n"
+        "4 строка — «баклажка» (надбавка за невозврат, необязательно)</i>",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
+@router.message(AdminOrderCreate.waiting_input)
+async def admin_co_input(message: Message, state: FSMContext):
+    text = message.text.strip()
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    products = await api.get_products()
+    products = [p for p in products if p.get("is_active", True)]
+
+    if len(lines) >= 3:
+        try:
+            qty = int(lines[0])
+        except ValueError:
+            await message.answer("❌ Первая строка должна быть числом (количество бутылей).\nПопробуйте ещё раз.")
+            return
+
+        quick_addr = lines[1]
+        phone = lines[2]
+        baklajka = len(lines) > 3 and lines[3].lstrip()[:1].lower() in ("б", "b")
+
+        main_product = next(
+            (p for p in products if p.get("has_bottle_deposit") and float(p.get("volume") or 0) >= 18),
+            None,
+        )
+        items = {str(main_product["id"]): qty} if main_product else {}
+        return_bottles = 0 if baklajka else qty
+
+        client = await api.lookup_user_by_phone(phone)
+        addr_options = [quick_addr]
+        for a in _aco_client_addrs(client):
+            if a not in addr_options:
+                addr_options.append(a)
+
+        await state.update_data(
+            aco_phone=phone,
+            aco_products=products,
+            aco_items=items,
+            aco_client=client,
+            aco_return_bottles=return_bottles,
+            aco_addr_options=addr_options,
+            aco_edit_mode=False,
+        )
+
+        if client:
+            bottles_owed = client.get("bottles_owed", 0)
+            info = f"✅ {client.get('name', '—')} · {client.get('phone', phone)}"
+            if bottles_owed > 0:
+                info += f"\n🫙 Долг бутылок: {bottles_owed} шт."
+        else:
+            info = f"ℹ️ Клиент не найден — заказ по номеру {phone}"
+
+        if main_product:
+            items_info = f"\n🛒 {main_product['name']} {qty} шт."
+            if baklajka:
+                items_info += " · надбавка за невозврат"
+        else:
+            items_info = "\n⚠️ 19л продукт не найден — добавьте состав вручную"
+
+        await message.answer(f"{info}{items_info}", parse_mode="HTML")
+        await _aco_show_addr(message, state)
+
+    else:
+        phone = text
+        client = await api.lookup_user_by_phone(phone)
+
+        await state.update_data(
+            aco_phone=phone,
+            aco_products=products,
+            aco_items={},
+            aco_client=client,
+            aco_addr_options=_aco_client_addrs(client),
+            aco_edit_mode=False,
+        )
+        await state.set_state(AdminOrderCreate.choosing_product)
+
+        if client:
+            bottles_owed = client.get("bottles_owed", 0)
+            pending = client.get("pending_return", 0)
+            available = client.get("available_bottles", bottles_owed)
+            if bottles_owed > 0:
+                if pending > 0:
+                    bottle_line = f"\n🫙 Долг: {bottles_owed} бут. | В процессе: {pending} | Доступно: {available}"
+                else:
+                    bottle_line = f"\n🫙 Долг по бутылкам: {bottles_owed} шт."
+            else:
+                bottle_line = ""
+            info = f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}{bottle_line}"
+        else:
+            info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"
+
+        await message.answer(
+            f"{info}\n\n{_aco_grid_text({}, products)}",
+            reply_markup=_aco_grid_kb(products, {}),
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data == "aco:noop")
+async def admin_co_catalog_noop(call: CallbackQuery):
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data.startswith("aco:cp:"))
+async def admin_co_pick_product(call: CallbackQuery, state: FSMContext):
+    pid = call.data.split(":", 2)[2]
+    data = await state.get_data()
+    products = data.get("aco_products", [])
+    items = data.get("aco_items", {})
+    await call.message.edit_text(
+        _aco_qty_text(pid, products, items),
+        reply_markup=_aco_qty_kb(pid, items.get(pid, 0)),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data.startswith("aco:qd:"))
+async def admin_co_qty_delta(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    pid, delta = parts[2], int(parts[3])
+    data = await state.get_data()
+    items = dict(data.get("aco_items", {}))
+    new_qty = max(0, items.get(pid, 0) + delta)
+    if new_qty == 0:
+        items.pop(pid, None)
+    else:
+        items[pid] = new_qty
+    await state.update_data(aco_items=items)
+    products = data.get("aco_products", [])
+    await call.message.edit_text(
+        _aco_qty_text(pid, products, items),
+        reply_markup=_aco_qty_kb(pid, new_qty),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data.startswith("aco:qs:"))
+async def admin_co_qty_set(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    pid, qty = parts[2], int(parts[3])
+    data = await state.get_data()
+    items = dict(data.get("aco_items", {}))
+    if qty == 0:
+        items.pop(pid, None)
+    else:
+        items[pid] = qty
+    await state.update_data(aco_items=items)
+    products = data.get("aco_products", [])
+    await call.message.edit_text(
+        _aco_qty_text(pid, products, items),
+        reply_markup=_aco_qty_kb(pid, qty),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data.startswith("aco:qremove:"))
+async def admin_co_qty_remove(call: CallbackQuery, state: FSMContext):
+    pid = call.data.split(":", 2)[2]
+    data = await state.get_data()
+    items = dict(data.get("aco_items", {}))
+    items.pop(pid, None)
+    await state.update_data(aco_items=items)
+    products = data.get("aco_products", [])
+    await call.message.edit_text(
+        _aco_grid_text(items, products),
+        reply_markup=_aco_grid_kb(products, items),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data == "aco:back_catalog")
+async def admin_co_back_catalog(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    products = data.get("aco_products", [])
+    items = data.get("aco_items", {})
+    await call.message.edit_text(
+        _aco_grid_text(items, products),
+        reply_markup=_aco_grid_kb(products, items),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data == "aco:done")
+async def admin_co_items_done(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("aco_items"):
+        await call.answer("Добавьте хотя бы один товар!")
+        return
+    items = data.get("aco_items", {})
+    products = data.get("aco_products", [])
+    prod_map = {str(p["id"]): p for p in products}
+    has_deposit = any(prod_map.get(pid, {}).get("has_bottle_deposit") for pid in items)
+
+    if data.get("aco_edit_mode"):
+        await call.answer()
+        await _aco_show_confirm(call, state)
+        return
+
+    if has_deposit:
+        await state.set_state(AdminOrderCreate.waiting_bottles)
+        await call.message.edit_text(
+            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+        )
+    else:
+        await state.update_data(aco_return_bottles=0)
+        await _aco_show_addr(call, state)
+    await call.answer()
+
+
+@router.message(AdminOrderCreate.waiting_bottles)
+async def admin_co_bottles(message: Message, state: FSMContext):
+    try:
+        count = max(0, int(message.text.strip()))
+    except ValueError:
+        await message.answer("Введите число, например: 0, 1, 2")
+        return
+    await state.update_data(aco_return_bottles=count)
+    data = await state.get_data()
+    if data.get("aco_edit_mode"):
+        await _aco_show_confirm(message, state)
+    else:
+        await _aco_show_addr(message, state)
+
+
+@router.callback_query(AdminOrderCreate.choosing_address, F.data.startswith("aco:adr:"))
+async def admin_co_select_addr(call: CallbackQuery, state: FSMContext):
+    idx_str = call.data.split(":", 2)[2]
+    if idx_str == "custom":
+        await state.set_state(AdminOrderCreate.waiting_address)
+        await call.message.edit_text("📍 Введите адрес доставки:")
+        await call.answer()
+        return
+    data = await state.get_data()
+    options = data.get("aco_addr_options", [])
+    try:
+        addr = options[int(idx_str)]
+    except (ValueError, IndexError):
+        await call.answer("Ошибка выбора")
+        return
+    await state.update_data(aco_address=addr)
+    await call.answer()
+    await _aco_show_confirm(call, state)
+
+
+@router.message(AdminOrderCreate.waiting_address)
+async def admin_co_address(message: Message, state: FSMContext):
+    await state.update_data(aco_address=message.text.strip())
+    await _aco_show_confirm(message, state)
+
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:edit:items")
+async def admin_co_edit_items(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    products = data.get("aco_products", [])
+    items = data.get("aco_items", {})
+    await state.update_data(aco_edit_mode=True)
+    await state.set_state(AdminOrderCreate.choosing_product)
+    await call.message.edit_text(
+        _aco_grid_text(items, products),
+        reply_markup=_aco_grid_kb(products, items),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:edit:bottles")
+async def admin_co_edit_bottles(call: CallbackQuery, state: FSMContext):
+    await state.update_data(aco_edit_mode=True)
+    await state.set_state(AdminOrderCreate.waiting_bottles)
+    await call.message.edit_text(
+        "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:edit:address")
+async def admin_co_edit_address(call: CallbackQuery, state: FSMContext):
+    await state.update_data(aco_edit_mode=True)
+    await call.answer()
+    await _aco_show_addr(call, state)
+
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:confirm")
+async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    data = await state.get_data()
+    items_list = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["aco_items"].items()]
+    products = data.get("aco_products", [])
+    return_bottles = data.get("aco_return_bottles", 0)
+    surcharge = _aco_calc_surcharge(data["aco_items"], products, return_bottles)
+    try:
+        result = await api.courier_create_order({
+            "phone": data["aco_phone"],
+            "address": data["aco_address"],
+            "items": items_list,
+            "payment_method": "cash",
+            "return_bottles_count": return_bottles,
+            "bottle_surcharge": surcharge,
+            "creator_role": "admin",
+        })
+        oid = result.get("order_id") or result.get("id", "?")
+    except Exception:
+        await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
+        await state.clear()
+        await call.answer()
+        return
+
+    await state.clear()
+    await call.answer()
+    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
+    subs_on = await api.is_subscriptions_enabled()
+    await call.message.answer("Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
+
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:cancel")
+async def admin_co_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Заказ отменён.")
+    subs_on = await api.is_subscriptions_enabled()
+    await call.message.answer("Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     await call.answer()
