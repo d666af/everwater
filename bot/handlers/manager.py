@@ -1343,31 +1343,7 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-
-    couriers = await api.get_couriers()
-    skip_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"mco:skip_courier:{oid}")],
-    ])
-    if couriers:
-        courier_kb = mgr_courier_select_kb(couriers, oid)
-        rows = courier_kb.inline_keyboard + skip_kb.inline_keyboard
-        kb = InlineKeyboardMarkup(inline_keyboard=rows)
-        await call.message.edit_text(
-            f"✅ Заказ #{oid} создан!\n\n🚴 Назначьте курьера:",
-            reply_markup=kb,
-        )
-    else:
-        await call.message.edit_text(
-            f"✅ Заказ #{oid} создан!\nКурьеры не найдены — назначьте позже на сайте.",
-            reply_markup=skip_kb,
-        )
-
-
-@router.callback_query(F.data.startswith("mco:skip_courier:"))
-async def mgr_co_skip_courier(call: CallbackQuery):
-    if not await is_manager(call.from_user.id):
-        return
-    await call.message.edit_text(call.message.text)
+    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
     await call.message.answer(
         "Панель менеджера:",
         reply_markup=manager_menu_kb(
@@ -1375,7 +1351,6 @@ async def mgr_co_skip_courier(call: CallbackQuery):
             support_enabled=await api.is_support_chat_enabled(),
         ),
     )
-    await call.answer()
 
 
 @router.callback_query(MgrOrderCreate.confirming, F.data == "mco:cancel")
