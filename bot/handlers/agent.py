@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from aiogram.filters import Command
 from config import settings
 import services.api_client as api
@@ -11,17 +11,14 @@ def _site(path: str) -> str:
     return f"{settings.MINI_APP_URL.rstrip('/')}{path}"
 
 
-def agent_webapp_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📋 Оформить заказ",
-            web_app=WebAppInfo(url=_site("/agent/checkout"))
-        )],
-        [InlineKeyboardButton(
-            text="📜 История заказов",
-            web_app=WebAppInfo(url=_site("/agent/orders"))
-        )],
-    ])
+def agent_webapp_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Оформить заказ", web_app=WebAppInfo(url=_site("/agent/checkout")))],
+            [KeyboardButton(text="📜 История заказов", web_app=WebAppInfo(url=_site("/agent/orders")))],
+        ],
+        resize_keyboard=True,
+    )
 
 
 @router.message(Command("agent"))

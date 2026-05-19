@@ -138,7 +138,7 @@ export default function AgentOrders() {
   const totalSum = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total || 0), 0)
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F5F5F5', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: '#e4e4e8', display: 'flex', flexDirection: 'column' }}>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
 
       {pickerOpen && (
@@ -151,12 +151,12 @@ export default function AgentOrders() {
       )}
 
       {/* Header */}
-      <div style={{ background: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ background: '#e4e4e8', padding: '16px 20px', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, color: TEXT }}>История заказов</div>
       </div>
 
       {/* Date filter */}
-      <div style={{ padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${BORDER}` }}>
+      <div style={{ padding: '12px 16px', background: '#e4e4e8' }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => setPeriod('today')}
