@@ -459,6 +459,41 @@ async def deactivate_manager(manager_id: int):
     return await _delete(f"/admin/managers/{manager_id}")
 
 
+async def get_agent_by_telegram(telegram_id: int):
+    try:
+        return await _get(f"/agents/by_telegram/{telegram_id}")
+    except Exception:
+        return None
+
+
+async def get_agents():
+    try:
+        return await _get("/agents/")
+    except Exception:
+        return []
+
+
+async def link_agent_telegram(agent_id: int, telegram_id: int):
+    try:
+        return await _patch(f"/agents/{agent_id}/link_telegram", params={"telegram_id": telegram_id})
+    except Exception:
+        return None
+
+
+async def get_agent_by_phone(phone: str):
+    """Find an unlinked agent by phone number."""
+    try:
+        agents = await _get("/agents/")
+        digits = ''.join(c for c in phone if c.isdigit())
+        for agent in agents:
+            agent_digits = ''.join(c for c in (agent.get("phone") or "") if c.isdigit())
+            if agent_digits and agent_digits.endswith(digits[-9:]) and not agent.get("telegram_id"):
+                return agent
+        return None
+    except Exception:
+        return None
+
+
 async def get_stats(period: str = "month"):
     try:
         return await _get("/admin/stats", {"period": period})

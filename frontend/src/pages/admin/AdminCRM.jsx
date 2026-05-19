@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -24,6 +24,7 @@ const TABS = [
   { key: 'clients', label: 'Клиенты' },
   { key: 'couriers', label: 'Курьеры' },
   { key: 'managers', label: 'Менеджеры' },
+  { key: 'agents', label: 'Агенты' },
 ]
 
 const AUDIENCES = [
@@ -181,6 +182,160 @@ function ManagersTab() {
   )
 }
 
+function AgentsTab() {
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', phone: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    getAgents().then(setAgents).catch(console.error).finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
+
+  const save = async () => {
+    if (!form.name.trim() || !form.phone.trim()) { setError('Имя и телефон обязательны'); return }
+    setSaving(true); setError('')
+    try {
+      await createAgent({ name: form.name.trim(), phone: form.phone.trim() })
+      setShowForm(false); setForm({ name: '', phone: '' }); load()
+    } catch { setError('Ошибка при добавлении') } finally { setSaving(false) }
+  }
+
+  const toggleActive = async (agent) => {
+    try {
+      if (agent.is_active) {
+        if (!window.confirm(`Деактивировать агента ${agent.name}?`)) return
+        await deactivateAgent(agent.id)
+      } else {
+        await activateAgent(agent.id)
+      }
+      load()
+    } catch { alert('Ошибка') }
+  }
+
+  const activeAgents = agents.filter(a => a.is_active)
+  const inactiveAgents = agents.filter(a => !a.is_active)
+
+  return (
+    <>
+      <div style={ms.topBar}>
+        <span style={ms.countChip}>{agents.length} агентов</span>
+        <button style={ms.addBtn} onClick={() => { setShowForm(true); setError('') }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+          Добавить
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={ms.formCard}>
+          <div style={ms.formTitle}>Новый агент</div>
+          <div style={ms.formGrid}>
+            <div style={ms.field}>
+              <div style={ms.label}>Имя *</div>
+              <input style={ms.input} placeholder="Имя агента" value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div style={ms.field}>
+              <div style={ms.label}>Телефон *</div>
+              <input style={ms.input} placeholder="+998 99 000-00-00" value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} inputMode="tel" />
+            </div>
+          </div>
+          {error && <div style={ms.error}>{error}</div>}
+          <div style={{ fontSize: 12, color: TEXT2, background: '#F8F9FA', borderRadius: 8, padding: '8px 12px' }}>
+            После добавления агент сможет привязать свой Telegram, запустив бота и поделившись номером телефона.
+          </div>
+          <div style={ms.formActions}>
+            <button style={ms.cancelBtn} onClick={() => setShowForm(false)}>Отмена</button>
+            <button style={{ ...ms.saveBtn, ...(saving ? { opacity: 0.6 } : {}) }} onClick={save} disabled={saving}>
+              {saving ? 'Сохраняю...' : 'Добавить'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={ms.center}><div style={ms.spinner} /></div>
+      ) : agents.length === 0 ? (
+        <div style={ms.empty}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+            <circle cx="9" cy="7" r="4" stroke={C} strokeWidth="1.5"/>
+            <path d="M3 21C3 18 5.7 16 9 16" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            <circle cx="17" cy="10" r="3" stroke={C} strokeWidth="1.5"/>
+            <path d="M14 21C14 19 15.3 17 17 17C18.7 17 20 19 20 21" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <div style={ms.emptyText}>Агентов нет</div>
+          <button style={ms.addBtn} onClick={() => setShowForm(true)}>Добавить первого</button>
+        </div>
+      ) : (
+        <>
+          {activeAgents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Активные · {activeAgents.length}</div>
+              {activeAgents.map((a, i) => (
+                <div key={a.id} style={ms.card}>
+                  <div style={{ ...ms.avatar, background: GRADIENTS[i % GRADIENTS.length] }}>
+                    {(a.name || 'A')[0].toUpperCase()}
+                  </div>
+                  <div style={ms.info}>
+                    <div style={ms.name}>{a.name}</div>
+                    <div style={ms.meta}>
+                      <span style={ms.metaItem}>{a.phone}</span>
+                      {a.telegram_id ? (
+                        <span style={{ ...ms.badge, background: '#EBFBEE', color: '#2B8A3E' }}>Telegram привязан</span>
+                      ) : (
+                        <span style={{ ...ms.badge, background: '#FFF3BF', color: '#E67700' }}>Telegram не привязан</span>
+                      )}
+                    </div>
+                  </div>
+                  <button style={{ ...ms.removeBtn, borderColor: 'rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131' }}
+                    onClick={() => toggleActive(a)} title="Деактивировать">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {inactiveAgents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Деактивированные · {inactiveAgents.length}</div>
+              {inactiveAgents.map((a, i) => (
+                <div key={a.id} style={{ ...ms.card, opacity: 0.6 }}>
+                  <div style={{ ...ms.avatar, background: '#C0C0C8' }}>
+                    {(a.name || 'A')[0].toUpperCase()}
+                  </div>
+                  <div style={ms.info}>
+                    <div style={ms.name}>{a.name}</div>
+                    <div style={ms.meta}>
+                      <span style={ms.metaItem}>{a.phone}</span>
+                    </div>
+                  </div>
+                  <button style={{ ...ms.removeBtn, borderColor: `${C}55`, background: '#F8FFED', color: CD }}
+                    onClick={() => toggleActive(a)} title="Активировать">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
 export default function AdminCRM() {
   const [tab, setTab] = useState('clients')
   const [showBroadcast, setShowBroadcast] = useState(false)
@@ -319,6 +474,7 @@ export default function AdminCRM() {
         {tab === 'clients' && <ManagerClients Layout={FragmentLayout} title="Клиенты" />}
         {tab === 'couriers' && <ManagerCouriers Layout={FragmentLayout} title="Курьеры" />}
         {tab === 'managers' && <ManagersTab />}
+        {tab === 'agents' && <AgentsTab />}
       </div>
     </AdminLayout>
   )

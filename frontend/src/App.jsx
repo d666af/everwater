@@ -52,6 +52,10 @@ import CourierOrders from './pages/courier/CourierOrders'
 import CourierStats from './pages/courier/CourierStats'
 import CourierMapPage from './pages/courier/CourierMapPage'
 
+// Agent
+import AgentCheckout from './pages/agent/AgentCheckout'
+import AgentOrders from './pages/agent/AgentOrders'
+
 // Warehouse
 import WarehouseStock from './pages/warehouse/WarehouseStock'
 import WarehouseCouriers from './pages/warehouse/WarehouseCouriers'
@@ -262,6 +266,18 @@ export default function App() {
         <Route path="/warehouse/profile" element={
           <ProtectedRoute allowedRoles={['warehouse']}>
             <WarehouseProfile />
+          </ProtectedRoute>
+        } />
+
+        {/* Agent */}
+        <Route path="/agent/checkout" element={
+          <ProtectedRoute allowedRoles={['agent']}>
+            <AgentCheckout />
+          </ProtectedRoute>
+        } />
+        <Route path="/agent/orders" element={
+          <ProtectedRoute allowedRoles={['agent']}>
+            <AgentOrders />
           </ProtectedRoute>
         } />
 

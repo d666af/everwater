@@ -11,10 +11,11 @@ ROLE_LABELS = {
     "manager":   "🧑‍💼 Менеджер",
     "admin":     "🔧 Администратор",
     "warehouse": "🏭 Склад",
+    "agent":     "🤝 Агент",
 }
 
 # Priority order for non-admin users (highest wins)
-_PRIORITY = ["admin", "warehouse", "manager", "courier", "client"]
+_PRIORITY = ["admin", "warehouse", "manager", "courier", "agent", "client"]
 
 # Runtime-added warehouse IDs (added by admin via bot, survive until restart)
 _runtime_warehouse_ids: set[int] = set()
@@ -52,6 +53,9 @@ async def get_user_roles(telegram_id: int) -> list[str]:
     courier = await api.get_courier_by_telegram(telegram_id)
     if courier:
         roles.append("courier")
+    agent = await api.get_agent_by_telegram(telegram_id)
+    if agent:
+        roles.append("agent")
     return roles
 
 

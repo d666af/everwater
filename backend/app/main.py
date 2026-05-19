@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from app.database import create_tables, AsyncSessionLocal, engine
 from app.routers import products, orders, users, admin, auth, client
-from app.routers import warehouse, couriers
+from app.routers import warehouse, couriers, agents
 from app.services.seed import seed_products
 from app.services.settings_service import seed_defaults
 from app.services.background_tasks import background_loop
@@ -19,6 +19,7 @@ from app.models import user, order, product, courier as courier_model  # noqa: F
 from app.models import client_data, support, settings as settings_model  # noqa: F401
 # TopupRequest is in client_data — imported above
 from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa: F401
+from app.models import agent as agent_model  # noqa: F401
 
 
 @asynccontextmanager
@@ -133,6 +134,19 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS bottle_surcharge FLOAT DEFAULT 0"
         ))
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS agents ("
+            "id SERIAL PRIMARY KEY, "
+            "name VARCHAR(255) NOT NULL, "
+            "phone VARCHAR(20) NOT NULL, "
+            "is_active BOOLEAN DEFAULT TRUE, "
+            "telegram_id BIGINT UNIQUE, "
+            "created_at TIMESTAMP DEFAULT NOW()"
+            ")"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)"
+        ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)
         await seed_defaults(db)
@@ -163,6 +177,7 @@ app.include_router(admin.router)
 app.include_router(client.router)
 app.include_router(couriers.router)
 app.include_router(warehouse.router)
+app.include_router(agents.router)
 
 os.makedirs("static/products", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")

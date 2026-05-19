@@ -9,6 +9,7 @@ const ROLE_HOME = {
   manager: '/manager',
   courier: '/courier',
   warehouse: '/warehouse',
+  agent: '/agent/checkout',
 }
 
 const Loader = () => (

@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import ErrorEvent
-from handlers import start, admin, courier, client, manager, warehouse
+from handlers import start, admin, courier, client, manager, warehouse, agent
 from services.scheduler import setup_scheduler
 from config import settings
 
@@ -25,6 +25,7 @@ async def main():
     dp.include_router(manager.router)
     dp.include_router(warehouse.router)
     dp.include_router(courier.router)
+    dp.include_router(agent.router)
     dp.include_router(client.router)  # catch-all text → support must be last
 
     @dp.errors()

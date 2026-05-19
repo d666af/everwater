@@ -119,6 +119,14 @@ async def show_role_menu(target, role: str):
             if switch_kb:
                 await send("Переключить роль:", reply_markup=switch_kb)
 
+    elif role == "agent":
+        from handlers.agent import agent_webapp_kb
+        agent = await api.get_agent_by_telegram(tg_id)
+        name = agent.get("name", "Агент") if agent else "Агент"
+        await send(f"🤝 Привет, {name}! Выберите действие:", reply_markup=agent_webapp_kb())
+        if switch_kb:
+            await send("Переключить роль:", reply_markup=switch_kb)
+
 
 _ALL_MENU_BUTTONS = frozenset({
     # client
@@ -216,6 +224,16 @@ async def cmd_menu(message: Message, state: FSMContext):
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     tg_id = message.from_user.id
+
+    # Check if this Telegram ID is a linked agent
+    agent = await api.get_agent_by_telegram(tg_id)
+    if agent:
+        from handlers.agent import agent_webapp_kb
+        await message.answer(
+            f"🤝 Привет, {agent.get('name', 'Агент')}! Выберите действие:",
+            reply_markup=agent_webapp_kb(),
+        )
+        return
 
     user = await api.get_user(tg_id)
     if not user:
@@ -322,9 +340,24 @@ async def process_phone_text(message: Message, state: FSMContext):
 async def _finish_registration(message: Message, state: FSMContext, phone: str):
     data = await state.get_data()
     name = data["name"]
+    tg_id = message.from_user.id
+
+    # Check if this phone matches an unlinked agent record — auto-link if so
+    agent = await api.get_agent_by_phone(phone)
+    if agent:
+        linked = await api.link_agent_telegram(agent["id"], tg_id)
+        if linked:
+            await state.clear()
+            from handlers.agent import agent_webapp_kb
+            await message.answer(
+                f"✅ Привет, {agent['name']}! Вы зарегистрированы как агент.",
+                reply_markup=agent_webapp_kb(),
+            )
+            return
+
     alphabet = string.ascii_uppercase + string.digits
     password = ''.join(secrets.choice(alphabet) for _ in range(8))
-    await api.update_user(message.from_user.id, name=name, phone=phone, is_registered=True, site_password=password)
+    await api.update_user(tg_id, name=name, phone=phone, is_registered=True, site_password=password)
     await state.clear()
     await message.answer(
         f"🎉 Готово, {name}! Регистрация завершена.\n\nТеперь вы можете делать заказы!",
