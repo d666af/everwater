@@ -161,7 +161,7 @@ def _order_detail_lines(o: dict) -> str:
     bonus_part = f"\n💎 Бонусная скидка: −{fmt(int(bonus_used))}" if bonus_used > 0 else ""
     return_count = o.get("return_bottles_count") or 0
     return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
-    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o['total'])}{delivery_part}  |  {pay}{bonus_part}{return_line}"]
+    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o.get('total') or 0)}{delivery_part}  |  {pay}{bonus_part}{return_line}"]
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
