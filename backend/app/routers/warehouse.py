@@ -597,6 +597,7 @@ class BatchIssueBody(BaseModel):
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
     bottle_return: int = 0
+    created_at: datetime | None = None  # for backdating (invoice nakl)
 
 
 @router.post("/issue_batch")
@@ -638,7 +639,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         cw.quantity += qty
         cw.issued_today += qty
 
-        db.add(WaterTransaction(
+        tx = WaterTransaction(
             product_id=prod.id,
             courier_id=body.courier_id,
             order_id=None,
@@ -646,7 +647,10 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             quantity=qty,
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
-        ))
+        )
+        if body.created_at:
+            tx.created_at = body.created_at
+        db.add(tx)
         price = float(prod.price or 0)
         invoice_items.append({
             "name":  prod.name,
@@ -673,7 +677,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
                    WaterTransaction.transaction_type == "bottle_return")
         )).scalar() or 0
         debt_after = max(0, c_issued - c_returned - bottle_return_qty)
-        db.add(WaterTransaction(
+        ret_tx = WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
@@ -681,7 +685,10 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             quantity=bottle_return_qty,
             note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
-        ))
+        )
+        if body.created_at:
+            ret_tx.created_at = body.created_at
+        db.add(ret_tx)
 
     if bottle_return_qty > 0:
         invoice_items.insert(0, {
@@ -696,13 +703,14 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
 
     if courier:
         try:
+            _when = body.created_at or datetime.now()
             png = generate_invoice_png(
                 items=invoice_items,
                 courier_name=courier.name,
                 courier_phone=courier.phone,
                 vehicle_type=courier.vehicle_type,
                 vehicle_plate=courier.vehicle_plate,
-                when=datetime.now(),
+                when=_when,
             )
             await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by, db)
         except Exception:

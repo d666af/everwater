@@ -652,14 +652,46 @@ async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id
         return []
 
 
-async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None, performed_by: str = None) -> dict:
-    return await _post("/warehouse/issue_batch", {
+async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None,
+                      performed_by: str = None, vehicle_type: str = None, vehicle_plate: str = None,
+                      created_at: str = None) -> dict:
+    body = {
         "courier_id": courier_id,
         "items": items,
         "bottle_return": bottle_return,
         "note": note,
         "performed_by": performed_by,
+    }
+    if vehicle_type:
+        body["vehicle_type"] = vehicle_type
+    if vehicle_plate:
+        body["vehicle_plate"] = vehicle_plate
+    if created_at:
+        body["created_at"] = created_at
+    return await _post("/warehouse/issue_batch", body)
+
+
+async def get_courier_by_phone(phone: str) -> dict | None:
+    try:
+        return await _get("/admin/couriers/by_phone", params={"phone": phone})
+    except Exception:
+        return None
+
+
+async def create_courier_from_invoice(name: str, phone: str, vehicle_type: str | None = None, vehicle_plate: str | None = None) -> dict:
+    return await _post("/admin/couriers/from_invoice", {
+        "name": name, "phone": phone,
+        "vehicle_type": vehicle_type, "vehicle_plate": vehicle_plate,
     })
+
+
+async def update_courier_vehicle(courier_id: int, vehicle_type: str | None = None, vehicle_plate: str | None = None) -> dict:
+    body = {}
+    if vehicle_type is not None:
+        body["vehicle_type"] = vehicle_type
+    if vehicle_plate is not None:
+        body["vehicle_plate"] = vehicle_plate
+    return await _patch(f"/admin/couriers/{courier_id}", body)
 
 
 async def get_all_subscriptions(period: str = "week") -> list:

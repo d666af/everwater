@@ -16,13 +16,14 @@ const BORDER = 'rgba(60,60,67,0.08)'
 const STORAGE_KEY = 'crm_client_tags'
 const PRESET_TAGS = ['VIP', 'Офис', 'Оптовик', 'Проблемный', 'Корпоратив', 'Друг', 'Оптом']
 
-const CLIENT_BROADCAST_TAGS = [
-  { key: 'clients',             label: 'Все' },
-  { key: 'clients:permanent',   label: 'Постоянные' },
-  { key: 'clients:inactive',    label: 'Неактивные' },
-  { key: 'clients:bonus',       label: 'С бонусами' },
-  { key: 'clients:bottle_debt', label: 'Должники' },
-  { key: 'clients:new',         label: 'Новые' },
+// filter key → broadcast target key mapping
+const FILTER_DEFS = [
+  { key: 'all',         label: 'Все',          broadcastKey: 'clients' },
+  { key: 'permanent',   label: 'Постоянные',   broadcastKey: 'clients:permanent' },
+  { key: 'inactive',    label: 'Не активные',  broadcastKey: 'clients:inactive' },
+  { key: 'bonus',       label: 'С бонусами',   broadcastKey: 'clients:bonus' },
+  { key: 'bottle_debt', label: 'Должники',     broadcastKey: 'clients:bottle_debt' },
+  { key: 'new',         label: 'Новые',        broadcastKey: 'clients:new' },
 ]
 
 const loadStoredTags = () => {
@@ -476,7 +477,6 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [phoneModal, setPhoneModal] = useState(null)
   const [clientTags, setClientTags] = useState(() => loadStoredTags())
   const [showBroadcast, setShowBroadcast] = useState(false)
-  const [broadcastTarget, setBroadcastTarget] = useState('clients')
   const [broadcastText, setBroadcastText] = useState('')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
@@ -487,11 +487,34 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     saveStoredTags(next)
   }
 
+  // All unique custom tags across all clients
+  const allCustomTags = [...new Set(Object.values(clientTags).flat())]
+
+  const matchesFilter = (u) => {
+    if (labelFilter === 'all') return true
+    if (labelFilter === 'permanent') return u.customer_label === 'permanent'
+    if (labelFilter === 'inactive') return u.customer_label === 'inactive'
+    if (labelFilter === 'bonus') return (u.bonus_points || 0) > 0
+    if (labelFilter === 'bottle_debt') return (u.bottles_owed || 0) > 0
+    if (labelFilter === 'new') return !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
+    if (labelFilter.startsWith('tag:')) return (clientTags[u.id] || []).includes(labelFilter.slice(4))
+    return true
+  }
+
   const sendBroadcast = async () => {
     if (!broadcastText.trim()) return
     setSending(true)
     try {
-      await broadcastMessage(broadcastText, broadcastTarget)
+      const sysDef = FILTER_DEFS.find(f => f.key === labelFilter)
+      if (sysDef) {
+        await broadcastMessage(broadcastText, sysDef.broadcastKey)
+      } else if (labelFilter.startsWith('tag:')) {
+        // Custom tag: send to filtered user IDs
+        const userIds = filtered.filter(u => u.id).map(u => u.id)
+        await broadcastMessage(broadcastText, 'clients', userIds)
+      } else {
+        await broadcastMessage(broadcastText, 'clients')
+      }
       setSent(true); setBroadcastText('')
       setTimeout(() => { setSent(false); setShowBroadcast(false) }, 2000)
     } catch { alert('Ошибка при отправке') } finally { setSending(false) }
@@ -500,9 +523,8 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
   const filtered = users.filter(u => {
-    const matchText = (u.name?.toLowerCase().includes(search.toLowerCase())) || (u.phone?.includes(search))
-    const matchLabel = labelFilter === 'all' || u.customer_label === labelFilter
-    return matchText && matchLabel
+    const matchText = !search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.phone?.includes(search)
+    return matchText && matchesFilter(u)
   })
 
   return (
@@ -516,37 +538,35 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
         {search && <button style={{ border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setSearch('')}><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2" strokeLinecap="round"/></svg></button>}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        {[
-          { key: 'all', label: 'Все' },
-          { key: 'permanent', label: 'Постоянные' },
-          { key: 'inactive', label: 'Не активные' },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setLabelFilter(f.key)}
-            style={{
-              padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
-              background: labelFilter === f.key
-                ? (f.key === 'permanent' ? '#EBFBEE' : f.key === 'inactive' ? '#F1F3F5' : `${C}22`)
-                : '#fff',
-              color: labelFilter === f.key
-                ? (f.key === 'permanent' ? '#2B8A3E' : f.key === 'inactive' ? '#868E96' : CD)
-                : TEXT2,
+      {/* Unified filter + broadcast tag row */}
+      <div style={{ overflowX: 'auto', scrollbarWidth: 'none', marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 6, paddingBottom: 4, minWidth: 'max-content' }}>
+          {FILTER_DEFS.map(f => (
+            <button key={f.key} onClick={() => setLabelFilter(f.key)} style={{
+              padding: '6px 13px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent', flexShrink: 0,
+              background: labelFilter === f.key ? (f.key === 'permanent' ? '#EBFBEE' : f.key === 'inactive' ? '#F1F3F5' : `${C}22`) : '#fff',
+              color: labelFilter === f.key ? (f.key === 'permanent' ? '#2B8A3E' : f.key === 'inactive' ? '#868E96' : CD) : TEXT2,
               boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
+            }}>{f.label}</button>
+          ))}
+          {allCustomTags.map(tag => (
+            <button key={`tag:${tag}`} onClick={() => setLabelFilter(`tag:${tag}`)} style={{
+              padding: '6px 13px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent', flexShrink: 0,
+              background: labelFilter === `tag:${tag}` ? `${C}22` : '#fff',
+              color: labelFilter === `tag:${tag}` ? CD : TEXT2,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            }}>{tag}</button>
+          ))}
+        </div>
       </div>
 
       <div style={{ fontSize: 12, color: TEXT2, fontWeight: 500, paddingLeft: 4, marginBottom: 8 }}>
         Клиентов: <b style={{ color: TEXT }}>{filtered.length}</b>
       </div>
 
-      {/* Broadcast */}
+      {/* Broadcast — uses current filter as target */}
       <button
         style={{
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -563,30 +583,19 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
           <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
-        Рассылка клиентам
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
+        Рассылка: <span style={{ fontWeight: 800 }}>{
+          (FILTER_DEFS.find(f => f.key === labelFilter)?.label) ||
+          (labelFilter.startsWith('tag:') ? labelFilter.slice(4) : 'Все')
+        }</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, background: `${C}22`, color: CD, padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>{filtered.length}</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </button>
       {showBroadcast && (
         <div style={{ background: '#fff', borderRadius: '0 0 14px 14px', padding: 14, marginBottom: 10, border: '1.5px solid rgba(60,60,67,0.08)', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 7, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}>
-            {CLIENT_BROADCAST_TAGS.map(tag => (
-              <button
-                key={tag.key}
-                onClick={() => setBroadcastTarget(tag.key)}
-                style={{
-                  padding: '6px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
-                  cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                  background: broadcastTarget === tag.key ? `${C}22` : '#F2F2F7',
-                  color: broadcastTarget === tag.key ? CD : TEXT2,
-                  outline: broadcastTarget === tag.key ? `2px solid ${C}66` : 'none',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
-              >
-                {tag.label}
-              </button>
-            ))}
+          <div style={{ fontSize: 12, color: TEXT2 }}>
+            Получат: <b style={{ color: TEXT }}>{filtered.filter(u => u.telegram_id).length}</b> клиентов с Telegram
           </div>
           <textarea
             style={{ border: `1.5px solid rgba(60,60,67,0.12)`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', resize: 'vertical', background: '#FAFAFA', color: TEXT, fontFamily: 'inherit', minHeight: 70 }}

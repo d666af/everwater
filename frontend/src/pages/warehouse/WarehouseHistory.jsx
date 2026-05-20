@@ -341,7 +341,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                     </div>
                   )}
                   <div style={{ fontSize: 10, color: TEXT2 }}>
-                    {new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · {new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(ts).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })} · {new Date(ts).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })}
                   </div>
                   {showInvoice && (
                     <a href={getInvoiceUrl(h.batch_id)} target="_blank" rel="noreferrer"
