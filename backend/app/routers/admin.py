@@ -9,6 +9,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.courier_product_earning import CourierProductEarning as _CPE
+from app.models.agent_product_earning import AgentProductEarning as _APE
 from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
 from app.models.client_data import SavedAddress, Subscription, BottleDebt
@@ -176,7 +177,7 @@ async def get_stats(
     bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
-    # Product sales breakdown for the period (with per-courier earning overrides)
+    # Product sales breakdown for the period (with per-courier and per-agent earning overrides)
     product_sales_q = await db.execute(
         select(
             Product.name,
@@ -185,12 +186,19 @@ async def get_stats(
             func.sum(
                 OrderItem.quantity * func.coalesce(_CPE.earning, Product.courier_earning, 0)
             ).label("courier_earning_total"),
+            func.sum(
+                OrderItem.quantity * func.coalesce(_APE.earning, Product.agent_earning, 0)
+            ).label("agent_earning_total"),
         )
         .join(OrderItem, OrderItem.product_id == Product.id)
         .join(Order, Order.id == OrderItem.order_id)
         .outerjoin(_CPE, and_(
             _CPE.product_id == Product.id,
             _CPE.courier_id == Order.courier_id,
+        ))
+        .outerjoin(_APE, and_(
+            _APE.product_id == Product.id,
+            _APE.agent_id == Order.agent_id,
         ))
         .where(_order_time(Order.status == OrderStatus.DELIVERED))
         .group_by(Product.id, Product.name)
@@ -202,6 +210,7 @@ async def get_stats(
             "qty": int(row.qty or 0),
             "total": round(float(row.total or 0), 2),
             "courier_earning": round(float(row.courier_earning_total or 0), 2),
+            "agent_earning": round(float(row.agent_earning_total or 0), 2),
         }
         for row in product_sales_q.all()
     ]

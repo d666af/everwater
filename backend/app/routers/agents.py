@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.agent import Agent
 from app.models.user import User
 from app.models.order import Order
+from app.models.agent_product_earning import AgentProductEarning
 from app.routers.orders import _order_opts, _order_to_out
 from app.schemas.agent import AgentCreate, AgentOut
 
@@ -111,4 +112,22 @@ async def get_agent_orders(
         dt = datetime.strptime(date_to, "%Y-%m-%d")
         q = q.where(Order.created_at <= datetime(dt.year, dt.month, dt.day, 23, 59, 59))
     result = await db.execute(q)
-    return [_order_to_out(o) for o in result.scalars().all()]
+    orders = result.scalars().all()
+
+    # Load agent-specific product earning overrides once
+    overrides_rows = (await db.execute(
+        select(AgentProductEarning).where(AgentProductEarning.agent_id == agent_id)
+    )).scalars().all()
+    overrides = {r.product_id: r.earning for r in overrides_rows}
+
+    out = []
+    for o in orders:
+        d = _order_to_out(o).model_dump()
+        earning = sum(
+            item.quantity * overrides.get(item.product_id,
+                (item.product.agent_earning if item.product and item.product.agent_earning is not None else 0))
+            for item in o.items
+        )
+        d["agent_earning"] = round(earning, 2)
+        out.append(d)
+    return out
