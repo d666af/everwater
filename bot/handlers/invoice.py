@@ -58,7 +58,7 @@ PRODUCT_PATTERNS = [
 async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
     try:
         import pytesseract
-        from PIL import Image, ImageFilter, ImageEnhance
+        from PIL import Image, ImageFilter, ImageEnhance, ImageOps
     except ImportError:
         log.error("pytesseract/Pillow not installed")
         return ""
@@ -68,15 +68,27 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
         await bot.download(file, destination=bio)
         bio.seek(0)
 
-        img = Image.open(bio).convert('L')
-        # Sharpen + increase contrast for better table OCR
+        img = Image.open(bio)
+
+        # Upscale to ~3000px on the longest side — tesseract accuracy degrades
+        # sharply below ~300 DPI; mobile photos of A4 sheets are usually small.
+        w, h = img.size
+        target = 3000
+        if max(w, h) < target:
+            scale = target / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+        img = img.convert('L')                        # grayscale
+        img = ImageOps.autocontrast(img, cutoff=2)    # stretch histogram
         img = img.filter(ImageFilter.SHARPEN)
         img = ImageEnhance.Contrast(img).enhance(2.0)
 
+        # PSM 11 = sparse text: find all text ignoring layout/table borders.
+        # Works much better than PSM 6 for grid-style invoice tables.
         text = pytesseract.image_to_string(
             img,
             lang='rus+eng',
-            config='--psm 6 --oem 3',
+            config='--psm 11 --oem 3',
         )
         log.info("OCR result:\n%s", text)
         return text
@@ -100,26 +112,25 @@ def _normalize_phone(raw: str) -> str | None:
 
 
 def _parse_invoice(text: str) -> dict | None:
-    if not text or len(text) < 20:
+    if not text or len(text) < 10:
         return None
 
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    full = ' '.join(lines)  # also search the whole text for scattered tokens
 
     result = {
         'dt': None,
         'return_qty': 0,
-        'items': [],          # list of {raw_name, qty}
+        'items': [],
         'courier_phone': None,
         'courier_name': None,
         'vehicle_type': None,
         'vehicle_plate': None,
     }
 
-    header = ' '.join(lines[:4])
-    # Date: DD.MM.YYYY
-    date_m = re.search(r'(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})', header)
-    # Time: HH:MM:SS or HH:MM
-    time_m = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', header)
+    # Date DD.MM.YYYY and time HH:MM:SS anywhere in the text
+    date_m = re.search(r'(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})', full)
+    time_m = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', full)
     if date_m and time_m:
         try:
             d, mo, y = int(date_m.group(1)), int(date_m.group(2)), int(date_m.group(3))
@@ -129,46 +140,52 @@ def _parse_invoice(text: str) -> dict | None:
         except Exception:
             pass
 
+    # Phone anywhere in the text (most reliable single source)
+    phone_m = re.search(r'998[\s\-]?\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', full)
+    if phone_m:
+        result['courier_phone'] = _normalize_phone(phone_m.group())
+
     for line in lines:
         low = line.lower()
 
-        # Return row
+        # Return row: "возврат  Шт  0  0"
         if 'возврат' in low or 'vozvrat' in low:
             nums = re.findall(r'\b(\d+)\b', line)
             for n in nums:
-                if 0 < int(n) < 1000:
-                    result['return_qty'] = int(n)
+                v = int(n)
+                if 0 < v < 1000:
+                    result['return_qty'] = v
                     break
 
-        # Product rows with "ever" brand
-        elif re.search(r'\bever\b', low) and 'наименование' not in low:
-            # OCR may give: "EVER 20л  Шт  32  0  18 000  576 000"
-            # Extract numbers; qty is the first one < 10000 (to avoid reading price)
+        # Product row: "EVER 20л  Шт  32  0  18 000  576 000"
+        # PSM 11 may split it differently — match any line with 'ever' keyword
+        elif re.search(r'\bever\b', low) and not re.search(r'наименование|header', low):
             nums = re.findall(r'\b(\d+)\b', line)
             for n in nums:
                 v = int(n)
-                if 1 <= v <= 5000:
+                if 1 <= v <= 500:   # qty range (bottles), not price (18000+)
                     result['items'].append({'raw_name': 'EVER 20л', 'qty': v})
                     break
 
-        # Courier row
-        elif 'получатель' in low or re.search(r'po\w*atel', low):
-            phone = _normalize_phone(line)
-            if phone:
-                result['courier_phone'] = phone
-            # Name: first ALL-CAPS word after keyword
+        # Courier row: "получатель  AKMAL  998 99 054 13 30"
+        if 'получатель' in low or re.search(r'poluch', low):
+            # Name: uppercase word(s) between keyword and phone
             name_m = re.search(
-                r'(?:получатель|poluchatel)\s+([А-ЯA-Z][А-ЯA-Za-z]{1,20})',
+                r'(?:получатель|poluchatel?)\s+([А-ЯЁA-Z][А-ЯЁA-Za-z]{1,20})',
                 line, re.IGNORECASE,
             )
             if name_m:
                 result['courier_name'] = name_m.group(1).strip()
+            if not result['courier_phone']:
+                ph = _normalize_phone(line)
+                if ph:
+                    result['courier_phone'] = ph
 
-        # Vehicle row
-        elif 'тип' in low and ('маш' in low or 'авто' in low) or re.search(r'\b[A-Z]{2,5}\b.*\b\d+[A-Z]+\d+[A-Z]*\b', line):
-            # "тип машины  LABO  30L700QA"
-            parts = re.split(r'\s{2,}|\t', line)
-            parts = [p.strip() for p in parts if p.strip() and 'тип' not in p.lower() and 'маш' not in p.lower()]
+        # Vehicle row: "тип машины  LABO  30L700QA"
+        if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
+            # strip the label words, collect remaining tokens
+            tokens = re.sub(r'тип\s*машины?|тип|маш\w*|tip\s*ma\w*', '', line, flags=re.IGNORECASE)
+            parts = [p.strip() for p in re.split(r'\s{2,}|\s*\|\s*|\t', tokens) if p.strip()]
             if len(parts) >= 2:
                 result['vehicle_type'] = parts[0].upper()
                 result['vehicle_plate'] = parts[1].upper()
@@ -179,11 +196,19 @@ def _parse_invoice(text: str) -> dict | None:
                 else:
                     result['vehicle_type'] = p
 
+    # Last-resort phone: scan every line individually
+    if not result['courier_phone']:
+        for line in lines:
+            ph = _normalize_phone(line)
+            if ph:
+                result['courier_phone'] = ph
+                break
+
     if not result['courier_phone'] and not result['courier_name']:
-        log.warning("Invoice parse: no courier info found")
+        log.warning("Invoice parse: no courier info found in:\n%s", text[:400])
         return None
     if not result['items'] and result['return_qty'] == 0:
-        log.warning("Invoice parse: no items and no return")
+        log.warning("Invoice parse: no items and no return in:\n%s", text[:400])
         return None
 
     return result
