@@ -10,6 +10,7 @@ from app.models.manager import Manager
 from app.models.order import Order, OrderStatus
 from app.schemas.user import UserCreate, UserUpdate, UserOut
 from app.config import settings as cfg
+from app.services.phone import phone_digits_col
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -52,11 +53,14 @@ async def lookup_user(phone: str | None = None, telegram_id: int | None = None, 
         result = await db.execute(select(User).where(User.phone == phone))
         user = result.scalar_one_or_none()
         if not user:
-            # Fuzzy: match last 9 digits (handles +998/8/0 prefix differences)
+            # Fuzzy: strip non-digits from stored phone, match last 9 digits
             digits = ''.join(c for c in phone if c.isdigit())
             if len(digits) >= 9:
                 result = await db.execute(
-                    select(User).where(User.phone.contains(digits[-9:])).limit(1)
+                    select(User)
+                    .where(phone_digits_col(User.phone).contains(digits[-9:]))
+                    .order_by(User.is_registered.desc())
+                    .limit(1)
                 )
                 user = result.scalars().first()
     elif telegram_id:
@@ -175,7 +179,10 @@ async def create_or_get_user(data: UserCreate, db: AsyncSession = Depends(get_db
         digits = ''.join(c for c in str(data.phone) if c.isdigit())
         if len(digits) >= 9:
             ph_q = await db.execute(
-                select(User).where(User.telegram_id.is_(None), User.phone.contains(digits[-9:]))
+                select(User).where(
+                    User.telegram_id.is_(None),
+                    phone_digits_col(User.phone).contains(digits[-9:]),
+                )
             )
             placeholder = ph_q.scalars().first()
             if placeholder:
@@ -214,7 +221,7 @@ async def update_user(telegram_id: int, data: UserUpdate, db: AsyncSession = Dep
             await db.execute(
                 sa_update(Order)
                 .where(Order.user_id.is_(None))
-                .where(Order.recipient_phone.contains(digits[-9:]))
+                .where(phone_digits_col(Order.recipient_phone).contains(digits[-9:]))
                 .values(user_id=user.id)
             )
             # Merge unregistered placeholder that was auto-created by staff
@@ -222,7 +229,7 @@ async def update_user(telegram_id: int, data: UserUpdate, db: AsyncSession = Dep
                 select(User).where(
                     User.id != user.id,
                     User.telegram_id.is_(None),
-                    User.phone.contains(digits[-9:]),
+                    phone_digits_col(User.phone).contains(digits[-9:]),
                     User.is_registered == False,
                 )
             )

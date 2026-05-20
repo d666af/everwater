@@ -17,6 +17,7 @@ from app.models.client_data import BottleDebt
 
 from app.schemas.order import OrderCreate, OrderOut, ReviewCreate
 from app.services.settings_service import get_all_settings
+from app.services.phone import phone_digits_col
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -404,7 +405,7 @@ async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
         digits = ''.join(c for c in user.phone if c.isdigit())
         if len(digits) >= 9:
             conditions.append(
-                and_(Order.user_id.is_(None), Order.recipient_phone.contains(digits[-9:]))
+                and_(Order.user_id.is_(None), phone_digits_col(Order.recipient_phone).contains(digits[-9:]))
             )
     result = await db.execute(
         select(Order).where(or_(*conditions))

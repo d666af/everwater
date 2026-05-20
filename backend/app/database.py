@@ -73,6 +73,16 @@ async def create_tables():
                WHERE mm.telegram_id = u.telegram_id
                  AND (mm.phone IS NULL OR mm.phone = '')
                  AND u.phone IS NOT NULL AND u.phone != ''""",
+            # Normalize all stored phones to +998XXXXXXXXX (strip spaces and country-code variants)
+            """UPDATE users SET phone = '+998' || RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 9)
+               WHERE phone IS NOT NULL AND phone != ''
+                 AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '', 'g')) >= 9""",
+            """UPDATE couriers SET phone = '+998' || RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 9)
+               WHERE phone IS NOT NULL AND phone != ''
+                 AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '', 'g')) >= 9""",
+            """UPDATE managers SET phone = '+998' || RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 9)
+               WHERE phone IS NOT NULL AND phone != ''
+                 AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '', 'g')) >= 9""",
         ):
             try:
                 await conn.execute(text(stmt))

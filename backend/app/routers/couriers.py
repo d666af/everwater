@@ -774,11 +774,15 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     _digits = ''.join(c for c in _raw_phone if c.isdigit())
     canonical_phone = normalize_phone(_raw_phone) or _raw_phone
 
-    # Fuzzy phone lookup (last 9 digits to handle prefix differences)
+    # Fuzzy phone lookup — strip non-digits from stored phone for comparison
+    from app.services.phone import phone_digits_col
     user = None
     if len(_digits) >= 9:
         user_q = await db.execute(
-            select(User).where(User.phone.contains(_digits[-9:])).order_by(User.is_registered.desc()).limit(1)
+            select(User)
+            .where(phone_digits_col(User.phone).contains(_digits[-9:]))
+            .order_by(User.is_registered.desc())
+            .limit(1)
         )
         user = user_q.scalars().first()
 
