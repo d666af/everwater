@@ -29,7 +29,14 @@ def fmt(amount):
 
 async def is_warehouse(user_id: int) -> bool:
     from services.roles import get_all_warehouse_ids
-    return user_id in get_all_warehouse_ids() or user_id in settings.ADMIN_IDS
+    if user_id in get_all_warehouse_ids() or user_id in settings.ADMIN_IDS:
+        return True
+    # Warehouse staff added via the CRM web live only in the DB
+    try:
+        staff = await api.get_warehouse_staff_db()
+        return any(s.get("telegram_id") == user_id for s in staff)
+    except Exception:
+        return False
 
 
 async def _operator_name(telegram_id: int, fallback: str = "Завсклада") -> str:
@@ -120,7 +127,7 @@ async def wh_prod_product(call: CallbackQuery, state: FSMContext):
 
 @router.message(ProductionState.waiting_quantity)
 async def wh_prod_quantity(message: Message, state: FSMContext):
-    text = message.text.strip()
+    text = (message.text or "").strip()
     if not text.isdigit() or int(text) <= 0:
         await message.answer("Введите корректное число (больше 0).")
         return
@@ -131,22 +138,31 @@ async def wh_prod_quantity(message: Message, state: FSMContext):
 
 @router.message(ProductionState.waiting_note)
 async def wh_prod_note(message: Message, state: FSMContext):
-    note = None if message.text.strip() == "-" else message.text.strip()
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Отправьте текстовую заметку или «-» чтобы пропустить.")
+        return
+    note = None if text == "-" else text
     data = await state.get_data()
     await state.clear()
-    result = await api.warehouse_production(data["prod_product_id"], data["prod_quantity"], note)
-    prod_name = data.get("prod_product_name", str(data["prod_product_id"]))
+    prod_name = data.get("prod_product_name", str(data.get("prod_product_id", "")))
+    qty = data.get("prod_quantity", 0)
+    try:
+        result = await api.warehouse_production(data["prod_product_id"], qty, note)
+    except Exception as e:
+        await message.answer(f"❌ Не удалось записать производство: {e}")
+        return
     await message.answer(
         f"✅ Производство записано!\n"
         f"Продукт: {prod_name}\n"
-        f"Количество: {data['prod_quantity']} шт.\n"
+        f"Количество: {qty} шт.\n"
         f"Новый остаток: {result.get('new_quantity', '—')} шт."
     )
     for admin_id in settings.ADMIN_IDS:
         try:
             await message.bot.send_message(
                 admin_id,
-                f"🏭 Произведено: {prod_name} — {data['prod_quantity']} шт."
+                f"🏭 Произведено: {prod_name} — {qty} шт."
             )
         except Exception:
             pass
@@ -230,7 +246,7 @@ async def wh_ir_pick_product(call: CallbackQuery, state: FSMContext):
 
 @router.message(IssueReturnState.entering_qty)
 async def wh_ir_enter_qty(message: Message, state: FSMContext):
-    text = message.text.strip()
+    text = (message.text or "").strip()
     try:
         qty = int(text)
         if qty < 0:
@@ -268,7 +284,7 @@ async def wh_ir_pick_return(call: CallbackQuery, state: FSMContext):
 
 @router.message(IssueReturnState.entering_return)
 async def wh_ir_enter_return(message: Message, state: FSMContext):
-    text = message.text.strip()
+    text = (message.text or "").strip()
     try:
         qty = max(0, int(text))
     except ValueError:
@@ -297,46 +313,58 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     ]
     total_sum = sum(v["qty"] * price_map.get(k, 0) for k, v in cart.items() if v["qty"] > 0)
 
+    if not items and return_qty <= 0:
+        await call.answer("Добавьте товар или укажите возврат бутылок", show_alert=True)
+        return
+
     from datetime import datetime, timezone, timedelta
     now_str = datetime.now(tz=timezone(timedelta(hours=5))).strftime("%d.%m.%Y %H:%M")
 
-    await state.clear()
     try:
         await api.issue_batch(courier_id, items, return_qty, performed_by=operator)
-
-        # Confirmation to operator
-        lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
-        if items:
-            lines.append("\n📦 Выдано:")
-            for it in items:
-                lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
-        if return_qty > 0:
-            lines.append(f"\n↩ Возврат бутылок: {return_qty} шт.")
-        if total_sum > 0:
-            lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
-        await call.message.edit_text("\n".join(lines), parse_mode="HTML")
-
-        # Notify courier — formatted as shown in design
-        couriers_list = data.get("ir_couriers", [])
-        courier = next((c for c in couriers_list if c["id"] == courier_id), {})
-        if courier.get("telegram_id") and (items or return_qty > 0):
-            n = ["📦 <b>Накладная со склада</b>", ""]
-            if items:
-                n.append("Получено:")
-                for it in items:
-                    n.append(f"  • {it['product_name']} — {it['quantity']} шт.")
-            n.append("")
-            if total_sum > 0:
-                n.append(f"Итого: {int(total_sum):,} сум".replace(",", " "))
-            if return_qty > 0:
-                n.append(f"↩ Возврат бутылок: {return_qty} шт.")
-            n.extend(["", f"Время: {now_str}"])
-            try:
-                await call.bot.send_message(courier["telegram_id"], "\n".join(n), parse_mode="HTML")
-            except Exception:
-                pass
     except Exception as e:
-        await call.message.edit_text(f"❌ Ошибка при выдаче: {e}")
+        # Keep the state so the operator can adjust quantities and resubmit
+        await call.answer()
+        await call.message.answer(f"❌ Ошибка при выдаче: {e}")
+        await _show_ir_catalog(call.message, state, edit=False)
+        return
+
+    await state.clear()
+
+    # Confirmation to operator
+    lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
+    if items:
+        lines.append("\n📦 Выдано:")
+        for it in items:
+            lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
+    if return_qty > 0:
+        lines.append(f"\n↩ Возврат бутылок: {return_qty} шт.")
+    if total_sum > 0:
+        lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
+    try:
+        await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+    except Exception:
+        await call.message.answer("\n".join(lines), parse_mode="HTML")
+
+    # Notify courier — formatted as shown in design
+    couriers_list = data.get("ir_couriers", [])
+    courier = next((c for c in couriers_list if c["id"] == courier_id), {})
+    if courier.get("telegram_id") and (items or return_qty > 0):
+        n = ["📦 <b>Накладная со склада</b>", ""]
+        if items:
+            n.append("Получено:")
+            for it in items:
+                n.append(f"  • {it['product_name']} — {it['quantity']} шт.")
+        n.append("")
+        if total_sum > 0:
+            n.append(f"Итого: {int(total_sum):,} сум".replace(",", " "))
+        if return_qty > 0:
+            n.append(f"↩ Возврат бутылок: {return_qty} шт.")
+        n.extend(["", f"Время: {now_str}"])
+        try:
+            await call.bot.send_message(courier["telegram_id"], "\n".join(n), parse_mode="HTML")
+        except Exception:
+            pass
     await call.answer()
 
 

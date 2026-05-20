@@ -1,3 +1,4 @@
+import json
 import logging
 import aiohttp
 from config import settings
@@ -6,10 +7,47 @@ BASE = settings.API_BASE_URL
 log = logging.getLogger(__name__)
 
 
+class ApiError(Exception):
+    """Raised when the backend returns a non-2xx response. Carries the
+    human-readable `detail` from FastAPI so it can be shown to the user."""
+    def __init__(self, status: int, detail: str):
+        self.status = status
+        self.detail = detail
+        super().__init__(detail)
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+def _extract_detail(body: str, status: int) -> str:
+    """Pull the human-readable message out of a FastAPI error body."""
+    try:
+        data = json.loads(body)
+    except Exception:
+        return body.strip() or f"Ошибка {status}"
+    detail = data.get("detail") if isinstance(data, dict) else None
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, list) and detail:
+        # 422 validation errors: list of {loc, msg, type}
+        msgs = [d.get("msg", "") for d in detail if isinstance(d, dict)]
+        joined = "; ".join(m for m in msgs if m)
+        if joined:
+            return joined
+    return f"Ошибка {status}"
+
+
+async def _raise_for_body(r, method: str, path: str):
+    body = await r.text()
+    log.error("%s %s → %s: %s", method, path, r.status, body)
+    raise ApiError(r.status, _extract_detail(body, r.status))
+
+
 async def _get(path: str, params: dict = None):
     async with aiohttp.ClientSession() as s:
         async with s.get(f"{BASE}{path}", params=params) as r:
-            r.raise_for_status()
+            if not r.ok:
+                await _raise_for_body(r, "GET", path)
             return await r.json()
 
 
@@ -17,30 +55,31 @@ async def _post(path: str, data: dict = None):
     async with aiohttp.ClientSession() as s:
         async with s.post(f"{BASE}{path}", json=data) as r:
             if not r.ok:
-                body = await r.text()
-                log.error("POST %s → %s: %s", path, r.status, body)
-                r.raise_for_status()
+                await _raise_for_body(r, "POST", path)
             return await r.json()
 
 
 async def _patch(path: str, data: dict = None, params: dict = None):
     async with aiohttp.ClientSession() as s:
         async with s.patch(f"{BASE}{path}", json=data, params=params) as r:
-            r.raise_for_status()
+            if not r.ok:
+                await _raise_for_body(r, "PATCH", path)
             return await r.json()
 
 
 async def _delete(path: str):
     async with aiohttp.ClientSession() as s:
         async with s.delete(f"{BASE}{path}") as r:
-            r.raise_for_status()
+            if not r.ok:
+                await _raise_for_body(r, "DELETE", path)
             return await r.json()
 
 
 async def _put(path: str, data: dict = None):
     async with aiohttp.ClientSession() as s:
         async with s.put(f"{BASE}{path}", json=data) as r:
-            r.raise_for_status()
+            if not r.ok:
+                await _raise_for_body(r, "PUT", path)
             return await r.json()
 
 
