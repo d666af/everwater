@@ -81,11 +81,10 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
         img = img.filter(ImageFilter.SHARPEN)
         img = ImageEnhance.Contrast(img).enhance(2.0)
 
-        # Run two PSM modes and merge unique lines.
-        # PSM 6 (uniform block) and PSM 11 (sparse) catch different rows in tables —
-        # each misses what the other finds, so combining gives full coverage.
         seen: set[str] = set()
         combined: list[str] = []
+
+        # Pass 1+2: image_to_string with PSM 6 and PSM 11
         for psm in (6, 11):
             t = pytesseract.image_to_string(img, lang='rus+eng', config=f'--psm {psm} --oem 3')
             for line in t.splitlines():
@@ -94,8 +93,30 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                     seen.add(line)
                     combined.append(line)
 
+        # Pass 3: image_to_data (word-level bounding boxes) — catches words that
+        # image_to_string drops due to multi-column table layout confusion.
+        try:
+            data = pytesseract.image_to_data(
+                img, lang='rus+eng', config='--psm 11 --oem 3',
+                output_type=pytesseract.Output.DICT,
+            )
+            word_lines: dict[tuple, list] = {}
+            for i, word in enumerate(data['text']):
+                word = word.strip()
+                if not word or int(data['conf'][i]) < 10:
+                    continue
+                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                word_lines.setdefault(key, []).append((data['left'][i], word))
+            for key in sorted(word_lines):
+                line = ' '.join(w for _, w in sorted(word_lines[key]))
+                if line not in seen:
+                    seen.add(line)
+                    combined.append(line)
+        except Exception as e:
+            log.warning("image_to_data pass failed: %s", e)
+
         text = '\n'.join(combined)
-        log.info("OCR result (PSM6+PSM11):\n%s", text)
+        log.info("OCR result:\n%s", text)
         return text
     except Exception as e:
         log.error("OCR error: %s", e)
@@ -105,17 +126,21 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 # ─── Parser ───────────────────────────────────────────────────────────────────
 
 def _normalize_phone(raw: str) -> str | None:
+    # 1. Spaced Uzbek format in the raw string (most accurate — OCR spaces groups clearly):
+    #    "99 054 13 30" → operator=99, prefix=054, last=1330
+    m = re.search(r'\b(9\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    if m:
+        return '+998' + ''.join(m.groups())
+    # 2. Exact compact: 998 + 9 consecutive digits
     digits = re.sub(r'[^\d]', '', raw)
-    # 1. Exact match: 998 + 9 digits
     m = re.search(r'998(\d{9})', digits)
     if m:
         return '+998' + m.group(1)
-    # 2. OCR sometimes garbles the first digit(s) of "998", producing e.g. "98990541330"
-    #    (11 digits instead of 12). Take last 9 digits of any ≥11-digit block as
-    #    the subscriber number — Uzbek numbers always end in 9 digits after 998.
+    # 3. OCR drops a leading digit from "998" → 11-digit garbled block;
+    #    take last 9 digits as subscriber number
     for block in re.findall(r'\d{11,}', digits):
         sub = block[-9:]
-        if sub[0] == '9':   # Uzbek mobile subscriber part starts with 9
+        if sub[0] == '9':
             return '+998' + sub
     return None
 
@@ -149,10 +174,11 @@ def _parse_invoice(text: str) -> dict | None:
         except Exception:
             pass
 
-    # Phone: try exact 998-format anywhere in full text first
-    phone_m = re.search(r'998[\s\-]?\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', full)
-    if phone_m:
-        result['courier_phone'] = _normalize_phone(phone_m.group())
+    # Phone: try spaced Uzbek format first (most reliably preserved by OCR),
+    # then full 998+9d compact, then line-by-line fallback below.
+    ph = _normalize_phone(full)
+    if ph:
+        result['courier_phone'] = ph
 
     for line in lines:
         low = line.lower()
