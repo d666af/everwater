@@ -2,6 +2,17 @@ import { useState } from 'react'
 import { getAgentOrders } from '../api'
 import { formatPhone } from '../utils/phone'
 
+const STATUS_CFG = {
+  new:                    { label: 'Новый',           bg: '#EDF3FF', color: '#3B5BDB' },
+  awaiting_confirmation:  { label: 'Ожидает',         bg: '#FFF8E6', color: '#E67700' },
+  confirmed:              { label: 'Подтверждён',     bg: '#EBFBEE', color: '#2B8A3E' },
+  assigned_to_courier:    { label: 'Назначен курьеру',bg: '#F3F0FF', color: '#6741D9' },
+  in_delivery:            { label: 'В пути',          bg: '#E8F4FD', color: '#1971C2' },
+  delivered:              { label: 'Доставлен',       bg: '#EBFBEE', color: '#2B8A3E' },
+  rejected:               { label: 'Отклонён',        bg: '#FFF5F5', color: '#E03131' },
+  cancellation_requested: { label: 'Отмена',          bg: '#FFF5F5', color: '#E03131' },
+}
+
 const C = '#8DC63F'
 const CD = '#6CA32F'
 const TEXT = '#1C1C1E'
@@ -117,10 +128,16 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
               {orders.map(o => {
                 const clientName = o.client_name || o.user?.name || ''
                 const clientPhone = o.recipient_phone || o.client_phone || ''
+                const statusCfg = STATUS_CFG[o.status] || { label: o.status, bg: '#F2F2F7', color: TEXT2 }
                 return (
                   <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ fontSize: 12, color: TEXT2 }}>{fmt(o.created_at)}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, fontWeight: 700, background: statusCfg.bg, color: statusCfg.color, alignSelf: 'flex-start' }}>
+                          {statusCfg.label}
+                        </span>
+                        <div style={{ fontSize: 11, color: TEXT2 }}>{fmt(o.created_at)}</div>
+                      </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
                           {(o.total || 0).toLocaleString('ru-RU')} сум
@@ -133,15 +150,37 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
                       </div>
                     </div>
                     {o.address && (
-                      <div style={{ fontSize: 13, color: TEXT, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                      <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
                         <span style={{ color: TEXT2, flexShrink: 0 }}>📍</span>
                         <span>{o.address}</span>
                       </div>
                     )}
                     {(clientPhone || clientName) && (
-                      <div style={{ fontSize: 13, color: TEXT, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         {clientPhone && <span style={{ color: TEXT2 }}>📞 {formatPhone(clientPhone)}</span>}
                         {clientName && <span style={{ fontWeight: 600 }}>{clientName}</span>}
+                      </div>
+                    )}
+                    {o.items && o.items.length > 0 && (
+                      <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 6, borderTop: `1px solid ${BORDER}` }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 }}>Состав</div>
+                        {o.items.map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                            <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
+                            <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(o.return_bottles_count > 0 || o.bottle_surcharge > 0) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {o.return_bottles_count > 0 && (
+                          <div style={{ fontSize: 12, color: TEXT2 }}>♻️ Возврат: <strong>{o.return_bottles_count} шт.</strong></div>
+                        )}
+                        {o.bottle_surcharge > 0 && (
+                          <div style={{ fontSize: 12, color: '#E67700' }}>🫙 Надбавка: <strong>+{o.bottle_surcharge.toLocaleString('ru-RU')} сум</strong></div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -153,6 +153,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS agent_earning FLOAT DEFAULT NULL"
         ))
         await conn.execute(text(
+            "ALTER TABLE couriers ALTER COLUMN telegram_id DROP NOT NULL"
+        ))
+        await conn.execute(text(
             "CREATE TABLE IF NOT EXISTS agent_product_earnings ("
             "id SERIAL PRIMARY KEY, "
             "agent_id INTEGER NOT NULL REFERENCES agents(id), "

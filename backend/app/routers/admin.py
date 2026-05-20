@@ -477,6 +477,52 @@ async def create_courier(data: CourierCreate, db: AsyncSession = Depends(get_db)
     return courier
 
 
+@router.get("/couriers/by_phone")
+async def get_courier_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
+    """Find courier by phone number (last 9 digits, fuzzy)."""
+    digits = ''.join(c for c in phone if c.isdigit())
+    suffix = digits[-9:] if len(digits) >= 9 else digits
+    result = await db.execute(select(Courier).where(Courier.is_active == True))
+    couriers = result.scalars().all()
+    for c in couriers:
+        if c.phone:
+            c_digits = ''.join(d for d in c.phone if d.isdigit())
+            if c_digits.endswith(suffix):
+                return {
+                    "id": c.id, "name": c.name, "phone": c.phone,
+                    "telegram_id": c.telegram_id,
+                    "vehicle_type": c.vehicle_type, "vehicle_plate": c.vehicle_plate,
+                }
+    raise HTTPException(status_code=404, detail="Courier not found by phone")
+
+
+class CourierCreateFromInvoice(BaseModel):
+    name: str
+    phone: str
+    vehicle_type: str | None = None
+    vehicle_plate: str | None = None
+
+
+@router.post("/couriers/from_invoice")
+async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncSession = Depends(get_db)):
+    """Create courier without telegram_id (linked from invoice)."""
+    courier = Courier(
+        telegram_id=None,
+        name=data.name,
+        phone=data.phone,
+        vehicle_type=data.vehicle_type,
+        vehicle_plate=data.vehicle_plate,
+    )
+    db.add(courier)
+    await db.commit()
+    await db.refresh(courier)
+    return {
+        "id": courier.id, "name": courier.name, "phone": courier.phone,
+        "telegram_id": courier.telegram_id,
+        "vehicle_type": courier.vehicle_type, "vehicle_plate": courier.vehicle_plate,
+    }
+
+
 @router.get("/couriers/{courier_id}/details")
 async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
@@ -1004,32 +1050,114 @@ async def update_settings_route(data: dict, db: AsyncSession = Depends(get_db)):
 
 class BroadcastData(BaseModel):
     message: str
-    target: str = "all"  # "all" | "managers" | "couriers"
+    target: str = "all"
+    user_ids: list[int] | None = None
 
 
 @router.post("/broadcast")
 async def broadcast_message(data: BroadcastData, db: AsyncSession = Depends(get_db)):
     from app.config import settings as cfg
+    from app.services.settings_service import get_all_settings as _gas
 
     telegram_ids: list[int] = []
 
-    if data.target in ("all", "clients"):
+    if data.user_ids is not None:
+        # Direct broadcast to specific user IDs (e.g. filtered by custom tag)
         users_q = await db.execute(
-            select(User.telegram_id).where(User.is_registered == True, User.telegram_id.isnot(None))
+            select(User.telegram_id).where(
+                User.id.in_(data.user_ids),
+                User.telegram_id.isnot(None),
+            )
         )
         telegram_ids.extend(r[0] for r in users_q.all())
+    else:
+        try:
+            _cfg = await _gas(db)
+        except Exception:
+            _cfg = {}
+        perm_min = int(_cfg.get("permanent_customer_min_orders") or 5)
+        perm_days = int(_cfg.get("permanent_customer_period_days") or 0)
+        inactive_days = int(_cfg.get("inactive_customer_days") or 60)
+        _now = datetime.utcnow()
 
-    if data.target in ("all", "couriers"):
-        couriers_q = await db.execute(
-            select(Courier.telegram_id).where(Courier.is_active == True)
-        )
-        telegram_ids.extend(r[0] for r in couriers_q.all())
+        if data.target in ("all", "clients"):
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.is_registered == True, User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
 
-    if data.target in ("all", "managers"):
-        mgrs_q = await db.execute(
-            select(Manager.telegram_id).where(Manager.is_active == True)
-        )
-        telegram_ids.extend(r[0] for r in mgrs_q.all())
+        if data.target == "clients:permanent":
+            perm_filter = [Order.status == OrderStatus.DELIVERED]
+            if perm_days > 0:
+                perm_filter.append(Order.created_at >= _now - timedelta(days=perm_days))
+            sq = (
+                select(Order.user_id)
+                .where(and_(*perm_filter))
+                .group_by(Order.user_id)
+                .having(func.count(Order.id) >= perm_min)
+                .subquery()
+            )
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.id.in_(select(sq.c.user_id)), User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target == "clients:inactive":
+            cutoff = _now - timedelta(days=inactive_days)
+            active_sq = (
+                select(Order.user_id)
+                .where(Order.status == OrderStatus.DELIVERED, Order.created_at >= cutoff)
+                .distinct()
+                .subquery()
+            )
+            users_q = await db.execute(
+                select(User.telegram_id).where(
+                    User.is_registered == True,
+                    User.telegram_id.isnot(None),
+                    User.id.not_in(select(active_sq.c.user_id)),
+                    User.id.in_(select(Order.user_id).where(Order.status == OrderStatus.DELIVERED).distinct()),
+                )
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target == "clients:bonus":
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.bonus_points > 0, User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target == "clients:bottle_debt":
+            from app.models.client_data import BottleDebt as _BD
+            debt_sq = select(_BD.user_id).where(_BD.count > 0).subquery()
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.id.in_(select(debt_sq.c.user_id)), User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target == "clients:new":
+            new_sq = (
+                select(Order.user_id)
+                .where(Order.status == OrderStatus.DELIVERED)
+                .group_by(Order.user_id)
+                .having(func.count(Order.id) <= 2)
+                .subquery()
+            )
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.id.in_(select(new_sq.c.user_id)), User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target in ("all", "couriers"):
+            couriers_q = await db.execute(
+                select(Courier.telegram_id).where(Courier.is_active == True)
+            )
+            telegram_ids.extend(r[0] for r in couriers_q.all())
+
+        if data.target in ("all", "managers"):
+            mgrs_q = await db.execute(
+                select(Manager.telegram_id).where(Manager.is_active == True)
+            )
+            telegram_ids.extend(r[0] for r in mgrs_q.all())
 
     telegram_ids = list(set(telegram_ids))
     sent, failed = 0, 0

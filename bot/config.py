@@ -11,6 +11,7 @@ class BotSettings(BaseSettings):
     MINI_APP_URL: str = "https://your-domain.com"
     PAYMENT_CARD: str = "0000 0000 0000 0000"
     PAYMENT_HOLDER: str = "Имя Фамилия"
+    INVOICE_GROUP_ID: int | None = None  # Telegram group ID where invoices are posted
 
     @field_validator("ADMIN_IDS", "WAREHOUSE_IDS", mode="before")
     @classmethod

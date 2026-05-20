@@ -598,8 +598,11 @@ export const createManager = (data) =>
 export const deleteManager = (id) =>
   safeCall(() => http.delete(`/admin/managers/${id}`).then(r => r.data), () => ({ ok: true }))
 
-export const broadcastMessage = (message, target = 'all') =>
-  safeCall(() => http.post('/admin/broadcast', { message, target }).then(r => r.data), () => ({ ok: true }))
+export const broadcastMessage = (message, target = 'all', userIds = null) =>
+  safeCall(
+    () => http.post('/admin/broadcast', { message, target, ...(userIds ? { user_ids: userIds } : {}) }).then(r => r.data),
+    () => ({ ok: true })
+  )
 
 // ─── Bottle debt / survey ────────────────────────────────────────────────────
 export const getBottlesOwed = (userId) =>
