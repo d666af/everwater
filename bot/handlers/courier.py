@@ -363,15 +363,8 @@ async def list_courier_in_delivery(call: CallbackQuery):
     tab = parts[3] if len(parts) > 3 else "enroute"
     page = int(parts[4]) if len(parts) > 4 else 0
 
-    await api.start_delivery(order_id, from_bot=True)
+    await api.start_delivery(order_id, from_bot=False)
     order = await api.get_order(order_id)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            courier_name = order.get('courier_name') or call.from_user.full_name
-            await call.bot.send_message(client_tg, f"🚴 Курьер «{courier_name}» выехал к вам!")
-        except Exception:
-            pass
 
     await call.message.edit_text(
         _order_detail_text(order),
@@ -1122,15 +1115,8 @@ async def courier_accept(call: CallbackQuery):
 @router.callback_query(F.data.startswith("courier:in_delivery:"))
 async def courier_in_delivery(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
-    await api.start_delivery(order_id, from_bot=True)
+    await api.start_delivery(order_id, from_bot=False)
     order = await api.get_order(order_id)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            courier_name = order.get('courier_name') or call.from_user.full_name
-            await call.bot.send_message(client_tg, f"🚴 Курьер «{courier_name}» выехал к вам!")
-        except Exception:
-            pass
     try:
         await call.message.edit_text(
             _order_detail_text(order),
