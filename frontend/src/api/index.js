@@ -100,6 +100,18 @@ export const deleteProduct = (id) =>
     () => ({ ok: true })
   )
 
+export const getProductCourierEarnings = (productId) =>
+  safeCall(
+    () => http.get(`/products/${productId}/courier_earnings`).then(r => r.data),
+    () => []
+  )
+
+export const setProductCourierEarnings = (productId, items) =>
+  safeCall(
+    () => http.put(`/products/${productId}/courier_earnings`, items).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const uploadProductPhoto = (file) => {
   const form = new FormData()
   form.append('file', file)

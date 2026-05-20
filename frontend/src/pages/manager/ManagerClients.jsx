@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
+import { formatPhone } from '../../utils/phone'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
 
 const C = '#8DC63F'
@@ -119,7 +120,7 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
             : <span style={{ fontSize: 12, background: '#FFF8E6', color: '#E67700', padding: '3px 10px', borderRadius: 999, fontWeight: 700 }}>Не завершил регистрацию</span>}
         </div>
         {[
-          ['Телефон', user.phone || '—'],
+          ['Телефон', user.phone ? formatPhone(user.phone) : '—'],
           ['Telegram ID', user.telegram_id || '—'],
           ['Бонусы', `${Math.round(user.bonus_points || 0)}`],
         ].map(([k, v]) => (
@@ -285,7 +286,7 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
             <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 20, fontWeight: 800, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(user.name || '?')[0].toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{user.name || 'Без имени'}</div>
-              {user.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 1 }}>{user.phone}</div>}
+              {user.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 1 }}>{formatPhone(user.phone)}</div>}
             </div>
             <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: '#F2F2F7', color: TEXT2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={TEXT2} strokeWidth="2.2" strokeLinecap="round"/></svg>
@@ -639,8 +640,11 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                       {isNew && (
                         <span style={{ fontSize: 10, color: '#1971C2', background: '#E8F4FD', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>Новый</span>
                       )}
+                      {!u.is_registered && (
+                        <span style={{ fontSize: 10, color: '#E67700', background: '#FFF8E6', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>Не регистр.</span>
+                      )}
                     </div>
-                    {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{u.phone}</div>}
+                    {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{formatPhone(u.phone)}</div>}
                   </div>
                   <button style={{ padding: '6px 12px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
                     Инфо

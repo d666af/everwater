@@ -3,6 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
 import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff } from '../../api'
+import { formatPhone } from '../../utils/phone'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -159,7 +160,7 @@ function ManagersTab() {
               <div style={ms.info}>
                 <div style={ms.name}>{m.name}</div>
                 <div style={ms.meta}>
-                  {m.phone && <span style={ms.metaItem}>{m.phone}</span>}
+                  {m.phone && <span style={ms.metaItem}>{formatPhone(m.phone)}</span>}
                   <span style={ms.metaItem}>ID: {m.telegram_id}</span>
                 </div>
                 <span style={{
@@ -393,7 +394,7 @@ function AgentsTab() {
                   <div style={ms.info}>
                     <div style={ms.name}>{a.name}</div>
                     <div style={ms.meta}>
-                      <span style={ms.metaItem}>{a.phone}</span>
+                      <span style={ms.metaItem}>{formatPhone(a.phone)}</span>
                       {a.telegram_id ? (
                         <span style={{ ...ms.badge, background: '#EBFBEE', color: '#2B8A3E' }}>Telegram привязан</span>
                       ) : (
@@ -423,7 +424,7 @@ function AgentsTab() {
                   <div style={ms.info}>
                     <div style={ms.name}>{a.name}</div>
                     <div style={ms.meta}>
-                      <span style={ms.metaItem}>{a.phone}</span>
+                      <span style={ms.metaItem}>{formatPhone(a.phone)}</span>
                     </div>
                   </div>
                   <button style={{ ...ms.removeBtn, borderColor: `${C}55`, background: '#F8FFED', color: CD }}
@@ -474,11 +475,11 @@ export default function AdminCRM() {
       <div style={s.tabRow}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
-            flex: 1, padding: '10px 8px', borderRadius: 12,
+            flexShrink: 0, padding: '10px 14px', borderRadius: 12,
             background: tab === t.key ? GRAD : '#fff',
             color: tab === t.key ? '#fff' : TEXT2,
             border: tab === t.key ? 'none' : '1.5px solid rgba(60,60,67,0.08)',
-            fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
           }}>{t.label}</button>
         ))}
       </div>
@@ -602,7 +603,7 @@ const s = {
     background: '#F2F2F7', border: 'none', borderRadius: 10, cursor: 'pointer', color: TEXT2,
   },
 
-  tabRow: { display: 'flex', gap: 6, marginBottom: 10 },
+  tabRow: { display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: 2 },
   broadcastBtn: {
     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
     padding: '12px 16px', borderRadius: 14,

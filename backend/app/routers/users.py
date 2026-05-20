@@ -170,6 +170,21 @@ async def create_or_get_user(data: UserCreate, db: AsyncSession = Depends(get_db
     user = result.scalar_one_or_none()
     if user:
         return user
+    # Merge with placeholder (telegram_id=None, matched by phone from staff-created orders)
+    if data.phone:
+        digits = ''.join(c for c in str(data.phone) if c.isdigit())
+        if len(digits) >= 9:
+            ph_q = await db.execute(
+                select(User).where(User.telegram_id.is_(None), User.phone.contains(digits[-9:]))
+            )
+            placeholder = ph_q.scalars().first()
+            if placeholder:
+                placeholder.telegram_id = data.telegram_id
+                placeholder.name = placeholder.name or data.name or ""
+                placeholder.phone = data.phone or placeholder.phone
+                await db.commit()
+                await db.refresh(placeholder)
+                return placeholder
     user = User(**data.model_dump())
     db.add(user)
     await db.commit()
@@ -189,18 +204,36 @@ async def update_user(telegram_id: int, data: UserUpdate, db: AsyncSession = Dep
         user.is_registered = True
     await db.commit()
     await db.refresh(user)
-    # Link past orders created for this phone but without a registered user_id
+    # Link past orders and merge placeholder on registration
     if user.phone and user.is_registered:
         from app.models.order import Order
-        from sqlalchemy import update as sa_update
+        from sqlalchemy import update as sa_update, delete as sa_delete
         digits = ''.join(c for c in user.phone if c.isdigit())
         if len(digits) >= 9:
+            # Transfer orders with no user_id (phone-only records)
             await db.execute(
                 sa_update(Order)
                 .where(Order.user_id.is_(None))
                 .where(Order.recipient_phone.contains(digits[-9:]))
                 .values(user_id=user.id)
             )
+            # Merge unregistered placeholder that was auto-created by staff
+            ph_q = await db.execute(
+                select(User).where(
+                    User.id != user.id,
+                    User.telegram_id.is_(None),
+                    User.phone.contains(digits[-9:]),
+                    User.is_registered == False,
+                )
+            )
+            for placeholder in ph_q.scalars().all():
+                # Re-assign placeholder's orders to the real user
+                await db.execute(
+                    sa_update(Order)
+                    .where(Order.user_id == placeholder.id)
+                    .values(user_id=user.id)
+                )
+                await db.delete(placeholder)
             await db.commit()
     return user
 

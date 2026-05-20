@@ -235,6 +235,13 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     )
     orders = orders_q.scalars().all()
 
+    # Load per-courier earning overrides
+    from app.models.courier_product_earning import CourierProductEarning as _CPE
+    overrides_q = await db.execute(
+        select(_CPE).where(_CPE.courier_id == courier_id)
+    )
+    earning_overrides = {r.product_id: r.earning for r in overrides_q.scalars().all()}
+
     rows = []
     total_revenue = 0.0
     total_cash = 0.0
@@ -267,7 +274,9 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
             qty = item.quantity or 0
             if vol >= 19.0:
                 total_bottles_19l_delivered += qty
-            earning = float(getattr(prod, 'courier_earning', None) or 0)
+            prod_id = prod.id if prod else None
+            global_earn = float(getattr(prod, 'courier_earning', None) or 0)
+            earning = float(earning_overrides.get(prod_id, global_earn)) if prod_id else global_earn
             total_earned += earning * qty
             items_list.append({
                 "name": prod.name if prod else "—",
@@ -759,14 +768,31 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     from app.services.settings_service import get_all_settings
     from sqlalchemy import update as sa_update
 
+    # Normalize phone to canonical +998XXXXXXXXX form
+    from app.services.phone import normalize_phone
+    _raw_phone = body.phone or ""
+    _digits = ''.join(c for c in _raw_phone if c.isdigit())
+    canonical_phone = normalize_phone(_raw_phone) or _raw_phone
+
     # Fuzzy phone lookup (last 9 digits to handle prefix differences)
-    digits = ''.join(c for c in body.phone if c.isdigit())
     user = None
-    if len(digits) >= 9:
+    if len(_digits) >= 9:
         user_q = await db.execute(
-            select(User).where(User.phone.contains(digits[-9:])).limit(1)
+            select(User).where(User.phone.contains(_digits[-9:])).order_by(User.is_registered.desc()).limit(1)
         )
         user = user_q.scalars().first()
+
+    # Auto-create a placeholder unregistered user so orders appear in CRM
+    if user is None and len(_digits) >= 9:
+        from app.models.user import User as _User
+        user = _User(
+            telegram_id=None,
+            phone=canonical_phone,
+            name="",
+            is_registered=False,
+        )
+        db.add(user)
+        await db.flush()
 
     # Build order items using full product.price as subtotal base
     subtotal = 0.0
