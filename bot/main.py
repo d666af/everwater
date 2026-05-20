@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import ErrorEvent
+from aiogram.types import ErrorEvent, BotCommand, BotCommandScopeChat
 from handlers import start, admin, courier, client, manager, warehouse, agent, invoice
 from services.scheduler import setup_scheduler
 from config import settings
@@ -52,6 +52,16 @@ async def main():
         return True  # mark as handled so aiogram doesn't re-raise
 
     setup_scheduler(bot)
+
+    # Remove bot command menu in the invoice group so it doesn't show buttons there
+    if settings.INVOICE_GROUP_ID:
+        try:
+            await bot.set_my_commands(
+                [],
+                scope=BotCommandScopeChat(chat_id=settings.INVOICE_GROUP_ID),
+            )
+        except Exception as e:
+            logging.warning("Could not clear commands for invoice group: %s", e)
 
     logging.info("Bot started")
     await dp.start_polling(bot)
