@@ -561,7 +561,7 @@ async def update_courier(courier_id: int, data: CourierUpdate, db: AsyncSession 
 async def get_all_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User)
-        .where(User.phone.isnot(None), User.is_registered == True)
+        .where(User.phone.isnot(None), User.phone != "", User.is_registered == True)
         .order_by(User.created_at.desc())
     )
     users = result.scalars().all()

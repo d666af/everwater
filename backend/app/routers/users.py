@@ -147,7 +147,7 @@ async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_
         user = User(
             telegram_id=telegram_id,
             name=entity.name or "",
-            phone=entity.phone or "",
+            phone=entity.phone or None,
             is_registered=True,
         )
         db.add(user)
@@ -189,6 +189,19 @@ async def update_user(telegram_id: int, data: UserUpdate, db: AsyncSession = Dep
         user.is_registered = True
     await db.commit()
     await db.refresh(user)
+    # Link past orders created for this phone but without a registered user_id
+    if user.phone and user.is_registered:
+        from app.models.order import Order
+        from sqlalchemy import update as sa_update
+        digits = ''.join(c for c in user.phone if c.isdigit())
+        if len(digits) >= 9:
+            await db.execute(
+                sa_update(Order)
+                .where(Order.user_id.is_(None))
+                .where(Order.recipient_phone.contains(digits[-9:]))
+                .values(user_id=user.id)
+            )
+            await db.commit()
     return user
 
 

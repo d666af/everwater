@@ -17,6 +17,8 @@ const TYPES = [
   { key: 'bottle_return', label: 'Возврат тары', color: '#1971C2', bg: '#E8F4FD', activeBorder: '#1971C2' },
 ]
 
+const fmtSum = v => v > 0 ? v.toLocaleString('ru-RU') + ' сум' : null
+
 export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
   const [period, setPeriod] = useState('today')
   const [customDate, setCustomDate] = useState(null)
@@ -71,29 +73,36 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   }, [period, customDate, customDateTo, type, productName, courierId])
 
   const summary = useMemo(() => {
-    const prodByProduct = {}
-    const issueByProduct = {}
-    const returnByCourier = {}
+    const prodByProduct = {}   // { name: { qty, cost } }
+    const issueByProduct = {}  // { name: { qty, cost } }
+    const returnByCourier = {} // { name: qty }
     history.forEach(h => {
       if (h.type === 'production') {
         const name = h.product_name || h.product_short || '—'
-        prodByProduct[name] = (prodByProduct[name] || 0) + h.quantity
+        if (!prodByProduct[name]) prodByProduct[name] = { qty: 0, cost: 0 }
+        prodByProduct[name].qty += h.quantity
+        if (h.cost_price) prodByProduct[name].cost += h.quantity * h.cost_price
       }
       if (h.type === 'issue' || h.type === 'issued') {
         const name = h.product_name || h.product_short || '—'
-        issueByProduct[name] = (issueByProduct[name] || 0) + h.quantity
+        if (!issueByProduct[name]) issueByProduct[name] = { qty: 0, cost: 0 }
+        issueByProduct[name].qty += h.quantity
+        if (h.cost_price) issueByProduct[name].cost += h.quantity * h.cost_price
       }
       if (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned') {
         const cn = h.courier_name || '—'
         returnByCourier[cn] = (returnByCourier[cn] || 0) + h.quantity
       }
     })
-    return { prodByProduct, issueByProduct, returnByCourier }
+    const totalReturned = Object.values(returnByCourier).reduce((s, v) => s + v, 0)
+    return { prodByProduct, issueByProduct, returnByCourier, totalReturned }
   }, [history])
 
   const debtCouriers = courierId === 'all'
     ? courierStats.filter(c => (c.bottles_must_return || 0) > 0)
     : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0)
+
+  const totalDebt = debtCouriers.reduce((s, c) => s + (c.bottles_must_return || 0), 0)
 
   const hasSummary = !loading && (
     Object.keys(summary.prodByProduct).length > 0 ||
@@ -226,27 +235,27 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
           {Object.keys(summary.prodByProduct).length > 0 && (
             <SummarySection title="Произведено" color="#2B8A3E" bg="#EBFBEE">
-              {Object.entries(summary.prodByProduct).map(([name, qty]) => (
-                <SummaryRow key={name} label={name} value={`+${qty} шт.`} color="#2B8A3E" />
+              {Object.entries(summary.prodByProduct).map(([name, { qty, cost }]) => (
+                <SummaryRow key={name} label={name} value={`+${qty} шт.`} sub={fmtSum(cost)} color="#2B8A3E" />
               ))}
             </SummarySection>
           )}
           {Object.keys(summary.issueByProduct).length > 0 && (
             <SummarySection title="Выдано" color="#E67700" bg="#FFF3D9">
-              {Object.entries(summary.issueByProduct).map(([name, qty]) => (
-                <SummaryRow key={name} label={name} value={`${qty} шт.`} color="#E67700" />
+              {Object.entries(summary.issueByProduct).map(([name, { qty, cost }]) => (
+                <SummaryRow key={name} label={name} value={`${qty} шт.`} sub={fmtSum(cost)} color="#E67700" />
               ))}
             </SummarySection>
           )}
           {Object.keys(summary.returnByCourier).length > 0 && (
-            <SummarySection title="Возвращено тары" color="#1971C2" bg="#E8F4FD">
+            <SummarySection title={`Возвращено тары · ${summary.totalReturned} бут.`} color="#1971C2" bg="#E8F4FD">
               {Object.entries(summary.returnByCourier).map(([name, qty]) => (
                 <SummaryRow key={name} label={name} value={`${qty} бут.`} color="#1971C2" />
               ))}
             </SummarySection>
           )}
           {debtCouriers.length > 0 && (
-            <SummarySection title="Должны вернуть" color="#C92A2A" bg="#FFE8E8">
+            <SummarySection title={`Должны вернуть · ${totalDebt} бут.`} color="#C92A2A" bg="#FFE8E8">
               {debtCouriers.map(c => (
                 <SummaryRow key={c.id} label={c.name} value={`${c.bottles_must_return} бут.`} color="#C92A2A" />
               ))}
@@ -293,17 +302,20 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
               : 'Бутылки 19л'
 
             const subline = isProd
-              ? (h.note || 'Производство')
+              ? `Производство${h.note ? ` · ${h.note}` : ''}`
               : isIssue
               ? `Выдача · ${h.courier_name || '—'}`
               : `Возврат тары · ${h.courier_name || '—'}`
 
+            const costTotal = isIssue && h.cost_price ? h.quantity * h.cost_price : null
+            const debtNote = isRet && h.note ? h.note : null
+
             const ts = h.created_at || h.date
-            const showInvoice = h.batch_id && (isIssue || isRet)
+            const showInvoice = h.batch_id && isIssue
 
             return (
-              <div key={h.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div key={h.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                   {isProd && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke={color} strokeWidth="2.2" strokeLinecap="round"/></svg>}
                   {isIssue && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                   {isRet && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -315,9 +327,19 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                   <div style={{ fontSize: 11, color: TEXT2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {subline}
                   </div>
+                  {debtNote && (
+                    <div style={{ fontSize: 11, color: '#1971C2', marginTop: 2, fontWeight: 600 }}>
+                      {debtNote}
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color }}>{sign}{h.quantity}</div>
+                  {costTotal && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#E67700' }}>
+                      {costTotal.toLocaleString('ru-RU')} сум
+                    </div>
+                  )}
                   <div style={{ fontSize: 10, color: TEXT2 }}>
                     {new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · {new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </div>
@@ -383,11 +405,14 @@ function SummarySection({ title, color, bg, children }) {
   )
 }
 
-function SummaryRow({ label, value, color }) {
+function SummaryRow({ label, value, sub, color }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${BORDER}` }}>
       <span style={{ fontSize: 13, color: TEXT, fontWeight: 500, flex: 1 }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: color || TEXT }}>{value}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: color || TEXT }}>{value}</span>
+        {sub && <span style={{ fontSize: 11, color: TEXT2 }}>{sub}</span>}
+      </div>
     </div>
   )
 }

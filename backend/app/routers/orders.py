@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from pydantic import BaseModel
-from sqlalchemy import update as sa_update, func
+from sqlalchemy import update as sa_update, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -398,8 +398,16 @@ async def get_order(order_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/user/{user_id}", response_model=list[OrderOut])
 async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    conditions = [Order.user_id == user_id]
+    if user and user.phone:
+        digits = ''.join(c for c in user.phone if c.isdigit())
+        if len(digits) >= 9:
+            conditions.append(
+                and_(Order.user_id.is_(None), Order.recipient_phone.contains(digits[-9:]))
+            )
     result = await db.execute(
-        select(Order).where(Order.user_id == user_id)
+        select(Order).where(or_(*conditions))
         .options(*_order_opts())
         .order_by(Order.created_at.desc())
     )

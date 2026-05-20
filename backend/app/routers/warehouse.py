@@ -51,6 +51,7 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "note": tx.note,
         "batch_id": tx.batch_id,
         "created_at": tx.created_at.isoformat() + "Z",
+        "cost_price": float(tx.product.cost_price) if tx.product and tx.product.cost_price else None,
     }
 
 
@@ -519,13 +520,28 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
     ))
     bottle_return_qty = max(0, body.bottle_return or 0)
     if bottle_return_qty > 0:
+        prod_19l_ids = [r[0] for r in (await db.execute(
+            select(Product.id).where(Product.volume >= 18.9)
+        )).all()]
+        c_issued = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.courier_id == body.courier_id,
+                   WaterTransaction.transaction_type == "issue",
+                   WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
+        )).scalar() or 0
+        c_returned = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.courier_id == body.courier_id,
+                   WaterTransaction.transaction_type == "bottle_return")
+        )).scalar() or 0
+        debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         db.add(WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
             transaction_type="bottle_return",
             quantity=bottle_return_qty,
-            note=_note_with_actor(body.note, body.performed_by),
+            note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
         ))
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
@@ -642,13 +658,28 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         })
 
     if bottle_return_qty > 0:
+        prod_19l_ids = [r[0] for r in (await db.execute(
+            select(Product.id).where(Product.volume >= 18.9)
+        )).all()]
+        c_issued = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.courier_id == body.courier_id,
+                   WaterTransaction.transaction_type == "issue",
+                   WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
+        )).scalar() or 0
+        c_returned = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.courier_id == body.courier_id,
+                   WaterTransaction.transaction_type == "bottle_return")
+        )).scalar() or 0
+        debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         db.add(WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
             transaction_type="bottle_return",
             quantity=bottle_return_qty,
-            note=_note_with_actor(body.note, body.performed_by),
+            note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
         ))
 
