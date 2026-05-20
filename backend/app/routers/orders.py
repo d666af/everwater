@@ -588,6 +588,8 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     items_data_for_stock = [(i.product, i.quantity) for i in order.items if i.product]
     order_address = order.address
     order_phone = order.recipient_phone
+    order_lat = order.latitude
+    order_lng = order.longitude
     order_time = order.delivery_time or "—"
     order_total = int(order.total)
     order_payment = order.payment_method or "cash"
@@ -664,12 +666,21 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     if not from_bot:
         eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
-        await _tg(courier_tg,
-                  f"🚴 Вам назначен заказ!\n\n"
-                  f"Адрес: {order_address}\nТелефон: {order_phone}\n"
-                  f"Время: {order_time}\n{eta_text}"
-                  f"Товары:\n{items}\n"
-                  f"Сумма: {order_total:,} сум")
+        courier_text = (
+            f"🚴 Вам назначен заказ!\n\n"
+            f"Адрес: {order_address}\nТелефон: {order_phone}\n"
+            f"Время: {order_time}\n{eta_text}"
+            f"Товары:\n{items}\n"
+            f"Сумма: {order_total:,} сум"
+        )
+        from urllib.parse import quote as _uq
+        _kb_rows = []
+        if order_lat and order_lng:
+            _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={order_lat},{order_lng}"}])
+        elif order_address:
+            _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={_uq(order_address)}"}])
+        _kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        await _tg_send(courier_tg, courier_text, {"inline_keyboard": _kb_rows})
         text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
@@ -698,7 +709,7 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     await db.commit()
 
     if not from_bot:
-        text = f"🚴 Курьер «{courier_name}» выехал к вам!" if courier_name else "🚴 Курьер выехал к вам!"
+        text = f"🚴 Курьер {courier_name} выехал к вам!" if courier_name else "🚴 Курьер выехал к вам!"
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)

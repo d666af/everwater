@@ -693,6 +693,25 @@ export const getAgentOrders = (agentId, params = {}) =>
     () => []
   )
 
+// ─── Warehouse Staff ──────────────────────────────────────────────────────────
+export const getWarehouseStaff = () =>
+  safeCall(
+    () => http.get('/warehouse/staff').then(r => r.data),
+    () => []
+  )
+
+export const addWarehouseStaff = (data) =>
+  safeCall(
+    () => http.post('/warehouse/staff', data).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const removeWarehouseStaff = (telegramId) =>
+  safeCall(
+    () => http.delete(`/warehouse/staff/${telegramId}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 // ─── Cooler management ──────────────────────────────────────────────────────
 export const getClientCoolers = (userId) =>
   safeCall(
