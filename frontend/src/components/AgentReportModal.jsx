@@ -1,0 +1,146 @@
+import { useState } from 'react'
+import { getAgentOrders } from '../api'
+import { formatPhone } from '../utils/phone'
+
+const C = '#8DC63F'
+const CD = '#6CA32F'
+const TEXT = '#1C1C1E'
+const TEXT2 = '#8E8E93'
+const BORDER = 'rgba(60,60,67,0.08)'
+
+const today = () => new Date().toISOString().slice(0, 10)
+const daysAgo = (n) => {
+  const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10)
+}
+const PRESETS = [
+  { label: 'Сегодня',   from: today(),     to: today() },
+  { label: '7 дней',    from: daysAgo(6),  to: today() },
+  { label: '30 дней',   from: daysAgo(29), to: today() },
+  { label: 'Этот мес.', from: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01` })(), to: today() },
+]
+
+function fmt(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+export default function AgentReportModal({ agentId, agentName, onClose }) {
+  const [dateFrom, setDateFrom] = useState(daysAgo(29))
+  const [dateTo, setDateTo]     = useState(today())
+  const [orders, setOrders]     = useState(null)
+  const [loading, setLoading]   = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await getAgentOrders(agentId, { date_from: dateFrom, date_to: dateTo })
+      setOrders(res || [])
+    } catch { setOrders([]) }
+    setLoading(false)
+  }
+
+  const presetActive = (p) => dateFrom === p.from && dateTo === p.to
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${BORDER}` }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>Отчёт агента</div>
+            <div style={{ fontSize: 12, color: TEXT2 }}>{agentName}</div>
+          </div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', borderRadius: 20, width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: TEXT2 }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#F5F5F7', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+          {/* Period picker */}
+          <div style={{ background: '#fff', borderRadius: 14, padding: '10px 12px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {PRESETS.map(p => (
+                <button key={p.label}
+                  style={{ padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${presetActive(p) ? C : 'rgba(60,60,67,0.14)'}`, background: presetActive(p) ? '#EBFBEE' : '#F5F5F7', color: presetActive(p) ? CD : TEXT2, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  onClick={() => { setDateFrom(p.from); setDateTo(p.to); setOrders(null) }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="date" value={dateFrom} max={dateTo}
+                onChange={e => { setDateFrom(e.target.value); setOrders(null) }}
+                style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: `1.5px solid ${BORDER}`, fontSize: 14, color: TEXT }} />
+              <span style={{ color: TEXT2, fontSize: 13 }}>—</span>
+              <input type="date" value={dateTo} min={dateFrom} max={today()}
+                onChange={e => { setDateTo(e.target.value); setOrders(null) }}
+                style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: `1.5px solid ${BORDER}`, fontSize: 14, color: TEXT }} />
+            </div>
+            <button onClick={load} disabled={loading}
+              style={{ padding: '10px', borderRadius: 12, border: 'none', background: loading ? '#E0E0E5' : `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+              {loading ? 'Загрузка...' : 'Показать'}
+            </button>
+          </div>
+
+          {/* Summary card */}
+          {orders && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: CD }}>{orders.length}</div>
+                <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Заказов</div>
+              </div>
+              {orders.length > 0 && (
+                <div style={{ flex: 1, paddingLeft: 16, borderLeft: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 13, color: TEXT2 }}>Сумма заказов</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>
+                    {orders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString('ru-RU')} сум
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Orders list */}
+          {orders && orders.length === 0 && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: '32px 20px', border: `1px solid ${BORDER}`, textAlign: 'center', color: TEXT2, fontSize: 14 }}>
+              Заказов за период нет
+            </div>
+          )}
+          {orders && orders.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {orders.map(o => {
+                const clientName = o.client_name || o.user?.name || ''
+                const clientPhone = o.recipient_phone || o.client_phone || ''
+                return (
+                  <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 12, color: TEXT2 }}>{fmt(o.created_at)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
+                        {(o.total || 0).toLocaleString('ru-RU')} сум
+                      </div>
+                    </div>
+                    {o.address && (
+                      <div style={{ fontSize: 13, color: TEXT, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                        <span style={{ color: TEXT2, flexShrink: 0 }}>📍</span>
+                        <span>{o.address}</span>
+                      </div>
+                    )}
+                    {(clientPhone || clientName) && (
+                      <div style={{ fontSize: 13, color: TEXT, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {clientPhone && <span style={{ color: TEXT2 }}>📞 {formatPhone(clientPhone)}</span>}
+                        {clientName && <span style={{ fontWeight: 600 }}>{clientName}</span>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

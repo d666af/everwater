@@ -8,6 +8,7 @@ from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
+from app.models.courier_product_earning import CourierProductEarning as _CPE
 from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
 from app.models.client_data import SavedAddress, Subscription, BottleDebt
@@ -175,18 +176,24 @@ async def get_stats(
     bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
-    # Product sales breakdown for the period (with courier earning per product)
+    # Product sales breakdown for the period (with per-courier earning overrides)
     product_sales_q = await db.execute(
         select(
             Product.name,
-            Product.courier_earning,
             func.sum(OrderItem.quantity).label("qty"),
             func.sum(OrderItem.quantity * OrderItem.price).label("total"),
+            func.sum(
+                OrderItem.quantity * func.coalesce(_CPE.earning, Product.courier_earning, 0)
+            ).label("courier_earning_total"),
         )
         .join(OrderItem, OrderItem.product_id == Product.id)
         .join(Order, Order.id == OrderItem.order_id)
+        .outerjoin(_CPE, and_(
+            _CPE.product_id == Product.id,
+            _CPE.courier_id == Order.courier_id,
+        ))
         .where(_order_time(Order.status == OrderStatus.DELIVERED))
-        .group_by(Product.id, Product.name, Product.courier_earning)
+        .group_by(Product.id, Product.name)
         .order_by(func.sum(OrderItem.quantity).desc())
     )
     product_sales = [
@@ -194,7 +201,7 @@ async def get_stats(
             "name": row.name,
             "qty": int(row.qty or 0),
             "total": round(float(row.total or 0), 2),
-            "courier_earning": round(float(row.courier_earning or 0) * int(row.qty or 0), 2),
+            "courier_earning": round(float(row.courier_earning_total or 0), 2),
         }
         for row in product_sales_q.all()
     ]

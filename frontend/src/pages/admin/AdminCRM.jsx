@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders } from '../../api'
 import { formatPhone } from '../../utils/phone'
+import AgentReportModal from '../../components/AgentReportModal'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -289,6 +290,63 @@ function WarehouseTab() {
   )
 }
 
+function AgentCard({ agent: a, onToggle }) {
+  const [showReport, setShowReport] = useState(false)
+  const [orderCount, setOrderCount] = useState(null)
+
+  useEffect(() => {
+    getAgentOrders(a.id).then(r => setOrderCount((r || []).length)).catch(() => {})
+  }, [a.id])
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: a.is_active ? 1 : 0.6 }}>
+      {showReport && <AgentReportModal agentId={a.id} agentName={a.name} onClose={() => setShowReport(false)} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: a.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {(a.name || 'А')[0].toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{a.name}</div>
+          {a.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{formatPhone(a.phone)}</div>}
+          <div style={{ marginTop: 4 }}>
+            {a.telegram_id ? (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#EBFBEE', color: '#2B8A3E', fontWeight: 600 }}>Telegram привязан</span>
+            ) : (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#FFF3BF', color: '#E67700', fontWeight: 600 }}>Telegram не привязан</span>
+            )}
+          </div>
+        </div>
+        <button
+          style={{ height: 34, padding: '0 12px', borderRadius: 10, flexShrink: 0, border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+          onClick={() => setShowReport(true)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Отчёт
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: '#F0FFF4', border: '1px solid rgba(141,198,63,0.18)', flex: 1 }}>
+          <span style={{ fontSize: 16 }}>📦</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: CD, lineHeight: 1 }}>{orderCount ?? '—'}</div>
+            <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>Заказов</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
+        <button
+          style={{ background: 'none', border: 'none', color: a.is_active ? '#E03131' : CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.8 }}
+          onClick={() => onToggle(a)}>
+          {a.is_active ? 'Деактивировать' : 'Активировать'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AgentsTab() {
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -386,55 +444,13 @@ function AgentsTab() {
           {activeAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Активные · {activeAgents.length}</div>
-              {activeAgents.map((a, i) => (
-                <div key={a.id} style={ms.card}>
-                  <div style={{ ...ms.avatar, background: GRADIENTS[i % GRADIENTS.length] }}>
-                    {(a.name || 'A')[0].toUpperCase()}
-                  </div>
-                  <div style={ms.info}>
-                    <div style={ms.name}>{a.name}</div>
-                    <div style={ms.meta}>
-                      <span style={ms.metaItem}>{formatPhone(a.phone)}</span>
-                      {a.telegram_id ? (
-                        <span style={{ ...ms.badge, background: '#EBFBEE', color: '#2B8A3E' }}>Telegram привязан</span>
-                      ) : (
-                        <span style={{ ...ms.badge, background: '#FFF3BF', color: '#E67700' }}>Telegram не привязан</span>
-                      )}
-                    </div>
-                  </div>
-                  <button style={{ ...ms.removeBtn, borderColor: 'rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131' }}
-                    onClick={() => toggleActive(a)} title="Деактивировать">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
-                      <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                </div>
-              ))}
+              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onToggle={toggleActive} />)}
             </div>
           )}
           {inactiveAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Деактивированные · {inactiveAgents.length}</div>
-              {inactiveAgents.map((a, i) => (
-                <div key={a.id} style={{ ...ms.card, opacity: 0.6 }}>
-                  <div style={{ ...ms.avatar, background: '#C0C0C8' }}>
-                    {(a.name || 'A')[0].toUpperCase()}
-                  </div>
-                  <div style={ms.info}>
-                    <div style={ms.name}>{a.name}</div>
-                    <div style={ms.meta}>
-                      <span style={ms.metaItem}>{formatPhone(a.phone)}</span>
-                    </div>
-                  </div>
-                  <button style={{ ...ms.removeBtn, borderColor: `${C}55`, background: '#F8FFED', color: CD }}
-                    onClick={() => toggleActive(a)} title="Активировать">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                </div>
-              ))}
+              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onToggle={toggleActive} />)}
             </div>
           )}
         </>

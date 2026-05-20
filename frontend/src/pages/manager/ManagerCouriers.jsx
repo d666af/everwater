@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deactivateAgent, activateAgent } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deactivateAgent, activateAgent, getAgentOrders } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
+import AgentReportModal from '../../components/AgentReportModal'
 import { formatPhone } from '../../utils/phone'
 
 const C = '#8DC63F'
@@ -207,8 +208,16 @@ function AddAgentModal({ onClose, onSave }) {
 
 function AgentCard({ agent: a, onDeactivate, onActivate }) {
   const [confirming, setConfirming] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [orderCount, setOrderCount] = useState(null)
+
+  useEffect(() => {
+    getAgentOrders(a.id).then(r => setOrderCount((r || []).length)).catch(() => {})
+  }, [a.id])
+
   return (
     <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: a.is_active ? 1 : 0.6 }}>
+      {showReport && <AgentReportModal agentId={a.id} agentName={a.name} onClose={() => setShowReport(false)} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: a.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {(a.name || 'А')[0]}
@@ -224,7 +233,27 @@ function AgentCard({ agent: a, onDeactivate, onActivate }) {
             )}
           </div>
         </div>
+        <button
+          style={{ height: 34, padding: '0 12px', borderRadius: 10, flexShrink: 0, border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+          onClick={() => setShowReport(true)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M18 20V10M12 20V4M6 20v-6" stroke={CD} strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          Отчёт
+        </button>
       </div>
+
+      {/* Stats row */}
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: '#F0FFF4', border: '1px solid rgba(141,198,63,0.18)', flex: 1 }}>
+          <span style={{ fontSize: 16 }}>📦</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: CD, lineHeight: 1 }}>{orderCount ?? '—'}</div>
+            <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>Заказов</div>
+          </div>
+        </div>
+      </div>
+
       <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
         {a.is_active ? (
           !confirming ? (
