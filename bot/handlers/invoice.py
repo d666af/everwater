@@ -55,6 +55,26 @@ PRODUCT_PATTERNS = [
 
 # ─── OCR ──────────────────────────────────────────────────────────────────────
 
+def _remove_grid_lines(img):
+    """Clear table grid lines so cell contents become isolated text.
+    Thin black borders span the full width/height (≈100% dark along the line),
+    while text rows are <30% dark — so rows/cols that are mostly dark are lines."""
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return img
+    arr = np.array(img).astype(np.uint8)
+    if arr.ndim != 2:
+        return img
+    dark = arr < 100
+    h_frac = dark.mean(axis=1)   # dark fraction per row
+    v_frac = dark.mean(axis=0)   # dark fraction per column
+    arr[h_frac > 0.5, :] = 255   # erase horizontal lines
+    arr[:, v_frac > 0.5] = 255   # erase vertical lines
+    return Image.fromarray(arr)
+
+
 async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
     try:
         import pytesseract
@@ -78,8 +98,10 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
             img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
         img = img.convert('L')
+        img = ImageEnhance.Contrast(img).enhance(1.5)
+        # Strip grid lines so numbers in narrow cells become readable
+        img = _remove_grid_lines(img)
         img = img.filter(ImageFilter.SHARPEN)
-        img = ImageEnhance.Contrast(img).enhance(2.0)
 
         seen: set[str] = set()
         combined: list[str] = []
