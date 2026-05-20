@@ -2,10 +2,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sa_delete
 from app.database import get_db
 from app.models.product import Product
+from app.models.courier_product_earning import CourierProductEarning
 from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -75,3 +77,25 @@ async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
     product.is_active = False
     await db.commit()
     return {"ok": True}
+
+
+class CourierEarningItem(BaseModel):
+    courier_id: int
+    earning: float
+
+
+@router.get("/{product_id}/courier_earnings")
+async def get_courier_earnings(product_id: int, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(CourierProductEarning).where(CourierProductEarning.product_id == product_id)
+    )).scalars().all()
+    return [{"courier_id": r.courier_id, "earning": r.earning} for r in rows]
+
+
+@router.put("/{product_id}/courier_earnings")
+async def set_courier_earnings(product_id: int, items: list[CourierEarningItem], db: AsyncSession = Depends(get_db)):
+    await db.execute(sa_delete(CourierProductEarning).where(CourierProductEarning.product_id == product_id))
+    for item in items:
+        db.add(CourierProductEarning(product_id=product_id, courier_id=item.courier_id, earning=item.earning))
+    await db.commit()
+    return {"ok": True, "count": len(items)}

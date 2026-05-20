@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { getProducts, createProduct, updateProduct, deleteProduct, uploadProductPhoto } from '../../api'
+import { getProducts, createProduct, updateProduct, deleteProduct, uploadProductPhoto, getAdminCouriers, getProductCourierEarnings, setProductCourierEarnings } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -10,7 +10,53 @@ const BORDER = 'rgba(60,60,67,0.12)'
 
 const EMPTY = { name: '', description: '', volume: '', price: '', photo_url: '', is_active: true, sort_order: 0, has_bottle_deposit: false, bottle_surcharge: null, cost_price: '', courier_earning: '', discount_percent: '', discount_until: '' }
 
-function ProductForm({ form, setForm, onSave, onCancel, saving, error }) {
+function CourierEarningOverrides({ couriers, overrides, setOverrides }) {
+  const [open, setOpen] = useState(false)
+  if (!couriers.length) return null
+
+  const addRow = () => setOverrides(prev => [...prev, { courier_id: '', earning: '' }])
+  const removeRow = (i) => setOverrides(prev => prev.filter((_, idx) => idx !== i))
+  const updateRow = (i, field, val) => setOverrides(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+        color: '#8DC63F', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 0',
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          {open ? <path d="M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                : <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>}
+        </svg>
+        {open ? 'Скрыть' : `Другая цена для курьеров`}{overrides.length > 0 && !open ? ` · ${overrides.length}` : ''}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: '#F8F9FA', borderRadius: 10 }}>
+          {overrides.map((row, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={row.courier_id} onChange={e => updateRow(i, 'courier_id', Number(e.target.value))}
+                style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: '1.5px solid rgba(60,60,67,0.12)', fontSize: 14, background: '#fff', color: '#1C1C1E' }}>
+                <option value="">Курьер...</option>
+                {couriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input type="number" placeholder="сум" min="0" value={row.earning}
+                onChange={e => updateRow(i, 'earning', e.target.value)}
+                style={{ width: 100, padding: '9px 10px', borderRadius: 8, border: '1.5px solid rgba(60,60,67,0.12)', fontSize: 14, background: '#fff', color: '#1C1C1E' }} />
+              <button type="button" onClick={() => removeRow(i)} style={{ background: '#FFF5F5', border: '1.5px solid rgba(224,49,49,0.3)', color: '#E03131', borderRadius: 8, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={addRow} style={{ alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 8, border: '1.5px dashed #8DC63F', background: 'none', color: '#8DC63F', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            + Добавить курьера
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductForm({ form, setForm, onSave, onCancel, saving, error, couriers = [], courierOverrides = [], setCourierOverrides }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
@@ -113,11 +159,14 @@ function ProductForm({ form, setForm, onSave, onCancel, saving, error }) {
             onChange={e => setForm(p => ({ ...p, cost_price: e.target.value ? Number(e.target.value) : null }))} />
         </div>
         <div style={s.field}>
-          <div style={s.label}>Заработок курьера (сум)</div>
+          <div style={s.label}>Заработок курьера (сум) — для всех</div>
           <input style={s.input} type="number" min="0" placeholder="напр. 2000"
             value={form.courier_earning || ''}
             onChange={e => setForm(p => ({ ...p, courier_earning: e.target.value ? Number(e.target.value) : null }))} />
         </div>
+      </div>
+      <CourierEarningOverrides couriers={couriers} overrides={courierOverrides} setOverrides={setCourierOverrides} />
+      <div style={s.formGrid}>
         <div style={s.field}>
           <div style={s.label}>Скидка (%)</div>
           <input style={s.input} type="number" min="0" max="100" placeholder="напр. 10"
@@ -154,18 +203,29 @@ export default function AdminProducts() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [couriers, setCouriers] = useState([])
+  const [courierOverrides, setCourierOverrides] = useState([])
 
   const load = () => {
     setLoading(true)
     getProducts(true).then(setProducts).catch(console.error).finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    load()
+    getAdminCouriers().then(cs => setCouriers(cs.filter(c => c.is_active !== false))).catch(() => {})
+  }, [])
 
-  const openNew = () => { setForm(EMPTY); setEditing('new'); setEditingTitle('Новый товар'); setError('') }
-  const openEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', courier_earning: p.courier_earning || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+  const _formFromProduct = (p) => ({ name: p.name, description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: p.is_active, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', courier_earning: p.courier_earning || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+
+  const openNew = () => { setForm(EMPTY); setCourierOverrides([]); setEditing('new'); setEditingTitle('Новый товар'); setError('') }
+  const openEdit = async (p) => {
+    setForm(_formFromProduct(p))
     setEditing(p); setEditingTitle('Редактировать товар'); setError('')
+    try {
+      const overrides = await getProductCourierEarnings(p.id)
+      setCourierOverrides(overrides.map(o => ({ courier_id: o.courier_id, earning: o.earning })))
+    } catch { setCourierOverrides([]) }
   }
 
   const save = async () => {
@@ -185,8 +245,12 @@ export default function AdminProducts() {
         discount_until: form.discount_until || null,
         bottle_surcharge: form.bottle_surcharge !== '' && form.bottle_surcharge != null ? Number(form.bottle_surcharge) : null,
       }
-      if (editing === 'new') await createProduct(data)
-      else await updateProduct(editing.id, data)
+      let productId
+      if (editing === 'new') { const r = await createProduct(data); productId = r.id }
+      else { await updateProduct(editing.id, data); productId = editing.id }
+      // Save per-courier overrides
+      const validOverrides = courierOverrides.filter(o => o.courier_id && o.earning !== '' && o.earning != null)
+      await setProductCourierEarnings(productId, validOverrides.map(o => ({ courier_id: Number(o.courier_id), earning: Number(o.earning) })))
       setEditing(null); load()
     } catch { setError('Ошибка при сохранении') } finally { setSaving(false) }
   }
@@ -197,7 +261,8 @@ export default function AdminProducts() {
   }
 
   const duplicate = (p) => {
-    setForm({ name: p.name + ' (копия)', description: p.description || '', volume: p.volume, price: p.price, photo_url: p.photo_url || '', is_active: false, sort_order: p.sort_order, has_bottle_deposit: p.has_bottle_deposit || false, bottle_surcharge: p.bottle_surcharge || null, cost_price: p.cost_price || '', courier_earning: p.courier_earning || '', discount_percent: p.discount_percent || '', discount_until: p.discount_until || '' })
+    setForm(_formFromProduct({ ...p, name: p.name + ' (копия)', is_active: false }))
+    setCourierOverrides([])
     setEditing('new'); setEditingTitle('Новый товар (копия)'); setError('')
   }
 
@@ -295,6 +360,7 @@ export default function AdminProducts() {
                 form={form} setForm={setForm}
                 onSave={save} onCancel={() => setEditing(null)}
                 saving={saving} error={error}
+                couriers={couriers} courierOverrides={courierOverrides} setCourierOverrides={setCourierOverrides}
               />
             </div>
           </div>

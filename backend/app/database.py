@@ -36,6 +36,14 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_status_msg_id INTEGER",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)",
             "ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL",
+            "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
+            """CREATE TABLE IF NOT EXISTS courier_product_earnings (
+                id SERIAL PRIMARY KEY,
+                courier_id INTEGER NOT NULL REFERENCES couriers(id),
+                product_id INTEGER NOT NULL REFERENCES products(id),
+                earning FLOAT NOT NULL,
+                UNIQUE(courier_id, product_id)
+            )""",
             "UPDATE users SET phone = NULL WHERE phone = ''",
             # Sync phone from couriers/managers into users table where phone is missing
             """UPDATE users u SET phone = c.phone
@@ -48,6 +56,23 @@ async def create_tables():
                WHERE u.telegram_id = m.telegram_id
                  AND (u.phone IS NULL OR u.phone = '')
                  AND m.phone IS NOT NULL AND m.phone != ''""",
+            # Reverse: sync phone into couriers from users/managers where missing
+            """UPDATE couriers c SET phone = u.phone
+               FROM users u
+               WHERE c.telegram_id = u.telegram_id
+                 AND (c.phone IS NULL OR c.phone = '')
+                 AND u.phone IS NOT NULL AND u.phone != ''""",
+            """UPDATE couriers c SET phone = m.phone
+               FROM managers m
+               WHERE c.telegram_id = m.telegram_id
+                 AND (c.phone IS NULL OR c.phone = '')
+                 AND m.phone IS NOT NULL AND m.phone != ''""",
+            # Reverse: sync phone into managers from users/couriers where missing
+            """UPDATE managers mm SET phone = u.phone
+               FROM users u
+               WHERE mm.telegram_id = u.telegram_id
+                 AND (mm.phone IS NULL OR mm.phone = '')
+                 AND u.phone IS NOT NULL AND u.phone != ''""",
         ):
             try:
                 await conn.execute(text(stmt))

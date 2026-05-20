@@ -20,6 +20,7 @@ from app.models import client_data, support, settings as settings_model  # noqa:
 # TopupRequest is in client_data — imported above
 from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa: F401
 from app.models import agent as agent_model  # noqa: F401
+from app.models import courier_product_earning as cpe_model  # noqa: F401
 
 
 @asynccontextmanager

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deactivateAgent, activateAgent } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
+import { formatPhone } from '../../utils/phone'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -97,7 +98,7 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
-          {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{c.phone}</div>}
+          {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{formatPhone(c.phone)}</div>}
         </div>
         <button
           style={{
@@ -214,7 +215,7 @@ function AgentCard({ agent: a, onDeactivate, onActivate }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{a.name}</div>
-          {a.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{a.phone}</div>}
+          {a.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{formatPhone(a.phone)}</div>}
           <div style={{ marginTop: 4 }}>
             {a.telegram_id ? (
               <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#EBFBEE', color: '#2B8A3E', fontWeight: 600 }}>Telegram привязан</span>
