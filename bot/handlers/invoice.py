@@ -311,7 +311,6 @@ def _group_id_filter(message: Message) -> bool:
 @router.message(_group_id_filter, F.photo)
 async def handle_group_invoice(message: Message):
     """Auto-process invoice photos posted in the configured group (not by bot itself)."""
-    # Skip photos sent by the bot itself to avoid loops
     if message.from_user and message.from_user.is_bot:
         return
 
@@ -321,6 +320,12 @@ async def handle_group_invoice(message: Message):
         await message.reply(result_text)
     except Exception as e:
         log.error("Failed to reply with invoice result: %s", e)
+
+
+@router.message(_group_id_filter)
+async def handle_group_silence(message: Message):
+    """Silently drop all non-photo messages from the invoice group so no other router responds."""
+    pass
 
 
 @router.message(Command("testnakl"))
