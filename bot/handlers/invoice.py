@@ -22,6 +22,8 @@ from datetime import datetime, timezone, timedelta
 
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, PhotoSize
 
 from config import settings
@@ -32,6 +34,14 @@ from services.api_client import (
 
 log = logging.getLogger(__name__)
 router = Router()
+
+# Stores the last invoice photo file_id received from the group (for /testnakl)
+_last_photo_file_id: str | None = None
+_last_photo_file_unique_id: str | None = None
+
+
+class TestNaklState(StatesGroup):
+    waiting_for_photo = State()
 
 TZ_UZB = timezone(timedelta(hours=5))
 
@@ -311,10 +321,15 @@ def _group_id_filter(message: Message) -> bool:
 @router.message(_group_id_filter, F.photo)
 async def handle_group_invoice(message: Message):
     """Auto-process invoice photos posted in the configured group (not by bot itself)."""
+    global _last_photo_file_id, _last_photo_file_unique_id
     if message.from_user and message.from_user.is_bot:
         return
 
-    photo = message.photo[-1]  # highest resolution
+    photo = message.photo[-1]
+    # Remember this photo for /testnakl
+    _last_photo_file_id = photo.file_id
+    _last_photo_file_unique_id = photo.file_unique_id
+
     result_text = await process_invoice(message.bot, photo, message)
     try:
         await message.reply(result_text)
@@ -324,40 +339,50 @@ async def handle_group_invoice(message: Message):
 
 @router.message(_group_id_filter)
 async def handle_group_silence(message: Message):
-    """Silently drop all non-photo messages from the invoice group so no other router responds."""
-    pass
+    """Silently drop ALL non-photo messages from the invoice group."""
+    pass  # prevents start/client/etc. routers from ever seeing group messages
 
 
 @router.message(Command("testnakl"))
-async def cmd_testnakl(message: Message):
-    """Admin command: test invoice reading with the last photo in the group."""
+async def cmd_testnakl(message: Message, state: FSMContext):
+    """Admin command: test invoice OCR. Uses last stored group photo or asks to send one."""
     if message.from_user.id not in settings.ADMIN_IDS:
         return
 
-    group_id = settings.INVOICE_GROUP_ID
-    if not group_id:
+    if not settings.INVOICE_GROUP_ID:
         await message.answer("❌ INVOICE_GROUP_ID не настроен в .env")
         return
 
-    await message.answer("🔍 Читаю последнюю накладную из группы...")
+    if _last_photo_file_id:
+        await message.answer("🔍 Тестирую последнюю накладную из группы...")
+        photo = PhotoSize(
+            file_id=_last_photo_file_id,
+            file_unique_id=_last_photo_file_unique_id or '',
+            width=0, height=0,
+        )
+        try:
+            result_text = await process_invoice(message.bot, photo, message)
+            await message.answer(result_text)
+        except Exception as e:
+            log.exception("testnakl error")
+            await message.answer(f"❌ Ошибка: {e}")
+    else:
+        await message.answer(
+            "📸 Нет сохранённых фото из группы.\n\n"
+            "Отправьте фото накладной сюда — распознаю его:"
+        )
+        await state.set_state(TestNaklState.waiting_for_photo)
 
+
+@router.message(TestNaklState.waiting_for_photo, F.photo)
+async def cmd_testnakl_photo(message: Message, state: FSMContext):
+    """Process photo sent by admin for manual /testnakl test."""
+    await state.clear()
+    photo = message.photo[-1]
+    await message.answer("🔍 Распознаю накладную...")
     try:
-        # Fetch last messages from group to find a photo
-        updates = await message.bot.get_updates(limit=100, timeout=0)
-        photo = None
-        for upd in reversed(updates):
-            m = upd.message
-            if m and m.chat.id == group_id and m.photo and not m.from_user.is_bot:
-                photo = m.photo[-1]
-                break
-
-        if not photo:
-            # Try forwarding from group chat history via getChatHistory
-            await message.answer("❌ Не найдено фото накладной в последних сообщениях группы.\n\nПроверьте что бот состоит в группе и что INVOICE_GROUP_ID верный.")
-            return
-
         result_text = await process_invoice(message.bot, photo, message)
         await message.answer(result_text)
     except Exception as e:
-        log.exception("testnakl error")
+        log.exception("testnakl photo error")
         await message.answer(f"❌ Ошибка: {e}")

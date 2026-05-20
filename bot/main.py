@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import ErrorEvent, BotCommand, BotCommandScopeChat
+from aiogram.types import ErrorEvent, BotCommand, BotCommandScopeChat, ReplyKeyboardRemove
 from handlers import start, admin, courier, client, manager, warehouse, agent, invoice
 from services.scheduler import setup_scheduler
 from config import settings
@@ -18,17 +18,15 @@ async def main():
     )
     dp = Dispatcher()
 
-    # Order matters: FSM-state handlers must beat catch-all text handlers.
-    # start contains Registration FSM and review FSM — register first.
-    # manager before admin so admin+manager users hit manager handlers first
-    # (manager handlers carry _IsManagerFilter so admin-only users pass through).
+    # invoice.router MUST be first: it silently drops ALL messages from the invoice
+    # group so no other router ever sees them (prevents /start, text, etc. responses).
+    dp.include_router(invoice.router)
     dp.include_router(start.router)
     dp.include_router(manager.router)
     dp.include_router(admin.router)
     dp.include_router(warehouse.router)
     dp.include_router(courier.router)
     dp.include_router(agent.router)
-    dp.include_router(invoice.router)  # group photo handler (INVOICE_GROUP_ID)
     dp.include_router(client.router)  # catch-all text → support must be last
 
     @dp.errors()
@@ -53,8 +51,8 @@ async def main():
 
     setup_scheduler(bot)
 
-    # Remove bot command menu in the invoice group so it doesn't show buttons there
     if settings.INVOICE_GROUP_ID:
+        # Clear command menu for the invoice group
         try:
             await bot.set_my_commands(
                 [],
@@ -62,6 +60,16 @@ async def main():
             )
         except Exception as e:
             logging.warning("Could not clear commands for invoice group: %s", e)
+        # Remove any lingering reply keyboard left from previous bot interactions
+        try:
+            msg = await bot.send_message(
+                settings.INVOICE_GROUP_ID,
+                "​",  # zero-width space — invisible text
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            await bot.delete_message(settings.INVOICE_GROUP_ID, msg.message_id)
+        except Exception as e:
+            logging.warning("Could not clear reply keyboard in invoice group: %s", e)
 
     logging.info("Bot started")
     await dp.start_polling(bot)
