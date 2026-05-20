@@ -87,19 +87,22 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
 
           {/* Summary card */}
           {orders && (
-            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', border: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ textAlign: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', border: `1px solid ${BORDER}`, display: 'flex', gap: 0 }}>
+              <div style={{ flex: 1, textAlign: 'center', paddingRight: 12, borderRight: `1px solid ${BORDER}` }}>
                 <div style={{ fontSize: 28, fontWeight: 800, color: CD }}>{orders.length}</div>
                 <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Заказов</div>
               </div>
-              {orders.length > 0 && (
-                <div style={{ flex: 1, paddingLeft: 16, borderLeft: `1px solid ${BORDER}` }}>
-                  <div style={{ fontSize: 13, color: TEXT2 }}>Сумма заказов</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>
-                    {orders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString('ru-RU')} сум
-                  </div>
+              <div style={{ flex: 2, paddingLeft: 12, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Заработано</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: CD, lineHeight: 1.2 }}>
+                  {orders.reduce((s, o) => s + (o.agent_earning || 0), 0).toLocaleString('ru-RU')} сум
                 </div>
-              )}
+                {orders.length > 0 && (
+                  <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
+                    Сумма заказов: {orders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString('ru-RU')} сум
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -118,8 +121,15 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
                   <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ fontSize: 12, color: TEXT2 }}>{fmt(o.created_at)}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
-                        {(o.total || 0).toLocaleString('ru-RU')} сум
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
+                          {(o.total || 0).toLocaleString('ru-RU')} сум
+                        </div>
+                        {(o.agent_earning || 0) > 0 && (
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#2B8A3E' }}>
+                            +{(o.agent_earning || 0).toLocaleString('ru-RU')} заработок
+                          </div>
+                        )}
                       </div>
                     </div>
                     {o.address && (

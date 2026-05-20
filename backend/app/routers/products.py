@@ -8,6 +8,7 @@ from sqlalchemy import select, delete as sa_delete
 from app.database import get_db
 from app.models.product import Product
 from app.models.courier_product_earning import CourierProductEarning
+from app.models.agent_product_earning import AgentProductEarning
 from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -97,5 +98,27 @@ async def set_courier_earnings(product_id: int, items: list[CourierEarningItem],
     await db.execute(sa_delete(CourierProductEarning).where(CourierProductEarning.product_id == product_id))
     for item in items:
         db.add(CourierProductEarning(product_id=product_id, courier_id=item.courier_id, earning=item.earning))
+    await db.commit()
+    return {"ok": True, "count": len(items)}
+
+
+class AgentEarningItem(BaseModel):
+    agent_id: int
+    earning: float
+
+
+@router.get("/{product_id}/agent_earnings")
+async def get_agent_earnings(product_id: int, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(AgentProductEarning).where(AgentProductEarning.product_id == product_id)
+    )).scalars().all()
+    return [{"agent_id": r.agent_id, "earning": r.earning} for r in rows]
+
+
+@router.put("/{product_id}/agent_earnings")
+async def set_agent_earnings(product_id: int, items: list[AgentEarningItem], db: AsyncSession = Depends(get_db)):
+    await db.execute(sa_delete(AgentProductEarning).where(AgentProductEarning.product_id == product_id))
+    for item in items:
+        db.add(AgentProductEarning(product_id=product_id, agent_id=item.agent_id, earning=item.earning))
     await db.commit()
     return {"ok": True, "count": len(items)}

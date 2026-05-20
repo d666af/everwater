@@ -21,6 +21,7 @@ from app.models import client_data, support, settings as settings_model  # noqa:
 from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa: F401
 from app.models import agent as agent_model  # noqa: F401
 from app.models import courier_product_earning as cpe_model  # noqa: F401
+from app.models import agent_product_earning as ape_model  # noqa: F401
 
 
 @asynccontextmanager
@@ -147,6 +148,17 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS agent_earning FLOAT DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS agent_product_earnings ("
+            "id SERIAL PRIMARY KEY, "
+            "agent_id INTEGER NOT NULL REFERENCES agents(id), "
+            "product_id INTEGER NOT NULL REFERENCES products(id), "
+            "earning FLOAT NOT NULL"
+            ")"
         ))
     async with AsyncSessionLocal() as db:
         await seed_products(db)

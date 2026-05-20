@@ -18,6 +18,7 @@ class ProductCreate(BaseModel):
     bottle_surcharge: int | None = None
     cost_price: float | None = None
     courier_earning: float | None = None
+    agent_earning: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
 
@@ -37,6 +38,7 @@ class ProductUpdate(BaseModel):
     bottle_surcharge: int | None = None
     cost_price: float | None = None
     courier_earning: float | None = None
+    agent_earning: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
 
@@ -57,6 +59,7 @@ class ProductOut(BaseModel):
     bottle_surcharge: int | None = None
     cost_price: float | None = None
     courier_earning: float | None = None
+    agent_earning: float | None = None
     discount_percent: int | None = None
     discount_until: datetime | None = None
 

@@ -112,6 +112,18 @@ export const setProductCourierEarnings = (productId, items) =>
     () => ({ ok: true })
   )
 
+export const getProductAgentEarnings = (productId) =>
+  safeCall(
+    () => http.get(`/products/${productId}/agent_earnings`).then(r => r.data),
+    () => []
+  )
+
+export const setProductAgentEarnings = (productId, items) =>
+  safeCall(
+    () => http.put(`/products/${productId}/agent_earnings`, items).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const uploadProductPhoto = (file) => {
   const form = new FormData()
   form.append('file', file)

@@ -56,6 +56,9 @@ function OrderCard({ order }) {
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
+            {(order.agent_earning || 0) > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#2B8A3E' }}>+{(order.agent_earning || 0).toLocaleString()} зар.</div>
+            )}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginTop: 4, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>
               <path d="M6 9l6 6 6-6" stroke={TEXT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -113,6 +116,7 @@ export default function AgentOrders() {
   const [customDate, setCustomDate] = useState(null)
   const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [allTimeOrders, setAllTimeOrders] = useState(null)
 
   const { dateFrom, dateTo } = (() => {
     if (period === 'today') {
@@ -142,7 +146,10 @@ export default function AgentOrders() {
   useEffect(() => {
     tg?.ready?.()
     tg?.expand?.()
-  }, [])
+    if (agentId) {
+      getAgentOrders(agentId).then(data => setAllTimeOrders(data || [])).catch(() => setAllTimeOrders([]))
+    }
+  }, [agentId]) // eslint-disable-line
 
   useEffect(() => { load() }, [load])
 
@@ -152,8 +159,12 @@ export default function AgentOrders() {
     setPeriod('custom')
   }
 
-  const deliveredCount = orders.filter(o => o.status === 'delivered').length
-  const totalSum = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total || 0), 0)
+  const deliveredOrders = orders.filter(o => o.status === 'delivered')
+  const deliveredCount = deliveredOrders.length
+  const totalSum = deliveredOrders.reduce((s, o) => s + (o.total || 0), 0)
+  const totalEarned = deliveredOrders.reduce((s, o) => s + (o.agent_earning || 0), 0)
+  const allTimeCount = allTimeOrders ? allTimeOrders.length : null
+  const allTimeEarned = allTimeOrders ? allTimeOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.agent_earning || 0), 0) : null
 
   return (
     <div style={{ minHeight: '100vh', background: '#e4e4e8', display: 'flex', flexDirection: 'column' }}>
@@ -173,6 +184,22 @@ export default function AgentOrders() {
         <div style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, color: TEXT }}>История заказов</div>
       </div>
 
+      {/* All-time summary card (above filter) */}
+      {allTimeCount !== null && (
+        <div style={{ padding: '8px 16px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заказов</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: CD }}>{allTimeCount}</div>
+            <div style={{ fontSize: 11, color: TEXT2 }}>за всё время</div>
+          </div>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заработано</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{(allTimeEarned || 0).toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
+          </div>
+        </div>
+      )}
+
       {/* Date filter */}
       <div style={{ padding: '12px 16px', background: '#e4e4e8' }}>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -191,18 +218,18 @@ export default function AgentOrders() {
         </div>
       </div>
 
-      {/* Summary */}
-      {!loading && orders.length > 0 && (
-        <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      {/* Period summary (below filter) */}
+      {!loading && (
+        <div style={{ padding: '0 16px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Заказов</div>
             <div style={{ fontSize: 26, fontWeight: 900, color: CD }}>{orders.length}</div>
-            <div style={{ fontSize: 11, color: TEXT2 }}>из них доставлено: {deliveredCount}</div>
+            <div style={{ fontSize: 11, color: TEXT2 }}>доставлено: {deliveredCount}</div>
           </div>
           <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Выручка</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: CD }}>{totalSum.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: TEXT2 }}>сум (доставленные)</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Заработано</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{totalEarned.toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
           </div>
         </div>
       )}
