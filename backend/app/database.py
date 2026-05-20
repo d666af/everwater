@@ -37,6 +37,17 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)",
             "ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL",
             "UPDATE users SET phone = NULL WHERE phone = ''",
+            # Sync phone from couriers/managers into users table where phone is missing
+            """UPDATE users u SET phone = c.phone
+               FROM couriers c
+               WHERE u.telegram_id = c.telegram_id
+                 AND (u.phone IS NULL OR u.phone = '')
+                 AND c.phone IS NOT NULL AND c.phone != ''""",
+            """UPDATE users u SET phone = m.phone
+               FROM managers m
+               WHERE u.telegram_id = m.telegram_id
+                 AND (u.phone IS NULL OR u.phone = '')
+                 AND m.phone IS NOT NULL AND m.phone != ''""",
         ):
             try:
                 await conn.execute(text(stmt))

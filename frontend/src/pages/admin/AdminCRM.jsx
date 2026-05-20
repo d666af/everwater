@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -25,6 +25,7 @@ const TABS = [
   { key: 'couriers', label: 'Курьеры' },
   { key: 'managers', label: 'Менеджеры' },
   { key: 'agents', label: 'Агенты' },
+  { key: 'warehouse', label: 'Завсклада' },
 ]
 
 const AUDIENCES = [
@@ -170,6 +171,111 @@ function ManagersTab() {
                 </span>
               </div>
               <button style={ms.removeBtn} onClick={() => remove(m.id)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+function WarehouseTab() {
+  const [staff, setStaff] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', telegram_id: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    getWarehouseStaff().then(setStaff).catch(console.error).finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
+
+  const save = async () => {
+    if (!form.name.trim() || !form.telegram_id.trim()) { setError('Имя и Telegram ID обязательны'); return }
+    setSaving(true); setError('')
+    try {
+      await addWarehouseStaff({ name: form.name.trim(), telegram_id: Number(form.telegram_id.trim()) })
+      setShowForm(false); setForm({ name: '', telegram_id: '' }); load()
+    } catch { setError('Ошибка при добавлении') } finally { setSaving(false) }
+  }
+
+  const remove = async (telegramId, name) => {
+    if (!window.confirm(`Удалить завсклада ${name}?`)) return
+    try { await removeWarehouseStaff(telegramId); load() } catch { alert('Ошибка') }
+  }
+
+  return (
+    <>
+      <div style={ms.topBar}>
+        <span style={ms.countChip}>{staff.length} сотр.</span>
+        <button style={ms.addBtn} onClick={() => { setShowForm(true); setError('') }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+          Добавить
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={ms.formCard}>
+          <div style={ms.formTitle}>Новый завсклада</div>
+          <div style={ms.formGrid}>
+            <div style={ms.field}>
+              <div style={ms.label}>Имя *</div>
+              <input style={ms.input} placeholder="Иван Иванов" value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div style={ms.field}>
+              <div style={ms.label}>Telegram ID *</div>
+              <input style={ms.input} placeholder="123456789" value={form.telegram_id}
+                onChange={e => setForm(f => ({ ...f, telegram_id: e.target.value }))} inputMode="numeric" />
+            </div>
+          </div>
+          {error && <div style={ms.error}>{error}</div>}
+          <div style={ms.formActions}>
+            <button style={ms.cancelBtn} onClick={() => setShowForm(false)}>Отмена</button>
+            <button style={{ ...ms.saveBtn, ...(saving ? { opacity: 0.6 } : {}) }} onClick={save} disabled={saving}>
+              {saving ? 'Сохраняю...' : 'Добавить'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={ms.center}><div style={ms.spinner} /></div>
+      ) : staff.length === 0 ? (
+        <div style={ms.empty}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="7" width="20" height="14" rx="2" stroke={C} strokeWidth="1.5"/>
+            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke={C} strokeWidth="1.5"/>
+            <path d="M12 12v4M10 14h4" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <div style={ms.emptyText}>Завсклада нет</div>
+          <button style={ms.addBtn} onClick={() => setShowForm(true)}>Добавить первого</button>
+        </div>
+      ) : (
+        <div style={ms.list}>
+          {staff.map((s, i) => (
+            <div key={s.telegram_id} style={ms.card}>
+              <div style={{ ...ms.avatar, background: GRADIENTS[i % GRADIENTS.length] }}>
+                {(s.name || 'W')[0].toUpperCase()}
+              </div>
+              <div style={ms.info}>
+                <div style={ms.name}>{s.name}</div>
+                <div style={ms.meta}>
+                  <span style={ms.metaItem}>ID: {s.telegram_id}</span>
+                </div>
+                <span style={{ ...ms.badge, background: '#EBFBEE', color: '#2B8A3E' }}>Активен</span>
+              </div>
+              <button style={ms.removeBtn} onClick={() => remove(s.telegram_id, s.name)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -475,6 +581,7 @@ export default function AdminCRM() {
         {tab === 'couriers' && <ManagerCouriers Layout={FragmentLayout} title="Курьеры" />}
         {tab === 'managers' && <ManagersTab />}
         {tab === 'agents' && <AgentsTab />}
+        {tab === 'warehouse' && <WarehouseTab />}
       </div>
     </AdminLayout>
   )
