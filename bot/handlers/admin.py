@@ -420,11 +420,16 @@ async def admin_assign(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    couriers = await api.get_couriers()
-    await call.message.edit_text(
-        f"Выберите курьера для заказа #{order_id}:",
-        reply_markup=courier_select_kb(couriers, order_id),
-    )
+    try:
+        couriers = await api.get_couriers()
+        kb = courier_select_kb(couriers, order_id)
+        text = f"Выберите курьера для заказа #{order_id}:"
+        try:
+            await call.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            await call.message.answer(text, reply_markup=kb)
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка загрузки курьеров: {e}")
 
 
 @router.callback_query(F.data.startswith("admin:contact:"))

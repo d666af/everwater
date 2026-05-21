@@ -291,11 +291,16 @@ async def mgr_assign(call: CallbackQuery):
     order_id = int(parts[2])
     tab = parts[3] if len(parts) > 3 else ""
     page = int(parts[4]) if len(parts) > 4 else 0
-    couriers = await api.get_couriers()
-    await call.message.edit_text(
-        f"Выберите курьера для заказа #{order_id}:",
-        reply_markup=mgr_courier_select_kb(couriers, order_id, tab=tab, page=page),
-    )
+    try:
+        couriers = await api.get_couriers()
+        kb = mgr_courier_select_kb(couriers, order_id, tab=tab, page=page)
+        text = f"Выберите курьера для заказа #{order_id}:"
+        try:
+            await call.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            await call.message.answer(text, reply_markup=kb)
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка загрузки курьеров: {e}")
 
 
 @router.callback_query(F.data.startswith("mgr:set_courier:"))
