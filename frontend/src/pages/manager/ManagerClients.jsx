@@ -691,6 +691,12 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                     <div style={{ fontSize: 15, fontWeight: 800, color: (u.bottles_owed || 0) > 0 ? '#C92A2A' : TEXT2, lineHeight: 1 }}>{u.bottles_owed || 0}</div>
                     <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Долг бут.</div>
                   </div>
+                  {(u.lent_bottles || 0) > 0 && (
+                    <div style={{ flex: 1, background: '#FFF8ED', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: '1px solid rgba(230,119,0,0.2)' }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>{u.lent_bottles}</div>
+                      <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Одол. бут.</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Custom tags */}

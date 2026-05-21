@@ -76,6 +76,7 @@ export default function AgentCheckout() {
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
+  const [lentBottles, setLentBottles] = useState(0)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [lastTotal, setLastTotal] = useState(0)
@@ -129,7 +130,8 @@ export default function AgentCheckout() {
 
   const availReturn = client?.available_bottles ?? 0
   const surchargePerBottle = deposit19L.find(p => p.bottle_surcharge > 0)?.bottle_surcharge || 0
-  const missingBottles = Math.max(0, qty19L - returnBottles)
+  const maxLent = Math.max(0, qty19L - returnBottles)
+  const missingBottles = Math.max(0, qty19L - returnBottles - lentBottles)
   const bottleSurcharge = missingBottles > 0 ? missingBottles * surchargePerBottle : 0
   const subtotal = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
@@ -150,7 +152,7 @@ export default function AgentCheckout() {
   const handleReset = () => {
     setPhone(''); setClient(null); setNotFound(false)
     setAddress(''); setExtraInfo(''); setLat(null); setLng(null)
-    setSelected({}); setReturnBottles(0); setSuccess(false)
+    setSelected({}); setReturnBottles(0); setLentBottles(0); setSuccess(false)
   }
 
   const handle = async () => {
@@ -164,6 +166,7 @@ export default function AgentCheckout() {
         total: grandTotal,
         items,
         return_bottles_count: returnBottles,
+        bottles_lent: lentBottles,
         bottle_surcharge: bottleSurcharge,
         latitude: lat,
         longitude: lng,
@@ -300,6 +303,18 @@ export default function AgentCheckout() {
             </div>
           )}
         </div>
+
+        {/* Lent bottles */}
+        {qty19L > 0 && maxLent > 0 && (
+          <div style={{ background: '#fff', borderRadius: 16, padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4 }}>Одолжить бутылки</div>
+            <CStepper value={lentBottles}
+              onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
+              onInc={() => setLentBottles(Math.min(lentBottles + 1, maxLent))}
+              onChange={v => setLentBottles(Math.min(Math.max(0, v), maxLent))} />
+            {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
+          </div>
+        )}
 
         {/* Total */}
         {(items.length > 0 || bottleSurcharge > 0) && (
