@@ -116,20 +116,33 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 
         # Pass 3: image_to_data (word-level bounding boxes) — catches words that
         # image_to_string drops due to multi-column table layout confusion.
+        # Also reconstructs table rows by y-position (40px buckets) to fix
+        # column-scan output where qty column appears separately from name column.
         try:
             data = pytesseract.image_to_data(
                 img, lang='rus+eng', config='--psm 11 --oem 3',
                 output_type=pytesseract.Output.DICT,
             )
             word_lines: dict[tuple, list] = {}
-            for i, word in enumerate(data['text']):
+            y_groups: dict[int, list] = {}
+            for idx, word in enumerate(data['text']):
                 word = word.strip()
-                if not word or int(data['conf'][i]) < 10:
+                if not word or int(data['conf'][idx]) < 10:
                     continue
-                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
-                word_lines.setdefault(key, []).append((data['left'][i], word))
+                key = (data['block_num'][idx], data['par_num'][idx], data['line_num'][idx])
+                word_lines.setdefault(key, []).append((data['left'][idx], word))
+                # Group by y-position with 40px tolerance so each table row
+                # becomes one reconstructed line regardless of column layout
+                bucket = (data['top'][idx] // 40) * 40
+                y_groups.setdefault(bucket, []).append((data['left'][idx], word))
             for key in sorted(word_lines):
                 line = ' '.join(w for _, w in sorted(word_lines[key]))
+                if line not in seen:
+                    seen.add(line)
+                    combined.append(line)
+            # Y-based row grouping: each entry is a full table row (all columns)
+            for bucket in sorted(y_groups):
+                line = ' '.join(w for _, w in sorted(y_groups[bucket]))
                 if line not in seen:
                     seen.add(line)
                     combined.append(line)
@@ -147,22 +160,32 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 # ─── Parser ───────────────────────────────────────────────────────────────────
 
 def _normalize_phone(raw: str) -> str | None:
-    # 1. Spaced Uzbek format in the raw string (most accurate — OCR spaces groups clearly):
-    #    "99 054 13 30" → operator=99, prefix=054, last=1330
+    # 1a. Spaced with country code: "998 99 054 13 30"
+    m = re.search(r'\b998\s+(9\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    if m:
+        return '+998' + ''.join(m.groups())
+    # 1b. Spaced without country code: "99 054 13 30"
     m = re.search(r'\b(9\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
-    # 2. Exact compact: 998 + 9 consecutive digits
+    # 1c. 2+3+4 format: "99 054 1330"
+    m = re.search(r'\b(9\d)\s+(\d{3})\s+(\d{4})\b', raw)
+    if m:
+        return '+998' + ''.join(m.groups())
+    # 2. Compact with country code: 998 + 9 consecutive digits
     digits = re.sub(r'[^\d]', '', raw)
     m = re.search(r'998(\d{9})', digits)
     if m:
         return '+998' + m.group(1)
-    # 3. OCR drops a leading digit from "998" → 11-digit garbled block;
-    #    take last 9 digits as subscriber number
+    # 3. OCR drops a leading digit from "998" → 11-digit garbled block
     for block in re.findall(r'\d{11,}', digits):
         sub = block[-9:]
         if sub[0] == '9':
             return '+998' + sub
+    # 4. Bare 9-digit Uzbek subscriber number (valid operator prefixes)
+    m = re.search(r'\b(9[01345789]\d{7})\b', raw)
+    if m:
+        return '+998' + m.group(1)
     return None
 
 
@@ -219,11 +242,33 @@ def _parse_invoice(text: str) -> dict | None:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
-                    # Skip bare bottle-volume numbers (18/19/20) that come from
-                    # "EVER 20л" being split into "20" + "л" by OCR tokenisation
-                    if re.fullmatch(r'\d+', prev.strip()) and int(prev.strip()) in {18, 19, 20}:
+                    # Skip date/time lines (e.g. "16:32:45", "20.05.2026")
+                    if re.search(r'\d{1,2}[.:]\d{2}', prev):
                         continue
-                    for n in re.findall(r'\b(\d+)\b', prev):
+                    # Strip volume annotations ("20л","19л") before extracting qty —
+                    # "EVER 20л" column-scans as a bare "20л" token which \b would
+                    # otherwise parse as the number 20
+                    cleaned_prev = re.sub(r'\d+\s*л', '', prev, flags=re.IGNORECASE).strip()
+                    if not cleaned_prev:
+                        continue
+                    for n in re.findall(r'\b(\d+)\b', cleaned_prev):
+                        v = int(n)
+                        if 0 < v < 500:
+                            result['return_qty'] = v
+                            break
+                    if result['return_qty']:
+                        break
+            # Forward search: qty column may follow name column in column-scan
+            if result['return_qty'] == 0:
+                for nxt in lines[i + 1:i + 5]:
+                    if re.search(r'ever|наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
+                        break
+                    if re.search(r'\d{1,2}[.:]\d{2}', nxt):
+                        continue
+                    cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
+                    if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
+                        continue  # skip pure text lines (e.g. unit labels)
+                    for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
                         v = int(n)
                         if 0 < v < 500:
                             result['return_qty'] = v
@@ -250,7 +295,33 @@ def _parse_invoice(text: str) -> dict | None:
                         break
                     if re.search(r'возврат', prev, re.IGNORECASE):
                         continue  # skip the label, keep looking for the number
-                    for n in re.findall(r'\b(\d+)\b', prev):
+                    # Skip date/time lines
+                    if re.search(r'\d{1,2}[.:]\d{2}', prev):
+                        continue
+                    # Strip volume annotations before extracting qty
+                    cleaned_prev = re.sub(r'\d+\s*л', '', prev, flags=re.IGNORECASE).strip()
+                    if not cleaned_prev:
+                        continue
+                    for n in re.findall(r'\b(\d+)\b', cleaned_prev):
+                        v = int(n)
+                        if 1 <= v <= 500:
+                            found_qty = v
+                            break
+                    if found_qty:
+                        break
+            # Forward search: qty may appear after the name row in column-scan
+            if not found_qty:
+                for nxt in lines[i + 1:i + 5]:
+                    if re.search(r'наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
+                        break
+                    if re.search(r'ever', nxt, re.IGNORECASE):
+                        break  # next product row
+                    if re.search(r'\d{1,2}[.:]\d{2}', nxt):
+                        continue
+                    cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
+                    if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
+                        continue
+                    for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
                         v = int(n)
                         if 1 <= v <= 500:
                             found_qty = v
