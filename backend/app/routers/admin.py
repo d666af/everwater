@@ -181,6 +181,12 @@ async def get_stats(
     bottle_debt_count = client_debt_count + courier_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
+    bottles_lent_total = (await db.execute(
+        select(func.sum(Order.bottles_lent)).where(
+            _order_time(Order.status == OrderStatus.DELIVERED, Order.bottles_lent > 0)
+        )
+    )).scalar() or 0
+
     # Product sales breakdown for the period (with per-courier and per-agent earning overrides)
     product_sales_q = await db.execute(
         select(
@@ -298,6 +304,100 @@ async def get_stats(
         "bottles_returned_to_warehouse": bottles_returned_to_warehouse,
         "permanent_customers": permanent_customers,
         "inactive_customers": inactive_customers,
+        "bottles_lent_total": int(bottles_lent_total),
+    }
+
+
+@router.get("/stats/lent-bottles")
+async def stats_lent_bottles(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Detailed breakdown of lent bottles (одолженные бутылки) for the period."""
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        dt_from = datetime(df.year, df.month, df.day, 0, 0, 0)
+    else:
+        dt_from = datetime(2020, 1, 1)
+    if date_to:
+        dt = datetime.strptime(date_to, "%Y-%m-%d")
+        dt_to = datetime(dt.year, dt.month, dt.day, 23, 59, 59)
+    else:
+        dt_to = datetime(2099, 12, 31)
+
+    base_where = [Order.created_at >= dt_from, Order.created_at <= dt_to, Order.bottles_lent > 0]
+
+    total = (await db.execute(
+        select(func.sum(Order.bottles_lent)).where(*base_where)
+    )).scalar() or 0
+
+    # By creator_role
+    role_rows = (await db.execute(
+        select(Order.creator_role, func.sum(Order.bottles_lent))
+        .where(*base_where)
+        .group_by(Order.creator_role)
+    )).all()
+    by_role: dict = {}
+    for role, cnt in role_rows:
+        key = role or "admin"
+        by_role[key] = by_role.get(key, 0) + (cnt or 0)
+
+    # By agent
+    from app.models.agent import Agent
+    agent_rows = (await db.execute(
+        select(Agent.name, func.sum(Order.bottles_lent))
+        .join(Agent, Order.agent_id == Agent.id)
+        .where(*base_where, Order.creator_role == "agent")
+        .group_by(Agent.id, Agent.name)
+    )).all()
+    by_agent = [{"name": n, "lent": c or 0} for n, c in agent_rows]
+
+    # By manager
+    manager_rows = (await db.execute(
+        select(Manager.name, func.sum(Order.bottles_lent))
+        .join(Manager, Order.manager_phone == Manager.phone)
+        .where(*base_where, Order.creator_role == "manager")
+        .group_by(Manager.id, Manager.name)
+    )).all()
+    by_manager = [{"name": n, "lent": c or 0} for n, c in manager_rows]
+
+    # By courier (as order creator)
+    courier_creator_rows = (await db.execute(
+        select(Courier.name, func.sum(Order.bottles_lent))
+        .join(Courier, Order.courier_id == Courier.id)
+        .where(*base_where, Order.creator_role == "courier")
+        .group_by(Courier.id, Courier.name)
+    )).all()
+    by_courier_creator = [{"name": n, "lent": c or 0} for n, c in courier_creator_rows]
+
+    # By admin (null or 'admin' creator_role)
+    admin_lent = (await db.execute(
+        select(func.sum(Order.bottles_lent))
+        .where(*base_where, or_(Order.creator_role == None, Order.creator_role == "admin"))
+    )).scalar() or 0
+    by_admin = [{"name": "Администратор", "lent": admin_lent}] if admin_lent > 0 else []
+
+    # Couriers who delivered lent-bottle orders
+    delivery_rows = (await db.execute(
+        select(Courier.name.label("cname"), func.sum(Order.bottles_lent).label("lent"))
+        .join(Courier, Order.courier_id == Courier.id, isouter=True)
+        .where(*base_where)
+        .group_by(Courier.id, Courier.name)
+    )).all()
+    delivery_by_courier = sorted(
+        [{"courier_name": r.cname or "Не назначен", "lent": r.lent or 0} for r in delivery_rows],
+        key=lambda x: -x["lent"],
+    )
+
+    return {
+        "total": total,
+        "by_role": by_role,
+        "by_agent": by_agent,
+        "by_manager": by_manager,
+        "by_courier_creator": by_courier_creator,
+        "by_admin": by_admin,
+        "delivery_by_courier": delivery_by_courier,
     }
 
 
@@ -690,6 +790,13 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
     bottles_q = await db.execute(select(BottleDebt))
     bottles_map = {b.user_id: b.count for b in bottles_q.scalars().all()}
 
+    lent_q = await db.execute(
+        select(Order.user_id, func.sum(Order.bottles_lent).label('lent'))
+        .where(Order.user_id.isnot(None), Order.bottles_lent > 0)
+        .group_by(Order.user_id)
+    )
+    lent_map = {row.user_id: int(row.lent) for row in lent_q.all()}
+
     # Load classification settings first to build the right queries
     from app.services.settings_service import get_all_settings
     cfg = await get_all_settings(db)
@@ -737,6 +844,7 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "created_at": u.created_at,
             "orders_count": orders_map.get(u.id, 0),
             "bottles_owed": bottles_map.get(u.id, 0),
+            "lent_bottles": lent_map.get(u.id, 0),
             "last_order_at": last_order_map.get(u.id),
             "customer_label": _label(u.id),
         }

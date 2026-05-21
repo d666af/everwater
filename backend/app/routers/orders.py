@@ -247,13 +247,15 @@ def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
     return count * per
 
 
-def calc_bottle_surcharge(items_data: list, return_count: int, cfg: dict) -> float:
+def calc_bottle_surcharge(items_data: list, return_count: int, cfg: dict, bottles_lent: int = 0) -> float:
     """New model: charge an extra fee for every 19L bottle the customer
-    keeps (i.e. doesn't return) in this order. Per-product surcharge is
-    used when set; otherwise falls back to the global setting."""
+    keeps (i.e. doesn't return) in this order. Lent bottles (одолженные)
+    are treated like returns for surcharge — they still go to bottle debt
+    but no surcharge is charged. Per-product surcharge is used when set;
+    otherwise falls back to the global setting."""
     fallback = float(cfg.get("bottle_discount_value") or 0)
     is_percent = cfg.get("bottle_discount_type") == "percent"
-    returns_left = max(0, int(return_count or 0))
+    returns_left = max(0, int(return_count or 0) + int(bottles_lent or 0))
     total = 0.0
     for product, qty in items_data:
         vol = float(product.volume or 0)
@@ -308,7 +310,7 @@ async def create_order(
     # path retained for legacy clients that still send bottle_discount.
     bottle_discount = float(data.bottle_discount or 0)
     bottle_surcharge = data.bottle_surcharge if data.bottle_surcharge is not None else \
-        calc_bottle_surcharge(items_data, data.return_bottles_count, cfg)
+        calc_bottle_surcharge(items_data, data.return_bottles_count, cfg, data.bottles_lent)
 
     delivery_fee = float(data.delivery_fee or cfg.get("delivery_price") or 0) if cfg.get("delivery_enabled", True) else 0.0
     bonus_limit_pct = float(cfg.get("bonus_limit_percent") or 30) / 100
@@ -327,6 +329,7 @@ async def create_order(
         latitude=data.latitude,
         longitude=data.longitude,
         return_bottles_count=data.return_bottles_count,
+        bottles_lent=data.bottles_lent,
         return_bottles_volume=data.return_bottles_volume,
         bottle_discount=bottle_discount,
         bottle_surcharge=bottle_surcharge,

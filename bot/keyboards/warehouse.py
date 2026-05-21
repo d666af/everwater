@@ -10,7 +10,7 @@ def warehouse_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="📦 Остатки"), KeyboardButton(text="➕ Производство")],
         [KeyboardButton(text="🔄 Выдать/Возврат"), KeyboardButton(text="📊 Отчёт")],
-        [KeyboardButton(text="👥 Курьеры")],
+        [KeyboardButton(text="👥 Курьеры"), KeyboardButton(text="🗑 Отменить выдачу")],
     ]
     if subs_enabled:
         rows.append([KeyboardButton(text="📅 Подписки"), KeyboardButton(text="📜 История")])

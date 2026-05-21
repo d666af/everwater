@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats, getAdminStatsExtended, getCancelledOrders } from '../../api'
+import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles } from '../../api'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
 const C = '#8DC63F'
@@ -293,6 +293,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
   const [pickerOpen, setPickerOpen] = useState(false)
   const [stats, setStats] = useState(null)
   const [extStats, setExtStats] = useState(null)
+  const [lentData, setLentData] = useState(null)
+  const [lentRole, setLentRole] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const isToday = dateFrom === todayISO() && dateTo === todayISO()
@@ -311,7 +313,11 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
 
   useEffect(() => {
     setLoading(true)
-    const calls = [getAdminStats(dateParams).then(setStats).catch(console.error)]
+    setLentRole(null)
+    const calls = [
+      getAdminStats(dateParams).then(setStats).catch(console.error),
+      getStatsLentBottles(dateParams).then(setLentData).catch(console.error),
+    ]
     if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
     Promise.all(calls).finally(() => setLoading(false))
   }, [dateFrom, dateTo, showExtended]) // eslint-disable-line
@@ -403,6 +409,54 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         </div>
       ) : (
         <>
+          {/* Lent bottles card */}
+          {lentData && (lentData.total || 0) > 0 && (
+            <div style={{ background: '#FFF8E7', borderRadius: 18, border: '1.5px solid #FFD87A', padding: '14px 16px', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Одолжено бутылок</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: '#E67700', lineHeight: 1 }}>{lentData.total}</div>
+              <div style={{ fontSize: 11, color: '#E67700', marginTop: 2 }}>шт · {periodLabel}</div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#664400', marginBottom: 8 }}>Кто выдал:</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[['agent', 'Агент', lentData.by_agent], ['manager', 'Менеджер', lentData.by_manager], ['courier', 'Курьер', lentData.by_courier_creator], ['admin', 'Админ', lentData.by_admin]].map(([role, label, items]) => {
+                    const count = lentData.by_role?.[role] || 0
+                    if (count === 0) return null
+                    return (
+                      <button key={role} onClick={() => setLentRole(lentRole === role ? null : role)}
+                        style={{ padding: '6px 14px', borderRadius: 20, border: '1.5px solid #FFD87A', background: lentRole === role ? '#E67700' : '#FFF3CD', color: lentRole === role ? '#fff' : '#664400', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {label}: {count}
+                      </button>
+                    )
+                  })}
+                </div>
+                {lentRole && (() => {
+                  const roleItems = { agent: lentData.by_agent, manager: lentData.by_manager, courier: lentData.by_courier_creator, admin: lentData.by_admin }[lentRole] || []
+                  return (
+                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {roleItems.map((item, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', background: '#FFF3CD', borderRadius: 10, padding: '8px 12px' }}>
+                          <span style={{ fontWeight: 600, color: '#664400' }}>{item.name}</span>
+                          <span style={{ fontWeight: 800, color: '#E67700' }}>{item.lent} шт.</span>
+                        </div>
+                      ))}
+                      {(lentData.delivery_by_courier?.length || 0) > 0 && (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#664400', marginBottom: 6 }}>Кто доставил:</div>
+                          {lentData.delivery_by_courier.map((d, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', background: '#FFFBEE', borderRadius: 8, padding: '6px 10px', marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, color: '#664400' }}>{d.courier_name}</span>
+                              <span style={{ fontWeight: 700, color: '#E67700' }}>{d.lent} шт.</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* Bottles card — debt only */}
           <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12 }}>Бутылки 19л</div>

@@ -728,6 +728,23 @@ async def get_warehouse_staff_db() -> list:
         return []
 
 
+async def get_warehouse_batches(performed_by: str = "Группа накладных") -> list:
+    try:
+        return await _get("/warehouse/issue_batches", params={"performed_by": performed_by, "limit": 200})
+    except Exception:
+        return []
+
+
+async def cancel_warehouse_batch(batch_id: str) -> dict:
+    async with aiohttp.ClientSession() as s:
+        url = f"{BASE}/warehouse/issue_batch/{batch_id}"
+        async with s.delete(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
+            body = await r.text()
+            if r.status >= 400:
+                raise ApiError(r.status, _extract_detail(body, r.status))
+            return json.loads(body) if body else {}
+
+
 # ─── Support chat ──────────────────────────────────────────────────────────────
 
 async def send_user_support_message(telegram_id: int, user_name: str, text: str):

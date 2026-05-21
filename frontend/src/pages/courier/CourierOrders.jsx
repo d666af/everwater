@@ -374,6 +374,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
+  const [lentBottles, setLentBottles] = useState(0)
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef(null)
 
@@ -417,11 +418,12 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   const qty19L = deposit19L.reduce((s, p) => s + (selected[p.id] || 0), 0)
 
   // Auto-set return to match 19L qty when products change
-  useEffect(() => { setReturnBottles(qty19L) }, [qty19L])
+  useEffect(() => { setReturnBottles(qty19L); setLentBottles(0) }, [qty19L])
 
   const availReturn = client?.available_bottles ?? 0
   const surchargePerBottle = deposit19L.find(p => p.bottle_surcharge > 0)?.bottle_surcharge || 0
-  const missingBottles = Math.max(0, qty19L - returnBottles)
+  const maxLent = Math.max(0, qty19L - returnBottles)
+  const missingBottles = Math.max(0, qty19L - returnBottles - lentBottles)
   const bottleSurcharge = missingBottles > 0 ? missingBottles * surchargePerBottle : 0
   const subtotal = Object.entries(selected).reduce((sum, [id, qty]) => {
     const p = products.find(p => p.id === Number(id))
@@ -451,6 +453,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         items,
         user_id: client?.id || null,
         return_bottles_count: returnBottles,
+        bottles_lent: lentBottles,
         bottle_surcharge: bottleSurcharge,
         latitude: lat,
         longitude: lng,
@@ -564,6 +567,23 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
             </div>
           )}
         </div>
+
+        {/* ── Lent bottles ── */}
+        {qty19L > 0 && maxLent > 0 && (
+          <div style={{ background: '#FFF8E7', borderRadius: 14, border: '1.5px solid #FFD87A', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <CLabel style={{ color: '#E67700' }}>Одолжить бутылки</CLabel>
+              <span style={{ fontSize: 11, color: '#E67700' }}>макс. {maxLent} шт.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CStepper value={lentBottles}
+                onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
+                onInc={() => setLentBottles(Math.min(lentBottles + 1, maxLent))}
+                onChange={v => setLentBottles(Math.min(Math.max(0, v), maxLent))} />
+              {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
+            </div>
+          </div>
+        )}
 
         {/* ── Total ── */}
         {(items.length > 0 || bottleSurcharge > 0) && (

@@ -1445,3 +1445,10 @@ export const checkIsMainAdmin = () =>
     () => http.get('/admin/admins/is-main').then(r => r.data),
     () => ({ is_main: false, main_ids: [] })
   )
+
+
+export const getStatsLentBottles = (params) =>
+  safeCall(
+    () => http.get('/admin/stats/lent-bottles', { params }).then(r => r.data),
+    () => ({ total: 0, by_role: {}, by_agent: [], by_manager: [], by_courier_creator: [], by_admin: [], delivery_by_courier: [] })
+  )
