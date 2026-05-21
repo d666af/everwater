@@ -843,6 +843,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         status=OrderStatus.CONFIRMED,
         creator_role=body.creator_role,
         agent_id=body.agent_id,
+        manager_phone=body.manager_phone,
     )
     db.add(order)
     await db.flush()
