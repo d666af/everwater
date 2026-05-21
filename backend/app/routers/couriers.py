@@ -958,10 +958,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Бутылки 19л: {body.return_bottles_count} шт."
                 f"{extra_line}"
             )
-            for aid in cfg.ADMIN_IDS:
+            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+            _all_aids_r = await _get_all_admin_ids(db)
+            for aid in _all_aids_r:
                 await _tg(aid, info_text_r)
             for m in mgrs:
-                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                if m.telegram_id and m.telegram_id not in _all_aids_r:
                     await _tg(m.telegram_id, info_text_r)
             return {"id": oid, "status": "delivered"}
         else:
@@ -975,10 +977,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Бутылки 19л: {body.return_bottles_count} шт."
                 f"{mgr_line}"
             )
-            for aid in cfg.ADMIN_IDS:
+            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+            _all_aids_r2 = await _get_all_admin_ids(db)
+            for aid in _all_aids_r2:
                 await _tg(aid, info_text_r)
             for m in mgrs:
-                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                if m.telegram_id and m.telegram_id not in _all_aids_r2:
                     await _tg(m.telegram_id, info_text_r)
             return {"id": oid, "status": "confirmed"}
 
@@ -1058,10 +1062,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             f"Сумма: {_fmt_n3(total_int)} сум\n\n"
             f"✅ Курьер {courier_name} назначен автоматически"
         )
-        for aid in cfg.ADMIN_IDS:
+        from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+        _all_aids_c = await _get_all_admin_ids(db)
+        for aid in _all_aids_c:
             await _tg(aid, info_text)
         for m in mgrs:
-            if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+            if m.telegram_id and m.telegram_id not in _all_aids_c:
                 await _tg(m.telegram_id, info_text)
 
     # ── Manager/admin-created order ──
@@ -1129,10 +1135,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Сумма: {_fmt_nm(total_int)} сум\n\n"
                 f"✅ Курьер {courier_name_m} назначен"
             )
-            for aid in cfg.ADMIN_IDS:
+            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+            _all_aids_m = await _get_all_admin_ids(db)
+            for aid in _all_aids_m:
                 await _tg(aid, info_text)
             for m in mgrs:
-                if m.telegram_id and m.telegram_id not in cfg.ADMIN_IDS:
+                if m.telegram_id and m.telegram_id not in _all_aids_m:
                     await _tg(m.telegram_id, info_text)
         else:
             if client_tg:
@@ -1174,9 +1182,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             ]}
             import json as _json_mod
             from app.services.tg_notify import tg_send_capture as _tg_send_capture
+            from app.models.admin_user import AdminUser as _AdminUser
+            _secondary_admins = (await db.execute(select(_AdminUser))).scalars().all()
+            _all_admin_ids = set(cfg.ADMIN_IDS) | {int(a.telegram_id) for a in _secondary_admins}
             _msg_ids: list = []
             _seen: set[int] = set()
-            for _aid in cfg.ADMIN_IDS:
+            for _aid in _all_admin_ids:
                 if _aid not in _seen:
                     _seen.add(_aid)
                     _r = await _tg_send_capture(_aid, text, admin_kb)

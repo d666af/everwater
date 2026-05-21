@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.user import main_menu_kb, order_actions_kb, _site
 from config import settings
+from services.roles import get_all_admin_ids
 
 _RU_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 _RU_MONTHS = ["янв", "фев", "мар", "апр", "май", "июн",
@@ -1351,7 +1352,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         )
         sent_msgs = []
         seen_tg: set[int] = set()
-        for admin_id in settings.ADMIN_IDS:
+        for admin_id in get_all_admin_ids():
             if admin_id in seen_tg:
                 continue
             seen_tg.add(admin_id)

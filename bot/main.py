@@ -6,6 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import ErrorEvent, BotCommand, BotCommandScopeChat, ReplyKeyboardRemove
 from handlers import start, admin, courier, client, manager, warehouse, agent, invoice
 from services.scheduler import setup_scheduler
+from services.roles import load_secondary_admins
 from config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +49,8 @@ async def main():
             except Exception:
                 pass
         return True  # mark as handled so aiogram doesn't re-raise
+
+    await load_secondary_admins()
 
     setup_scheduler(bot)
 

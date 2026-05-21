@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import services.api_client as api
 from config import settings
+from services.roles import get_all_admin_ids
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 
@@ -49,7 +50,7 @@ async def check_delivery_reminders(bot):
             continue
         expected_dt = datetime.fromisoformat(expected.replace("Z", ""))
         if now - expected_dt > timedelta(minutes=10):
-            for admin_id in settings.ADMIN_IDS:
+            for admin_id in get_all_admin_ids():
                 try:
                     await bot.send_message(
                         admin_id,
@@ -103,13 +104,14 @@ async def notify_new_orders(bot):
             f"Сумма: {int(order.get('total', 0)):,} сум"
         )
         kb = order_confirm_kb(oid)
-        for admin_id in settings.ADMIN_IDS:
+        all_admin_ids = get_all_admin_ids()
+        for admin_id in all_admin_ids:
             try:
                 await bot.send_message(admin_id, text, reply_markup=kb)
             except Exception:
                 pass
         for mgr_tg in active_mgr_ids:
-            if mgr_tg not in settings.ADMIN_IDS:
+            if mgr_tg not in all_admin_ids:
                 try:
                     await bot.send_message(mgr_tg, text, reply_markup=kb)
                 except Exception:
@@ -154,7 +156,7 @@ async def notify_low_stock(bot):
         parts += shortfall_lines
     text = "\n".join(parts)
 
-    recipients: list[int] = list(settings.ADMIN_IDS) + list(settings.WAREHOUSE_IDS)
+    recipients: list[int] = list(get_all_admin_ids()) + list(settings.WAREHOUSE_IDS)
     try:
         for s in await api.get_warehouse_staff_db():
             if s.get("telegram_id"):
@@ -218,7 +220,7 @@ async def check_delivery_eta(bot):
                     sent = True
                 except Exception:
                     pass
-            for admin_id in settings.ADMIN_IDS:
+            for admin_id in get_all_admin_ids():
                 try:
                     await bot.send_message(
                         admin_id,

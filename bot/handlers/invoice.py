@@ -27,6 +27,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, PhotoSize
 
 from config import settings
+from services.roles import get_all_admin_ids
 from services.api_client import (
     create_courier_from_invoice, issue_batch, get_products,
 )
@@ -591,7 +592,7 @@ async def handle_group_invoice(message: Message):
     result_text = await process_invoice(
         message.bot, photo, message, performed_by='Группа накладных'
     )
-    for admin_id in settings.ADMIN_IDS:
+    for admin_id in get_all_admin_ids():
         try:
             await message.bot.send_message(admin_id, result_text)
         except Exception as e:
@@ -607,7 +608,7 @@ async def handle_group_silence(message: Message):
 @router.message(Command("testnakl"))
 async def cmd_testnakl(message: Message, state: FSMContext):
     """Admin command: send a photo of an invoice to OCR and issue it manually."""
-    if message.from_user.id not in settings.ADMIN_IDS:
+    if message.from_user.id not in get_all_admin_ids():
         return
     await message.answer("📸 Отправьте фото накладной:")
     await state.set_state(TestNaklState.waiting_for_photo)

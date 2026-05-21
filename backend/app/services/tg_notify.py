@@ -4,6 +4,14 @@ import aiohttp
 from app.config import settings
 
 
+async def get_all_admin_ids(db) -> set[int]:
+    """Return ADMIN_IDS from env + secondary admins from admin_users table."""
+    from sqlalchemy import select
+    from app.models.admin_user import AdminUser
+    secondary = (await db.execute(select(AdminUser))).scalars().all()
+    return set(settings.ADMIN_IDS) | {int(a.telegram_id) for a in secondary}
+
+
 async def tg_send_capture(chat_id: int, text: str, reply_markup=None) -> dict | None:
     """Send TG message, return {chat_id, message_id} on success or None."""
     if not chat_id:

@@ -142,9 +142,9 @@ async def add_sub(user_id: int, body: SubscriptionBody, db: AsyncSession = Depen
         {"text": "❌ Отклонить", "callback_data": f"admin_sub_reject:{sub.id}"},
     ]]} if body.payment_method == "card" else None
 
-    from app.services.tg_notify import notify_all
+    from app.services.tg_notify import notify_all, get_all_admin_ids
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+    msg_ids_json = await notify_all(list(await get_all_admin_ids(db)), mgrs, text, kb)
 
     sub.notification_msg_ids = msg_ids_json
     await db.commit()
@@ -172,8 +172,9 @@ async def cancel_sub(user_id: int, sub_id: int, db: AsyncSession = Depends(get_d
     client_name = u.name if u else str(user_id)
     client_phone = u.phone if u else "—"
     text = f"❌ Клиент {client_name} ({client_phone}) отменил подписку на {sub.water_summary}."
+    from app.services.tg_notify import get_all_admin_ids
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-    await notify_all(cfg.ADMIN_IDS, mgrs, text)
+    await notify_all(list(await get_all_admin_ids(db)), mgrs, text)
 
     return {"ok": True}
 
