@@ -410,7 +410,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
       ) : (
         <>
           {/* Lent bottles card */}
-          {lentData && (lentData.total || 0) > 0 && (
+          {lentData && (
             <div style={{ background: '#FFF8E7', borderRadius: 18, border: '1.5px solid #FFD87A', padding: '14px 16px', marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Одолжено бутылок</div>
               <div style={{ fontSize: 40, fontWeight: 900, color: '#E67700', lineHeight: 1 }}>{lentData.total}</div>
