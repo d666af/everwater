@@ -79,11 +79,16 @@ function OrderCard({ order }) {
               ))}
             </>
           )}
-          {(order.return_bottles_count > 0 || order.bottle_surcharge > 0) && (
+          {(order.return_bottles_count > 0 || order.bottles_lent > 0 || order.bottle_surcharge > 0) && (
             <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
               {order.return_bottles_count > 0 && (
                 <div style={{ fontSize: 12, color: TEXT2 }}>
                   ♻️ Возврат бутылок: <strong>{order.return_bottles_count} шт.</strong>
+                </div>
+              )}
+              {order.bottles_lent > 0 && (
+                <div style={{ fontSize: 12, color: '#E67700' }}>
+                  🔄 Одолжено: <strong>{order.bottles_lent} шт.</strong>
                 </div>
               )}
               {order.bottle_surcharge > 0 && (

@@ -146,6 +146,7 @@ _ALL_MENU_BUTTONS = frozenset({
     "📊 Мои данные", "📈 Отчёт", "📝 Новый заказ",
     # warehouse
     "📦 Остатки", "➕ Производство", "🔄 Выдать/Возврат", "📊 Отчёт", "👥 Курьеры", "📜 История",
+    "🗑 Отменить выдачу",
     # shared
     "🔄 Роль",
 })
@@ -160,7 +161,7 @@ _ADMIN_STATE_PREFIXES   = ("AdminReject:", "AdminCourierCreate:",
                            "AdminWarehouseStaff:", "AdminWarehouseProd:",
                            "AdminSettings:", "AdminProductCreate:",
                            "AdminProductEdit:")
-_WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:",)
+_WAREHOUSE_STATE_PREFIXES = ("WarehouseCreateOrder:", "WrhCancelState:")
 _AGENT_STATE_PREFIXES    = ("AcoOrderCreate:",)
 
 
