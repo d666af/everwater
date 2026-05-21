@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deactivateAgent, activateAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deleteAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders, getAdmins, addAdminUser, removeAdminUser, checkIsMainAdmin } from '../../api'
 import { formatPhone } from '../../utils/phone'
 import AgentReportModal from '../../components/AgentReportModal'
 
@@ -28,6 +28,7 @@ const TABS = [
   { key: 'managers', label: 'Менеджеры' },
   { key: 'agents', label: 'Агенты' },
   { key: 'warehouse', label: 'Завсклада' },
+  { key: 'admins', label: 'Администраторы', mainOnly: true },
 ]
 
 const AUDIENCES = [
@@ -290,7 +291,7 @@ function WarehouseTab() {
   )
 }
 
-function AgentCard({ agent: a, onToggle }) {
+function AgentCard({ agent: a, onDelete }) {
   const [showReport, setShowReport] = useState(false)
   const [orderCount, setOrderCount] = useState(null)
 
@@ -336,11 +337,14 @@ function AgentCard({ agent: a, onToggle }) {
         </div>
       </div>
 
-      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
-        <button
-          style={{ background: 'none', border: 'none', color: a.is_active ? '#E03131' : CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.8 }}
-          onClick={() => onToggle(a)}>
-          {a.is_active ? 'Деактивировать' : 'Активировать'}
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button style={ms.removeBtn} onClick={() => onDelete(a)} title="Удалить агента">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -371,16 +375,9 @@ function AgentsTab() {
     } catch { setError('Ошибка при добавлении') } finally { setSaving(false) }
   }
 
-  const toggleActive = async (agent) => {
-    try {
-      if (agent.is_active) {
-        if (!window.confirm(`Деактивировать агента ${agent.name}?`)) return
-        await deactivateAgent(agent.id)
-      } else {
-        await activateAgent(agent.id)
-      }
-      load()
-    } catch { alert('Ошибка') }
+  const handleDelete = async (agent) => {
+    if (!window.confirm(`Удалить агента ${agent.name}? Это действие нельзя отменить.`)) return
+    try { await deleteAgent(agent.id); load() } catch { alert('Ошибка при удалении') }
   }
 
   const activeAgents = agents.filter(a => a.is_active)
@@ -443,14 +440,13 @@ function AgentsTab() {
         <>
           {activeAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Активные · {activeAgents.length}</div>
-              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onToggle={toggleActive} />)}
+              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} />)}
             </div>
           )}
           {inactiveAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Деактивированные · {inactiveAgents.length}</div>
-              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onToggle={toggleActive} />)}
+              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} />)}
             </div>
           )}
         </>
@@ -459,9 +455,109 @@ function AgentsTab() {
   )
 }
 
+function AdminsTab() {
+  const [data, setData] = useState({ main: [], secondary: [], main_ids: [] })
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ telegram_id: '', name: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    getAdmins().then(setData).catch(console.error).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const save = async () => {
+    if (!form.telegram_id.trim() || !form.name.trim()) { setError('ID и имя обязательны'); return }
+    setSaving(true); setError('')
+    try {
+      await addAdminUser({ telegram_id: Number(form.telegram_id), name: form.name.trim() })
+      setShowForm(false); setForm({ telegram_id: '', name: '' }); load()
+    } catch (e) { setError(e?.response?.data?.detail || 'Ошибка') } finally { setSaving(false) }
+  }
+
+  const remove = async (admin) => {
+    if (!window.confirm(`Удалить администратора ${admin.name}?`)) return
+    try { await removeAdminUser(admin.id); load() } catch { alert('Ошибка') }
+  }
+
+  const allAdmins = [...data.main, ...data.secondary]
+
+  return (
+    <>
+      <div style={ms.topBar}>
+        <span style={ms.countChip}>{allAdmins.length} администраторов</span>
+        <button style={ms.addBtn} onClick={() => { setShowForm(true); setError('') }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+          Добавить
+        </button>
+      </div>
+      {showForm && (
+        <div style={ms.formCard}>
+          <div style={ms.formTitle}>Новый администратор</div>
+          <div style={ms.formGrid}>
+            <div style={ms.field}>
+              <div style={ms.label}>Telegram ID *</div>
+              <input style={ms.input} placeholder="123456789" value={form.telegram_id}
+                onChange={e => setForm(f => ({ ...f, telegram_id: e.target.value }))} inputMode="numeric" />
+            </div>
+            <div style={ms.field}>
+              <div style={ms.label}>Имя *</div>
+              <input style={ms.input} placeholder="Имя" value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+          </div>
+          {error && <div style={ms.error}>{error}</div>}
+          <div style={ms.formActions}>
+            <button style={ms.cancelBtn} onClick={() => setShowForm(false)}>Отмена</button>
+            <button style={{ ...ms.saveBtn, ...(saving ? { opacity: 0.6 } : {}) }} onClick={save} disabled={saving}>
+              {saving ? 'Сохраняю...' : 'Добавить'}
+            </button>
+          </div>
+        </div>
+      )}
+      {loading ? <div style={ms.center}><div style={ms.spinner} /></div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {allAdmins.map((a, idx) => (
+            <div key={a.telegram_id || idx} style={{ ...ms.card, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: a.is_main ? 'linear-gradient(135deg,#3B5BDB,#2C4BC7)' : GRAD, color: '#fff', fontWeight: 800, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {(a.name || 'A')[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: TEXT }}>{a.name}</div>
+                <div style={{ fontSize: 12, color: TEXT2 }}>ID: {a.telegram_id}</div>
+                {a.is_main && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#EDF2FF', color: '#3B5BDB', fontWeight: 600 }}>Главный</span>}
+              </div>
+              {!a.is_main && (
+                <button style={ms.removeBtn} onClick={() => remove(a)} title="Удалить">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function AdminCRM() {
   const [tab, setTab] = useState('clients')
+  const [isMainAdmin, setIsMainAdmin] = useState(false)
   const [showBroadcast, setShowBroadcast] = useState(false)
+
+  useEffect(() => {
+    checkIsMainAdmin().then(r => setIsMainAdmin(r?.is_main || false)).catch(() => {})
+  }, [])
   const [broadcastText, setBroadcastText] = useState('')
   const [broadcastAudience, setBroadcastAudience] = useState(null)
   const [broadcastTarget, setBroadcastTarget] = useState('clients')
@@ -489,7 +585,7 @@ export default function AdminCRM() {
 
       {/* Tab switcher */}
       <div style={s.tabRow}>
-        {TABS.map(t => (
+        {TABS.filter(t => !t.mainOnly || isMainAdmin).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             flexShrink: 0, padding: '10px 14px', borderRadius: 12,
             background: tab === t.key ? GRAD : '#fff',
@@ -599,6 +695,7 @@ export default function AdminCRM() {
         {tab === 'managers' && <ManagersTab />}
         {tab === 'agents' && <AgentsTab />}
         {tab === 'warehouse' && <WarehouseTab />}
+        {tab === 'admins' && <AdminsTab />}
       </div>
     </AdminLayout>
   )

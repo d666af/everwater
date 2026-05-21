@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -520,6 +520,16 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     } catch { alert('Ошибка при отправке') } finally { setSending(false) }
   }
 
+  const handleDeleteUser = async (e, u) => {
+    e.stopPropagation()
+    if (!window.confirm(`Удалить клиента ${u.name || 'Без имени'}? Это действие нельзя отменить.`)) return
+    try {
+      await deleteUser(u.id)
+      setUsers(prev => prev.filter(x => x.id !== u.id))
+      if (selectedUser?.id === u.id) setSelectedUser(null)
+    } catch { alert('Ошибка при удалении') }
+  }
+
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
   const filtered = users.filter(u => {
@@ -657,6 +667,13 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                   </div>
                   <button style={{ padding: '6px 12px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }} onClick={e => { e.stopPropagation(); setSelectedUser(u) }}>
                     Инфо
+                  </button>
+                  <button style={{ width: 32, height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10, background: '#FFF5F5', color: '#E03131', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={e => handleDeleteUser(e, u)} title="Удалить клиента">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </button>
                 </div>
 

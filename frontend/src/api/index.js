@@ -714,6 +714,12 @@ export const activateAgent = (id) =>
     () => ({ ok: true })
   )
 
+export const deleteAgent = (id) =>
+  safeCall(
+    () => http.delete(`/agents/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const getAgentOrders = (agentId, params = {}) =>
   safeCall(
     () => http.get(`/agents/${agentId}/orders`, { params }).then(r => r.data),
@@ -1393,4 +1399,36 @@ export const adjustStock = (productName, delta, type, note, performedBy) =>
       })
       return { ok: true }
     }
+  )
+
+// ─── Client delete ────────────────────────────────────────────────────────────
+export const deleteUser = (id) =>
+  safeCall(
+    () => http.delete(`/admin/users/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+// ─── Admin management ─────────────────────────────────────────────────────────
+export const getAdmins = () =>
+  safeCall(
+    () => http.get('/admin/admins').then(r => r.data),
+    () => ({ main: [], secondary: [], main_ids: [] })
+  )
+
+export const addAdminUser = (data) =>
+  safeCall(
+    () => http.post('/admin/admins', data).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const removeAdminUser = (id) =>
+  safeCall(
+    () => http.delete(`/admin/admins/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const checkIsMainAdmin = () =>
+  safeCall(
+    () => http.get('/admin/admins/is-main').then(r => r.data),
+    () => ({ is_main: false, main_ids: [] })
   )

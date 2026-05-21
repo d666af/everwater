@@ -6,10 +6,11 @@ from app.models.settings import AppSetting
 from app.models.client_data import SavedAddress, Subscription, BottleDebt
 from app.models.support import SupportChat, SupportMessage
 from app.models.cooler import Cooler, CoolerPayment
+from app.models.admin_user import AdminUser
 
 __all__ = [
     "User", "Product", "Order", "OrderItem", "OrderStatus", "Review", "Courier",
     "AppSetting", "SavedAddress", "Subscription", "BottleDebt",
-    "SupportChat", "SupportMessage", "Cooler", "CoolerPayment",
+    "SupportChat", "SupportMessage", "Cooler", "CoolerPayment", "AdminUser",
 ]
 

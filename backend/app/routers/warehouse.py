@@ -493,9 +493,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="quantity must be positive")
     product = await _resolve_product(db, body.product_id, body.product_name)
     stock = await _ensure_stock(db, product.id)
-    if stock.quantity < body.quantity:
-        raise HTTPException(status_code=400, detail=f"Not enough stock (have {stock.quantity})")
-    stock.quantity -= body.quantity
+    stock.quantity -= body.quantity  # allow negative (over-issue tracking)
 
     cw_q = await db.execute(
         select(CourierWater).where(
@@ -615,9 +613,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             continue
         prod = await _resolve_product(db, it.product_id, it.product_name)
         stock = await _ensure_stock(db, prod.id)
-        if stock.quantity < it.quantity:
-            raise HTTPException(400, f"Не хватает на складе: {prod.name} (есть {stock.quantity})")
-        resolved.append((prod, it.quantity))
+        resolved.append((prod, it.quantity))  # allow negative stock (over-issue)
     if not resolved and bottle_return_qty == 0:
         raise HTTPException(400, "Все позиции имеют нулевое количество")
 
@@ -754,9 +750,7 @@ async def issue_for_order(body: IssueOrderBody, db: AsyncSession = Depends(get_d
 
     for item in order.items:
         stock = await _ensure_stock(db, item.product_id)
-        if stock.quantity < item.quantity:
-            continue
-        stock.quantity -= item.quantity
+        stock.quantity -= item.quantity  # allow negative stock
 
         cw_q = await db.execute(
             select(CourierWater).where(
