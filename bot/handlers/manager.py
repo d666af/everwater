@@ -300,9 +300,9 @@ async def mgr_assign(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("mgr:set_courier:"))
 async def mgr_set_courier(call: CallbackQuery):
+    await call.answer()  # acknowledge immediately — all work below can exceed 10s
     if not await is_manager(call.from_user.id):
         return
-    await call.answer()  # acknowledge immediately — all work below can exceed 10s
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
     tab = parts[4] if len(parts) > 4 else ""
