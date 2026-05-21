@@ -249,7 +249,7 @@ export default function AgentOrders() {
       )}
 
       {/* Lent bottles summary */}
-      {!loading && totalLent > 0 && (
+      {!loading && (
         <div style={{ padding: '0 16px 8px' }}>
           <div style={{ background: '#FFF8ED', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(230,119,0,0.18)' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Одолжено бутылок</div>
