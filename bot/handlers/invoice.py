@@ -28,8 +28,7 @@ from aiogram.types import Message, PhotoSize
 
 from config import settings
 from services.api_client import (
-    get_courier_by_phone, create_courier_from_invoice,
-    update_courier_vehicle, issue_batch, get_products,
+    create_courier_from_invoice, issue_batch, get_products,
 )
 
 log = logging.getLogger(__name__)
@@ -220,6 +219,10 @@ def _parse_invoice(text: str) -> dict | None:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
+                    # Skip bare bottle-volume numbers (18/19/20) that come from
+                    # "EVER 20л" being split into "20" + "л" by OCR tokenisation
+                    if re.fullmatch(r'\d+', prev.strip()) and int(prev.strip()) in {18, 19, 20}:
+                        continue
                     for n in re.findall(r'\b(\d+)\b', prev):
                         v = int(n)
                         if 0 < v < 500:
@@ -238,11 +241,15 @@ def _parse_invoice(text: str) -> dict | None:
                 if 1 <= v <= 500:
                     found_qty = v
                     break
-            # OCR column-scan puts the qty BEFORE the product-name line
+            # OCR column-scan puts the qty BEFORE the product-name line.
+            # "возврат" label line is skipped (continue) rather than stopped
+            # so we can look past it to the qty that lies further back.
             if not found_qty:
                 for prev in reversed(lines[max(0, i - 3):i]):
-                    if re.search(r'возврат|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
+                    if re.search(r'наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
+                    if re.search(r'возврат', prev, re.IGNORECASE):
+                        continue  # skip the label, keep looking for the number
                     for n in re.findall(r'\b(\d+)\b', prev):
                         v = int(n)
                         if 1 <= v <= 500:
@@ -387,34 +394,17 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
     v_type = parsed['vehicle_type']
     v_plate = parsed['vehicle_plate']
 
-    # Find or create courier
-    courier = None
-    if phone:
-        courier = await get_courier_by_phone(phone)
-
-    created_new = False
-    if not courier:
-        try:
-            courier = await create_courier_from_invoice(
-                name=name, phone=phone or '',
-                vehicle_type=v_type, vehicle_plate=v_plate,
-            )
-            created_new = True
-            log.info("Created courier from invoice: %s %s", name, phone)
-        except Exception as e:
-            return f"❌ Ошибка создания курьера: {e}"
-    else:
-        # Update vehicle info if changed
-        needs_update = (
-            (v_type and courier.get('vehicle_type') != v_type) or
-            (v_plate and courier.get('vehicle_plate') != v_plate)
+    # Find or create courier (backend deduplicates by phone then by name)
+    try:
+        courier = await create_courier_from_invoice(
+            name=name, phone=phone or '',
+            vehicle_type=v_type, vehicle_plate=v_plate,
         )
-        if needs_update:
-            try:
-                await update_courier_vehicle(courier['id'], v_type, v_plate)
-                log.info("Updated vehicle for courier %s: %s %s", courier['id'], v_type, v_plate)
-            except Exception as e:
-                log.warning("Could not update vehicle: %s", e)
+    except Exception as e:
+        return f"❌ Ошибка создания/поиска курьера: {e}"
+
+    # Created new if the courier has no telegram_id (was created from invoice, not registered)
+    created_new = not courier.get('telegram_id')
 
     courier_id = courier['id']
 

@@ -503,24 +503,66 @@ class CourierCreateFromInvoice(BaseModel):
     vehicle_plate: str | None = None
 
 
+def _courier_out(c: Courier) -> dict:
+    return {
+        "id": c.id, "name": c.name, "phone": c.phone,
+        "telegram_id": c.telegram_id,
+        "vehicle_type": c.vehicle_type, "vehicle_plate": c.vehicle_plate,
+    }
+
+
 @router.post("/couriers/from_invoice")
 async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncSession = Depends(get_db)):
-    """Create courier without telegram_id (linked from invoice)."""
+    """Find-or-create courier from an invoice. Deduplicates by phone (fuzzy) then by name."""
+    # 1. Match by phone (last-9 fuzzy)
+    if data.phone:
+        digits = ''.join(c for c in data.phone if c.isdigit())
+        suffix = digits[-9:] if len(digits) >= 9 else digits
+        all_q = await db.execute(select(Courier).where(Courier.is_active == True))
+        for c in all_q.scalars().all():
+            if c.phone:
+                c_digits = ''.join(d for d in c.phone if d.isdigit())
+                if c_digits.endswith(suffix):
+                    if data.vehicle_type:
+                        c.vehicle_type = data.vehicle_type
+                    if data.vehicle_plate:
+                        c.vehicle_plate = data.vehicle_plate
+                    await db.commit()
+                    await db.refresh(c)
+                    return _courier_out(c)
+
+    # 2. Match by name (case-insensitive exact match)
+    if data.name:
+        name_q = await db.execute(
+            select(Courier).where(
+                Courier.is_active == True,
+                func.lower(Courier.name) == data.name.strip().lower(),
+            )
+        )
+        existing = name_q.scalar_one_or_none()
+        if existing:
+            if data.phone and not existing.phone:
+                existing.phone = data.phone
+            if data.vehicle_type:
+                existing.vehicle_type = data.vehicle_type
+            if data.vehicle_plate:
+                existing.vehicle_plate = data.vehicle_plate
+            await db.commit()
+            await db.refresh(existing)
+            return _courier_out(existing)
+
+    # 3. Create new
     courier = Courier(
         telegram_id=None,
         name=data.name,
-        phone=data.phone,
+        phone=data.phone or None,
         vehicle_type=data.vehicle_type,
         vehicle_plate=data.vehicle_plate,
     )
     db.add(courier)
     await db.commit()
     await db.refresh(courier)
-    return {
-        "id": courier.id, "name": courier.name, "phone": courier.phone,
-        "telegram_id": courier.telegram_id,
-        "vehicle_type": courier.vehicle_type, "vehicle_plate": courier.vehicle_plate,
-    }
+    return _courier_out(courier)
 
 
 @router.get("/couriers/{courier_id}/details")

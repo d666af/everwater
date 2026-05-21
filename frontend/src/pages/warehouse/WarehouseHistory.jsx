@@ -307,6 +307,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
               ? `Выдача · ${h.courier_name || '—'}`
               : `Возврат тары · ${h.courier_name || '—'}`
 
+            const priceTotal = isIssue && h.price ? h.quantity * h.price : null
             const costTotal = isIssue && h.cost_price ? h.quantity * h.cost_price : null
             const debtNote = isRet && h.note ? h.note : null
 
@@ -335,9 +336,14 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color }}>{sign}{h.quantity}</div>
-                  {costTotal && (
+                  {priceTotal && (
                     <div style={{ fontSize: 11, fontWeight: 600, color: '#E67700' }}>
-                      {costTotal.toLocaleString('ru-RU')} сум
+                      {priceTotal.toLocaleString('ru-RU')} сум
+                    </div>
+                  )}
+                  {costTotal && (
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#868E96' }}>
+                      с/с {costTotal.toLocaleString('ru-RU')} сум
                     </div>
                   )}
                   <div style={{ fontSize: 10, color: TEXT2 }}>
