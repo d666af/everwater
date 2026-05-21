@@ -168,6 +168,15 @@ export default function AgentOrders() {
   const deliveredCount = deliveredOrders.length
   const totalSum = deliveredOrders.reduce((s, o) => s + (o.total || 0), 0)
   const totalEarned = deliveredOrders.reduce((s, o) => s + (o.agent_earning || 0), 0)
+
+  const lentOrdersAll = orders.filter(o => (o.bottles_lent || 0) > 0)
+  const totalLent = lentOrdersAll.reduce((s, o) => s + (o.bottles_lent || 0), 0)
+  const lentByCourierMap = {}
+  lentOrdersAll.forEach(o => {
+    const name = o.courier_name || 'Не назначен'
+    lentByCourierMap[name] = (lentByCourierMap[name] || 0) + (o.bottles_lent || 0)
+  })
+  const lentByCourier = Object.entries(lentByCourierMap).sort((a, b) => b[1] - a[1])
   const allTimeCount = allTimeOrders ? allTimeOrders.length : null
   const allTimeEarned = allTimeOrders ? allTimeOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.agent_earning || 0), 0) : null
 
@@ -235,6 +244,27 @@ export default function AgentOrders() {
             <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Заработано</div>
             <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{totalEarned.toLocaleString()}</div>
             <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
+          </div>
+        </div>
+      )}
+
+      {/* Lent bottles summary */}
+      {!loading && totalLent > 0 && (
+        <div style={{ padding: '0 16px 8px' }}>
+          <div style={{ background: '#FFF8ED', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(230,119,0,0.18)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Одолжено бутылок</div>
+            <div style={{ fontSize: 34, fontWeight: 900, color: '#E67700', lineHeight: 1, marginBottom: 8 }}>{totalLent}</div>
+            {lentByCourier.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 }}>Кто доставил</div>
+                {lentByCourier.map(([name, cnt]) => (
+                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: TEXT }}>
+                    <span>{name}</span>
+                    <span style={{ fontWeight: 700, color: '#E67700' }}>{cnt} шт.</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

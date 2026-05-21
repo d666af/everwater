@@ -250,6 +250,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
     total_delivery_revenue = 0.0
     total_bottles_19l_delivered = 0
     total_bottles_returned = 0
+    total_lent_bottles = 0
     total_earned = 0.0
     rating_vals = []
 
@@ -266,6 +267,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
 
         bottles_returned = o.return_bottles_count or 0
         total_bottles_returned += bottles_returned
+        total_lent_bottles += o.bottles_lent or 0
 
         items_list = []
         for item in (o.items or []):
@@ -378,6 +380,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
         "total_online": round(total_online, 2),
         "total_bottles_19l_delivered": total_bottles_19l_delivered,
         "total_bottles_returned": total_bottles_returned,
+        "lent_bottles": total_lent_bottles,
         "avg_rating": avg_rating,
         "warehouse_received": warehouse_received,
         "bottle_returns_in_period": bottle_returns_in_period,
