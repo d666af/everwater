@@ -161,7 +161,9 @@ def _order_detail_lines(o: dict) -> str:
     bonus_part = f"\n💎 Бонусная скидка: −{fmt(int(bonus_used))}" if bonus_used > 0 else ""
     return_count = o.get("return_bottles_count") or 0
     return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
-    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o.get('total') or 0)}{delivery_part}  |  {pay}{bonus_part}{return_line}"]
+    lent_count = o.get("bottles_lent") or 0
+    lent_line = f"\n🔄 Одолжено: {lent_count} шт." if lent_count > 0 else ""
+    lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o.get('total') or 0)}{delivery_part}  |  {pay}{bonus_part}{return_line}{lent_line}"]
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
@@ -274,6 +276,7 @@ async def admin_pending_orders(call: CallbackQuery):
             f"Сумма: {fmt(o['total'])}\n"
             f"Оплата: {PAY_RU.get(o.get('payment_method', ''), '—')}\n"
             f"Возврат бутылок: {o.get('return_bottles_count', 0)} шт."
+            + (f"\nОдолжено: {o.get('bottles_lent')} шт." if (o.get('bottles_lent') or 0) > 0 else "")
         )
         await call.message.answer(text, reply_markup=order_confirm_kb(o["id"]), parse_mode="HTML")
     await call.answer()

@@ -203,6 +203,12 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
                   {o.return_bottles_count > 0 && (
                     <div style={{ fontSize: 12, color: '#12B886', marginTop: 3 }}>↩ Возврат: {o.return_bottles_count} бут.</div>
                   )}
+                  {o.bottles_lent > 0 && (
+                    <div style={{ fontSize: 12, color: '#E67700', marginTop: 3 }}>🔄 Одолжено: {o.bottles_lent} бут.</div>
+                  )}
+                  {o.bottle_surcharge > 0 && (
+                    <div style={{ fontSize: 12, color: '#E67700', marginTop: 3 }}>🫙 Надбавка за невозврат: +{Number(o.bottle_surcharge).toLocaleString()} сум</div>
+                  )}
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</div>
               </div>

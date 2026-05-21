@@ -305,16 +305,14 @@ export default function AgentCheckout() {
         </div>
 
         {/* Lent bottles */}
-        {qty19L > 0 && maxLent > 0 && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4 }}>Одолжить бутылки</div>
-            <CStepper value={lentBottles}
-              onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
-              onInc={() => setLentBottles(Math.min(lentBottles + 1, maxLent))}
-              onChange={v => setLentBottles(Math.min(Math.max(0, v), maxLent))} />
-            {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
-          </div>
-        )}
+        <div style={{ background: '#fff', borderRadius: 16, padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4 }}>Одолжить бутылки</div>
+          <CStepper value={lentBottles}
+            onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
+            onInc={() => setLentBottles(lentBottles + 1)}
+            onChange={v => setLentBottles(Math.max(0, v))} />
+          {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
+        </div>
 
         {/* Total */}
         {(items.length > 0 || bottleSurcharge > 0) && (

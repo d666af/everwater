@@ -748,6 +748,7 @@ class CourierOrderCreate(BaseModel):
     note: str | None = None
     total: float | None = None
     return_bottles_count: int = 0
+    bottles_lent: int = 0
     bottle_surcharge: float = 0.0
     latitude: float | None = None
     longitude: float | None = None
@@ -836,6 +837,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         bottle_surcharge=bottle_surcharge,
         payment_method=body.payment_method,
         return_bottles_count=body.return_bottles_count,
+        bottles_lent=body.bottles_lent,
         latitude=body.latitude,
         longitude=body.longitude,
         status=OrderStatus.CONFIRMED,

@@ -217,6 +217,17 @@ function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoa
             </div>
           )}
 
+          {/* Lent bottles */}
+          {order.bottles_lent > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FFF8ED', borderRadius: 14, padding: '12px 14px', border: '1px solid rgba(230,119,0,0.2)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 3v5h5" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round"/></svg>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#E67700' }}>Одолжить бутылки</div>
+                <div style={{ fontSize: 13, color: '#E67700' }}>{order.bottles_lent} шт.</div>
+              </div>
+            </div>
+          )}
+
           {/* Payment */}
           {isCash ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FFF0', borderRadius: 14, padding: '13px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
@@ -569,21 +580,16 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
         </div>
 
         {/* ── Lent bottles ── */}
-        {qty19L > 0 && maxLent > 0 && (
-          <div style={{ background: '#FFF8E7', borderRadius: 14, border: '1.5px solid #FFD87A', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <CLabel style={{ color: '#E67700' }}>Одолжить бутылки</CLabel>
-              <span style={{ fontSize: 11, color: '#E67700' }}>макс. {maxLent} шт.</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <CStepper value={lentBottles}
-                onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
-                onInc={() => setLentBottles(Math.min(lentBottles + 1, maxLent))}
-                onChange={v => setLentBottles(Math.min(Math.max(0, v), maxLent))} />
-              {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
-            </div>
+        <div style={{ background: '#FFF8E7', borderRadius: 14, border: '1.5px solid #FFD87A', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <CLabel style={{ color: '#E67700' }}>Одолжить бутылки</CLabel>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <CStepper value={lentBottles}
+              onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
+              onInc={() => setLentBottles(lentBottles + 1)}
+              onChange={v => setLentBottles(Math.max(0, v))} />
+            {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
           </div>
-        )}
+        </div>
 
         {/* ── Total ── */}
         {(items.length > 0 || bottleSurcharge > 0) && (

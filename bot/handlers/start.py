@@ -455,6 +455,9 @@ def _format_items_lines(items: list, order: dict, prefix: str = "   • ") -> li
     rcount = int(order.get("return_bottles_count") or 0)
     if rcount > 0:
         lines.append(f"   ♻️ Возврат тары: {rcount} шт.")
+    lcount = int(order.get("bottles_lent") or 0)
+    if lcount > 0:
+        lines.append(f"   🔄 Одолжено: {lcount} шт.")
     return lines
 
 
@@ -603,8 +606,14 @@ async def order_detail(call: CallbackQuery):
     lines.append(f"Сумма: {fmt(subtotal)}")
     if order.get("bottle_discount", 0) > 0:
         lines.append(f"Скидка за бутылки: −{fmt(order['bottle_discount'])}")
+    if order.get("bottle_surcharge", 0) > 0:
+        lines.append(f"Надбавка за невозврат: +{fmt(order['bottle_surcharge'])}")
     if order.get("bonus_used", 0) > 0:
         lines.append(f"Бонусы: −{fmt(order['bonus_used'])}")
+    if (order.get("return_bottles_count") or 0) > 0:
+        lines.append(f"♻️ Возврат тары: {order['return_bottles_count']} шт.")
+    if (order.get("bottles_lent") or 0) > 0:
+        lines.append(f"🔄 Одолжено: {order['bottles_lent']} шт.")
     lines.append(f"<b>К оплате: {fmt(order.get('total', 0))}</b>")
     lines.append(f"Оплата: {pay_label}")
     lines.append(f"📱 {order.get('recipient_phone', '—')}")
