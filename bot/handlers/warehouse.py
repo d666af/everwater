@@ -564,6 +564,7 @@ async def wh_history(call: CallbackQuery):
 
 @router.callback_query(F.data == "wh:quick:prod")
 async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_warehouse(call.from_user.id):
         return
     products = await api.get_products()
@@ -572,11 +573,11 @@ async def wh_quick_prod(call: CallbackQuery, state: FSMContext):
     await state.set_state(ProductionState.choosing_product)
     await call.message.answer("Выберите продукт для записи производства:",
                                reply_markup=wh_prod_product_kb(catalog))
-    await call.answer()
 
 
 @router.callback_query(F.data == "wh:quick:ir")
 async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_warehouse(call.from_user.id):
         return
     couriers = await api.get_couriers()
@@ -587,7 +588,6 @@ async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
     await state.set_state(IssueReturnState.choosing_courier)
     await call.message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
-    await call.answer()
 
 
 # ─── Period/overview ──────────────────────────────────────────────────────────
@@ -641,7 +641,6 @@ async def _wh_subs_menu(message_or_call, is_call: bool = False):
             await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
             await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-        await message_or_call.answer()
     else:
         await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -658,20 +657,22 @@ async def wh_subs_overview(message: Message):
 
 @router.callback_query(F.data == "wh:subs:menu")
 async def wh_subs_menu_cb(call: CallbackQuery):
+    await call.answer()
     if not await is_warehouse(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     await _wh_subs_menu(call, is_call=True)
 
 
 @router.callback_query(F.data.startswith("wh:subs:weekly:") | F.data.startswith("wh:subs:monthly:"))
 async def wh_subs_list(call: CallbackQuery):
+    await call.answer()
     if not await is_warehouse(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     parts = call.data.split(":")
     plan, page = parts[2], int(parts[3])
@@ -694,7 +695,6 @@ async def wh_subs_list(call: CallbackQuery):
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-    await call.answer()
 
 
 # ─── Cancel issue batch ───────────────────────────────────────────────────────
