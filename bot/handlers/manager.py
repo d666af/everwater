@@ -173,6 +173,7 @@ def _app(path: str = "") -> str:
 
 @router.callback_query(F.data.startswith("mgr:confirm:"))
 async def mgr_confirm(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     parts = call.data.split(":")
@@ -183,9 +184,9 @@ async def mgr_confirm(call: CallbackQuery):
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
         if "409" in str(e):
-            await call.answer("Заказ уже обработан другим администратором", show_alert=True)
+            await call.message.answer("⚠️ Заказ уже обработан другим администратором.")
         else:
-            await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
+            await call.message.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.")
         return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
@@ -196,11 +197,11 @@ async def mgr_confirm(call: CallbackQuery):
         await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:reject:"))
 async def mgr_reject(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
@@ -208,7 +209,6 @@ async def mgr_reject(call: CallbackQuery):
         f"Выберите причину отклонения заказа #{order_id}:",
         reply_markup=mgr_order_reject_kb(order_id),
     )
-    await call.answer()
 
 
 _REJECT_REASONS = {
@@ -220,6 +220,7 @@ _REJECT_REASONS = {
 
 @router.callback_query(F.data.startswith("mgr:rj_r:"))
 async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     parts = call.data.split(":")
@@ -228,7 +229,6 @@ async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
         await state.update_data(reject_order_id=order_id)
         await state.set_state(MgrRejectCustom.waiting_reason)
         await call.message.answer(f"Введите причину отклонения заказа #{order_id}:")
-        await call.answer()
         return
     reason = _REJECT_REASONS.get(reason_key, reason_key)
     await _do_reject(call, order_id, reason)
@@ -374,17 +374,21 @@ async def mgr_set_courier(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("mgr:in_delivery:"))
 async def mgr_mark_in_delivery(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
     await api.start_delivery(order_id, from_bot=True)
     order = await api.get_order(order_id)
-    await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
-    await call.answer("✅ Статус обновлён")
+    try:
+        await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
+    except Exception:
+        await call.message.answer(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:delivered:"))
 async def mgr_mark_delivered(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
@@ -406,12 +410,15 @@ async def mgr_mark_delivered(call: CallbackQuery):
         except Exception:
             pass
 
-    await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
-    await call.answer("✅ Доставлен")
+    try:
+        await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
+    except Exception:
+        await call.message.answer(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("mgr:cancel_order:"))
 async def mgr_cancel_order_cb(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
@@ -420,7 +427,7 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
         await api.reject_order(order_id, reason, from_bot=True)
     except Exception as e:
         if "409" in str(e):
-            await call.answer("Заказ уже обработан", show_alert=True)
+            await call.message.answer("⚠️ Заказ уже обработан.")
             return
 
     order = await api.get_order(order_id)
@@ -435,8 +442,10 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
         except Exception:
             pass
 
-    await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
-    await call.answer("❌ Заказ отменён")
+    try:
+        await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
+    except Exception:
+        await call.message.answer(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
 
 
 
@@ -445,13 +454,13 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("mgr:msg_client:"))
 async def mgr_msg_client_start(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     tg_id = int(call.data.split(":")[2])
     await state.update_data(msg_client_tg=tg_id)
     await state.set_state(MgrMsgClient.waiting_text)
     await call.message.answer("Введите сообщение для клиента:")
-    await call.answer()
 
 
 @router.message(MgrMsgClient.waiting_text)
@@ -475,12 +484,13 @@ async def mgr_msg_client_send(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("mgr:client_orders:"))
 async def mgr_client_orders(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     user_id = int(call.data.split(":")[2])
     orders = await api.get_user_orders(user_id)
     if not orders:
-        await call.answer("У клиента нет заказов.")
+        await call.message.answer("У клиента нет заказов.")
         return
     STATUS_SHORT = {"new": "🆕", "awaiting_confirmation": "⏳", "confirmed": "✅",
                     "assigned_to_courier": "🚚", "in_delivery": "🚴", "delivered": "✔️", "rejected": "❌"}
@@ -489,38 +499,38 @@ async def mgr_client_orders(call: CallbackQuery):
         icon = STATUS_SHORT.get(o["status"], "•")
         lines.append(f"{icon} #{o['id']} — {fmt(o['total'])} — {o.get('delivery_time', '—')[:10]}")
     await call.message.answer("\n".join(lines), parse_mode="HTML")
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:client_tx:"))
 async def mgr_client_tx(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     user_id = int(call.data.split(":")[2])
     txs = await api.get_user_transactions(user_id)
     if not txs:
-        await call.answer("Транзакций нет.")
+        await call.message.answer("Транзакций нет.")
         return
     lines = [f"💳 <b>Транзакции клиента (последние {min(len(txs), 10)}):</b>\n"]
     for t in txs[:10]:
         sign = "+" if t.get("amount", 0) > 0 else ""
         lines.append(f"• {t.get('created_at', '')[:10]} {sign}{fmt(t.get('amount', 0))} — {t.get('type', '—')}")
     await call.message.answer("\n".join(lines), parse_mode="HTML")
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:client_subs:"))
 async def mgr_client_subs(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     user_id = int(call.data.split(":")[2])
     subs = await api.get_subscriptions(user_id)
     active = [s for s in subs if s.get("status") == "active"]
     if not active:
-        await call.answer("Активных подписок нет.")
+        await call.message.answer("Активных подписок нет.")
         return
     lines = [f"📋 <b>Подписки клиента ({len(active)} активных):</b>\n"]
     plan_label = {"weekly": "Еженедельная", "monthly": "Ежемесячная"}
@@ -530,11 +540,11 @@ async def mgr_client_subs(call: CallbackQuery):
             f"{s.get('water_summary', '')} | День: {s.get('day', '—')}"
         )
     await call.message.answer("\n".join(lines), parse_mode="HTML")
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:client_bottles:"))
 async def mgr_client_bottles(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     user_id = int(call.data.split(":")[2])
@@ -542,7 +552,6 @@ async def mgr_client_bottles(call: CallbackQuery):
     count = bottles.get("count", 0)
     pending = bottles.get("pending_return", 0)
     available = bottles.get("available", count)
-    await call.answer()
     if pending > 0:
         text = (
             f"🫙 <b>Бутылки клиента</b>\n\n"
@@ -598,13 +607,13 @@ async def mgr_support(message: Message):
 
 @router.callback_query(F.data.startswith("mgr:sup_reply:"))
 async def mgr_support_reply_start(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     chat_id = int(call.data.split(":")[2])
     await state.update_data(sup_chat_id=chat_id)
     await state.set_state(MgrSupportReply.waiting_text)
     await call.message.answer("Введите ответ клиенту:")
-    await call.answer()
 
 
 @router.message(MgrSupportReply.waiting_text)
@@ -640,13 +649,14 @@ _QUICK_REPLIES = {
 
 @router.callback_query(F.data.startswith("mgr:sup_q:"))
 async def mgr_support_quick_reply(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     parts = call.data.split(":")
     chat_id, reply_key = int(parts[2]), parts[3]
     reply_text = _QUICK_REPLIES.get(reply_key, "")
     if not reply_text:
-        await call.answer("Неизвестный ответ")
+        await call.message.answer("Неизвестный ответ.")
         return
     try:
         result = await api.send_manager_support_reply(chat_id, reply_text)
@@ -656,10 +666,12 @@ async def mgr_support_quick_reply(call: CallbackQuery):
                 await call.bot.send_message(client_tg, f"💬 Ответ от поддержки:\n\n{reply_text}")
             except Exception:
                 pass
-        await call.message.edit_text(f"✅ Отправлено: {reply_text}")
+        try:
+            await call.message.edit_text(f"✅ Отправлено: {reply_text}")
+        except Exception:
+            await call.message.answer(f"✅ Отправлено: {reply_text}")
     except Exception:
-        await call.answer("Не удалось отправить", show_alert=True)
-    await call.answer()
+        await call.message.answer("❌ Не удалось отправить.")
 
 
 # ─── Subscriptions management ─────────────────────────────────────────────────
@@ -674,7 +686,6 @@ async def _mgr_subs_menu(message_or_call, is_call: bool = False):
             await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
             await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-        await message_or_call.answer()
     else:
         await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -691,20 +702,22 @@ async def mgr_subs_overview(message: Message):
 
 @router.callback_query(F.data == "mgr:subs:menu")
 async def mgr_subs_menu_cb(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     await _mgr_subs_menu(call, is_call=True)
 
 
 @router.callback_query(F.data.startswith("mgr:subs:weekly:") | F.data.startswith("mgr:subs:monthly:"))
 async def mgr_subs_list(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     parts = call.data.split(":")
     plan, page = parts[2], int(parts[3])
@@ -727,21 +740,21 @@ async def mgr_subs_list(call: CallbackQuery):
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:sub_order:"))
 async def mgr_sub_create_order(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     if not await api.is_subscriptions_enabled():
-        await call.answer("Подписки отключены", show_alert=True)
+        await call.message.answer("⚠️ Подписки отключены.")
         return
     sub_id = int(call.data.split(":")[2])
     try:
         result = await api.create_order_from_subscription(sub_id)
     except Exception as e:
-        await call.answer(f"❌ Ошибка: {e}", show_alert=True)
+        await call.message.answer(f"❌ Ошибка: {e}")
         return
 
     order_id = result["order_id"]
@@ -760,7 +773,6 @@ async def mgr_sub_create_order(call: CallbackQuery):
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-    await call.answer()
 
 
 # ─── Manager manual order creation ────────────────────────────────────────────
@@ -1381,6 +1393,7 @@ async def mgr_co_edit_address(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(MgrOrderCreate.confirming, F.data == "mco:confirm")
 async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     data = await state.get_data()
@@ -1407,11 +1420,9 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
     except Exception:
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
         await state.clear()
-        await call.answer()
         return
 
     await state.clear()
-    await call.answer()
     await call.message.edit_text(f"✅ Заказ #{oid} создан!")
     await call.message.answer(
         "Панель менеджера:",
