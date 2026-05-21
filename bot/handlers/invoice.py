@@ -196,48 +196,90 @@ def _parse_invoice(text: str) -> dict | None:
         except Exception:
             pass
 
-    # Phone: try spaced Uzbek format first (most reliably preserved by OCR),
-    # then full 998+9d compact, then line-by-line fallback below.
+    # Phone anywhere in the full text (spaced Uzbek format first)
     ph = _normalize_phone(full)
     if ph:
         result['courier_phone'] = ph
 
-    for line in lines:
+    # Matches "Aziz" (Capitalized) and "AKMAL" (ALL-CAPS), not "шт" (lowercase)
+    _NAME_RE = re.compile(r'\b([A-ZА-ЯЁ][a-zа-яё]{1,}|[A-ZА-ЯЁ]{2,})\b')
+    _SECTION_STOP = re.compile(r'тип\s*маш|итого|возврат|\d{5,}', re.IGNORECASE)
+
+    for i, line in enumerate(lines):
         low = line.lower()
 
-        # Return row: "возврат  Шт  <qty>  0"
+        # ── Return row: "возврат  Шт  <qty>  0" ─────────────────────────────
         if 'возврат' in low or 'vozvrat' in low:
-            nums = re.findall(r'\b(\d+)\b', line)
-            for n in nums:
+            for n in re.findall(r'\b(\d+)\b', line):
                 v = int(n)
                 if 0 < v < 500:
                     result['return_qty'] = v
                     break
+            # OCR column-scan may emit the qty on lines BEFORE the row label
+            if result['return_qty'] == 0:
+                for prev in reversed(lines[max(0, i - 3):i]):
+                    if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
+                        break
+                    for n in re.findall(r'\b(\d+)\b', prev):
+                        v = int(n)
+                        if 0 < v < 500:
+                            result['return_qty'] = v
+                            break
+                    if result['return_qty']:
+                        break
 
-        # Product row: "EVER 20л  Шт  <qty>  0  18 000  576 000"
-        # qty = first number 1..500 (excludes prices like 18000, 576000)
+        # ── Product row: "EVER 20л  Шт  <qty>  0  18 000  576 000" ──────────
         elif re.search(r'\bever\b', low) and not re.search(r'наименование|header', low):
-            nums = re.findall(r'\b(\d+)\b', line)
-            for n in nums:
+            # Strip volume annotations ("20л") so they don't look like quantities
+            cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
+            found_qty = None
+            for n in re.findall(r'\b(\d+)\b', cleaned):
                 v = int(n)
                 if 1 <= v <= 500:
-                    result['items'].append({'raw_name': 'EVER 20л', 'qty': v})
+                    found_qty = v
                     break
+            # OCR column-scan puts the qty BEFORE the product-name line
+            if not found_qty:
+                for prev in reversed(lines[max(0, i - 3):i]):
+                    if re.search(r'возврат|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
+                        break
+                    for n in re.findall(r'\b(\d+)\b', prev):
+                        v = int(n)
+                        if 1 <= v <= 500:
+                            found_qty = v
+                            break
+                    if found_qty:
+                        break
+            if found_qty:
+                result['items'].append({'raw_name': 'EVER 20л', 'qty': found_qty})
 
-        # Courier row: "получатель  AKMAL  998 99 054 13 30"
+        # ── Courier row: "получатель  AKMAL  998 99 054 13 30" ──────────────
         if 'получатель' in low or re.search(r'poluch', low):
-            # Name: first sequence of ≥2 uppercase letters after the keyword
-            # (tolerates OCR noise like leading "|" or "—")
             after = re.split(r'получатель|poluchatel?', line, flags=re.IGNORECASE)[-1]
-            name_m = re.search(r'[А-ЯЁA-Z]{2,}', after)
+            name_m = _NAME_RE.search(after)
             if name_m:
                 result['courier_name'] = name_m.group(0)
+            else:
+                # Name may be on the next line(s) when OCR splits label and value
+                for nxt in lines[i + 1:i + 4]:
+                    if _SECTION_STOP.search(nxt):
+                        break
+                    nm = _NAME_RE.search(nxt)
+                    if nm:
+                        result['courier_name'] = nm.group(0)
+                        break
             if not result['courier_phone']:
-                ph = _normalize_phone(line)
-                if ph:
-                    result['courier_phone'] = ph
+                ph2 = _normalize_phone(line)
+                if ph2:
+                    result['courier_phone'] = ph2
+                else:
+                    for nxt in lines[i + 1:i + 5]:
+                        ph2 = _normalize_phone(nxt)
+                        if ph2:
+                            result['courier_phone'] = ph2
+                            break
 
-        # Vehicle row: "тип машины  LABO  30L700QA"
+        # ── Vehicle row: "тип машины  LABO  30L700QA" ───────────────────────
         if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
             tokens = re.sub(r'тип\s*машины?|тип|маш\w*|tip\s*ma\w*', '', line, flags=re.IGNORECASE)
             parts = [p.strip() for p in re.split(r'\s{2,}|\s*\|\s*|\t', tokens) if p.strip()]
@@ -250,6 +292,18 @@ def _parse_invoice(text: str) -> dict | None:
                     result['vehicle_plate'] = p
                 else:
                     result['vehicle_type'] = p
+            else:
+                # "тип машины" on its own line — grab the next 1-2 non-empty lines
+                next_parts = [l.strip() for l in lines[i + 1:i + 3] if l.strip()]
+                if len(next_parts) >= 2:
+                    result['vehicle_type'] = next_parts[0].upper()
+                    result['vehicle_plate'] = next_parts[1].upper()
+                elif len(next_parts) == 1:
+                    p = next_parts[0].upper()
+                    if re.search(r'\d', p):
+                        result['vehicle_plate'] = p
+                    else:
+                        result['vehicle_type'] = p
 
     # Last-resort phone: scan every line individually
     if not result['courier_phone']:
@@ -259,17 +313,20 @@ def _parse_invoice(text: str) -> dict | None:
                 result['courier_phone'] = ph
                 break
 
-    # Last-resort vehicle plate: look for pattern like "30L700QA" anywhere
+    # Last-resort vehicle plate: compact "30L700QA" then spaced "30 138 BCA"
     if not result['vehicle_plate']:
         plate_m = re.search(r'\b(\d{2,3}[A-Z]{1,3}\d{2,4}[A-Z]{1,3})\b', full)
         if plate_m:
             result['vehicle_plate'] = plate_m.group(1)
+        else:
+            sp_m = re.search(r'\b(\d{2,3})\s+(\d{2,4})\s+([A-Z]{2,3})\b', full)
+            if sp_m:
+                result['vehicle_plate'] = sp_m.group(1) + sp_m.group(2) + sp_m.group(3)
 
-    # Last-resort vehicle type: look for LABO / NEXIA / COBALT etc.
-    # Only if we already found a plate (to avoid false positives)
+    # Last-resort vehicle type
     if result['vehicle_plate'] and not result['vehicle_type']:
         type_m = re.search(r'\b([A-Z]{3,8})\b', full)
-        if type_m and type_m.group(1) not in ('EVER', 'ШТ', 'EVER20'):
+        if type_m and type_m.group(1) not in {'EVER', 'BCA'}:
             result['vehicle_type'] = type_m.group(1)
 
     if not result['courier_phone'] and not result['courier_name']:
