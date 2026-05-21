@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '../store/auth'
 import {
   MOCK_PRODUCTS, MOCK_ORDERS, MOCK_STATS, MOCK_COURIERS,
   MOCK_SETTINGS, DEMO_USERS, MOCK_NOTIFICATIONS, MOCK_SUPPORT_CHATS,
@@ -11,6 +12,18 @@ const BASE = import.meta.env.VITE_API_URL || '/api'
 const http = axios.create({
   baseURL: BASE,
   timeout: 8000,
+})
+
+// Inject the logged-in user's Telegram ID so backend admin endpoints can
+// identify the caller without a separate auth cookie/token.
+http.interceptors.request.use(config => {
+  try {
+    const user = useAuthStore.getState().user
+    if (user?.telegram_id) {
+      config.headers['X-Telegram-User-Id'] = String(user.telegram_id)
+    }
+  } catch { /* store not ready */ }
+  return config
 })
 
 // ─── Mock mode detection ─────────────────────────────────────────────────────
