@@ -160,16 +160,16 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 # ─── Parser ───────────────────────────────────────────────────────────────────
 
 def _normalize_phone(raw: str) -> str | None:
-    # 1a. Spaced with country code: "998 99 054 13 30"
-    m = re.search(r'\b998\s+(9\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    # 1a. Spaced with country code: "998 99 054 13 30" or "998 88 533 11 66"
+    m = re.search(r'\b998\s+([89]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
-    # 1b. Spaced without country code: "99 054 13 30"
-    m = re.search(r'\b(9\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    # 1b. Spaced without country code: "99 054 13 30" or "88 533 11 66"
+    m = re.search(r'\b([89]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
-    # 1c. 2+3+4 format: "99 054 1330"
-    m = re.search(r'\b(9\d)\s+(\d{3})\s+(\d{4})\b', raw)
+    # 1c. 2+3+4 format: "99 054 1330" or "88 533 1166"
+    m = re.search(r'\b([89]\d)\s+(\d{3})\s+(\d{4})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
     # 2. Compact with country code: 998 + 9 consecutive digits
@@ -180,10 +180,10 @@ def _normalize_phone(raw: str) -> str | None:
     # 3. OCR drops a leading digit from "998" → 11-digit garbled block
     for block in re.findall(r'\d{11,}', digits):
         sub = block[-9:]
-        if sub[0] == '9':
+        if sub[0] in ('8', '9'):
             return '+998' + sub
-    # 4. Bare 9-digit Uzbek subscriber number (valid operator prefixes)
-    m = re.search(r'\b(9[01345789]\d{7})\b', raw)
+    # 4. Bare 9-digit Uzbek subscriber number (valid operator prefixes incl. UzMobile 88)
+    m = re.search(r'\b(9[01345789]\d{7}|88\d{7})\b', raw)
     if m:
         return '+998' + m.group(1)
     return None
