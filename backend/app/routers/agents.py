@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from datetime import datetime
 from app.database import get_db
 from app.models.agent import Agent
@@ -56,6 +56,9 @@ async def get_agent_by_telegram(telegram_id: int, db: AsyncSession = Depends(get
 
 @router.delete("/{agent_id}")
 async def delete_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
+    # NULL out nullable FK references, delete non-nullable ones
+    await db.execute(update(Order).where(Order.agent_id == agent_id).values(agent_id=None))
+    await db.execute(delete(AgentProductEarning).where(AgentProductEarning.agent_id == agent_id))
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")

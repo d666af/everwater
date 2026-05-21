@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, update, delete
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from app.models.admin_user import AdminUser
 from app.config import settings as app_settings
 from app.database import get_db
-from app.models.order import Order, OrderStatus, OrderItem
+from app.models.order import Order, OrderStatus, OrderItem, Review
 from app.models.product import Product
 from app.models.user import User
 from app.models.courier import Courier
@@ -14,10 +14,12 @@ from app.models.courier_product_earning import CourierProductEarning as _CPE
 from app.models.agent_product_earning import AgentProductEarning as _APE
 from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
-from app.models.client_data import SavedAddress, Subscription, BottleDebt
+from app.models.client_data import SavedAddress, Subscription, BottleDebt, TopupRequest
+from app.models.cash_debt import CashDebt
+from app.models.warehouse import WaterTransaction, CourierWater
+from app.models.cooler import Cooler, CoolerPayment
 from app.schemas.order import CourierCreate, CourierOut
 from app.services.settings_service import is_subscriptions_enabled
-from app.models.warehouse import WaterTransaction
 import aiohttp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -629,11 +631,19 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
 
 @router.delete("/couriers/{courier_id}")
 async def delete_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
+    # NULL out nullable FK references to this courier
+    await db.execute(update(Order).where(Order.courier_id == courier_id).values(courier_id=None))
+    await db.execute(update(Review).where(Review.courier_id == courier_id).values(courier_id=None))
+    await db.execute(update(WaterTransaction).where(WaterTransaction.courier_id == courier_id).values(courier_id=None))
+    # Delete non-nullable FK rows
+    await db.execute(delete(CashDebt).where(CashDebt.courier_id == courier_id))
+    await db.execute(delete(_CPE).where(_CPE.courier_id == courier_id))
+    await db.execute(delete(CourierWater).where(CourierWater.courier_id == courier_id))
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
     courier = result.scalar_one_or_none()
     if courier:
         await db.delete(courier)
-        await db.commit()
+    await db.commit()
     return {"ok": True}
 
 
@@ -737,11 +747,23 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     """Hard-delete a client from the database."""
+    # NULL out nullable FK references
+    await db.execute(update(Order).where(Order.user_id == user_id).values(user_id=None))
+    await db.execute(update(Review).where(Review.user_id == user_id).values(user_id=None))
+    # Delete non-nullable FK rows
+    await db.execute(delete(SavedAddress).where(SavedAddress.user_id == user_id))
+    await db.execute(delete(Subscription).where(Subscription.user_id == user_id))
+    await db.execute(delete(BottleDebt).where(BottleDebt.user_id == user_id))
+    await db.execute(delete(TopupRequest).where(TopupRequest.user_id == user_id))
+    cooler_ids = (await db.execute(select(Cooler.id).where(Cooler.user_id == user_id))).scalars().all()
+    if cooler_ids:
+        await db.execute(delete(CoolerPayment).where(CoolerPayment.cooler_id.in_(cooler_ids)))
+    await db.execute(delete(Cooler).where(Cooler.user_id == user_id))
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user:
         await db.delete(user)
-        await db.commit()
+    await db.commit()
     return {"ok": True}
 
 
@@ -1617,7 +1639,6 @@ async def cron_mark_subscription_reminded(body: MarkSubRemindedBody, db: AsyncSe
 
 # ─── Coolers ─────────────────────────────────────────────────────────────────
 
-from app.models.cooler import Cooler, CoolerPayment
 from sqlalchemy.orm import selectinload as _sil
 
 

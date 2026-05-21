@@ -336,7 +336,10 @@ def _parse_invoice(text: str) -> dict | None:
                     if found_qty:
                         break
             if found_qty:
-                result['items'].append({'raw_name': 'EVER 20л', 'qty': found_qty})
+                # Deduplicate: only add if no EVER item with same qty already recorded
+                already = any(it['raw_name'] == 'EVER 20л' for it in result['items'])
+                if not already:
+                    result['items'].append({'raw_name': 'EVER 20л', 'qty': found_qty})
 
         # ── Courier row: "получатель  AKMAL  998 99 054 13 30" ──────────────
         if 'получатель' in low or re.search(r'poluch', low):
@@ -453,32 +456,34 @@ def _parse_invoice(text: str) -> dict | None:
 
 # ─── Product resolver ─────────────────────────────────────────────────────────
 
+def _resolve_product_id_from_list(raw_name: str, products: list) -> int | None:
+    """Match a raw product name from invoice to a DB product ID using pre-fetched list."""
+    raw_low = raw_name.lower().replace(' ', '')
+    for pat, keyword in PRODUCT_PATTERNS:
+        if pat.search(raw_name):
+            kw_low = keyword.lower().replace(' ', '')
+            for p in products:
+                name_low = p.get('name', '').lower().replace(' ', '')
+                vol = float(p.get('volume', 0) or 0)
+                if kw_low in name_low and vol >= 18:
+                    return p['id']
+            for p in products:
+                vol = float(p.get('volume', 0) or 0)
+                if vol >= 18:
+                    return p['id']
+    for p in products:
+        if p.get('name', '').lower().replace(' ', '') == raw_low:
+            return p['id']
+    return None
+
+
 async def _resolve_product_id(raw_name: str) -> int | None:
     """Match a raw product name from invoice to a DB product ID."""
     try:
         products = await get_products()
     except Exception:
         return None
-    raw_low = raw_name.lower().replace(' ', '')
-    for pat, keyword in PRODUCT_PATTERNS:
-        if pat.search(raw_name):
-            kw_low = keyword.lower().replace(' ', '')
-            # Find product whose name contains the keyword and volume ~19L
-            for p in products:
-                name_low = p.get('name', '').lower().replace(' ', '')
-                vol = float(p.get('volume', 0) or 0)
-                if kw_low in name_low and vol >= 18:
-                    return p['id']
-            # Fallback: any 19L product
-            for p in products:
-                vol = float(p.get('volume', 0) or 0)
-                if vol >= 18:
-                    return p['id']
-    # Generic: fuzzy name match
-    for p in products:
-        if p.get('name', '').lower().replace(' ', '') == raw_low:
-            return p['id']
-    return None
+    return _resolve_product_id_from_list(raw_name, products)
 
 
 # ─── Core processor ───────────────────────────────────────────────────────────
@@ -513,12 +518,21 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
 
     courier_id = courier['id']
 
-    # Resolve product IDs
+    # Resolve product IDs (one products fetch for all items)
+    try:
+        products = await get_products() or []
+    except Exception:
+        products = []
+    pid_to_name = {p['id']: p['name'] for p in products}
     issue_items = []
     for it in parsed['items']:
-        pid = await _resolve_product_id(it['raw_name'])
+        pid = _resolve_product_id_from_list(it['raw_name'], products)
         if pid:
-            issue_items.append({"product_id": pid, "quantity": it['qty']})
+            issue_items.append({
+                "product_id": pid,
+                "quantity": it['qty'],
+                "_name": pid_to_name.get(pid, it['raw_name']),
+            })
         else:
             return f"❌ Товар не найден: {it['raw_name']}"
 
@@ -527,11 +541,12 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
     if parsed['dt']:
         created_at_iso = parsed['dt'].astimezone(timezone.utc).isoformat()
 
-    # Issue
+    # Issue (strip internal _name field before sending to API)
+    api_items = [{"product_id": it["product_id"], "quantity": it["quantity"]} for it in issue_items]
     try:
         result = await issue_batch(
             courier_id=courier_id,
-            items=issue_items,
+            items=api_items,
             bottle_return=parsed['return_qty'],
             performed_by='nakl_bot',
             vehicle_type=v_type,
@@ -552,7 +567,8 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
     if parsed['return_qty'] > 0:
         lines.append(f"♻️ Возврат: {parsed['return_qty']} шт.")
     for it in issue_items:
-        lines.append(f"📦 Выдано: {it['quantity']} шт. (товар #{it['product_id']})")
+        prod_label = it.get('_name') or f"товар #{it['product_id']}"
+        lines.append(f"📦 Выдано: {it['quantity']} шт. ({prod_label})")
     if not issue_items and re.search(r'\bever\b', text, re.IGNORECASE):
         lines.append("⚠️ EVER не распознан — проверьте и добавьте вручную")
 

@@ -350,6 +350,7 @@ async def admin_reject_reason(message: Message, state: FSMContext):
 async def admin_set_courier(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
+    await call.answer()  # acknowledge immediately — all work below can exceed 10s
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
     assign_result = {}
@@ -408,7 +409,6 @@ async def admin_set_courier(call: CallbackQuery):
     except Exception:
         await call.message.answer(result_text, parse_mode="HTML")
     await _notify_order_staff(call.bot, call.from_user.id, result_text)
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))
