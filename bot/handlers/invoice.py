@@ -127,13 +127,13 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
             y_groups: dict[int, list] = {}
             for idx, word in enumerate(data['text']):
                 word = word.strip()
-                if not word or int(data['conf'][idx]) < 10:
+                if not word or int(data['conf'][idx]) < 0:
                     continue
                 key = (data['block_num'][idx], data['par_num'][idx], data['line_num'][idx])
                 word_lines.setdefault(key, []).append((data['left'][idx], word))
-                # Group by y-position with 40px tolerance so each table row
+                # Group by y-position with 60px tolerance so each table row
                 # becomes one reconstructed line regardless of column layout
-                bucket = (data['top'][idx] // 40) * 40
+                bucket = (data['top'][idx] // 60) * 60
                 y_groups.setdefault(bucket, []).append((data['left'][idx], word))
             for key in sorted(word_lines):
                 line = ' '.join(w for _, w in sorted(word_lines[key]))
@@ -310,13 +310,18 @@ def _parse_invoice(text: str) -> dict | None:
                     if found_qty:
                         break
             # Forward search: qty may appear after the name row in column-scan
+            # Use a wide window (15 lines) because the qty column may be far after
+            # the name column in column-scan output
             if not found_qty:
-                for nxt in lines[i + 1:i + 5]:
-                    if re.search(r'наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
+                for nxt in lines[i + 1:i + 15]:
+                    if re.search(r'наимен|получатель|тип\s*маш', nxt, re.IGNORECASE):
                         break
                     if re.search(r'ever', nxt, re.IGNORECASE):
                         break  # next product row
                     if re.search(r'\d{1,2}[.:]\d{2}', nxt):
+                        continue
+                    # Skip "Итого:" lines but don't stop — qty col may follow
+                    if re.search(r'итого', nxt, re.IGNORECASE) and not re.search(r'\d', nxt):
                         continue
                     cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
                     if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
@@ -367,7 +372,13 @@ def _parse_invoice(text: str) -> dict | None:
             elif len(parts) == 1:
                 p = parts[0].upper()
                 if re.search(r'\d', p):
-                    result['vehicle_plate'] = p
+                    # "BONGO 30 138 BCA" → split at first digit: type + plate
+                    tp_m = re.match(r'^([A-ZА-ЯЁ][A-ZА-ЯЁ\-]*)\s+(\S.*)$', p)
+                    if tp_m and re.search(r'\d', tp_m.group(2)):
+                        result['vehicle_type'] = tp_m.group(1)
+                        result['vehicle_plate'] = tp_m.group(2)
+                    else:
+                        result['vehicle_plate'] = p
                 else:
                     result['vehicle_type'] = p
             else:
@@ -379,9 +390,30 @@ def _parse_invoice(text: str) -> dict | None:
                 elif len(next_parts) == 1:
                     p = next_parts[0].upper()
                     if re.search(r'\d', p):
-                        result['vehicle_plate'] = p
+                        tp_m = re.match(r'^([A-ZА-ЯЁ][A-ZА-ЯЁ\-]*)\s+(\S.*)$', p)
+                        if tp_m and re.search(r'\d', tp_m.group(2)):
+                            result['vehicle_type'] = tp_m.group(1)
+                            result['vehicle_plate'] = tp_m.group(2)
+                        else:
+                            result['vehicle_plate'] = p
                     else:
                         result['vehicle_type'] = p
+
+    # Last-resort EVER: "ever" mentioned but no items parsed
+    # (column-scan may have put the qty too far from the label for forward search)
+    if not result['items'] and re.search(r'\bever\b', full, re.IGNORECASE):
+        # Strip prices (4+ digit numbers), dates, times, volume annotations
+        scan_text = re.sub(r'\d{4,}', '', full)
+        scan_text = re.sub(r'\d{1,2}[.:]\d{2}(:\d{2})?', '', scan_text)
+        scan_text = re.sub(r'\d{1,2}[./]\d{2}[./]\d{4}', '', scan_text)
+        scan_text = re.sub(r'\d+\s*л', '', scan_text, flags=re.IGNORECASE)
+        candidates = [int(n) for n in re.findall(r'\b(\d{1,3})\b', scan_text)
+                      if 1 <= int(n) <= 500]
+        if candidates:
+            # Prefer a value different from return_qty; fallback to any
+            qty = next((n for n in candidates if n != result['return_qty']), candidates[0])
+            result['items'].append({'raw_name': 'EVER 20л', 'qty': qty})
+            log.info("Last-resort EVER qty=%d from text scan", qty)
 
     # Last-resort phone: scan every line individually
     if not result['courier_phone']:
@@ -519,6 +551,8 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
         lines.append(f"♻️ Возврат: {parsed['return_qty']} шт.")
     for it in issue_items:
         lines.append(f"📦 Выдано: {it['quantity']} шт. (товар #{it['product_id']})")
+    if not issue_items and re.search(r'\bever\b', text, re.IGNORECASE):
+        lines.append("⚠️ EVER не распознан — проверьте и добавьте вручную")
 
     return '\n'.join(lines)
 
