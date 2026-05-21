@@ -416,6 +416,7 @@ async def admin_set_courier(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin:assign:"))
 async def admin_assign(call: CallbackQuery):
+    await call.answer()
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
@@ -424,7 +425,6 @@ async def admin_assign(call: CallbackQuery):
         f"Выберите курьера для заказа #{order_id}:",
         reply_markup=courier_select_kb(couriers, order_id),
     )
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("admin:contact:"))

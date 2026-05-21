@@ -284,6 +284,7 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("mgr:assign:"))
 async def mgr_assign(call: CallbackQuery):
+    await call.answer()
     if not await is_manager(call.from_user.id):
         return
     parts = call.data.split(":")
@@ -295,7 +296,6 @@ async def mgr_assign(call: CallbackQuery):
         f"Выберите курьера для заказа #{order_id}:",
         reply_markup=mgr_courier_select_kb(couriers, order_id, tab=tab, page=page),
     )
-    await call.answer()
 
 
 @router.callback_query(F.data.startswith("mgr:set_courier:"))
