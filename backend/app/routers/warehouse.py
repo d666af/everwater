@@ -623,6 +623,11 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
     batch_id = str(uuid.uuid4())
     invoice_items: list[dict] = []
 
+    # Strip timezone so we store naive UTC in the timezone-naive DateTime column
+    _ts: datetime | None = None
+    if body.created_at:
+        _ts = body.created_at.replace(tzinfo=None) if body.created_at.tzinfo else body.created_at
+
     for prod, qty in resolved:
         stock = await _ensure_stock(db, prod.id)
         stock.quantity -= qty
@@ -648,8 +653,8 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
         )
-        if body.created_at:
-            tx.created_at = body.created_at
+        if _ts:
+            tx.created_at = _ts
         db.add(tx)
         price = float(prod.price or 0)
         invoice_items.append({
@@ -686,8 +691,8 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
         )
-        if body.created_at:
-            ret_tx.created_at = body.created_at
+        if _ts:
+            ret_tx.created_at = _ts
         db.add(ret_tx)
 
     if bottle_return_qty > 0:
@@ -703,7 +708,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
 
     if courier:
         try:
-            _when = body.created_at or datetime.now()
+            _when = _ts or datetime.now()
             png = generate_invoice_png(
                 items=invoice_items,
                 courier_name=courier.name,
