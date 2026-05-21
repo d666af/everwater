@@ -34,10 +34,6 @@ from services.api_client import (
 log = logging.getLogger(__name__)
 router = Router()
 
-# Stores the last invoice photo file_id received from the group (for /testnakl)
-_last_photo_file_id: str | None = None
-_last_photo_file_unique_id: str | None = None
-
 
 class TestNaklState(StatesGroup):
     waiting_for_photo = State()
@@ -160,16 +156,16 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 # ─── Parser ───────────────────────────────────────────────────────────────────
 
 def _normalize_phone(raw: str) -> str | None:
-    # 1a. Spaced with country code: "998 99 054 13 30" or "998 88 533 11 66"
-    m = re.search(r'\b998\s+([89]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    # 1a. Spaced with country code: "998 99 054 13 30", "998 88 533 11 66", "998 55 ..."
+    m = re.search(r'\b998\s+([2-9]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
-    # 1b. Spaced without country code: "99 054 13 30" or "88 533 11 66"
-    m = re.search(r'\b([89]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
+    # 1b. Spaced without country code: "99 054 13 30", "88 533 11 66", "55 500 12 34"
+    m = re.search(r'\b([2-9]\d)\s+(\d{3})\s+(\d{2})\s+(\d{2})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
-    # 1c. 2+3+4 format: "99 054 1330" or "88 533 1166"
-    m = re.search(r'\b([89]\d)\s+(\d{3})\s+(\d{4})\b', raw)
+    # 1c. 2+3+4 format: "99 054 1330", "88 533 1166"
+    m = re.search(r'\b([2-9]\d)\s+(\d{3})\s+(\d{4})\b', raw)
     if m:
         return '+998' + ''.join(m.groups())
     # 2. Compact with country code: 998 + 9 consecutive digits
@@ -180,10 +176,10 @@ def _normalize_phone(raw: str) -> str | None:
     # 3. OCR drops a leading digit from "998" → 11-digit garbled block
     for block in re.findall(r'\d{11,}', digits):
         sub = block[-9:]
-        if sub[0] in ('8', '9'):
+        if sub[0] not in ('0', '1'):
             return '+998' + sub
-    # 4. Bare 9-digit Uzbek subscriber number (valid operator prefixes incl. UzMobile 88)
-    m = re.search(r'\b(9[01345789]\d{7}|88\d{7})\b', raw)
+    # 4. Bare 9-digit Uzbek subscriber number — all operator prefixes
+    m = re.search(r'\b((20|50|55|7[0-9]|88|9[0-9])\d{7})\b', raw)
     if m:
         return '+998' + m.group(1)
     return None
@@ -488,7 +484,7 @@ async def _resolve_product_id(raw_name: str) -> int | None:
 
 # ─── Core processor ───────────────────────────────────────────────────────────
 
-async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
+async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, performed_by: str = 'nakl_bot') -> str:
     """OCR + parse + issue. Returns a human-readable result message."""
 
     text = await _ocr_photo(bot, photo)
@@ -548,7 +544,7 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message) -> str:
             courier_id=courier_id,
             items=api_items,
             bottle_return=parsed['return_qty'],
-            performed_by='nakl_bot',
+            performed_by=performed_by,
             vehicle_type=v_type,
             vehicle_plate=v_plate,
             created_at=created_at_iso,
@@ -583,21 +579,23 @@ def _group_id_filter(message: Message) -> bool:
 
 @router.message(_group_id_filter, F.photo)
 async def handle_group_invoice(message: Message):
-    """Auto-process invoice photos posted in the configured group (not by bot itself)."""
-    global _last_photo_file_id, _last_photo_file_unique_id
+    """Auto-process invoice photos posted in the configured group.
+
+    Does NOT reply in the group. Sends the result privately to all ADMIN_IDS.
+    The warehouse transaction is recorded with performed_by='Группа накладных'.
+    """
     if message.from_user and message.from_user.is_bot:
         return
 
     photo = message.photo[-1]
-    # Remember this photo for /testnakl
-    _last_photo_file_id = photo.file_id
-    _last_photo_file_unique_id = photo.file_unique_id
-
-    result_text = await process_invoice(message.bot, photo, message)
-    try:
-        await message.reply(result_text)
-    except Exception as e:
-        log.error("Failed to reply with invoice result: %s", e)
+    result_text = await process_invoice(
+        message.bot, photo, message, performed_by='Группа накладных'
+    )
+    for admin_id in settings.ADMIN_IDS:
+        try:
+            await message.bot.send_message(admin_id, result_text)
+        except Exception as e:
+            log.error("Failed to notify admin %s about group invoice: %s", admin_id, e)
 
 
 @router.message(_group_id_filter)
@@ -608,41 +606,18 @@ async def handle_group_silence(message: Message):
 
 @router.message(Command("testnakl"))
 async def cmd_testnakl(message: Message, state: FSMContext):
-    """Admin command: test invoice OCR. Uses last stored group photo or asks to send one."""
+    """Admin command: send a photo of an invoice to OCR and issue it manually."""
     if message.from_user.id not in settings.ADMIN_IDS:
         return
-
-    if not settings.INVOICE_GROUP_ID:
-        await message.answer("❌ INVOICE_GROUP_ID не настроен в .env")
-        return
-
-    if _last_photo_file_id:
-        await message.answer("🔍 Тестирую последнюю накладную из группы...")
-        photo = PhotoSize(
-            file_id=_last_photo_file_id,
-            file_unique_id=_last_photo_file_unique_id or '',
-            width=0, height=0,
-        )
-        try:
-            result_text = await process_invoice(message.bot, photo, message)
-            await message.answer(result_text)
-        except Exception as e:
-            log.exception("testnakl error")
-            await message.answer(f"❌ Ошибка: {e}")
-    else:
-        await message.answer(
-            "📸 Нет сохранённых фото из группы.\n\n"
-            "Отправьте фото накладной сюда — распознаю его:"
-        )
-        await state.set_state(TestNaklState.waiting_for_photo)
+    await message.answer("📸 Отправьте фото накладной:")
+    await state.set_state(TestNaklState.waiting_for_photo)
 
 
 @router.message(TestNaklState.waiting_for_photo, F.photo)
 async def cmd_testnakl_photo(message: Message, state: FSMContext):
-    """Process photo sent by admin for manual /testnakl test."""
+    """Process photo sent by admin via /testnakl."""
     await state.clear()
     photo = message.photo[-1]
-    await message.answer("🔍 Распознаю накладную...")
     try:
         result_text = await process_invoice(message.bot, photo, message)
         await message.answer(result_text)
