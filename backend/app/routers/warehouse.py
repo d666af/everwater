@@ -649,6 +649,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             quantity=qty,
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
+            performed_by=body.performed_by,
         )
         if _ts:
             tx.created_at = _ts
@@ -687,6 +688,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             quantity=bottle_return_qty,
             note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
+            performed_by=body.performed_by,
         )
         if _ts:
             ret_tx.created_at = _ts
@@ -1263,3 +1265,97 @@ async def list_warehouse_staff(db: AsyncSession = Depends(get_db)):
         select(WarehouseStaff).where(WarehouseStaff.is_active == True)
     )).scalars().all()
     return [{"telegram_id": r.telegram_id, "name": r.name} for r in rows]
+
+
+# ─── Batch cancellation (for warehouse bot "Отменить") ────────────────────────
+
+@router.get("/issue_batches")
+async def list_issue_batches(
+    performed_by: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """List distinct issue batches, optionally filtered by performed_by."""
+    q = (
+        select(
+            WaterTransaction.batch_id,
+            WaterTransaction.courier_id,
+            WaterTransaction.created_at,
+            WaterTransaction.performed_by,
+        )
+        .where(
+            WaterTransaction.transaction_type == "issue",
+            WaterTransaction.batch_id.isnot(None),
+        )
+        .order_by(WaterTransaction.created_at.desc())
+    )
+    if performed_by:
+        q = q.where(WaterTransaction.performed_by == performed_by)
+    rows = (await db.execute(q)).all()
+
+    seen: set[str] = set()
+    result = []
+    for row in rows:
+        if row.batch_id in seen:
+            continue
+        seen.add(row.batch_id)
+        items_rows = (await db.execute(
+            select(WaterTransaction, Product)
+            .join(Product, WaterTransaction.product_id == Product.id, isouter=True)
+            .where(
+                WaterTransaction.batch_id == row.batch_id,
+                WaterTransaction.transaction_type == "issue",
+            )
+        )).all()
+        total_sum = sum(
+            (tx.quantity * float(p.price or 0)) if p else 0
+            for tx, p in items_rows
+        )
+        courier = None
+        if row.courier_id:
+            courier = (await db.execute(
+                select(Courier).where(Courier.id == row.courier_id)
+            )).scalar_one_or_none()
+        result.append({
+            "batch_id": row.batch_id,
+            "courier_id": row.courier_id,
+            "courier_name": courier.name if courier else "—",
+            "performed_by": row.performed_by,
+            "created_at": row.created_at,
+            "total_sum": round(total_sum),
+            "items": [
+                {"product_name": p.name if p else "—", "quantity": tx.quantity}
+                for tx, p in items_rows
+            ],
+        })
+        if len(result) >= limit:
+            break
+    return result
+
+
+@router.delete("/issue_batch/{batch_id}")
+async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
+    """Reverse an issue batch: restore warehouse stock, update courier water, delete transactions."""
+    txs = (await db.execute(
+        select(WaterTransaction).where(WaterTransaction.batch_id == batch_id)
+    )).scalars().all()
+    if not txs:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    for tx in txs:
+        if tx.transaction_type == "issue" and tx.product_id and tx.courier_id:
+            stock = await _ensure_stock(db, tx.product_id)
+            stock.quantity += tx.quantity
+            cw = (await db.execute(
+                select(CourierWater).where(
+                    CourierWater.courier_id == tx.courier_id,
+                    CourierWater.product_id == tx.product_id,
+                )
+            )).scalar_one_or_none()
+            if cw:
+                cw.quantity = max(0, cw.quantity - tx.quantity)
+                cw.issued_today = max(0, cw.issued_today - tx.quantity)
+        await db.delete(tx)
+
+    await db.commit()
+    return {"ok": True, "batch_id": batch_id}

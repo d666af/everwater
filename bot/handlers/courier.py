@@ -56,6 +56,7 @@ class CourierOrderCreate(StatesGroup):
     waiting_input = State()
     choosing_product = State()
     waiting_bottles = State()
+    waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address = State()
     confirming = State()
@@ -503,9 +504,15 @@ def _qty19(items: dict, products: list) -> int:
     return sum(qty for pid, qty in items.items() if prod_map.get(pid, {}).get("has_bottle_deposit"))
 
 
-def _calc_surcharge(items: dict, products: list, return_bottles: int) -> float:
-    missing = max(0, _qty19(items, products) - return_bottles)
+def _calc_surcharge(items: dict, products: list, return_bottles: int, bottles_lent: int = 0) -> float:
+    missing = max(0, _qty19(items, products) - return_bottles - bottles_lent)
     return missing * _spc(products)
+
+
+def _cco_bottles_step_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Одолжить бутылки", callback_data="cco:lent_bottles")]
+    ])
 
 
 def _client_addrs(client: dict | None) -> list:
@@ -616,8 +623,9 @@ def _cco_confirm_text(data: dict, products: list) -> str:
     address = data.get("co_address", "—")
     items = data.get("co_items", {})
     return_bottles = data.get("co_return_bottles", 0)
+    lent_bottles = data.get("co_lent_bottles", 0)
     prod_map = {str(p["id"]): p for p in products}
-    surcharge = _calc_surcharge(items, products, return_bottles)
+    surcharge = _calc_surcharge(items, products, return_bottles, lent_bottles)
 
     lines = ["📋 <b>Подтверждение заказа</b>\n"]
     if client:
@@ -639,8 +647,10 @@ def _cco_confirm_text(data: dict, products: list) -> str:
 
     if return_bottles > 0:
         lines.append(f"\n♻️ Возврат: {return_bottles} шт.")
+    if lent_bottles > 0:
+        lines.append(f"🔄 Одолжено: {lent_bottles} шт.")
     if surcharge > 0:
-        missing = max(0, _qty19(items, products) - return_bottles)
+        missing = max(0, _qty19(items, products) - return_bottles - lent_bottles)
         lines.append(f"🫙 Надбавка за невозврат {missing} бут.: +{fmt(surcharge)}")
         total += surcharge
 
@@ -960,7 +970,8 @@ async def courier_co_items_done(call: CallbackQuery, state: FSMContext):
     if has_deposit:
         await state.set_state(CourierOrderCreate.waiting_bottles)
         await call.message.edit_text(
-            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):",
+            reply_markup=_cco_bottles_step_kb(),
         )
     else:
         await state.update_data(co_return_bottles=0)
@@ -978,6 +989,28 @@ async def courier_co_bottles(message: Message, state: FSMContext):
         await message.answer("Введите число, например: 0, 1, 2")
         return
     await state.update_data(co_return_bottles=count)
+    data = await state.get_data()
+    if data.get("co_edit_mode"):
+        await _cco_show_confirm(message, state)
+    else:
+        await _cco_show_addr(message, state)
+
+
+@router.callback_query(CourierOrderCreate.waiting_bottles, F.data == "cco:lent_bottles")
+async def courier_co_lent_tap(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.set_state(CourierOrderCreate.waiting_lent_bottles)
+    await call.message.edit_text("🔄 Сколько бутылок одолжить клиенту?\nВведите число:")
+
+
+@router.message(CourierOrderCreate.waiting_lent_bottles)
+async def courier_co_lent_bottles(message: Message, state: FSMContext):
+    try:
+        count = max(0, int(message.text.strip()))
+    except ValueError:
+        await message.answer("Введите число, например: 1, 2, 3")
+        return
+    await state.update_data(co_lent_bottles=count)
     data = await state.get_data()
     if data.get("co_edit_mode"):
         await _cco_show_confirm(message, state)
@@ -1037,7 +1070,8 @@ async def courier_co_edit_bottles(call: CallbackQuery, state: FSMContext):
     await state.update_data(co_edit_mode=True)
     await state.set_state(CourierOrderCreate.waiting_bottles)
     await call.message.edit_text(
-        "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):"
+        "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):",
+        reply_markup=_cco_bottles_step_kb(),
     )
     await call.answer()
 
@@ -1057,7 +1091,8 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
     items_list = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["co_items"].items()]
     products = data.get("co_products", [])
     return_bottles = data.get("co_return_bottles", 0)
-    surcharge = _calc_surcharge(data["co_items"], products, return_bottles)
+    lent_bottles = data.get("co_lent_bottles", 0)
+    surcharge = _calc_surcharge(data["co_items"], products, return_bottles, lent_bottles)
     try:
         await api.courier_create_order({
             "phone": data["co_phone"],
@@ -1065,6 +1100,7 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
             "items": items_list,
             "payment_method": "cash",
             "return_bottles_count": return_bottles,
+            "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "courier_telegram_id": call.from_user.id,
             "creator_role": "courier",

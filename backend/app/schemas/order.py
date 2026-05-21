@@ -17,6 +17,7 @@ class OrderCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     return_bottles_count: int = 0
+    bottles_lent: int = 0
     return_bottles_volume: float = 0.0
     items: list[OrderItemCreate]
     bonus_used: float = 0.0
@@ -49,6 +50,7 @@ class OrderOut(BaseModel):
     latitude: float | None
     longitude: float | None
     return_bottles_count: int
+    bottles_lent: int = 0
     return_bottles_volume: float
     bottle_discount: float
     bottle_surcharge: float = 0.0

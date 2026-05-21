@@ -52,6 +52,7 @@ class AcoOrderCreate(StatesGroup):
     waiting_input    = State()
     choosing_product = State()
     waiting_bottles  = State()
+    waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address  = State()
     confirming       = State()
@@ -88,9 +89,15 @@ def _qty19(items: dict, products: list) -> int:
     return sum(qty for pid, qty in items.items() if prod_map.get(pid, {}).get("has_bottle_deposit"))
 
 
-def _calc_surcharge(items: dict, products: list, return_bottles: int) -> float:
-    missing = max(0, _qty19(items, products) - return_bottles)
+def _calc_surcharge(items: dict, products: list, return_bottles: int, bottles_lent: int = 0) -> float:
+    missing = max(0, _qty19(items, products) - return_bottles - bottles_lent)
     return missing * _spc(products)
+
+
+def _bottles_step_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Одолжить бутылки", callback_data="aco:lent_bottles")]
+    ])
 
 
 def _client_addrs(client: dict | None) -> list:
@@ -204,8 +211,9 @@ def _confirm_text(data: dict, products: list) -> str:
     address = data.get("aco_address", "—")
     items = data.get("aco_items", {})
     return_bottles = data.get("aco_return_bottles", 0)
+    lent_bottles = data.get("aco_lent_bottles", 0)
     prod_map = {str(p["id"]): p for p in products}
-    surcharge = _calc_surcharge(items, products, return_bottles)
+    surcharge = _calc_surcharge(items, products, return_bottles, lent_bottles)
 
     lines = ["📋 <b>Подтверждение заказа</b>\n"]
     lines.append(f"👤 {client.get('name', '—')} · {phone}" if client else f"👤 {phone}")
@@ -224,8 +232,10 @@ def _confirm_text(data: dict, products: list) -> str:
 
     if return_bottles > 0:
         lines.append(f"\n♻️ Возврат: {return_bottles} шт.")
+    if lent_bottles > 0:
+        lines.append(f"🔄 Одолжено: {lent_bottles} шт.")
     if surcharge > 0:
-        missing = max(0, _qty19(items, products) - return_bottles)
+        missing = max(0, _qty19(items, products) - return_bottles - lent_bottles)
         lines.append(f"🫙 Надбавка за невозврат {missing} бут.: +{_fmt(surcharge)}")
         total += surcharge
 
@@ -514,7 +524,10 @@ async def aco_items_done(call: CallbackQuery, state: FSMContext):
         return
     if has_deposit:
         await state.set_state(AcoOrderCreate.waiting_bottles)
-        await call.message.edit_text("🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):")
+        await call.message.edit_text(
+            "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):",
+            reply_markup=_bottles_step_kb(),
+        )
     else:
         await state.update_data(aco_return_bottles=0)
         await _show_addr(call, state)
@@ -531,6 +544,28 @@ async def aco_bottles(message: Message, state: FSMContext):
         await message.answer("Введите число, например: 0, 1, 2")
         return
     await state.update_data(aco_return_bottles=count)
+    data = await state.get_data()
+    if data.get("aco_edit_mode"):
+        await _show_confirm(message, state)
+    else:
+        await _show_addr(message, state)
+
+
+@router.callback_query(AcoOrderCreate.waiting_bottles, F.data == "aco:lent_bottles")
+async def aco_lent_tap(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.set_state(AcoOrderCreate.waiting_lent_bottles)
+    await call.message.edit_text("🔄 Сколько бутылок одолжить клиенту?\nВведите число:")
+
+
+@router.message(AcoOrderCreate.waiting_lent_bottles)
+async def aco_lent_bottles(message: Message, state: FSMContext):
+    try:
+        count = max(0, int(message.text.strip()))
+    except ValueError:
+        await message.answer("Введите число, например: 1, 2, 3")
+        return
+    await state.update_data(aco_lent_bottles=count)
     data = await state.get_data()
     if data.get("aco_edit_mode"):
         await _show_confirm(message, state)
@@ -583,7 +618,10 @@ async def aco_edit_items(call: CallbackQuery, state: FSMContext):
 async def aco_edit_bottles(call: CallbackQuery, state: FSMContext):
     await state.update_data(aco_edit_mode=True)
     await state.set_state(AcoOrderCreate.waiting_bottles)
-    await call.message.edit_text("🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):")
+    await call.message.edit_text(
+        "🪣 Сколько пустых бутылей вернёт клиент?\nВведите число (0 — если не возвращает):",
+        reply_markup=_bottles_step_kb(),
+    )
     await call.answer()
 
 
@@ -602,7 +640,8 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
     items_list = [{"product_id": int(pid), "quantity": qty} for pid, qty in data["aco_items"].items()]
     products = data.get("aco_products", [])
     return_bottles = data.get("aco_return_bottles", 0)
-    surcharge = _calc_surcharge(data["aco_items"], products, return_bottles)
+    lent_bottles = data.get("aco_lent_bottles", 0)
+    surcharge = _calc_surcharge(data["aco_items"], products, return_bottles, lent_bottles)
     agent_id = data.get("aco_agent_id")
     try:
         result = await api.courier_create_order({
@@ -611,6 +650,7 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
             "items": items_list,
             "payment_method": "cash",
             "return_bottles_count": return_bottles,
+            "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "agent",
             "agent_id": agent_id,

@@ -275,6 +275,15 @@ export default function CourierStats() {
             </div>
           </div>
 
+          {/* ── 5b. Lent bottles ── */}
+          {(report?.lent_bottles || 0) > 0 && (
+            <div style={{ background: '#FFF8E7', borderRadius: 16, border: '1px solid #FFD87A', marginBottom: 10, padding: '14px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#E67700', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Одолжено бутылок</div>
+              <div style={{ fontSize: 34, fontWeight: 900, color: '#E67700', lineHeight: 1 }}>{report.lent_bottles}</div>
+              <div style={{ fontSize: 10, color: '#E67700', marginTop: 3 }}>шт · {periodLabel}</div>
+            </div>
+          )}
+
           {/* ── 6. Water on hand ── */}
           {(waterEntries.length > 0 || reservedItems.length > 0) && (() => {
             // Merge water (available) with reserved_items

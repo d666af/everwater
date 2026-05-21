@@ -27,6 +27,7 @@ class WaterTransaction(Base):
     quantity: Mapped[int] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    performed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     product: Mapped["Product | None"] = relationship("Product")  # noqa: F821

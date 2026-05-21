@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -695,3 +695,140 @@ async def wh_subs_list(call: CallbackQuery):
     except Exception:
         await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()
+
+
+# ─── Cancel issue batch ───────────────────────────────────────────────────────
+
+_CANCEL_PAGE_SIZE = 5
+
+
+class WrhCancelState(StatesGroup):
+    listing = State()
+    confirming = State()
+
+
+def _cancel_list_kb(batches: list, page: int) -> InlineKeyboardMarkup:
+    start = page * _CANCEL_PAGE_SIZE
+    chunk = batches[start:start + _CANCEL_PAGE_SIZE]
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{i + 1}. {b.get('courier_name', '?')} · {_fmt_ts(b.get('created_at', ''))}",
+            callback_data=f"wh:cncl:sel:{b['batch_id']}",
+        )]
+        for i, b in enumerate(chunk, start=start)
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀", callback_data=f"wh:cncl:pg:{page - 1}"))
+    total_pages = (len(batches) + _CANCEL_PAGE_SIZE - 1) // _CANCEL_PAGE_SIZE
+    if page + 1 < total_pages:
+        nav.append(InlineKeyboardButton(text="▶", callback_data=f"wh:cncl:pg:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="wh:cncl:close")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _cancel_confirm_kb(batch_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"wh:cncl:ok:{batch_id}"),
+            InlineKeyboardButton(text="◀ Назад", callback_data="wh:cncl:back"),
+        ]
+    ])
+
+
+async def _show_cancel_list(target, state: FSMContext, page: int = 0):
+    data = await state.get_data()
+    batches = data.get("wh_cancel_batches", [])
+    if not batches:
+        text = "Нет доступных выдач для отмены."
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Закрыть", callback_data="wh:cncl:close")]
+        ])
+    else:
+        text = f"🗑 <b>Отмена выдачи</b>\nВсего: {len(batches)} шт. Выберите:"
+        kb = _cancel_list_kb(batches, page)
+    await state.set_state(WrhCancelState.listing)
+    if isinstance(target, CallbackQuery):
+        try:
+            await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await target.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(F.text == "🗑 Отменить выдачу")
+async def wh_cancel_start(message: Message, state: FSMContext):
+    if not await is_warehouse(message.from_user.id):
+        return
+    batches = await api.get_warehouse_batches(performed_by="Группа накладных")
+    await state.update_data(wh_cancel_batches=batches)
+    await _show_cancel_list(message, state, page=0)
+
+
+@router.callback_query(WrhCancelState.listing, F.data.startswith("wh:cncl:pg:"))
+async def wh_cancel_page(call: CallbackQuery, state: FSMContext):
+    page = int(call.data.split(":")[-1])
+    await call.answer()
+    await _show_cancel_list(call, state, page=page)
+
+
+@router.callback_query(WrhCancelState.listing, F.data.startswith("wh:cncl:sel:"))
+async def wh_cancel_select(call: CallbackQuery, state: FSMContext):
+    batch_id = call.data[len("wh:cncl:sel:"):]
+    data = await state.get_data()
+    batches = data.get("wh_cancel_batches", [])
+    batch = next((b for b in batches if b["batch_id"] == batch_id), None)
+    if not batch:
+        await call.answer("Не найдено", show_alert=True)
+        return
+    await state.update_data(wh_cancel_selected=batch)
+    await state.set_state(WrhCancelState.confirming)
+    items_text = ", ".join(
+        f"{it['quantity']} × {it['product_name']}" for it in batch.get("items", [])
+    )
+    text = (
+        f"🗑 <b>Отменить выдачу?</b>\n\n"
+        f"Курьер: {batch.get('courier_name', '—')}\n"
+        f"Дата: {_fmt_ts(batch.get('created_at', ''))}\n"
+        f"Состав: {items_text or '—'}"
+    )
+    await call.answer()
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=_cancel_confirm_kb(batch_id))
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=_cancel_confirm_kb(batch_id))
+
+
+@router.callback_query(WrhCancelState.confirming, F.data.startswith("wh:cncl:ok:"))
+async def wh_cancel_confirm(call: CallbackQuery, state: FSMContext):
+    batch_id = call.data[len("wh:cncl:ok:"):]
+    await call.answer()
+    try:
+        await api.cancel_warehouse_batch(batch_id)
+    except Exception as e:
+        await call.message.edit_text(f"❌ Ошибка: {e}")
+        await state.clear()
+        return
+    data = await state.get_data()
+    batch = data.get("wh_cancel_selected", {})
+    await call.message.edit_text(
+        f"✅ Выдача отменена.\nКурьер: {batch.get('courier_name', '—')} · {_fmt_ts(batch.get('created_at', ''))}",
+        parse_mode="HTML",
+    )
+    await state.clear()
+
+
+@router.callback_query(WrhCancelState.confirming, F.data == "wh:cncl:back")
+async def wh_cancel_back(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    await _show_cancel_list(call, state, page=0)
+
+
+@router.callback_query(F.data == "wh:cncl:close")
+async def wh_cancel_close(call: CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.clear()
+    await call.message.edit_text("Отменено.")
