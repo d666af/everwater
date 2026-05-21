@@ -1249,6 +1249,7 @@ async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
         "longitude": order.longitude,
         "delivery_time": order.delivery_time.isoformat() if order.delivery_time else None,
         "return_bottles_count": order.return_bottles_count or 0,
+        "bottles_lent": order.bottles_lent or 0,
         "return_bottles_volume": order.return_bottles_volume,
         "bottle_discount": order.bottle_discount or 0,
     }
@@ -1304,6 +1305,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         latitude=order.latitude,
         longitude=order.longitude,
         return_bottles_count=order.return_bottles_count,
+        bottles_lent=order.bottles_lent or 0,
         return_bottles_volume=order.return_bottles_volume,
         bottle_discount=order.bottle_discount,
         bottle_surcharge=order.bottle_surcharge or 0,

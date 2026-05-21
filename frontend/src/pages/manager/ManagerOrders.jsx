@@ -572,7 +572,7 @@ function PaymentBlock({ order }) {
 }
 
 function BottlesBlock({ order }) {
-  if (!order.client_bottles_owed && !order.return_bottles_count) return null
+  if (!order.client_bottles_owed && !order.return_bottles_count && !order.bottles_lent) return null
   const pending = order.client_bottles_pending || 0
   const available = order.client_bottles_owed != null ? Math.max(0, order.client_bottles_owed - pending) : null
   return (
@@ -581,6 +581,7 @@ function BottlesBlock({ order }) {
       {pending > 0 && <Row k="В процессе возврата" v={`${pending} бут.`} accent="#E67700" />}
       {available != null && pending > 0 && <Row k="Доступно к возврату" v={`${available} бут.`} />}
       {order.return_bottles_count > 0 && <Row k="Возврат в этом заказе" v={`${order.return_bottles_count} бут.`} accent={CD} />}
+      {order.bottles_lent > 0 && <Row k="Одолжено" v={`${order.bottles_lent} бут.`} accent="#E67700" />}
     </Section>
   )
 }
@@ -892,21 +893,16 @@ function CreateOrderModal({ onClose, onSave, couriers = [] }) {
         </div>
 
         {/* ── Lent bottles ── */}
-        {qty19L > 0 && maxLent > 0 && (
-          <div style={{ background: '#FFF8E7', borderRadius: 14, border: '1.5px solid #FFD87A', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Label style={{ color: '#E67700' }}>Одолжить бутылки</Label>
-              <span style={{ fontSize: 11, color: '#E67700' }}>макс. {maxLent} шт.</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Stepper value={lentBottles}
-                onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
-                onInc={() => setLentBottles(Math.min(lentBottles + 1, maxLent))}
-                onChange={v => setLentBottles(Math.min(Math.max(0, v), maxLent))} />
-              {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
-            </div>
+        <div style={{ background: '#FFF8E7', borderRadius: 14, border: '1.5px solid #FFD87A', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Label style={{ color: '#E67700' }}>Одолжить бутылки</Label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Stepper value={lentBottles}
+              onDec={() => setLentBottles(Math.max(0, lentBottles - 1))}
+              onInc={() => setLentBottles(lentBottles + 1)}
+              onChange={v => setLentBottles(Math.max(0, v))} />
+            {lentBottles > 0 && <span style={{ fontSize: 12, color: '#E67700' }}>клиент вернёт позже, без надбавки</span>}
           </div>
-        )}
+        </div>
 
         {/* ── Total ── */}
         {(items.length > 0 || bottleSurcharge > 0) && (

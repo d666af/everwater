@@ -112,6 +112,9 @@ def _mgr_order_text(o: dict) -> str:
     return_count = o.get("return_bottles_count") or 0
     return_line = f"\n♻️ Возврат бутылок: {return_count} шт." if return_count > 0 else ""
 
+    lent_count = o.get("bottles_lent") or 0
+    lent_line = f"\n🔄 Одолжено: {lent_count} шт." if lent_count > 0 else ""
+
     bottles_owed = o.get("client_bottles_owed") or 0
     bottles_line = f"\n🫙 Долг клиента: {bottles_owed} бут." if bottles_owed > 0 else ""
 
@@ -128,6 +131,8 @@ def _mgr_order_text(o: dict) -> str:
 
     if return_line:
         lines.append(return_line)
+    if lent_line:
+        lines.append(lent_line)
     if bottles_line:
         lines.append(bottles_line)
 
@@ -1379,6 +1384,7 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
     return_bottles = data.get("mco_return_bottles", 0)
     lent_bottles = data.get("mco_lent_bottles", 0)
     surcharge = _mco_calc_surcharge(data["mco_items"], products, return_bottles, lent_bottles)
+    mgr = await api.get_manager_by_telegram(call.from_user.id)
     try:
         result = await api.courier_create_order({
             "phone": data["mco_phone"],
@@ -1389,6 +1395,8 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "manager",
+            "manager_name": (mgr or {}).get("name"),
+            "manager_phone": (mgr or {}).get("phone"),
         })
         oid = result.get("order_id") or result.get("id", "?")
     except Exception:

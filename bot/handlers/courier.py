@@ -133,6 +133,8 @@ def _order_detail_text(order: dict) -> str:
 
     return_count = order.get('return_bottles_count') or 0
     return_line = f"\n\n♻️ Забрать пустых бутылок: {return_count} шт." if return_count > 0 else ""
+    lent_count = order.get('bottles_lent') or 0
+    lent_line = f"\n🔄 Одолжить бутылок: {lent_count} шт." if lent_count > 0 else ""
 
     return (
         f"📦 <b>{status}{urgency}</b>\n\n"
@@ -141,6 +143,7 @@ def _order_detail_text(order: dict) -> str:
         f"⏰ {time_str}\n\n"
         f"Доставить:\n{items_text}"
         f"{return_line}"
+        f"{lent_line}"
         f"{money_lines}"
         f"{payment_line}"
         f"{manager_line}"
