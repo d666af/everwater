@@ -411,8 +411,9 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
         f"\n\nВремя: {when_str}{actor_line}"
     )
 
-    # Collect unique recipients: admins + warehouse IDs from config + DB staff
-    recipient_ids: set[int] = set(app_settings.ADMIN_IDS)
+    # Collect unique recipients: admins (env + DB secondary) + warehouse IDs + DB staff
+    from app.services.tg_notify import get_all_admin_ids
+    recipient_ids: set[int] = await get_all_admin_ids(db) if db else set(app_settings.ADMIN_IDS)
     recipient_ids.update(app_settings.WAREHOUSE_IDS)
     if db:
         try:

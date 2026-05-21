@@ -12,6 +12,7 @@ from keyboards.admin import (
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import settings
+from services.roles import get_all_admin_ids, add_secondary_admin, remove_secondary_admin
 
 router = Router()
 router.message.filter(lambda msg: is_admin(msg.from_user.id))
@@ -34,7 +35,7 @@ def fmt(v):
 
 
 def is_admin(uid: int) -> bool:
-    return uid in settings.ADMIN_IDS
+    return uid in get_all_admin_ids()
 
 
 # ─── FSM ──────────────────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ def _order_detail_lines(o: dict) -> str:
 
 async def _notify_order_staff(bot, caller_id: int, text: str):
     """Notify all admins+managers about an order action, skipping the caller to avoid duplicate."""
-    recipients: set[int] = set(settings.ADMIN_IDS)
+    recipients: set[int] = get_all_admin_ids()
     try:
         managers = await api.get_managers()
         for m in managers:

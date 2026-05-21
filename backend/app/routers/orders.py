@@ -109,8 +109,8 @@ async def _save_status_msg_id(db: AsyncSession, order_id: int, msg_id: int):
 
 
 async def _notify_admins(db: AsyncSession, text: str):
-    from app.config import settings as cfg
-    for aid in cfg.ADMIN_IDS:
+    from app.services.tg_notify import get_all_admin_ids
+    for aid in await get_all_admin_ids(db):
         await _tg(aid, text)
     from app.models.manager import Manager
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
@@ -145,7 +145,8 @@ async def _send_shortage_notification(db: AsyncSession, shortage_lines: list, or
         + "\n".join(shortage_lines)
         + "\n\nПополните склад как можно скорее."
     )
-    recipients: list[int] = list(cfg.ADMIN_IDS) + list(cfg.WAREHOUSE_IDS) + list(extra_chat_ids or [])
+    from app.services.tg_notify import get_all_admin_ids
+    recipients: list[int] = list(await get_all_admin_ids(db)) + list(cfg.WAREHOUSE_IDS) + list(extra_chat_ids or [])
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
     for m in mgrs:
         if m.telegram_id:
@@ -542,7 +543,8 @@ async def payment_confirmed(order_id: int, from_bot: bool = False, db: AsyncSess
             [{"text": "🌐 Заказ на сайте", "url": site_url}],
         ]}
         mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-        msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+        from app.services.tg_notify import get_all_admin_ids
+        msg_ids_json = await notify_all(list(await get_all_admin_ids(db)), mgrs, text, kb)
         await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
         await db.commit()
 

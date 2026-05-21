@@ -828,3 +828,12 @@ async def mark_subscription_reminded(sub_id: int):
         return await _post("/admin/cron/mark-subscription-reminded", {"sub_id": sub_id})
     except Exception:
         return {}
+
+
+async def get_secondary_admins() -> list[dict]:
+    """Return list of secondary admins from admin_users table."""
+    try:
+        data = await _get("/admin/admins")
+        return data.get("secondary", [])
+    except Exception:
+        return []

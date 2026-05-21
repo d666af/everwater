@@ -12,6 +12,7 @@ from keyboards.warehouse import (
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from handlers.admin import _subs_summary_text, _sub_card_text
 from config import settings
+from services.roles import get_all_admin_ids
 
 router = Router()
 
@@ -29,7 +30,7 @@ def fmt(amount):
 
 async def is_warehouse(user_id: int) -> bool:
     from services.roles import get_all_warehouse_ids
-    if user_id in get_all_warehouse_ids() or user_id in settings.ADMIN_IDS:
+    if user_id in get_all_warehouse_ids() or user_id in get_all_admin_ids():
         return True
     # Warehouse staff added via the CRM web live only in the DB
     try:
@@ -158,7 +159,7 @@ async def wh_prod_note(message: Message, state: FSMContext):
         f"Количество: {qty} шт.\n"
         f"Новый остаток: {result.get('new_quantity', '—')} шт."
     )
-    for admin_id in settings.ADMIN_IDS:
+    for admin_id in get_all_admin_ids():
         try:
             await message.bot.send_message(
                 admin_id,
