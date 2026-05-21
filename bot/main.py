@@ -72,7 +72,10 @@ async def main():
             logging.warning("Could not clear reply keyboard in invoice group: %s", e)
 
     logging.info("Bot started")
-    await dp.start_polling(bot)
+    await dp.start_polling(
+        bot,
+        allowed_updates=['message', 'callback_query', 'my_chat_member', 'chat_member'],
+    )
 
 
 if __name__ == "__main__":
