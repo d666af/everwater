@@ -1173,12 +1173,13 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
             import json as _json_mod
+            from app.services.tg_notify import tg_send_capture as _tg_send_capture
             _msg_ids: list = []
             _seen: set[int] = set()
             for _aid in cfg.ADMIN_IDS:
                 if _aid not in _seen:
                     _seen.add(_aid)
-                    _r = await tg_send_capture(_aid, text, admin_kb)
+                    _r = await _tg_send_capture(_aid, text, admin_kb)
                     if _r:
                         _msg_ids.append(_r)
             for _m in mgrs:
@@ -1188,7 +1189,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     _tid = int(_tg)
                     if _tid not in _seen:
                         _seen.add(_tid)
-                        _r = await tg_send_capture(_tid, text, mgr_kb)
+                        _r = await _tg_send_capture(_tid, text, mgr_kb)
                         if _r:
                             _msg_ids.append(_r)
             msg_ids_json = _json_mod.dumps(_msg_ids)
