@@ -1163,11 +1163,35 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Сумма: {_fmt_nm(total_int)} сум\n\n"
                 f"Назначьте курьера!"
             )
-            kb = {"inline_keyboard": [
+            site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+            admin_kb = {"inline_keyboard": [
                 [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
-                [{"text": "🌐 Заказ на сайте", "url": cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"}],
+                [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
-            msg_ids_json = await notify_all(cfg.ADMIN_IDS, mgrs, text, kb)
+            mgr_kb = {"inline_keyboard": [
+                [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
+                [{"text": "🌐 Заказ на сайте", "url": site_url}],
+            ]}
+            import json as _json_mod
+            _msg_ids: list = []
+            _seen: set[int] = set()
+            for _aid in cfg.ADMIN_IDS:
+                if _aid not in _seen:
+                    _seen.add(_aid)
+                    _r = await tg_send_capture(_aid, text, admin_kb)
+                    if _r:
+                        _msg_ids.append(_r)
+            for _m in mgrs:
+                _tg = _m.telegram_id if hasattr(_m, "telegram_id") else _m.get("telegram_id")
+                _active = _m.is_active if hasattr(_m, "is_active") else _m.get("is_active", True)
+                if _active and _tg:
+                    _tid = int(_tg)
+                    if _tid not in _seen:
+                        _seen.add(_tid)
+                        _r = await tg_send_capture(_tid, text, mgr_kb)
+                        if _r:
+                            _msg_ids.append(_r)
+            msg_ids_json = _json_mod.dumps(_msg_ids)
             await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
             await db.commit()
 

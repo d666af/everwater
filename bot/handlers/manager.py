@@ -240,7 +240,7 @@ async def _do_reject(target, order_id: int, reason: str):
     except Exception as e:
         if "409" in str(e):
             if isinstance(target, CallbackQuery):
-                await target.answer("Заказ уже обработан другим администратором", show_alert=True)
+                await target.message.answer("⚠️ Заказ уже обработан другим администратором.")
             return
     order = await api.get_order(order_id)
     client_tg = order.get("client_telegram_id")
@@ -256,8 +256,10 @@ async def _do_reject(target, order_id: int, reason: str):
             pass
     reply_text = f"❌ Заказ #{order_id} отклонён.\nПричина: {reason}"
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(reply_text)
-        await target.answer()
+        try:
+            await target.message.edit_text(reply_text)
+        except Exception:
+            await target.message.answer(reply_text)
     else:
         await target.answer(reply_text)
 
