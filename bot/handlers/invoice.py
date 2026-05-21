@@ -232,22 +232,21 @@ def _parse_invoice(text: str) -> dict | None:
 
         # ── Return row: "возврат  Шт  <qty>  0" ─────────────────────────────
         if 'возврат' in low or 'vozvrat' in low:
+            # If the row has ANY numbers, use them (0 on the row means qty=0)
+            row_has_numbers = bool(re.search(r'\b\d+\b', line))
             for n in re.findall(r'\b(\d+)\b', line):
                 v = int(n)
-                if 0 < v < 500:
+                if 0 <= v < 500:  # include 0 — explicit "0" on row is the answer
                     result['return_qty'] = v
                     break
-            # OCR column-scan may emit the qty on lines BEFORE the row label
-            if result['return_qty'] == 0:
+            # Only do backward/forward search when the row has NO numbers at all
+            # (column-scan split the qty to a separate line)
+            if not row_has_numbers:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
-                    # Skip date/time lines (e.g. "16:32:45", "20.05.2026")
                     if re.search(r'\d{1,2}[.:]\d{2}', prev):
                         continue
-                    # Strip volume annotations ("20л","19л") before extracting qty —
-                    # "EVER 20л" column-scans as a bare "20л" token which \b would
-                    # otherwise parse as the number 20
                     cleaned_prev = re.sub(r'\d+\s*л', '', prev, flags=re.IGNORECASE).strip()
                     if not cleaned_prev:
                         continue
@@ -258,26 +257,29 @@ def _parse_invoice(text: str) -> dict | None:
                             break
                     if result['return_qty']:
                         break
-            # Forward search: qty column may follow name column in column-scan
-            if result['return_qty'] == 0:
-                for nxt in lines[i + 1:i + 5]:
-                    if re.search(r'ever|наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
-                        break
-                    if re.search(r'\d{1,2}[.:]\d{2}', nxt):
-                        continue
-                    cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
-                    if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
-                        continue  # skip pure text lines (e.g. unit labels)
-                    for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
-                        v = int(n)
-                        if 0 < v < 500:
-                            result['return_qty'] = v
+                if result['return_qty'] == 0:
+                    for nxt in lines[i + 1:i + 5]:
+                        if re.search(r'ever|наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
                             break
-                    if result['return_qty']:
-                        break
+                        if re.search(r'\d{1,2}[.:]\d{2}', nxt):
+                            continue
+                        cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
+                        if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
+                            continue
+                        for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
+                            v = int(n)
+                            if 0 < v < 500:
+                                result['return_qty'] = v
+                                break
+                        if result['return_qty']:
+                            break
 
         # ── Product row: "EVER 20л  Шт  <qty>  0  18 000  576 000" ──────────
-        elif re.search(r'\bever\b', low) and not re.search(r'наименование|header', low):
+        # Require a digit or "шт" on the line — bare "EVER" section headers have
+        # neither and would otherwise duplicate the item from the real product row.
+        elif (re.search(r'\bever\b', low)
+              and re.search(r'\d|шт\b', low)
+              and not re.search(r'наименование|header', low)):
             # Strip volume annotations ("20л") so they don't look like quantities
             cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
             found_qty = None

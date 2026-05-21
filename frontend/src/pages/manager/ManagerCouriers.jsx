@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deactivateAgent, activateAgent, getAgentOrders } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
 import AgentReportModal from '../../components/AgentReportModal'
 import { formatPhone } from '../../utils/phone'
@@ -77,9 +77,8 @@ function StatChip({ icon, value, label, color = CD, bg = '#F0FFF4', borderColor 
   )
 }
 
-function CourierCard({ courier: c, onDeactivate, onActivate }) {
+function CourierCard({ courier: c, onDelete }) {
   const [details, setDetails] = useState(null)
-  const [confirming, setConfirming] = useState(false)
   const [showReport, setShowReport] = useState(false)
 
   useEffect(() => {
@@ -133,29 +132,17 @@ function CourierCard({ courier: c, onDeactivate, onActivate }) {
         )}
       </div>
 
-      {/* Deactivate / Activate */}
-      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
-        {c.is_active ? (
-          !confirming ? (
-            <button
-              style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
-              onClick={() => setConfirming(true)}
-            >Деактивировать</button>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {c.name}?</span>
-              <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                onClick={() => { onDeactivate(c.id); setConfirming(false) }}>Да</button>
-              <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
-                onClick={() => setConfirming(false)}>Нет</button>
-            </div>
-          )
-        ) : (
-          <button
-            style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
-            onClick={() => onActivate(c.id)}
-          >Активировать</button>
-        )}
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          style={{ width: 34, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10, background: '#FFF5F5', color: '#E03131', cursor: 'pointer' }}
+          onClick={() => onDelete(c)} title="Удалить курьера">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
 
       {showReport && <CourierReportModal courierId={c.id} courierName={c.name} onClose={() => setShowReport(false)} />}
@@ -206,8 +193,7 @@ function AddAgentModal({ onClose, onSave }) {
   )
 }
 
-function AgentCard({ agent: a, onDeactivate, onActivate }) {
-  const [confirming, setConfirming] = useState(false)
+function AgentCard({ agent: a, onDelete }) {
   const [showReport, setShowReport] = useState(false)
   const [orderCount, setOrderCount] = useState(null)
 
@@ -254,24 +240,17 @@ function AgentCard({ agent: a, onDeactivate, onActivate }) {
         </div>
       </div>
 
-      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px' }}>
-        {a.is_active ? (
-          !confirming ? (
-            <button style={{ background: 'none', border: 'none', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, opacity: 0.7 }}
-              onClick={() => setConfirming(true)}>Деактивировать</button>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, color: '#E03131', flex: 1 }}>Деактивировать {a.name}?</span>
-              <button style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#E03131', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                onClick={() => { onDeactivate(a.id); setConfirming(false) }}>Да</button>
-              <button style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
-                onClick={() => setConfirming(false)}>Нет</button>
-            </div>
-          )
-        ) : (
-          <button style={{ background: 'none', border: 'none', color: CD, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
-            onClick={() => onActivate(a.id)}>Активировать</button>
-        )}
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          style={{ width: 34, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(224,49,49,0.3)', borderRadius: 10, background: '#FFF5F5', color: '#E03131', cursor: 'pointer' }}
+          onClick={() => onDelete(a)} title="Удалить агента">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   )
@@ -289,11 +268,10 @@ function AgentsList() {
   useEffect(load, [])
 
   const handleCreate = async (data) => { await createAgent(data); load() }
-  const handleDeactivate = async (id) => { await deactivateAgent(id); load() }
-  const handleActivate = async (id) => { await activateAgent(id); load() }
-
-  const active = agents.filter(a => a.is_active)
-  const inactive = agents.filter(a => !a.is_active)
+  const handleDelete = async (agent) => {
+    if (!window.confirm(`Удалить агента ${agent.name}? Это действие нельзя отменить.`)) return
+    try { await deleteAgent(agent.id); load() } catch { alert('Ошибка при удалении') }
+  }
 
   return (
     <div>
@@ -312,20 +290,9 @@ function AgentsList() {
           <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Агентов пока нет</div>
         </div>
       ) : (
-        <>
-          {active.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Активные · {active.length}</div>
-              {active.map(a => <AgentCard key={a.id} agent={a} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
-            </div>
-          )}
-          {inactive.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Деактивированные · {inactive.length}</div>
-              {inactive.map(a => <AgentCard key={a.id} agent={a} onDeactivate={handleDeactivate} onActivate={handleActivate} />)}
-            </div>
-          )}
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {agents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} />)}
+        </div>
       )}
     </div>
   )
@@ -347,13 +314,10 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
   useEffect(load, [])
 
   const handleCreate = async (data) => { await createCourier(data); load() }
-  const handleDeactivate = async (id) => { await deleteCourier(id); load() }
-  const handleActivate = (id) => {
-    setCouriers(prev => prev.map(c => c.id === id ? { ...c, is_active: true } : c))
+  const handleDelete = async (courier) => {
+    if (!window.confirm(`Удалить курьера ${courier.name}? Это действие нельзя отменить.`)) return
+    try { await deleteCourier(courier.id); load() } catch { alert('Ошибка при удалении') }
   }
-
-  const active = couriers.filter(c => c.is_active)
-  const deactivated = couriers.filter(c => !c.is_active)
 
   return (
     <Layout title={title}>
@@ -403,28 +367,11 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
           <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Курьеров пока нет</div>
         </div>
       ) : (
-        <>
-          {active.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Активные · {active.length}
-              </div>
-              {active.map(c => (
-                <CourierCard key={c.id} courier={c} onDeactivate={handleDeactivate} onActivate={handleActivate} />
-              ))}
-            </div>
-          )}
-          {deactivated.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Деактивированные · {deactivated.length}
-              </div>
-              {deactivated.map(c => (
-                <CourierCard key={c.id} courier={c} onDeactivate={handleDeactivate} onActivate={handleActivate} />
-              ))}
-            </div>
-          )}
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {couriers.map(c => (
+            <CourierCard key={c.id} courier={c} onDelete={handleDelete} />
+          ))}
+        </div>
       )}
       </>}
     </Layout>

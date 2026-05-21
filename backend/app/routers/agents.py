@@ -54,6 +54,16 @@ async def get_agent_by_telegram(telegram_id: int, db: AsyncSession = Depends(get
     return agent
 
 
+@router.delete("/{agent_id}")
+async def delete_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await db.delete(agent)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.patch("/{agent_id}/deactivate", response_model=AgentOut)
 async def deactivate_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()

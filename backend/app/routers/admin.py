@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from app.models.admin_user import AdminUser
+from app.config import settings as app_settings
 from app.database import get_db
 from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
@@ -626,11 +628,11 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
 
 
 @router.delete("/couriers/{courier_id}")
-async def deactivate_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
     courier = result.scalar_one_or_none()
     if courier:
-        courier.is_active = False
+        await db.delete(courier)
         await db.commit()
     return {"ok": True}
 
@@ -730,6 +732,92 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
         }
         for u in users
     ]
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Hard-delete a client from the database."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+        await db.commit()
+    return {"ok": True}
+
+
+# ─── Admin management (secondary admins) ─────────────────────────────────────
+
+class AdminUserCreate(BaseModel):
+    telegram_id: int
+    name: str
+
+
+@router.get("/admins")
+async def list_admins(db: AsyncSession = Depends(get_db)):
+    """Return main admins (from .env) + secondary admins (from DB)."""
+    main_ids = app_settings.MAIN_ADMIN_IDS or app_settings.ADMIN_IDS
+    secondary_q = await db.execute(select(AdminUser).order_by(AdminUser.created_at))
+    secondary = [
+        {"id": s.id, "telegram_id": s.telegram_id, "name": s.name,
+         "is_main": False, "created_at": s.created_at.isoformat()}
+        for s in secondary_q.scalars().all()
+    ]
+    main = [
+        {"id": None, "telegram_id": tid, "name": f"Admin {tid}",
+         "is_main": True, "created_at": None}
+        for tid in main_ids
+    ]
+    return {"main": main, "secondary": secondary, "main_ids": list(main_ids)}
+
+
+@router.post("/admins")
+async def add_admin(
+    data: AdminUserCreate,
+    x_telegram_user_id: int | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    main_ids = app_settings.MAIN_ADMIN_IDS or app_settings.ADMIN_IDS
+    if x_telegram_user_id not in main_ids:
+        raise HTTPException(403, "Only main admins can add secondary admins")
+    existing = (await db.execute(
+        select(AdminUser).where(AdminUser.telegram_id == data.telegram_id)
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(400, "Already an admin")
+    admin = AdminUser(
+        telegram_id=data.telegram_id,
+        name=data.name,
+        added_by=x_telegram_user_id,
+    )
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+    return {"id": admin.id, "telegram_id": admin.telegram_id, "name": admin.name}
+
+
+@router.delete("/admins/{admin_id}")
+async def remove_admin(
+    admin_id: int,
+    x_telegram_user_id: int | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    main_ids = app_settings.MAIN_ADMIN_IDS or app_settings.ADMIN_IDS
+    if x_telegram_user_id not in main_ids:
+        raise HTTPException(403, "Only main admins can remove secondary admins")
+    result = await db.execute(select(AdminUser).where(AdminUser.id == admin_id))
+    admin = result.scalar_one_or_none()
+    if admin:
+        await db.delete(admin)
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/admins/is-main")
+async def check_is_main_admin(
+    x_telegram_user_id: int | None = Header(default=None),
+):
+    main_ids = app_settings.MAIN_ADMIN_IDS or app_settings.ADMIN_IDS
+    return {"is_main": x_telegram_user_id in main_ids, "main_ids": list(main_ids)}
 
 
 @router.get("/users/{user_id}/details")
@@ -1064,11 +1152,11 @@ async def create_manager(data: ManagerCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.delete("/managers/{manager_id}")
-async def deactivate_manager(manager_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_manager(manager_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Manager).where(Manager.id == manager_id))
     mgr = result.scalar_one_or_none()
     if mgr:
-        mgr.is_active = False
+        await db.delete(mgr)
         await db.commit()
     return {"ok": True}
 
