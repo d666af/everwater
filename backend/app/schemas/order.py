@@ -100,7 +100,7 @@ class CourierCreate(BaseModel):
 
 class CourierOut(BaseModel):
     id: int
-    telegram_id: int
+    telegram_id: int | None = None
     name: str
     phone: str | None
     is_active: bool

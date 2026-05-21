@@ -1,6 +1,6 @@
 """Warehouse management: stock tracking, production, issue, returns."""
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -39,6 +39,9 @@ def _short_name(volume, ptype: str) -> str:
     return f"Газ. вода {v}л" if ptype == "carb" else f"Вода {v}л"
 
 
+_TZ_UZB = timezone(timedelta(hours=5))
+
+
 def _tx_out(tx: WaterTransaction) -> dict:
     return {
         "id": tx.id,
@@ -51,6 +54,7 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "note": tx.note,
         "batch_id": tx.batch_id,
         "created_at": tx.created_at.isoformat() + "Z",
+        "price": float(tx.product.price) if tx.product and tx.product.price else None,
         "cost_price": float(tx.product.cost_price) if tx.product and tx.product.cost_price else None,
     }
 
@@ -375,7 +379,7 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
                                     batch_id: str, performed_by: str | None,
                                     db: AsyncSession | None = None):
     """Push the invoice PNG to all admins and warehouse staff (deduplicated)."""
-    when_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+    when_str = datetime.now(tz=timezone.utc).astimezone(_TZ_UZB).strftime("%d.%m.%Y %H:%M")
 
     regular = [it for it in items_summary if not it.get("is_return")]
     returns  = [it for it in items_summary if it.get("is_return")]
@@ -389,11 +393,8 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
         s_fmt = f"{s:,}".replace(",", " ")
         lines.append(f"• {it.get('name')}: <b>{qty} шт. · {s_fmt} сум</b>")
 
-    return_line = ""
-    for it in returns:
-        qty = int(it.get("qty") or 0)
-        if qty > 0:
-            return_line = f"\n↩ Возврат бутылок: <b>{qty} шт.</b>"
+    return_qty_total = sum(int(it.get("qty") or 0) for it in returns)
+    return_line = f"\n↩ Возврат бутылок: <b>{return_qty_total} шт.</b>"
 
     total_fmt  = f"{grand_total:,}".replace(",", " ")
     actor_line = f"\nВыдал: <b>{performed_by}</b>" if performed_by else ""
@@ -695,20 +696,22 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             ret_tx.created_at = _ts
         db.add(ret_tx)
 
-    if bottle_return_qty > 0:
-        invoice_items.insert(0, {
-            "name": "Возврат бутылок",
-            "unit": "Шт",
-            "qty":  bottle_return_qty,
-            "is_return": True,
-        })
+    # Always include bottle return row (even when 0) so the invoice always shows it
+    invoice_items.insert(0, {
+        "name": "Возврат бутылок",
+        "unit": "Шт",
+        "qty":  bottle_return_qty,
+        "is_return": True,
+    })
 
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
 
     if courier:
         try:
-            _when = _ts or datetime.now()
+            # Display time in UTC+5 (Tashkent)
+            _when_utc = _ts or datetime.utcnow()
+            _when = _when_utc + timedelta(hours=5)
             png = generate_invoice_png(
                 items=invoice_items,
                 courier_name=courier.name,
