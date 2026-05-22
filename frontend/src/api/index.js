@@ -905,6 +905,51 @@ export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, 
 export const getInvoiceUrl = (batchId) =>
   `${http.defaults.baseURL}/warehouse/invoice/${batchId}.png`
 
+// ─── Factories (заводы) ───────────────────────────────────────────────────────
+export const getFactories = () =>
+  safeCall(
+    () => http.get('/warehouse/factories').then(r => r.data),
+    () => []
+  )
+
+export const createFactory = (name) =>
+  safeCall(
+    () => http.post('/warehouse/factories', { name }).then(r => r.data),
+    () => ({ id: Date.now(), name, is_active: true })
+  )
+
+export const deleteFactory = (id) =>
+  safeCall(
+    () => http.delete(`/warehouse/factories/${id}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getFactoryStats = (period = 'today', date = null, dateTo = null) =>
+  safeCall(
+    () => http.get('/warehouse/factory_stats', { params: { period, date: date || undefined, date_to: dateTo || undefined } }).then(r => r.data),
+    () => []
+  )
+
+export const factoryIssueBatch = (factoryName, items, performedBy) =>
+  safeCall(
+    () => http.post('/warehouse/factory_issue_batch', {
+      factory_name: factoryName,
+      items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
+      performed_by: performedBy || undefined,
+    }).then(r => r.data),
+    () => ({ ok: true, batch_id: 'mock-' + Date.now() })
+  )
+
+export const factoryReturnBatch = (factoryName, items, performedBy) =>
+  safeCall(
+    () => http.post('/warehouse/factory_return_batch', {
+      factory_name: factoryName,
+      items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
+      performed_by: performedBy || undefined,
+    }).then(r => r.data),
+    () => ({ ok: true, batch_id: 'mock-' + Date.now() })
+  )
+
 export const updateCourier = (courierId, data) =>
   safeCall(
     () => http.patch(`/admin/couriers/${courierId}`, data).then(r => r.data),
@@ -1298,11 +1343,12 @@ export const getWarehouseCourierStats = (period = 'today', date = null, dateTo =
 
 // Filtered warehouse history — uses same period/time range semantics as overview
 export const getWarehouseHistory = (filters = {}) => {
-  const { period = 'all', type, product, courier_id, customDate, customDateTo } = filters
+  const { period = 'all', type, product, courier_id, factory_id, customDate, customDateTo } = filters
   const params = { period, limit: 200 }
   if (type && type !== 'all') params.type = type
   if (product && product !== 'all') params.product = product
   if (courier_id) params.courier_id = courier_id
+  if (factory_id) params.factory_id = factory_id
   if (period === 'custom' && customDate) params.date = String(customDate)
   if (period === 'custom' && customDateTo) params.date_to = String(customDateTo)
 
