@@ -12,6 +12,7 @@ from app.models.courier import Courier
 from app.models.manager import Manager
 from app.models.warehouse import WarehouseStaff
 from app.models.agent import Agent
+from app.models.admin_user import AdminUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,7 +34,19 @@ async def _check_warehouse(tid: int | None, db: AsyncSession) -> bool:
     return row is not None
 
 
-def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: bool = False, agent=None):
+async def _check_admin(tid: int | None, db: AsyncSession) -> bool:
+    """Return True if the telegram_id is a primary or secondary admin."""
+    if not tid:
+        return False
+    if tid in settings.ADMIN_IDS:
+        return True
+    row = (await db.execute(
+        select(AdminUser).where(AdminUser.telegram_id == tid)
+    )).scalar_one_or_none()
+    return row is not None
+
+
+def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: bool = False, agent=None, is_admin: bool = False):
     tid = tg_id or (
         (user.telegram_id if user else None)
         or (courier.telegram_id if courier else None)
@@ -41,7 +54,7 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
         or (agent.telegram_id if agent else None)
     )
     all_roles: list[str] = []
-    if tid and tid in settings.ADMIN_IDS:
+    if is_admin or (tid and tid in settings.ADMIN_IDS):
         all_roles.append("admin")
     if is_warehouse:
         all_roles.append("warehouse")
@@ -103,15 +116,16 @@ async def telegram_auth(body: InitDataBody, db: AsyncSession = Depends(get_db)):
     )).scalar_one_or_none()
 
     is_wh = await _check_warehouse(tg_id, db)
+    is_adm = await _check_admin(tg_id, db)
 
-    if not user and not courier and not manager and not agent and not is_wh and tg_id not in settings.ADMIN_IDS:
+    if not user and not courier and not manager and not agent and not is_wh and not is_adm:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Block access for incomplete registrations (started bot but didn't finish)
-    if user and not user.is_registered and not courier and not manager and not agent and not is_wh and tg_id not in settings.ADMIN_IDS:
+    if user and not user.is_registered and not courier and not manager and not agent and not is_wh and not is_adm:
         raise HTTPException(status_code=403, detail="Registration incomplete")
 
-    return _build_response(user, courier, manager, tg_id, is_warehouse=is_wh, agent=agent)
+    return _build_response(user, courier, manager, tg_id, is_warehouse=is_wh, agent=agent, is_admin=is_adm)
 
 
 class PhoneLoginBody(BaseModel):
@@ -194,5 +208,6 @@ async def get_roles_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     tid = (user.telegram_id if user else None) or (courier.telegram_id if courier else None) or (manager.telegram_id if manager else None) or (agent.telegram_id if agent else None)
     is_wh = await _check_warehouse(tid, db)
-    return _build_response(user, courier, manager, tid, is_warehouse=is_wh, agent=agent)
+    is_adm = await _check_admin(tid, db)
+    return _build_response(user, courier, manager, tid, is_warehouse=is_wh, agent=agent, is_admin=is_adm)
 
