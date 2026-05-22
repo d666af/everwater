@@ -70,30 +70,57 @@ def _qty_from_price_sum(line_text: str) -> int | None:
     return None
 
 
-def _canonical_plate(raw: str) -> str:
-    """Fix common OCR errors in Uzbek plates (format: DD L DDD LL, e.g. 30L700QA).
+_VALID_PLATE_RE = re.compile(
+    r'\d{2}[A-Z]\d{3}[A-Z]{2}'   # format 1: DD L DDD LL  e.g. 30L700QA
+    r'|\d{5}[A-Z]{3}'             # format 2: DD DDD LLL   e.g. 30700QAB
+)
 
-    OCR often reads 'Q' as '0', which either replaces the letter entirely
-    (DD L DDDD L → 4-digit middle, 1 trailing letter) or inserts an extra 0
-    (DD L DDDD LL → 4-digit middle, 2 trailing letters).
+
+def _canonical_plate(raw: str) -> str:
+    """Fix common OCR errors in Uzbek plates.
+
+    Supported formats:
+      Format 1: DD L DDD LL  (e.g. 30L700QA)
+      Format 2: DD DDD LLL   (e.g. 30700QAB)
+
+    OCR reads 'Q' as '0', causing:
+      - Format 1: 4-digit middle + 1 trailing letter → restore Q before letter
+                  4-digit middle + 2 trailing letters → strip extra 0
+      - Format 2: 6 digits + 2 trailing letters → first extra digit was Q
+                  6 digits + 3 trailing letters → strip extra 0
     """
     p = raw.upper().strip()
-    if re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', p):
+    if _VALID_PLATE_RE.fullmatch(p):
         return p
-    # 4-digit middle + 1 trailing letter: last digit was Q misread as 0
-    # "30L7000A" → "30L700" + Q + "A" = "30L700QA"
+
+    # ── Format 1 corrections (DD L DDD LL) ──────────────────────────────────
+    # "30L7000A" → last digit of 4-digit group was Q → "30L700QA"
     m = re.fullmatch(r'(\d{2}[A-Z])(\d{4})([A-Z])', p)
     if m:
         candidate = m.group(1) + m.group(2)[:-1] + 'Q' + m.group(3)
         if re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', candidate):
             return candidate
-    # 4-digit middle + 2 trailing letters: extra 0 before letters (Q→0Q somewhere)
-    # "30A1700QB" → strip last digit of number → "30A170QB"
+    # "30A1700QB" → extra 0 before letters → strip last digit → "30A170QB"
     m = re.fullmatch(r'(\d{2}[A-Z])(\d{4})([A-Z]{2})', p)
     if m:
         candidate = m.group(1) + m.group(2)[:-1] + m.group(3)
         if re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', candidate):
             return candidate
+
+    # ── Format 2 corrections (DD DDD LLL) ────────────────────────────────────
+    # "307000AB" → 6th digit was Q → "30700QAB"
+    m = re.fullmatch(r'(\d{5})(\d)([A-Z]{2})', p)
+    if m and m.group(2) == '0':
+        candidate = m.group(1) + 'Q' + m.group(3)
+        if re.fullmatch(r'\d{5}[A-Z]{3}', candidate):
+            return candidate
+    # "307000QAB" → extra 0 before letters → strip last digit → "30700QAB"
+    m = re.fullmatch(r'(\d{6})([A-Z]{3})', p)
+    if m:
+        candidate = m.group(1)[:-1] + m.group(2)
+        if re.fullmatch(r'\d{5}[A-Z]{3}', candidate):
+            return candidate
+
     return p
 
 
@@ -445,8 +472,7 @@ def _parse_invoice(text: str) -> dict | None:
             def _set_plate(raw: str) -> None:
                 new = _canonical_plate(raw.upper())
                 # Prefer canonical format over what's already stored
-                if (not result['vehicle_plate'] or
-                        re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', new)):
+                if not result['vehicle_plate'] or _VALID_PLATE_RE.fullmatch(new):
                     result['vehicle_plate'] = new
 
             if len(parts) >= 2:
