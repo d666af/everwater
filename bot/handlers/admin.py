@@ -178,7 +178,10 @@ def _order_detail_lines(o: dict) -> str:
     if creator_role:
         role_label = _CREATOR_ROLE_RU.get(creator_role, creator_role.capitalize())
         creator_line = f"✍️ {role_label}: {creator_name}" if creator_name else f"✍️ {role_label}"
-        lines.append(creator_line)
+    else:
+        client_label = o.get("client_name") or "Клиент"
+        creator_line = f"✍️ Клиент: {client_label}"
+    lines.append(creator_line)
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
