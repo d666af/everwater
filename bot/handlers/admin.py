@@ -190,7 +190,7 @@ def _order_detail_lines(o: dict) -> str:
 
 async def _notify_order_staff(bot, caller_id: int, text: str, assigner_label: str | None = None):
     """Notify all admins+managers about an order action, skipping the caller to avoid duplicate."""
-    notify_text = text + f"\n\n👤 Назначил: {assigner_label}" if assigner_label else text
+    notify_text = (text + f"\n\n👤 Назначил: {assigner_label}") if assigner_label else text
     recipients: set[int] = get_all_admin_ids()
     try:
         managers = await api.get_managers()

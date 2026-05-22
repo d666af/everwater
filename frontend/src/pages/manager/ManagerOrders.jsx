@@ -382,7 +382,7 @@ function OrderCard({
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setAssigningId(null)}>Отмена</button>
                       <button style={{ ...st.btnPrimary, opacity: !selectedCourier ? 0.5 : 1 }} disabled={actionLoading || !selectedCourier} onClick={() => act(() => {
-                        const doAssign = () => assignCourier(order.id, selectedCourier).then(() => setAssigningId(null))
+                        const doAssign = () => assignCourier(order.id, selectedCourier, currentUser?.name).then(() => setAssigningId(null))
                         return order.status === 'awaiting_confirmation' ? confirmOrder(order.id).then(doAssign) : doAssign()
                       })}>
                         Назначить
@@ -478,6 +478,8 @@ function OrderCard({
             </div>
           )}
 
+          <CreatorBlock order={order} />
+
           {/* Always visible: cancel + contact client */}
           {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
@@ -567,6 +569,24 @@ function PaymentBlock({ order }) {
         <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, minWidth: 90 }}>Итого</span>
         <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</span>
       </div>
+    </Section>
+  )
+}
+
+const CREATOR_LABEL = { manager: 'Менеджер', admin: 'Администратор', courier: 'Курьер', agent: 'Агент' }
+
+function CreatorBlock({ order }) {
+  const role = order.creator_role
+  const name = order.creator_name
+  const creatorStr = role
+    ? `${CREATOR_LABEL[role] || role}${name ? ': ' + name : ''}`
+    : `Клиент${order.client_name ? ': ' + order.client_name : ''}`
+  const hasInfo = role || order.assigner_name
+  if (!hasInfo && !order.client_name) return null
+  return (
+    <Section title="Источник">
+      <Row k="Создал" v={creatorStr} />
+      {order.assigner_name && <Row k="Назначил курьера" v={order.assigner_name} />}
     </Section>
   )
 }

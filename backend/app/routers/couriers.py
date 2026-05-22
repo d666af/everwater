@@ -844,6 +844,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         status=OrderStatus.CONFIRMED,
         creator_role=body.creator_role,
         creator_name=body.creator_name,
+        assigner_name=body.creator_name if body.creator_role in ("courier", "manager", "admin") else None,
         agent_id=body.agent_id,
         manager_phone=body.manager_phone,
     )
