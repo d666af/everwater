@@ -475,7 +475,7 @@ function OrderCard({
               <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Или введите причину..." />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setRejectingId(null)}>Отмена</button>
-                <button style={{ ...st.btnDanger, opacity: !rejectReason.trim() ? 0.5 : 1 }} disabled={actionLoading || !rejectReason.trim()} onClick={() => act(() => rejectOrder(order.id, rejectReason).then(() => setRejectingId(null)))}>Отклонить</button>
+                <button style={{ ...st.btnDanger, opacity: !rejectReason.trim() ? 0.5 : 1 }} disabled={actionLoading || !rejectReason.trim()} onClick={() => act(() => rejectOrder(order.id, rejectReason, currentUser?.name, currentUser?.role).then(() => setRejectingId(null)))}>Отклонить</button>
               </div>
             </div>
           )}
@@ -766,7 +766,7 @@ function CreateOrderModal({ onClose, onSave, couriers = [] }) {
         bottle_surcharge: bottleSurcharge,
         latitude: lat,
         longitude: lng,
-        creator_role: 'manager',
+        creator_role: currentUser?.role || 'manager',
         courier_id: courierId ? Number(courierId) : null,
       })
       onClose()

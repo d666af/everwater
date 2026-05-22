@@ -233,9 +233,13 @@ export const confirmOrder = (orderId) =>
     () => ({ ok: true })
   )
 
-export const rejectOrder = (orderId, reason) =>
+export const rejectOrder = (orderId, reason, rejectedByName, rejectedByRole) =>
   safeCall(
-    () => http.patch(`/orders/${orderId}/reject`, { reason }).then(r => r.data),
+    () => http.patch(`/orders/${orderId}/reject`, {
+      reason,
+      rejected_by_name: rejectedByName || undefined,
+      rejected_by_role: rejectedByRole || undefined,
+    }).then(r => r.data),
     () => ({ ok: true })
   )
 

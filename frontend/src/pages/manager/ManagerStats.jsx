@@ -112,20 +112,40 @@ function CancelledCard({ count, dateParams }) {
             <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: 12 }}>Нет данных</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {orders.map((o, i) => (
+              {orders.map((o) => (
                 <div key={o.id} style={{ background: '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: '3px solid #E03131' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>Заказ #{o.id}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: TEXT2 }}>{o.client_name}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{o.client_name}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#E03131' }}>
                       {Math.round(o.total).toLocaleString('ru-RU')} сум
                     </span>
                   </div>
-                  {o.address && (
-                    <div style={{ fontSize: 12, color: TEXT2, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {o.address}
+                  {/* Composition */}
+                  {(o.items || []).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 4 }}>
+                      {o.items.map((it, j) => (
+                        <div key={j} style={{ fontSize: 12, color: TEXT }}>
+                          <span style={{ fontWeight: 700, color: '#C92A2A' }}>{it.quantity} шт.</span>{' '}
+                          <span>{it.name}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
+                  {o.return_bottles_count > 0 && (
+                    <div style={{ fontSize: 11, color: '#12B886', marginBottom: 2 }}>↩ Возврат: {o.return_bottles_count} бут.</div>
+                  )}
+                  {o.bottles_lent > 0 && (
+                    <div style={{ fontSize: 11, color: '#E67700', marginBottom: 2 }}>📦 Одолжить: {o.bottles_lent} бут.</div>
+                  )}
+                  {o.bottle_surcharge > 0 && (
+                    <div style={{ fontSize: 11, color: '#E67700', marginBottom: 2 }}>💰 Надбавка: +{Math.round(o.bottle_surcharge).toLocaleString('ru-RU')} сум</div>
+                  )}
+                  {/* Meta */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, marginBottom: 4 }}>
+                    {o.creator && <div style={{ fontSize: 11, color: TEXT2 }}>✍️ Создал: <span style={{ color: TEXT, fontWeight: 600 }}>{o.creator}</span></div>}
+                    {o.assigner && <div style={{ fontSize: 11, color: TEXT2 }}>👤 Назначил курьера: <span style={{ color: TEXT, fontWeight: 600 }}>{o.assigner}</span></div>}
+                    {o.courier_name && <div style={{ fontSize: 11, color: TEXT2 }}>🚴 Курьер: <span style={{ color: TEXT, fontWeight: 600 }}>{o.courier_name}</span></div>}
+                  </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                     <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
                       Отменил: {o.cancelled_by}
