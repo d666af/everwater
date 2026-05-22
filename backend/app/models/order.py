@@ -72,6 +72,7 @@ class Order(Base):
 
     # Telegram status message tracking (for edit-in-place notifications)
     client_status_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    courier_status_msg_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     notification_msg_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     manager_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     creator_role: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 'manager' | 'courier' | 'agent' | None

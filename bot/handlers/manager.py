@@ -231,29 +231,20 @@ async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
         await call.message.answer(f"Введите причину отклонения заказа #{order_id}:")
         return
     reason = _REJECT_REASONS.get(reason_key, reason_key)
-    await _do_reject(call, order_id, reason)
+    await _do_reject(call, order_id, reason,
+                     rejected_by_name=call.from_user.full_name, rejected_by_role="manager")
 
 
-async def _do_reject(target, order_id: int, reason: str):
+async def _do_reject(target, order_id: int, reason: str,
+                     rejected_by_name: str | None = None, rejected_by_role: str | None = None):
     try:
-        await api.reject_order(order_id, reason, from_bot=True)
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=rejected_by_name, rejected_by_role=rejected_by_role)
     except Exception as e:
         if "409" in str(e):
             if isinstance(target, CallbackQuery):
                 await target.message.answer("⚠️ Заказ уже обработан другим администратором.")
             return
-    order = await api.get_order(order_id)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            send = target.bot.send_message if isinstance(target, CallbackQuery) else target.bot.send_message
-            await send(
-                client_tg,
-                f"❌ Ваш заказ #{order_id} отклонён.\nПричина: {reason}\n"
-                "Если есть вопросы — обратитесь в поддержку."
-            )
-        except Exception:
-            pass
     reply_text = f"❌ Заказ #{order_id} отклонён.\nПричина: {reason}"
     if isinstance(target, CallbackQuery):
         try:
@@ -271,7 +262,8 @@ async def mgr_reject_custom_reason(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data["reject_order_id"]
     await state.clear()
-    await _do_reject(message, order_id, message.text.strip())
+    await _do_reject(message, order_id, message.text.strip(),
+                     rejected_by_name=message.from_user.full_name, rejected_by_role="manager")
 
 
 @router.message(MgrReject.waiting_reason)
@@ -281,7 +273,8 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data["reject_order_id"]
     await state.clear()
-    await _do_reject(message, order_id, message.text.strip())
+    await _do_reject(message, order_id, message.text.strip(),
+                     rejected_by_name=message.from_user.full_name, rejected_by_role="manager")
 
 
 @router.callback_query(F.data.startswith("mgr:assign:"))
@@ -322,42 +315,21 @@ async def mgr_set_courier(call: CallbackQuery):
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
-    courier_notified = False
-    client_notified = False
-    courier_err = ""
-    client_err = ""
 
     if courier and courier.get("telegram_id"):
         try:
-            await call.bot.send_message(
+            sent = await call.bot.send_message(
                 courier["telegram_id"],
                 "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order),
                 reply_markup=courier_assignment_kb(order_id, order),
                 parse_mode="HTML",
             )
-            courier_notified = True
-        except Exception as e:
-            courier_err = str(e)
-    elif not courier:
-        courier_err = "курьер не найден"
-    elif not courier.get("telegram_id"):
-        courier_err = "нет telegram_id у курьера"
-
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            courier_name = courier["name"] if courier else "Курьер"
-            courier_phone = courier.get("phone", "") if courier else ""
-            phone_line = f"\nТелефон курьера: {courier_phone}" if _is_phone(courier_phone) else ""
-            await call.bot.send_message(
-                client_tg,
-                f"🚴 {courier_name} назначен на ваш заказ!\nОжидайте доставку.{phone_line}",
-            )
-            client_notified = True
-        except Exception as e:
-            client_err = str(e)
-    else:
-        client_err = "нет telegram_id у клиента"
+            try:
+                await api.save_courier_msg_id(order_id, sent.message_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
@@ -423,24 +395,14 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     reason = "Отменён менеджером"
     try:
-        await api.reject_order(order_id, reason, from_bot=True)
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role="manager")
     except Exception as e:
         if "409" in str(e):
             await call.message.answer("⚠️ Заказ уже обработан.")
             return
 
     order = await api.get_order(order_id)
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            await call.bot.send_message(
-                client_tg,
-                f"❌ Ваш заказ #{order_id} отменён.\nПричина: {reason}\n"
-                "Если есть вопросы — обратитесь в поддержку.",
-            )
-        except Exception:
-            pass
-
     try:
         await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     except Exception:
