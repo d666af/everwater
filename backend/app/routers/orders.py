@@ -504,6 +504,10 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     was_assigned = order.courier_id is not None
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
+    if body.rejected_by_name:
+        order.rejected_by_name = body.rejected_by_name
+    if body.rejected_by_role:
+        order.rejected_by_role = body.rejected_by_role
 
     client_tg = order.user.telegram_id if order.user else None
     client_name = (order.user.name if order.user else None) or ""
@@ -1528,6 +1532,9 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         creator_role=order.creator_role,
         creator_name=order.creator_name,
         assigner_name=order.assigner_name,
+        assigner_role=order.assigner_role,
+        rejected_by_name=order.rejected_by_name,
+        rejected_by_role=order.rejected_by_role,
         review_id=order.review.id if order.review else None,
         notification_msg_ids=order.notification_msg_ids,
         client_bottles_owed=client_bottles_owed,

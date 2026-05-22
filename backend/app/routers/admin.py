@@ -549,6 +549,7 @@ async def get_cancelled_orders_list(
     date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy.orm import selectinload
     now = datetime.utcnow()
     if date_from:
         df = datetime.strptime(date_from, "%Y-%m-%d")
@@ -566,29 +567,70 @@ async def get_cancelled_orders_list(
             since = now - timedelta(days=30)
 
     q = await db.execute(
-        select(Order, User.name.label("client_name"))
-        .join(User, User.id == Order.user_id)
+        select(Order)
         .where(and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since, Order.created_at <= until))
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.user),
+            selectinload(Order.courier),
+        )
         .order_by(Order.created_at.desc())
     )
-    rows = q.all()
+    orders = q.scalars().all()
+    _ROLE_LABELS = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент", "client": "Клиент"}
     result = []
-    for order, client_name in rows:
+    for order in orders:
         reason = order.rejection_reason or order.cancellation_reason or ""
-        if order.rejection_reason:
+        # Use stored rejected_by if available, else fall back to heuristic
+        if order.rejected_by_role and order.rejected_by_name:
+            cancelled_by = f"{_ROLE_LABELS.get(order.rejected_by_role, order.rejected_by_role)} {order.rejected_by_name}"
+        elif order.rejected_by_role:
+            cancelled_by = _ROLE_LABELS.get(order.rejected_by_role, order.rejected_by_role)
+        elif order.rejection_reason:
             cancelled_by = "Менеджер"
         elif order.cancellation_reason:
             cancelled_by = "Клиент"
         else:
             cancelled_by = "Администратор"
+        # Build items list
+        items = [
+            {"name": i.product.name if i.product else "—", "quantity": i.quantity}
+            for i in order.items if i.quantity > 0
+        ]
+        # Creator
+        creator_role = order.creator_role or ""
+        creator_name = order.creator_name or ""
+        if creator_role:
+            creator_str = _ROLE_LABELS.get(creator_role, creator_role.capitalize())
+            if creator_name:
+                creator_str += f" {creator_name}"
+        else:
+            client_name_val = order.user.name if order.user else ""
+            creator_str = f"Клиент{' ' + client_name_val if client_name_val else ''}"
+        # Assigner
+        assigner_str = ""
+        if order.assigner_name:
+            assigner_role_lbl = _ROLE_LABELS.get(order.assigner_role or "", "") if order.assigner_role else ""
+            assigner_str = f"{assigner_role_lbl} {order.assigner_name}".strip()
+        # Courier name
+        courier_name = order.courier.name if order.courier else ""
         result.append({
             "id": order.id,
-            "client_name": client_name or "",
+            "client_name": order.user.name if order.user else "",
             "address": order.address or "",
             "total": round(order.total, 2),
             "reason": reason,
             "cancelled_by": cancelled_by,
+            "cancelled_by_role": order.rejected_by_role or "",
+            "cancelled_by_name": order.rejected_by_name or "",
             "created_at": order.created_at.isoformat(),
+            "items": items,
+            "return_bottles_count": order.return_bottles_count or 0,
+            "bottles_lent": order.bottles_lent or 0,
+            "bottle_surcharge": order.bottle_surcharge or 0,
+            "creator": creator_str,
+            "assigner": assigner_str,
+            "courier_name": courier_name,
         })
     return result
 
