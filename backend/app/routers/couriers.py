@@ -1113,7 +1113,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             if _m:
                 kb_rows.append([{"text": "🗺 На карте", "url": _m}])
             kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-            await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
+            c_sent = await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
+            if c_sent:
+                await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_sent))
+                await db.commit()
 
             if client_tg:
                 await _tg(client_tg, (
@@ -1139,13 +1142,29 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 f"Сумма: {_fmt_nm(total_int)} сум\n\n"
                 f"✅ Курьер {courier_name_m} назначен"
             )
-            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+            import json as _json_mod
+            from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
             _all_aids_m = await _get_all_admin_ids(db)
-            for aid in _all_aids_m:
-                await _tg(aid, info_text)
-            for m in mgrs:
-                if m.telegram_id and m.telegram_id not in _all_aids_m:
-                    await _tg(m.telegram_id, info_text)
+            _msg_ids_m: list = []
+            _seen_m: set[int] = set()
+            for _aid in _all_aids_m:
+                if _aid not in _seen_m:
+                    _seen_m.add(_aid)
+                    _r = await _tsc(_aid, info_text)
+                    if _r:
+                        _msg_ids_m.append(_r)
+            for _mgr in mgrs:
+                _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else _mgr.get("telegram_id")
+                _active = _mgr.is_active if hasattr(_mgr, "is_active") else _mgr.get("is_active", True)
+                if _active and _tg_id:
+                    _tid = int(_tg_id)
+                    if _tid not in _seen_m:
+                        _seen_m.add(_tid)
+                        _r = await _tsc(_tid, info_text)
+                        if _r:
+                            _msg_ids_m.append(_r)
+            await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod.dumps(_msg_ids_m)))
+            await db.commit()
         else:
             if client_tg:
                 items_lines_fmt = "\n".join(
