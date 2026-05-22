@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -14,6 +14,7 @@ const TYPES = [
   { key: 'all', label: 'Все', color: TEXT2, bg: '#F2F2F7', activeBg: '#E5E5EA', activeBorder: BORDER },
   { key: 'production', label: 'Производство', color: '#2B8A3E', bg: '#EBFBEE', activeBorder: '#2B8A3E' },
   { key: 'issue', label: 'Выдача', color: '#E67700', bg: '#FFF3D9', activeBorder: '#E67700' },
+  { key: 'factory_issue', label: 'Завод', color: '#9C36B5', bg: '#F8EBFC', activeBorder: '#9C36B5' },
   { key: 'bottle_return', label: 'Возврат тары', color: '#1971C2', bg: '#E8F4FD', activeBorder: '#1971C2' },
 ]
 
@@ -28,10 +29,13 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [type, setType] = useState('all')
   const [productName, setProductName] = useState('all')
   const [courierId, setCourierId] = useState('all')
+  const [factoryId, setFactoryId] = useState('all')
   const [productPickerOpen, setProductPickerOpen] = useState(false)
   const [courierPickerOpen, setCourierPickerOpen] = useState(false)
+  const [factoryPickerOpen, setFactoryPickerOpen] = useState(false)
 
   const [couriers, setCouriers] = useState([])
+  const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [history, setHistory] = useState([])
   const [courierStats, setCourierStats] = useState([])
@@ -52,6 +56,9 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     getWarehouseCourierStats('all')
       .then(cs => setCourierStats(cs || []))
       .catch(console.error)
+    getFactories()
+      .then(fs => setFactories(Array.isArray(fs) ? fs : []))
+      .catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -65,17 +72,19 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       type: type === 'all' ? undefined : type,
       product: productName === 'all' ? undefined : productName,
       courier_id: courierId === 'all' ? null : Number(courierId),
+      factory_id: factoryId === 'all' ? null : Number(factoryId),
     }
     getWarehouseHistory(filters)
       .then(data => setHistory([...data].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [period, customDate, customDateTo, type, productName, courierId])
+  }, [period, customDate, customDateTo, type, productName, courierId, factoryId])
 
   const summary = useMemo(() => {
     const prodByProduct = {}   // { name: { qty, cost } }
     const issueByProduct = {}  // { name: { qty, cost } }
     const returnByCourier = {} // { name: qty }
+    const factoryByFactory = {} // { name: qty }
     history.forEach(h => {
       if (h.type === 'production') {
         const name = h.product_name || h.product_short || '—'
@@ -83,11 +92,15 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         prodByProduct[name].qty += h.quantity
         if (h.cost_price) prodByProduct[name].cost += h.quantity * h.cost_price
       }
-      if (h.type === 'issue' || h.type === 'issued') {
+      if (h.type === 'issue' || h.type === 'issued' || h.type === 'factory_issue') {
         const name = h.product_name || h.product_short || '—'
         if (!issueByProduct[name]) issueByProduct[name] = { qty: 0, cost: 0 }
         issueByProduct[name].qty += h.quantity
         if (h.cost_price) issueByProduct[name].cost += h.quantity * h.cost_price
+      }
+      if (h.type === 'factory_issue') {
+        const fn = h.factory_name || '—'
+        factoryByFactory[fn] = (factoryByFactory[fn] || 0) + h.quantity
       }
       if (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned') {
         const cn = h.courier_name || '—'
@@ -95,7 +108,8 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       }
     })
     const totalReturned = Object.values(returnByCourier).reduce((s, v) => s + v, 0)
-    return { prodByProduct, issueByProduct, returnByCourier, totalReturned }
+    const totalFactory = Object.values(factoryByFactory).reduce((s, v) => s + v, 0)
+    return { prodByProduct, issueByProduct, returnByCourier, factoryByFactory, totalReturned, totalFactory }
   }, [history])
 
   const debtCouriers = courierId === 'all'
@@ -108,6 +122,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     Object.keys(summary.prodByProduct).length > 0 ||
     Object.keys(summary.issueByProduct).length > 0 ||
     Object.keys(summary.returnByCourier).length > 0 ||
+    Object.keys(summary.factoryByFactory).length > 0 ||
     debtCouriers.length > 0
   )
 
@@ -130,6 +145,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
 
   const selectedProduct = catalog.find(p => p.name === productName)
   const selectedCourier = couriers.find(c => String(c.id) === courierId)
+  const selectedFactory = factories.find(f => String(f.id) === factoryId)
 
   return (
     <Layout title={title}>
@@ -157,6 +173,15 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           value={courierId}
           onChange={v => { setCourierId(v); setCourierPickerOpen(false) }}
           onClose={() => setCourierPickerOpen(false)}
+        />
+      )}
+      {factoryPickerOpen && (
+        <PickerSheet
+          title="Завод"
+          options={[{ id: 'all', name: 'Все заводы' }, ...factories.map(f => ({ id: String(f.id), name: f.name }))]}
+          value={factoryId}
+          onChange={v => { setFactoryId(v); setFactoryPickerOpen(false) }}
+          onClose={() => setFactoryPickerOpen(false)}
         />
       )}
 
@@ -228,6 +253,19 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             {selectedCourier ? selectedCourier.name : 'Курьер'}
           </span>
         </button>
+        <button onClick={() => setFactoryPickerOpen(true)} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 12, cursor: 'pointer',
+          background: factoryId !== 'all' ? '#F8EBFC' : '#fff',
+          color: factoryId !== 'all' ? '#9C36B5' : TEXT2,
+          border: `1.5px solid ${factoryId !== 'all' ? '#9C36B5' : BORDER}`,
+          fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
+          overflow: 'hidden', minWidth: 0,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M3 21h18M5 21V9l5 3V9l5 3V9l4 2v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedFactory ? selectedFactory.name : 'Завод'}
+          </span>
+        </button>
       </div>
 
       {/* Summary sections */}
@@ -244,6 +282,13 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             <SummarySection title="Выдано" color="#E67700" bg="#FFF3D9">
               {Object.entries(summary.issueByProduct).map(([name, { qty, cost }]) => (
                 <SummaryRow key={name} label={name} value={`${qty} шт.`} sub={fmtSum(cost)} color="#E67700" />
+              ))}
+            </SummarySection>
+          )}
+          {Object.keys(summary.factoryByFactory).length > 0 && (
+            <SummarySection title={`Выдано заводу · ${summary.totalFactory} шт.`} color="#9C36B5" bg="#F8EBFC">
+              {Object.entries(summary.factoryByFactory).map(([name, qty]) => (
+                <SummaryRow key={name} label={name} value={`${qty} шт.`} color="#9C36B5" />
               ))}
             </SummarySection>
           )}
@@ -289,15 +334,25 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           {history.map((h, i) => {
             const isProd = h.type === 'production'
             const isIssue = h.type === 'issued' || h.type === 'issue'
+            const isFactoryIssue = h.type === 'factory_issue'
+            const isFactoryReturn = h.type === 'factory_return'
             const isRet = h.type === 'returned' || h.type === 'return' || h.type === 'bottle_return'
 
-            const color = isProd ? '#2B8A3E' : isIssue ? '#E67700' : '#1971C2'
-            const bg = isProd ? '#EBFBEE' : isIssue ? '#FFF3D9' : '#E8F4FD'
-            const sign = isProd ? '+' : isIssue ? '−' : '+'
+            const color = isProd ? '#2B8A3E'
+              : isIssue ? '#E67700'
+              : isFactoryIssue ? '#9C36B5'
+              : isFactoryReturn ? '#9C36B5'
+              : '#1971C2'
+            const bg = isProd ? '#EBFBEE'
+              : isIssue ? '#FFF3D9'
+              : (isFactoryIssue || isFactoryReturn) ? '#F8EBFC'
+              : '#E8F4FD'
+            // Goods leaving the warehouse use '−'; coming back use '+'
+            const sign = (isProd || isRet || isFactoryReturn) ? '+' : '−'
 
             const rowTitle = isProd
               ? (h.product_name || h.product_short || 'Производство')
-              : isIssue
+              : (isIssue || isFactoryIssue || isFactoryReturn)
               ? (h.product_name || h.product_short || 'Выдача')
               : 'Бутылки 19л'
 
@@ -305,21 +360,25 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
               ? `Производство${h.note ? ` · ${h.note}` : ''}`
               : isIssue
               ? `Выдача · ${h.courier_name || '—'}`
+              : isFactoryIssue
+              ? `Выдача заводу · ${h.factory_name || '—'}`
+              : isFactoryReturn
+              ? `Возврат от завода · ${h.factory_name || '—'}`
               : `Возврат тары · ${h.courier_name || '—'}`
 
-            const priceTotal = isIssue && h.price ? h.quantity * h.price : null
-            const costTotal = isIssue && h.cost_price ? h.quantity * h.cost_price : null
+            const priceTotal = (isIssue || isFactoryIssue) && h.price ? h.quantity * h.price : null
+            const costTotal = (isIssue || isFactoryIssue) && h.cost_price ? h.quantity * h.cost_price : null
             const debtNote = isRet && h.note ? h.note : null
 
             const ts = h.created_at || h.date
-            const showInvoice = h.batch_id && isIssue
+            const showInvoice = h.batch_id && (isIssue || isFactoryIssue)
 
             return (
               <div key={h.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                   {isProd && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke={color} strokeWidth="2.2" strokeLinecap="round"/></svg>}
-                  {isIssue && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                  {isRet && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  {(isIssue || isFactoryIssue) && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  {(isRet || isFactoryReturn) && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

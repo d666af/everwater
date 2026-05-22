@@ -178,7 +178,25 @@ async def get_stats(
         - (courier_returned_q.scalar() or 0)
     )
 
-    bottle_debt_count = client_debt_count + courier_debt_count
+    # Factory debt: 19L factory_issue − factory_return (all-time)
+    if prod_19l_ids:
+        factory_issued_q = await db.execute(
+            select(func.sum(WaterTransaction.quantity)).where(
+                and_(WaterTransaction.transaction_type == "factory_issue",
+                     WaterTransaction.product_id.in_(prod_19l_ids))
+            )
+        )
+        factory_returned_q = await db.execute(
+            select(func.sum(WaterTransaction.quantity)).where(
+                and_(WaterTransaction.transaction_type == "factory_return",
+                     WaterTransaction.product_id.in_(prod_19l_ids))
+            )
+        )
+        factory_debt_count = max(0, (factory_issued_q.scalar() or 0) - (factory_returned_q.scalar() or 0))
+    else:
+        factory_debt_count = 0
+
+    bottle_debt_count = client_debt_count + courier_debt_count + factory_debt_count
     bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
     bottles_lent_total = (await db.execute(
@@ -237,7 +255,7 @@ async def get_stats(
         .join(Product, Product.id == WaterTransaction.product_id)
         .where(
             _tx_time(
-                WaterTransaction.transaction_type == "issue",
+                WaterTransaction.transaction_type.in_(["issue", "factory_issue"]),
                 WaterTransaction.product_id.isnot(None),
             )
         )
@@ -253,6 +271,35 @@ async def get_stats(
         }
         for row in warehouse_sales_q.all()
     ]
+
+    # Per-factory breakdown for the period (transactions per factory)
+    from app.models.factory import Factory as _Factory
+    factory_rows_q = await db.execute(
+        select(
+            _Factory.name,
+            Product.name.label("product_name"),
+            Product.price,
+            func.sum(WaterTransaction.quantity).label("qty"),
+        )
+        .join(_Factory, _Factory.id == WaterTransaction.factory_id)
+        .join(Product, Product.id == WaterTransaction.product_id)
+        .where(
+            _tx_time(
+                WaterTransaction.transaction_type == "factory_issue",
+                WaterTransaction.factory_id.isnot(None),
+            )
+        )
+        .group_by(_Factory.id, _Factory.name, Product.id, Product.name, Product.price)
+    )
+    _factory_map: dict[str, dict] = {}
+    for row in factory_rows_q.all():
+        fa = _factory_map.setdefault(row.name, {"name": row.name, "items": [], "total_qty": 0, "total_sum": 0.0})
+        qty = int(row.qty or 0)
+        line_sum = round(float(row.price or 0) * qty, 2)
+        fa["items"].append({"product_name": row.product_name, "qty": qty, "total": line_sum})
+        fa["total_qty"] += qty
+        fa["total_sum"] += line_sum
+    factory_stats = list(_factory_map.values())
 
     # Customer classification counts
     perm_filter = [Order.status == OrderStatus.DELIVERED]
@@ -297,10 +344,12 @@ async def get_stats(
         "bottles_surcharge_total": bottles_surcharge_total,
         "product_sales": product_sales,
         "warehouse_sales": warehouse_sales,
+        "factory_stats": factory_stats,
         "bottle_debt_count": bottle_debt_count,
         "bottle_debt_value": bottle_debt_value,
         "bottle_debt_clients": client_debt_count,
         "bottle_debt_couriers": courier_debt_count,
+        "bottle_debt_factories": factory_debt_count,
         "bottles_returned_to_warehouse": bottles_returned_to_warehouse,
         "permanent_customers": permanent_customers,
         "inactive_customers": inactive_customers,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -12,6 +12,8 @@ const GRAD = `linear-gradient(135deg, ${C}, ${CD})`
 const TEXT = '#1C1C1E'
 const TEXT2 = '#8E8E93'
 const BORDER = 'rgba(60,60,67,0.08)'
+const FAC = '#9C36B5'
+const FAC_BG = '#F8EBFC'
 
 const QUICK = [
   { key: 'today', label: 'Сегодня' },
@@ -34,6 +36,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [showIssue, setShowIssue] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [couriers, setCouriers] = useState([])
+  const [factories, setFactories] = useState([])
+  const [factoryModal, setFactoryModal] = useState(null) // { factory, mode: 'issue' | 'return' }
   const [adjustProduct, setAdjustProduct] = useState(null)
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
 
@@ -53,6 +57,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   useEffect(load, [period, customDate, customDateTo]) // eslint-disable-line
   useEffect(() => { getAdminCouriers().then(cs => setCouriers(cs.filter(c => c.is_active))).catch(console.error) }, [])
+  useEffect(() => { getFactories().then(fs => setFactories((fs || []).filter(f => f.is_active !== false))).catch(console.error) }, [])
 
   const applyCustom = (start, end) => {
     setCustomDate(start)   // YYYY-MM-DD string or null
@@ -86,6 +91,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
 
   const products = overview?.products || []
   const totals = overview?.totals || {}
+  const factoryStats = overview?.factories || []
   const shortfallItems = overview?.shortfall_items || []
   const lowStockProducts = products.filter(p => p.stock <= 10 && p.stock > 0)
 
@@ -95,6 +101,11 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
       {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp) => {
         const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn)
         if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
+        load()
+      }} />}
+      {factoryModal && <FactoryIssueModal factory={factoryModal.factory} mode={factoryModal.mode} onClose={() => setFactoryModal(null)} onSave={async (factoryName, items, mode) => {
+        if (mode === 'return') await factoryReturnBatch(factoryName, items, actor)
+        else await factoryIssueBatch(factoryName, items, actor)
         load()
       }} />}
       {adjustProduct && <AdjustStockModal product={adjustProduct} onClose={() => setAdjustProduct(null)} onSave={async (name, delta, type, note) => { await adjustStock(name, delta, type, note, actor); load() }} />}
@@ -168,6 +179,29 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         </button>
       </div>
 
+      {/* Factories — issue / return */}
+      {factories.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: FAC, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>Заводы</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {factories.map(f => (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#fff', borderRadius: 12, border: `1.5px solid ${FAC_BG}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: FAC, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: TEXT, minWidth: 0 }}>{f.name}</span>
+                <button onClick={() => setFactoryModal({ factory: f, mode: 'issue' })} style={{
+                  padding: '7px 12px', borderRadius: 10, border: 'none', background: FAC, color: '#fff',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+                }}>Выдать</button>
+                <button onClick={() => setFactoryModal({ factory: f, mode: 'return' })} style={{
+                  padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${FAC}`, background: '#fff', color: FAC,
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+                }}>Вернуть</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Period filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <div style={{ flex: 1 }}><SegGroup options={QUICK} value={period} onChange={setPeriod} /></div>
@@ -196,14 +230,40 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: '#1971C2', lineHeight: 1 }}>{totals.bottle_returns_period ?? 0}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Вернули</div>
+            {(totals.factory_returns_period ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: FAC, marginTop: 3, fontWeight: 700 }}>Заводы: {totals.factory_returns_period} бут.</div>
+            )}
           </div>
           <div style={{ width: 1, height: 36, background: BORDER, flexShrink: 0 }} />
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: TEXT, lineHeight: 1 }}>{totals.bottles_on_couriers ?? totals.on_couriers ?? 0}</div>
             <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, fontWeight: 600 }}>Должны вернуть</div>
+            {(totals.bottles_on_factories ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: FAC, marginTop: 3, fontWeight: 700 }}>Заводы: {totals.bottles_on_factories} бут.</div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Factory issues summary */}
+      {((totals.factory_period ?? 0) > 0 || factoryStats.length > 0) && (
+        <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: `1.5px solid ${FAC_BG}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: factoryStats.length > 0 ? 10 : 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: FAC, textTransform: 'uppercase', letterSpacing: 0.5 }}>Выдано заводу</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: FAC, lineHeight: 1 }}>{totals.factory_period ?? 0} <span style={{ fontSize: 12, fontWeight: 600, color: TEXT2 }}>шт.</span></span>
+          </div>
+          {factoryStats.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {factoryStats.map(f => (
+                <div key={f.id ?? f.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: FAC_BG, borderRadius: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{f.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: FAC }}>{f.issued_total ?? 0} шт.</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Section title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0 8px' }}>
@@ -615,6 +675,116 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
           <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
             {loading ? 'Выдаю...' : 'Выдать'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FactoryIssueModal({ factory, mode, onClose, onSave }) {
+  const isReturn = mode === 'return'
+  const [catalog, setCatalog] = useState([])
+  const [quantities, setQuantities] = useState({})
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    getProducts().then(ps => {
+      const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
+      setCatalog(list)
+    }).catch(console.error)
+  }, []) // eslint-disable-line
+
+  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
+
+  const batchItems = catalog
+    .filter(p => (quantities[p.id] || 0) > 0)
+    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
+
+  const dis = batchItems.length === 0
+
+  const handle = async () => {
+    if (dis) return
+    setError('')
+    setLoading(true)
+    try {
+      await onSave(factory.name, batchItems, mode)
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        ...st.sheet, padding: 0, gap: 0,
+        maxHeight: 'min(96dvh, 96vh)',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Fixed header */}
+        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+          <div style={st.handle} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{isReturn ? 'Вернуть от завода' : 'Выдать заводу'}</div>
+            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 10, background: FAC_BG, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: FAC }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: FAC }}>{factory.name}</span>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
+        </div>
+
+        {/* Scrollable products */}
+        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 240px)', flexShrink: 0 }}>
+          {catalog.length === 0 ? (
+            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {catalog.map(p => {
+                const q = quantities[p.id] || 0
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', borderRadius: 12,
+                    background: q > 0 ? FAC_BG : '#F8F9FA',
+                    border: `1.5px solid ${q > 0 ? FAC : BORDER}`,
+                  }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => setQty(p.id, q - 1)}
+                        style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
+                      >−</button>
+                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
+                        onChange={e => setQty(p.id, e.target.value)}
+                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? FAC : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? FAC : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                      />
+                      <button onClick={() => setQty(p.id, q + 1)}
+                        style={stepBtn({ background: q > 0 ? FAC : '#fff', border: `1.5px solid ${FAC}`, color: q > 0 ? '#fff' : FAC })}
+                      >+</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Fixed footer */}
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+          <button style={{ padding: 14, borderRadius: 14, border: 'none', background: FAC, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(156,54,181,0.35)', ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }} disabled={dis || loading} onClick={handle}>
+            {loading ? (isReturn ? 'Возвращаю...' : 'Выдаю...') : (isReturn ? 'Вернуть' : 'Выдать')}
           </button>
         </div>
       </div>

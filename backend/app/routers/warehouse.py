@@ -202,6 +202,7 @@ async def get_overview(
             "produced_period": 0,
             "issued_period": 0,
             "returned_period": 0,
+            "factory_period": 0,
         }
 
     # Current stock
@@ -228,11 +229,30 @@ async def get_overview(
             .where(WaterTransaction.transaction_type == "bottle_return")
         )
         bottles_on_couriers = max(0, (q19_issued.scalar() or 0) - (q19_returned.scalar() or 0))
+        # Factory bottle debt = all-time 19L factory_issue − factory_return
+        f19_issued = await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.transaction_type == "factory_issue")
+            .where(WaterTransaction.product_id.in_(product_19l_ids))
+        )
+        f19_returned = await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.transaction_type == "factory_return")
+            .where(WaterTransaction.product_id.in_(product_19l_ids))
+        )
+        bottles_on_factories = max(0, (f19_issued.scalar() or 0) - (f19_returned.scalar() or 0))
     else:
         bottles_on_couriers = 0
+        bottles_on_factories = 0
+
+    # Factory name lookup for the period breakdown
+    factories_all = (await db.execute(select(Factory))).scalars().all()
+    factory_names = {f.id: f.name for f in factories_all}
+    factory_agg: dict[int, dict] = {}
 
     # Transactions in period (skip "tomorrow" — nothing produced yet)
     bottle_returns_period = 0
+    factory_returns_period = 0
     if period != "tomorrow":
         tx_q = await db.execute(
             select(WaterTransaction).where(
@@ -240,15 +260,34 @@ async def get_overview(
             )
         )
         for tx in tx_q.scalars().all():
-            if tx.transaction_type == "bottle_return":
+            t = tx.transaction_type
+            if t == "bottle_return":
                 bottle_returns_period += tx.quantity
+            elif t == "factory_return":
+                factory_returns_period += tx.quantity
+            # Per-factory breakdown for the period
+            if t in ("factory_issue", "factory_return") and tx.factory_id:
+                fa = factory_agg.setdefault(
+                    tx.factory_id,
+                    {"id": tx.factory_id, "name": factory_names.get(tx.factory_id, "—"),
+                     "items": {}, "issued_total": 0, "returned_total": 0}
+                )
+                pname = per_product.get(tx.product_id, {}).get("product_name", "—")
+                if t == "factory_issue":
+                    fa["items"][pname] = fa["items"].get(pname, 0) + tx.quantity
+                    fa["issued_total"] += tx.quantity
+                else:
+                    fa["returned_total"] += tx.quantity
             if tx.product_id not in per_product:
                 continue
-            t = tx.transaction_type
             if t == "production":
                 per_product[tx.product_id]["produced_period"] += tx.quantity
             elif t == "issue":
                 per_product[tx.product_id]["issued_period"] += tx.quantity
+            elif t == "factory_issue":
+                # Count factory issues in "issued" total and in their own bucket
+                per_product[tx.product_id]["issued_period"] += tx.quantity
+                per_product[tx.product_id]["factory_period"] += tx.quantity
             elif t == "return":
                 per_product[tx.product_id]["returned_period"] += tx.quantity
 
@@ -292,6 +331,16 @@ async def get_overview(
         {"product_name": p["product_name"], "qty": p["shortfall"]}
         for p in products_list if p["shortfall"] > 0
     ]
+    factories_list = [
+        {
+            "id": fa["id"],
+            "name": fa["name"],
+            "issued_total": fa["issued_total"],
+            "returned_total": fa["returned_total"],
+            "items": [{"product_name": n, "qty": q} for n, q in fa["items"].items()],
+        }
+        for fa in factory_agg.values()
+    ]
     totals = {
         "stock":               sum(p["stock"] for p in products_list),
         "on_couriers":         sum(p["on_couriers"] for p in products_list),
@@ -301,15 +350,19 @@ async def get_overview(
         "produced_period":     sum(p["produced_period"] for p in products_list),
         "issued_period":       sum(p["issued_period"] for p in products_list),
         "returned_period":     sum(p["returned_period"] for p in products_list),
+        "factory_period":      sum(p["factory_period"] for p in products_list),
         "shortfall":           sum(p["shortfall"] for p in products_list),
         "needed_orders":       needed_orders,
         "delivered_orders":    delivered_count,
         "bottles_returned_period": bottles_returned_period,
         "bottle_returns_period":   bottle_returns_period,
+        "factory_returns_period":  factory_returns_period,
         "bottles_on_couriers": bottles_on_couriers,
+        "bottles_on_factories": bottles_on_factories,
         "bottles_owed_total":  0,
     }
-    return {"products": products_list, "totals": totals, "shortfall_items": shortfall_items, "period": period}
+    return {"products": products_list, "totals": totals, "shortfall_items": shortfall_items,
+            "factories": factories_list, "period": period}
 
 
 # ─── Production ───────────────────────────────────────────────────────────────
@@ -865,6 +918,127 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
     return {"ok": True, "batch_id": batch_id, "factory_id": factory.id}
 
 
+@router.post("/factory_return_batch")
+async def factory_return_batch(body: FactoryIssueBatchBody, db: AsyncSession = Depends(get_db)):
+    """Return water/bottles from a factory back to the warehouse (restores stock)."""
+    if not body.items:
+        raise HTTPException(400, "items is empty")
+
+    factory: Factory | None = None
+    if body.factory_id:
+        factory = (await db.execute(select(Factory).where(Factory.id == body.factory_id))).scalar_one_or_none()
+    if not factory and body.factory_name:
+        factory = (await db.execute(
+            select(Factory).where(Factory.name == body.factory_name)
+        )).scalar_one_or_none()
+    if not factory:
+        raise HTTPException(400, "factory_id or factory_name required")
+
+    resolved: list[tuple[Product, int]] = []
+    for it in body.items:
+        if it.quantity <= 0:
+            continue
+        prod = await _resolve_product(db, it.product_id, it.product_name)
+        resolved.append((prod, it.quantity))
+    if not resolved:
+        raise HTTPException(400, "All items have zero quantity")
+
+    batch_id = str(uuid.uuid4())
+    _ts: datetime | None = None
+    if body.created_at:
+        _ts = body.created_at.replace(tzinfo=None) if body.created_at.tzinfo else body.created_at
+
+    for prod, qty in resolved:
+        stock = await _ensure_stock(db, prod.id)
+        stock.quantity += qty
+        tx = WaterTransaction(
+            product_id=prod.id,
+            factory_id=factory.id,
+            courier_id=None,
+            order_id=None,
+            transaction_type="factory_return",
+            quantity=qty,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+            performed_by=body.performed_by,
+        )
+        if _ts:
+            tx.created_at = _ts
+        db.add(tx)
+
+    await db.commit()
+    return {"ok": True, "batch_id": batch_id, "factory_id": factory.id}
+
+
+@router.get("/factory_stats")
+async def factory_stats(
+    period: str = "today",
+    date: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Per-factory transaction breakdown for the period (for warehouse/admin cards)."""
+    since, until = _period_range(period, date, None, None, date_to)
+
+    factories = (await db.execute(select(Factory).order_by(Factory.name))).scalars().all()
+    if not factories:
+        return []
+
+    product_19l_ids = [
+        p.id for p in (await db.execute(select(Product))).scalars().all()
+        if int(float(p.volume)) == 19
+    ]
+
+    result = []
+    for f in factories:
+        # Period transactions joined with product for breakdown
+        tx_q = await db.execute(
+            select(WaterTransaction, Product)
+            .outerjoin(Product, WaterTransaction.product_id == Product.id)
+            .where(WaterTransaction.factory_id == f.id)
+            .where(WaterTransaction.created_at >= since)
+            .where(WaterTransaction.created_at <= until)
+        )
+        issued: dict[str, int] = {}
+        returned_total = 0
+        issued_total = 0
+        issued_sum = 0.0
+        for tx, prod in tx_q.all():
+            short = _short_name(prod.volume, prod.type) if prod else "—"
+            if tx.transaction_type == "factory_issue":
+                issued[short] = issued.get(short, 0) + tx.quantity
+                issued_total += tx.quantity
+                issued_sum += tx.quantity * float(prod.price or 0) if prod else 0
+            elif tx.transaction_type == "factory_return":
+                returned_total += tx.quantity
+
+        # All-time 19L bottle debt for the factory
+        f_issued = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.factory_id == f.id)
+            .where(WaterTransaction.transaction_type == "factory_issue")
+            .where(WaterTransaction.product_id.in_(product_19l_ids) if product_19l_ids else False)
+        )).scalar() or 0
+        f_returned = (await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.factory_id == f.id)
+            .where(WaterTransaction.transaction_type == "factory_return")
+            .where(WaterTransaction.product_id.in_(product_19l_ids) if product_19l_ids else False)
+        )).scalar() or 0
+        bottles_must_return = max(0, f_issued - f_returned)
+
+        result.append({
+            "id": f.id,
+            "name": f.name,
+            "issued": issued,
+            "issued_total": issued_total,
+            "issued_sum": round(issued_sum, 2),
+            "returned_total": returned_total,
+            "bottles_must_return": bottles_must_return,
+        })
+    return result
+
+
 class IssueOrderBody(BaseModel):
     order_id: int
     courier_id: int | None = None
@@ -1254,6 +1428,7 @@ async def get_history(
     type: str | None = None,
     product: str | None = None,
     courier_id: int | None = None,
+    factory_id: int | None = None,
     period: str = "all",
     date: str | None = None,
     time_from: str | None = None,
@@ -1289,6 +1464,9 @@ async def get_history(
 
     if courier_id:
         q = q.where(WaterTransaction.courier_id == courier_id)
+
+    if factory_id:
+        q = q.where(WaterTransaction.factory_id == factory_id)
 
     q = q.offset(offset).limit(limit)
     result = await db.execute(q)

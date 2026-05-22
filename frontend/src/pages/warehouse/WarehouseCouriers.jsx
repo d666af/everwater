@@ -4,6 +4,7 @@ import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
   issueBatchToCourier, getInvoiceUrl,
+  getFactoryStats, factoryIssueBatch, factoryReturnBatch,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
@@ -25,9 +26,11 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const [couriers, setCouriers] = useState([])
+  const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
   const [issueModal, setIssueModal] = useState(null) // courier object
+  const [factoryModal, setFactoryModal] = useState(null) // { factory, mode }
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
 
@@ -38,10 +41,12 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     Promise.all([
       getWarehouseCourierStats(period, cd, cdTo),
       getProducts(),
+      getFactoryStats(period, cd, cdTo),
     ])
-      .then(([cs, prods]) => {
+      .then(([cs, prods, fs]) => {
         setCouriers(cs)
         setCatalog((prods || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
+        setFactories(Array.isArray(fs) ? fs : [])
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -75,6 +80,16 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     load()
   }
 
+  const submitFactory = async (factoryName, items, mode) => {
+    if (mode === 'return') {
+      await factoryReturnBatch(factoryName, items, actor)
+    } else {
+      const res = await factoryIssueBatch(factoryName, items, actor)
+      if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: factoryName })
+    }
+    load()
+  }
+
   return (
     <Layout title={title}>
       {issueModal && (
@@ -100,6 +115,18 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           courierId={reportModal.id}
           courierName={reportModal.name}
           onClose={() => setReportModal(null)}
+        />
+      )}
+      {factoryModal && (
+        <FactoryIssueModal
+          factory={factoryModal.factory}
+          mode={factoryModal.mode}
+          catalog={catalog}
+          onClose={() => setFactoryModal(null)}
+          onSave={async (items, mode) => {
+            await submitFactory(factoryModal.factory.name, items, mode)
+            setFactoryModal(null)
+          }}
         />
       )}
       {pickerOpen && (
@@ -152,6 +179,23 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         </div>
       ) : (
         <>
+          {factories.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
+                Заводы · {periodLabel}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                {factories.map(f => (
+                  <FactoryCard
+                    key={f.id}
+                    f={f}
+                    onIssue={() => setFactoryModal({ factory: f, mode: 'issue' })}
+                    onReturn={() => setFactoryModal({ factory: f, mode: 'return' })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
             Курьеры · {periodLabel}
           </div>
@@ -242,6 +286,172 @@ function CourierCard({ c, onIssue, onReport }) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
         Отчёт курьера
       </button>
+    </div>
+  )
+}
+
+function FactoryCard({ f, onIssue, onReturn }) {
+  const PURP = '#9C36B5'
+  const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
+  const issuedProducts = Object.entries(f.issued || {}).filter(([, q]) => q > 0)
+  const mustBottles = f.bottles_must_return || 0
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: '1px solid rgba(156,54,181,0.15)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, background: PURP_GRAD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V9l5 3V9l5 3V9l4 2v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+          <div style={{ fontSize: 11, color: PURP, marginTop: 1, fontWeight: 600 }}>Завод</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1, background: '#FAFAFA', borderRadius: 12, padding: '8px 10px', minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Выдано</div>
+          {issuedProducts.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {issuedProducts.map(([name, qty]) => (
+                <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 4, flex: 1 }}>{name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: PURP, flexShrink: 0 }}>{qty}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 11, color: TEXT2 }}>—</span>
+          )}
+        </div>
+        <div style={{ flex: 0, flexBasis: 90, background: mustBottles > 0 ? '#F8EBFC' : '#F8F9FA', borderRadius: 12, padding: '8px 10px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: PURP, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бут. 19л</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
+            <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>должен</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+        <button onClick={onIssue} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 10, border: 'none',
+          background: PURP_GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать
+        </button>
+        <button onClick={onReturn} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${PURP}`,
+          background: '#fff', color: PURP, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Вернуть
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function FactoryIssueModal({ factory, mode: initialMode, catalog, onClose, onSave }) {
+  const [mode, setMode] = useState(initialMode || 'issue')
+  const [quantities, setQuantities] = useState({})
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const PURP = '#9C36B5'
+  const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
+
+  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
+
+  const batchItems = catalog
+    .filter(p => (quantities[p.id] || 0) > 0)
+    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
+  const dis = batchItems.length === 0
+
+  const handle = async () => {
+    if (dis) return
+    setError('')
+    setLoading(true)
+    try {
+      await onSave(batchItems, mode)
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
+      setLoading(false)
+    }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, padding: 0, gap: 0, maxHeight: 'min(96dvh, 96vh)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+          <div style={st.handle} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{mode === 'return' ? 'Возврат с завода' : 'Выдача заводу'}</div>
+            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          <div style={{ fontSize: 13, color: TEXT2, marginBottom: 10 }}>
+            Завод: <b style={{ color: TEXT }}>{factory.name}</b>
+          </div>
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button onClick={() => setMode('issue')} style={{
+              flex: 1, padding: '8px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: mode === 'issue' ? PURP_GRAD : '#F2F2F7', color: mode === 'issue' ? '#fff' : TEXT2,
+              border: 'none',
+            }}>Выдать</button>
+            <button onClick={() => setMode('return')} style={{
+              flex: 1, padding: '8px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: mode === 'return' ? PURP_GRAD : '#F2F2F7', color: mode === 'return' ? '#fff' : TEXT2,
+              border: 'none',
+            }}>Вернуть</button>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 280px)', flexShrink: 0 }}>
+          {catalog.length === 0 ? (
+            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {catalog.map(p => {
+                const q = quantities[p.id] || 0
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 12,
+                    background: q > 0 ? '#F8EBFC' : '#F8F9FA',
+                    border: `1.5px solid ${q > 0 ? PURP : BORDER}`,
+                  }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => setQty(p.id, q - 1)} style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}>−</button>
+                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
+                        onChange={e => setQty(p.id, e.target.value)}
+                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? PURP : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? PURP : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
+                      />
+                      <button onClick={() => setQty(p.id, q + 1)} style={stepBtn({ background: q > 0 ? PURP_GRAD : '#fff', border: `1.5px solid ${PURP}`, color: q > 0 ? '#fff' : PURP })}>+</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+          <button style={{ ...st.primaryBtn, background: PURP_GRAD, boxShadow: '0 4px 16px rgba(156,54,181,0.35)', ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
+            {loading ? 'Сохраняю...' : (mode === 'return' ? 'Вернуть' : 'Выдать')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
