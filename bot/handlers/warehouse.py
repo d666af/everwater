@@ -831,7 +831,7 @@ async def _show_cancel_list(target, state: FSMContext, page: int = 0):
 async def wh_cancel_start(message: Message, state: FSMContext):
     if not await is_warehouse(message.from_user.id):
         return
-    batches = await api.get_warehouse_batches(performed_by="Группа накладных")
+    batches = await api.get_warehouse_batches()
     await state.update_data(wh_cancel_batches=batches)
     await _show_cancel_list(message, state, page=0)
 

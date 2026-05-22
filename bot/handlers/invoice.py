@@ -49,6 +49,27 @@ PRODUCT_PATTERNS = [
 ]
 
 
+def _qty_from_price_sum(line_text: str) -> int | None:
+    """Derive quantity from price × qty = sum on an invoice row.
+
+    Handles space-grouped numbers like '18 000' (price) and '1 008 000' (sum).
+    Returns qty if a valid pair is found and sum / price is an integer in 1-500.
+    """
+    big = sorted([
+        int(m.group().replace(' ', ''))
+        for m in re.finditer(r'\b\d{1,3}(?:\s\d{3})+\b|\b\d{5,}\b', line_text)
+    ])
+    prices = [v for v in big if 1_000 <= v <= 99_999]
+    sums   = [v for v in big if v >= 100_000]
+    for price in prices:
+        for total in sums:
+            if total % price == 0:
+                qty = total // price
+                if 1 <= qty <= 500:
+                    return qty
+    return None
+
+
 # ─── OCR ──────────────────────────────────────────────────────────────────────
 
 def _remove_grid_lines(img):
@@ -128,9 +149,9 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                     continue
                 key = (data['block_num'][idx], data['par_num'][idx], data['line_num'][idx])
                 word_lines.setdefault(key, []).append((data['left'][idx], word))
-                # Group by y-position with 60px tolerance so each table row
+                # Group by y-position with 30px tolerance so each table row
                 # becomes one reconstructed line regardless of column layout
-                bucket = (data['top'][idx] // 60) * 60
+                bucket = (data['top'][idx] // 30) * 30
                 y_groups.setdefault(bucket, []).append((data['left'][idx], word))
             for key in sorted(word_lines):
                 line = ' '.join(w for _, w in sorted(word_lines[key]))
@@ -282,12 +303,19 @@ def _parse_invoice(text: str) -> dict | None:
             cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
             found_qty = None
             inline_found = False
-            for n in re.findall(r'\b(\d+)\b', cleaned):
-                v = int(n)
-                if 1 <= v <= 500:
-                    found_qty = v
-                    inline_found = True
-                    break
+            # Prefer price/sum cross-check: qty = sum ÷ price (survives OCR digit drops)
+            computed_qty = _qty_from_price_sum(line)
+            if computed_qty:
+                found_qty = computed_qty
+                inline_found = True
+            else:
+                for n in re.findall(r'\b(\d+)\b', cleaned):
+                    v = int(n)
+                    # Skip return_qty — column-scan OCR can interleave rows
+                    if 1 <= v <= 500 and v != result['return_qty']:
+                        found_qty = v
+                        inline_found = True
+                        break
             # OCR column-scan puts the qty BEFORE the product-name line.
             # "возврат" label line is skipped (continue) rather than stopped
             # so we can look past it to the qty that lies further back.
@@ -306,7 +334,7 @@ def _parse_invoice(text: str) -> dict | None:
                         continue
                     for n in re.findall(r'\b(\d+)\b', cleaned_prev):
                         v = int(n)
-                        if 1 <= v <= 500:
+                        if 1 <= v <= 500 and v != result['return_qty']:
                             found_qty = v
                             break
                     if found_qty:
@@ -330,7 +358,7 @@ def _parse_invoice(text: str) -> dict | None:
                         continue
                     for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
                         v = int(n)
-                        if 1 <= v <= 500:
+                        if 1 <= v <= 500 and v != result['return_qty']:
                             found_qty = v
                             break
                     if found_qty:
@@ -414,18 +442,24 @@ def _parse_invoice(text: str) -> dict | None:
     # Last-resort EVER: "ever" mentioned but no items parsed
     # (column-scan may have put the qty too far from the label for forward search)
     if not result['items'] and re.search(r'\bever\b', full, re.IGNORECASE):
-        # Strip prices (4+ digit numbers), dates, times, volume annotations
-        scan_text = re.sub(r'\d{4,}', '', full)
-        scan_text = re.sub(r'\d{1,2}[.:]\d{2}(:\d{2})?', '', scan_text)
-        scan_text = re.sub(r'\d{1,2}[./]\d{2}[./]\d{4}', '', scan_text)
-        scan_text = re.sub(r'\d+\s*л', '', scan_text, flags=re.IGNORECASE)
-        candidates = [int(n) for n in re.findall(r'\b(\d{1,3})\b', scan_text)
-                      if 1 <= int(n) <= 500]
-        if candidates:
-            # Prefer a value different from return_qty; fallback to any
-            qty = next((n for n in candidates if n != result['return_qty']), candidates[0])
-            result['items'].append({'raw_name': 'EVER 20л', 'qty': qty})
-            log.info("Last-resort EVER qty=%d from text scan", qty)
+        # First try price/sum cross-check on the full text
+        computed_qty = _qty_from_price_sum(full)
+        if computed_qty:
+            result['items'].append({'raw_name': 'EVER 20л', 'qty': computed_qty})
+            log.info("Last-resort EVER qty=%d from price/sum", computed_qty)
+        else:
+            # Strip prices (4+ digit numbers), dates, times, volume annotations
+            scan_text = re.sub(r'\d{4,}', '', full)
+            scan_text = re.sub(r'\d{1,2}[.:]\d{2}(:\d{2})?', '', scan_text)
+            scan_text = re.sub(r'\d{1,2}[./]\d{2}[./]\d{4}', '', scan_text)
+            scan_text = re.sub(r'\d+\s*л', '', scan_text, flags=re.IGNORECASE)
+            candidates = [int(n) for n in re.findall(r'\b(\d{1,3})\b', scan_text)
+                          if 1 <= int(n) <= 500]
+            if candidates:
+                # Prefer a value different from return_qty; fallback to any
+                qty = next((n for n in candidates if n != result['return_qty']), candidates[0])
+                result['items'].append({'raw_name': 'EVER 20л', 'qty': qty})
+                log.info("Last-resort EVER qty=%d from text scan", qty)
 
     # Last-resort phone: scan every line individually
     if not result['courier_phone']:
