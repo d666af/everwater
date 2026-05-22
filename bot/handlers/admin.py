@@ -268,7 +268,8 @@ async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.reject_order(order_id, "Отменён администратором", from_bot=True)
+    await api.reject_order(order_id, "Отменён администратором", from_bot=True,
+                           rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
     order = await api.get_order(order_id)
     await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
     await call.answer("❌ Заказ отменён")
@@ -346,7 +347,8 @@ async def admin_reject_reason(message: Message, state: FSMContext):
     order_id = data["reject_order_id"]
     reason = message.text.strip()
     try:
-        await api.reject_order(order_id, reason, from_bot=True)
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=message.from_user.full_name, rejected_by_role="admin")
     except Exception as e:
         await state.clear()
         if "409" in str(e):
@@ -354,17 +356,7 @@ async def admin_reject_reason(message: Message, state: FSMContext):
         else:
             await message.answer("❌ Ошибка при отклонении заказа.")
         return
-    order = await api.get_order(order_id)
     await state.clear()
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            await message.bot.send_message(
-                client_tg,
-                f"❌ Ваш заказ #{order_id} отклонён.\nПричина: {reason}"
-            )
-        except Exception:
-            pass
     await message.answer(f"❌ Заказ #{order_id} отклонён. Причина: {reason}")
 
 
@@ -375,51 +367,29 @@ async def admin_set_courier(call: CallbackQuery):
     await call.answer()  # acknowledge immediately — all work below can exceed 10s
     parts = call.data.split(":")
     order_id, courier_id = int(parts[2]), int(parts[3])
-    assign_result = {}
     try:
-        assign_result = await api.assign_courier(order_id, courier_id, from_bot=True, manager_telegram_id=call.from_user.id) or {}
+        await api.assign_courier(order_id, courier_id, from_bot=True, manager_telegram_id=call.from_user.id)
     except Exception:
         await call.answer("❌ Не удалось назначить курьера. Попробуйте ещё раз.", show_alert=True)
         return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     courier = next((c for c in couriers if c["id"] == courier_id), None)
-    courier_notified = False
-    client_notified = False
-    courier_err = ""
-    client_err = ""
 
     if courier and courier.get("telegram_id"):
         try:
-            await call.bot.send_message(
+            sent = await call.bot.send_message(
                 courier["telegram_id"],
                 "🚴 Вам назначен новый заказ!\n\n" + courier_assignment_text(order),
                 reply_markup=courier_assignment_kb(order_id, order),
                 parse_mode="HTML",
             )
-            courier_notified = True
-        except Exception as e:
-            courier_err = str(e)
-    elif not courier:
-        courier_err = "курьер не найден"
-    elif not courier.get("telegram_id"):
-        courier_err = "нет telegram_id у курьера"
-
-    client_tg = order.get("client_telegram_id")
-    if client_tg:
-        try:
-            courier_name = courier["name"] if courier else "Курьер"
-            courier_phone = courier.get("phone", "") if courier else ""
-            phone_line = f"\nТелефон курьера: {courier_phone}" if _is_phone(courier_phone) else ""
-            await call.bot.send_message(
-                client_tg,
-                f"🚴 Курьер {courier_name} назначен на ваш заказ!\nОжидайте доставку.{phone_line}",
-            )
-            client_notified = True
-        except Exception as e:
-            client_err = str(e)
-    else:
-        client_err = "нет telegram_id у клиента"
+            try:
+                await api.save_courier_msg_id(order_id, sent.message_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)

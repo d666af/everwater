@@ -208,9 +208,19 @@ async def confirm_order(order_id: int, from_bot: bool = True):
     return await _patch(f"/orders/{order_id}/confirm", params={"from_bot": str(from_bot).lower()})
 
 
-async def reject_order(order_id: int, reason: str = "", from_bot: bool = True):
-    return await _patch(f"/orders/{order_id}/reject", {"reason": reason},
+async def reject_order(order_id: int, reason: str = "", from_bot: bool = True,
+                       rejected_by_name: str | None = None, rejected_by_role: str | None = None):
+    body: dict = {"reason": reason}
+    if rejected_by_name:
+        body["rejected_by_name"] = rejected_by_name
+    if rejected_by_role:
+        body["rejected_by_role"] = rejected_by_role
+    return await _patch(f"/orders/{order_id}/reject", body,
                         params={"from_bot": str(from_bot).lower()})
+
+
+async def save_courier_msg_id(order_id: int, msg_id: int):
+    return await _patch(f"/orders/{order_id}/courier_msg_id", {"msg_id": msg_id})
 
 
 async def cancel_order(order_id: int):

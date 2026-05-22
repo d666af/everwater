@@ -102,6 +102,25 @@ async def _tg_edit_or_send(chat_id: int, text: str, msg_id: int | None) -> int |
     return await _tg_send(chat_id, text)
 
 
+async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None) -> bool:
+    """Edit a Telegram message text and remove/replace its inline keyboard.
+    Pass reply_markup=None to remove the keyboard (sends empty InlineKeyboardMarkup)."""
+    from app.config import settings as cfg
+    import aiohttp
+    if not chat_id or not message_id:
+        return False
+    payload: dict = {"chat_id": chat_id, "message_id": message_id, "text": text,
+                     "reply_markup": reply_markup if reply_markup is not None else {}}
+    url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/editMessageText"
+    try:
+        async with aiohttp.ClientSession() as s:
+            r = await s.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5))
+            data = await r.json()
+            return bool(data.get("ok"))
+    except Exception:
+        return False
+
+
 async def _save_status_msg_id(db: AsyncSession, order_id: int, msg_id: int):
     """Persist the Telegram message_id used for client status notifications."""
     await db.execute(sa_update(Order).where(Order.id == order_id).values(client_status_msg_id=msg_id))
@@ -470,6 +489,8 @@ async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession 
 
 class RejectBody(BaseModel):
     reason: str = ""
+    rejected_by_name: str | None = None
+    rejected_by_role: str | None = None
 
 
 @router.patch("/{order_id}/reject")
@@ -485,25 +506,66 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     order.rejection_reason = body.reason
 
     client_tg = order.user.telegram_id if order.user else None
+    client_name = (order.user.name if order.user else None) or ""
     old_msg_id = order.client_status_msg_id
-    items = _order_items_text(order.items)
+    courier_tg = order.courier.telegram_id if order.courier else None
+    courier_status_msg_id = order.courier_status_msg_id
+    items_text = _order_items_text(order.items)
+    items_priced = "\n".join(
+        f"  • {i.product.name} {i.quantity} шт. х {int(i.price):,} сум"
+        for i in order.items if i.product
+    ) or "—"
+    order_phone = order.recipient_phone
     oid = order.id
 
     if was_assigned:
         await _release_inventory(order, db, consume=False)
     await db.commit()
 
+    # Build detailed rejection notification for staff
+    _ROLE_LABELS = {"manager": "Менеджером", "admin": "Администратором", "courier": "Курьером"}
+    reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
+    if body.rejected_by_name and body.rejected_by_role:
+        role_label = _ROLE_LABELS.get(body.rejected_by_role, body.rejected_by_role.capitalize())
+        by_line = f" {role_label} {body.rejected_by_name}"
+    else:
+        by_line = ""
+    client_line = f"Клиент: {client_name} {order_phone}".strip() if (client_name or order_phone) else ""
+    staff_text = (
+        f"❌ Заказ #{oid} отклонён{by_line}\n"
+        + (f"{client_line}\n" if client_line else "")
+        + (f"{items_priced}\n" if items_priced != "—" else "")
+        + (f"Причина: {body.reason}" if body.reason else "")
+    ).strip()
+
     from app.services.tg_notify import edit_all_notifications
-    reason_part = f" · {body.reason}" if body.reason else ""
-    await edit_all_notifications(msg_ids_json, f"❌ Заказ #{oid} отклонён{reason_part}")
+    await edit_all_notifications(msg_ids_json, staff_text)
 
-    if not from_bot:
-        reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
-        text = f"❌ Заказ отклонён.\n{items}{reason_txt}"
-        new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
-        if new_msg_id and new_msg_id != old_msg_id:
-            await _save_status_msg_id(db, oid, new_msg_id)
+    # Notify courier if assigned
+    if courier_tg:
+        courier_reject_text = f"❌ Заказ #{oid} отменён\n{reason_txt}".strip()
+        if courier_status_msg_id:
+            await _tg_edit(courier_tg, courier_status_msg_id, courier_reject_text, reply_markup=None)
+        else:
+            await _tg(courier_tg, courier_reject_text)
 
+    client_reject_text = f"❌ Заказ отклонён.\n{items_text}{reason_txt}"
+    new_msg_id = await _tg_edit_or_send(client_tg, client_reject_text, old_msg_id)
+    if new_msg_id and new_msg_id != old_msg_id:
+        await _save_status_msg_id(db, oid, new_msg_id)
+
+    return {"ok": True}
+
+
+class CourierMsgIdBody(BaseModel):
+    msg_id: int
+
+
+@router.patch("/{order_id}/courier_msg_id")
+async def save_courier_msg_id_endpoint(order_id: int, body: CourierMsgIdBody,
+                                       db: AsyncSession = Depends(get_db)):
+    await db.execute(sa_update(Order).where(Order.id == order_id).values(courier_status_msg_id=body.msg_id))
+    await db.commit()
     return {"ok": True}
 
 
@@ -717,7 +779,10 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         elif order_address:
             _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={_uq(order_address)}"}])
         _kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-        await _tg_send(courier_tg, courier_text, {"inline_keyboard": _kb_rows})
+        c_msg_id = await _tg_send(courier_tg, courier_text, {"inline_keyboard": _kb_rows})
+        if c_msg_id:
+            await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_msg_id))
+            await db.commit()
         text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
