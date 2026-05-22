@@ -245,7 +245,7 @@ async def _do_reject(target, order_id: int, reason: str,
             if isinstance(target, CallbackQuery):
                 await target.message.answer("⚠️ Заказ уже обработан другим администратором.")
             return
-    reply_text = f"❌ Заказ #{order_id} отклонён.\nПричина: {reason}"
+    reply_text = f"❌ Заказ #{order_id} отменён.\nПричина: {reason}"
     if isinstance(target, CallbackQuery):
         try:
             await target.message.edit_text(reply_text)

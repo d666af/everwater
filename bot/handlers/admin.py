@@ -357,7 +357,7 @@ async def admin_reject_reason(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при отклонении заказа.")
         return
     await state.clear()
-    await message.answer(f"❌ Заказ #{order_id} отклонён. Причина: {reason}")
+    await message.answer(f"❌ Заказ #{order_id} отменён. Причина: {reason}")
 
 
 @router.callback_query(F.data.startswith("admin:set_courier:"))

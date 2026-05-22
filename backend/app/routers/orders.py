@@ -560,7 +560,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
             rejector_suffix = f" {role_lbl}"
     else:
         rejector_suffix = ""
-    title = f"❌ Заказ отклонён{rejector_suffix}"
+    title = f"❌ Заказ отменён{rejector_suffix}"
 
     client_line = f"Клиент: {client_name} {order_phone}".strip() if (client_name or order_phone) else ""
 
@@ -611,7 +611,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 
     # Client gets simple format without prices or meta
     client_reject_text = (
-        "❌ Заказ отклонён"
+        "❌ Заказ отменён"
         + (f"\n{items_block_simple}" if items_block_simple else "")
         + (f"\n{bottle_block}" if bottle_block else "")
         + (f"\nПричина: {body.reason}" if body.reason else "")
