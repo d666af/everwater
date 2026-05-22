@@ -510,55 +510,104 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     old_msg_id = order.client_status_msg_id
     courier_tg = order.courier.telegram_id if order.courier else None
     courier_status_msg_id = order.courier_status_msg_id
+    courier_name = (order.courier.name if order.courier else None) or ""
+    courier_phone = (order.courier.phone if order.courier else None) or ""
+    assigner_name = order.assigner_name or ""
+    creator_role = order.creator_role or ""
+    creator_name = order.creator_name or ""
     order_phone = order.recipient_phone
     oid = order.id
     return_bottles = order.return_bottles_count or 0
     bottles_lent = order.bottles_lent or 0
-    bottle_surcharge = order.bottle_surcharge or 0.0
+    bottle_surcharge_val = order.bottle_surcharge or 0.0
 
-    items_lines = [
+    # Build all blocks before commit (relationships expire after)
+    items_lines_priced = [
         f"• {i.product.name} {i.quantity} шт. х {int(i.price):,} сум"
         for i in order.items if i.product
     ]
-    items_block = "\n".join(items_lines)
+    items_lines_simple = [
+        f"• {i.product.name} {i.quantity} шт."
+        for i in order.items if i.product
+    ]
+    items_block_priced = "\n".join(items_lines_priced)
+    items_block_simple = "\n".join(items_lines_simple)
 
     bottle_lines = []
     if return_bottles:
         bottle_lines.append(f"♻️ Возврат бутылок: {return_bottles} шт.")
     if bottles_lent:
-        bottle_lines.append(f"📦 Одолжено: {bottles_lent} шт.")
-    if bottle_surcharge:
-        bottle_lines.append(f"💰 Надбавка за невозврат: {int(bottle_surcharge):,} сум")
+        bottle_lines.append(f"📦 Одолжить: {bottles_lent} шт.")
+    if bottle_surcharge_val:
+        bottle_lines.append(f"💰 Надбавка за невозврат: {int(bottle_surcharge_val):,} сум")
     bottle_block = "\n".join(bottle_lines)
 
     if was_assigned:
         await _release_inventory(order, db, consume=False)
     await db.commit()
 
-    # Build unified rejection text for all staff recipients (admins, managers, courier)
+    # Build rejector title suffix
+    _REJECTOR_LABELS = {
+        "admin": "администратором", "manager": "менеджером",
+        "courier": "курьером", "client": "клиентом", "agent": "агентом",
+    }
+    if body.rejected_by_role:
+        role_lbl = _REJECTOR_LABELS.get(body.rejected_by_role, body.rejected_by_role)
+        if body.rejected_by_name and body.rejected_by_role != "client":
+            rejector_suffix = f" {role_lbl} {body.rejected_by_name}"
+        else:
+            rejector_suffix = f" {role_lbl}"
+    else:
+        rejector_suffix = ""
+    title = f"❌ Заказ отклонён{rejector_suffix}"
+
     client_line = f"Клиент: {client_name} {order_phone}".strip() if (client_name or order_phone) else ""
-    reject_text = (
-        "❌ Заказ отклонён"
+
+    # Extra lines shown only to admin/manager
+    courier_line = f"🚴 Курьер: {courier_name} {courier_phone}".strip() if courier_name else ""
+    assigner_line = f"👤 Назначил: {assigner_name}" if assigner_name else ""
+    _CREATOR_LABELS = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    if creator_role and creator_name:
+        creator_line = f"✍️ Заказ создан: {_CREATOR_LABELS.get(creator_role, creator_role.capitalize())} {creator_name}"
+    elif creator_role:
+        creator_line = f"✍️ Заказ создан: {_CREATOR_LABELS.get(creator_role, creator_role.capitalize())}"
+    else:
+        creator_line = ""
+    staff_extra = "\n".join(filter(None, [courier_line, assigner_line, creator_line]))
+
+    # Staff text (admins/managers) — full details with courier and creator info
+    staff_text = (
+        title
         + (f"\n{client_line}" if client_line else "")
-        + (f"\n{items_block}" if items_block else "")
+        + (f"\n{items_block_priced}" if items_block_priced else "")
+        + (f"\n{bottle_block}" if bottle_block else "")
+        + (f"\n{staff_extra}" if staff_extra else "")
+        + (f"\nПричина: {body.reason}" if body.reason else "")
+    )
+
+    # Courier text — rejector info + client/items, no courier/creator meta
+    courier_reject_text = (
+        title
+        + (f"\n{client_line}" if client_line else "")
+        + (f"\n{items_block_priced}" if items_block_priced else "")
         + (f"\n{bottle_block}" if bottle_block else "")
         + (f"\nПричина: {body.reason}" if body.reason else "")
     )
 
     from app.services.tg_notify import edit_all_notifications
-    await edit_all_notifications(msg_ids_json, reject_text)
+    await edit_all_notifications(msg_ids_json, staff_text)
 
-    # Notify courier if assigned — edit their assignment message (removes buttons)
+    # Notify courier — edit their assignment message (removes buttons)
     if courier_tg:
         if courier_status_msg_id:
-            await _tg_edit(courier_tg, courier_status_msg_id, reject_text, reply_markup=None)
+            await _tg_edit(courier_tg, courier_status_msg_id, courier_reject_text, reply_markup=None)
         else:
-            await _tg(courier_tg, reject_text)
+            await _tg(courier_tg, courier_reject_text)
 
-    # Client gets the same structured text (without "Клиент:" line since it's their own order)
+    # Client gets simple format without prices or meta
     client_reject_text = (
         "❌ Заказ отклонён"
-        + (f"\n{items_block}" if items_block else "")
+        + (f"\n{items_block_simple}" if items_block_simple else "")
         + (f"\n{bottle_block}" if bottle_block else "")
         + (f"\nПричина: {body.reason}" if body.reason else "")
     )
