@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder } from '../../api'
+import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -228,7 +229,7 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
                   {cancellingId === o.id && (
                     <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
                       <button style={{ padding: '5px 12px', borderRadius: 8, border: '1.5px solid #E03131', background: '#FFF5F5', color: '#E03131', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                        onClick={() => rejectOrder(o.id, 'Отменён менеджером').then(() => { setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: 'rejected' } : x)); setCancellingId(null) }).catch(() => setCancellingId(null))}>
+                        onClick={() => rejectOrder(o.id, '', currentUser?.name, currentUser?.role).then(() => { setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: 'rejected' } : x)); setCancellingId(null) }).catch(() => setCancellingId(null))}>
                         Подтвердить отмену
                       </button>
                       <button style={{ padding: '5px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
@@ -500,6 +501,7 @@ function Empty({ text }) {
 }
 
 export default function ManagerClients({ Layout = ManagerLayout, title = 'Клиенты' }) {
+  const { user: currentUser } = useAuthStore()
   const navigate = useNavigate()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)

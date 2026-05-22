@@ -516,6 +516,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     assigner_role = order.assigner_role or ""
     creator_role = order.creator_role or ""
     creator_name = order.creator_name or ""
+    agent_id_for_notify = order.agent_id
     order_phone = order.recipient_phone
     oid = order.id
     return_bottles = order.return_bottles_count or 0
@@ -599,15 +600,35 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
         + (f"\nПричина: {body.reason}" if body.reason else "")
     )
 
+    import json as _j
+    # Collect chat_ids already receiving staff notification (to deduplicate)
+    notified_chat_ids: set[int] = set()
+    if msg_ids_json:
+        try:
+            for m in _j.loads(msg_ids_json):
+                notified_chat_ids.add(int(m["chat_id"]))
+        except Exception:
+            pass
+
     from app.services.tg_notify import edit_all_notifications
     await edit_all_notifications(msg_ids_json, staff_text)
 
     # Notify courier — edit their assignment message (removes buttons)
     if courier_tg:
         if courier_status_msg_id:
-            await _tg_edit(courier_tg, courier_status_msg_id, courier_reject_text, reply_markup=None)
-        else:
+            await _tg_edit(int(courier_tg), courier_status_msg_id, courier_reject_text, reply_markup=None)
+        elif int(courier_tg) not in notified_chat_ids:
+            # Only send new message if courier isn't already in staff notification set
             await _tg(courier_tg, courier_reject_text)
+
+    # Notify agent if order was created by one (skip if already in staff notifications)
+    if agent_id_for_notify:
+        from app.models.agent import Agent
+        agent_row = (await db.execute(select(Agent).where(Agent.id == agent_id_for_notify))).scalar_one_or_none()
+        if agent_row and agent_row.telegram_id:
+            agent_tg = int(agent_row.telegram_id)
+            if agent_tg not in notified_chat_ids and agent_tg != (courier_tg and int(courier_tg)):
+                await _tg(agent_tg, courier_reject_text)
 
     # Client gets simple format without prices or meta
     client_reject_text = (
