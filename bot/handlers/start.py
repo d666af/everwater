@@ -190,6 +190,24 @@ async def escape_fsm_on_menu_btn(message: Message, state: FSMContext):
     role = _role_from_state(current_state) or await get_primary_role(message.from_user.id)
     subs_on = await api.is_subscriptions_enabled()
     sup_on = await api.is_support_chat_enabled()
+
+    # "📝 Создать заказ" must restart the order-creation flow, not just show the menu.
+    # Use primary role so multi-role users (manager+courier) get the right flow.
+    if message.text == "📝 Создать заказ":
+        primary = await get_primary_role(message.from_user.id)
+        if primary in ("admin",):
+            from handlers.admin import admin_create_order_start
+            await admin_create_order_start(message, state)
+        elif primary == "manager":
+            from handlers.manager import mgr_create_order_start
+            await mgr_create_order_start(message, state)
+        elif primary == "courier":
+            from handlers.courier import courier_create_order_start
+            await courier_create_order_start(message, state)
+        else:
+            await message.answer("Главное меню:", reply_markup=main_menu_kb(subs_enabled=subs_on))
+        return
+
     if role == "admin":
         from keyboards.admin import admin_menu_kb
         await message.answer("Главное меню:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
