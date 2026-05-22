@@ -239,9 +239,9 @@ export const rejectOrder = (orderId, reason) =>
     () => ({ ok: true })
   )
 
-export const assignCourier = (orderId, courierId, assignerName) =>
+export const assignCourier = (orderId, courierId, assignerName, assignerRole) =>
   safeCall(
-    () => http.patch(`/orders/${orderId}/assign_courier`, { courier_id: courierId, assigner_name: assignerName || undefined }).then(r => r.data),
+    () => http.patch(`/orders/${orderId}/assign_courier`, { courier_id: courierId, assigner_name: assignerName || undefined, assigner_role: assignerRole || undefined }).then(r => r.data),
     () => {
       const order = mockOrdersStore.find(o => o.id === orderId)
       if (order) {

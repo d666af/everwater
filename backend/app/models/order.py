@@ -78,6 +78,7 @@ class Order(Base):
     creator_role: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 'manager' | 'courier' | 'agent' | None
     creator_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     assigner_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    assigner_role: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 'manager' | 'admin'
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
 
     # Timestamps

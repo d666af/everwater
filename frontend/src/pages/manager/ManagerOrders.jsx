@@ -384,7 +384,7 @@ function OrderCard({
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setAssigningId(null)}>Отмена</button>
                       <button style={{ ...st.btnPrimary, opacity: !selectedCourier ? 0.5 : 1 }} disabled={actionLoading || !selectedCourier} onClick={() => act(() => {
-                        const doAssign = () => assignCourier(order.id, selectedCourier, currentUser?.name).then(() => setAssigningId(null))
+                        const doAssign = () => assignCourier(order.id, selectedCourier, currentUser?.name, currentUser?.role).then(() => setAssigningId(null))
                         return order.status === 'awaiting_confirmation' ? confirmOrder(order.id).then(doAssign) : doAssign()
                       })}>
                         Назначить

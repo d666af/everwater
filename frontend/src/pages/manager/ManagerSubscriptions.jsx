@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminSubscriptions, createOrderFromSubscription, getAdminCouriers, assignCourier } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -162,6 +163,7 @@ function CourierModal({ order, couriers, onAssign, onClose }) {
 }
 
 export default function ManagerSubscriptions({ Layout = ManagerLayout, title = 'Подписки' }) {
+  const { user: currentUser } = useAuthStore()
   const [plan, setPlan] = useState('weekly')
   const [subs, setSubs] = useState([])
   const [loading, setLoading] = useState(false)
@@ -209,7 +211,7 @@ export default function ManagerSubscriptions({ Layout = ManagerLayout, title = '
 
   const handleAssignCourier = async (orderId, courierId) => {
     try {
-      await assignCourier(orderId, courierId)
+      await assignCourier(orderId, courierId, currentUser?.name, currentUser?.role)
       setPendingOrder(null)
       showToast('✅ Курьер назначен!')
     } catch {
