@@ -74,6 +74,8 @@ class OrderOut(BaseModel):
     courier_name: str | None = None
     courier_phone: str | None = None
     manager_phone: str | None = None
+    creator_role: str | None = None
+    creator_name: str | None = None
     review_id: int | None = None
     queue_position: int | None = None
     notification_msg_ids: str | None = None

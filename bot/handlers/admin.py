@@ -141,6 +141,14 @@ def _admin_order_kb(o: dict):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+_CREATOR_ROLE_RU = {
+    "manager": "Менеджер",
+    "admin": "Администратор",
+    "courier": "Курьер",
+    "agent": "Агент",
+}
+
+
 def _order_detail_lines(o: dict) -> str:
     """Order info block without status badge, shared for notifications."""
     items = o.get("items", [])
@@ -165,14 +173,21 @@ def _order_detail_lines(o: dict) -> str:
     lent_count = o.get("bottles_lent") or 0
     lent_line = f"\n🔄 Одолжено: {lent_count} шт." if lent_count > 0 else ""
     lines += [f"\nТовары:\n{items_text}", f"💰 {fmt(o.get('total') or 0)}{delivery_part}  |  {pay}{bonus_part}{return_line}{lent_line}"]
+    creator_role = o.get("creator_role")
+    creator_name = o.get("creator_name")
+    if creator_role:
+        role_label = _CREATOR_ROLE_RU.get(creator_role, creator_role.capitalize())
+        creator_line = f"✍️ {role_label}: {creator_name}" if creator_name else f"✍️ {role_label}"
+        lines.append(creator_line)
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
     return "\n".join(lines)
 
 
-async def _notify_order_staff(bot, caller_id: int, text: str):
+async def _notify_order_staff(bot, caller_id: int, text: str, assigner_label: str | None = None):
     """Notify all admins+managers about an order action, skipping the caller to avoid duplicate."""
+    notify_text = text + f"\n\n👤 Назначил: {assigner_label}" if assigner_label else text
     recipients: set[int] = get_all_admin_ids()
     try:
         managers = await api.get_managers()
@@ -184,7 +199,7 @@ async def _notify_order_staff(bot, caller_id: int, text: str):
     recipients.discard(caller_id)
     for uid in recipients:
         try:
-            await bot.send_message(uid, text, parse_mode="HTML")
+            await bot.send_message(uid, notify_text, parse_mode="HTML")
         except Exception:
             pass
 
@@ -404,15 +419,15 @@ async def admin_set_courier(call: CallbackQuery):
         client_err = "нет telegram_id у клиента"
 
     courier_name = courier["name"] if courier else "?"
-    courier_phone = courier.get("phone", "") if courier else ""
-    phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
     body = _order_detail_lines(order)
-    result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
+    result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
+    assigner_name = call.from_user.full_name or "Администратор"
+    assigner_label = f"{assigner_name} (администратор)"
     try:
         await call.message.edit_text(result_text, parse_mode="HTML")
     except Exception:
         await call.message.answer(result_text, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, result_text)
+    await _notify_order_staff(call.bot, call.from_user.id, result_text, assigner_label=assigner_label)
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))
@@ -2264,6 +2279,7 @@ async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "admin",
+            "creator_name": call.from_user.full_name or "",
         })
         oid = result.get("order_id") or result.get("id", "?")
     except Exception:

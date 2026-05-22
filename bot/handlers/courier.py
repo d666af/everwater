@@ -1096,6 +1096,7 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
     return_bottles = data.get("co_return_bottles", 0)
     lent_bottles = data.get("co_lent_bottles", 0)
     surcharge = _calc_surcharge(data["co_items"], products, return_bottles, lent_bottles)
+    courier_self = await api.get_courier_by_telegram(call.from_user.id)
     try:
         await api.courier_create_order({
             "phone": data["co_phone"],
@@ -1107,6 +1108,7 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
             "bottle_surcharge": surcharge,
             "courier_telegram_id": call.from_user.id,
             "creator_role": "courier",
+            "creator_name": (courier_self or {}).get("name") or call.from_user.full_name or "",
         })
     except Exception:
         await call.message.edit_text("❌ Ошибка при создании заказа. Попробуйте ещё раз.")
