@@ -873,6 +873,16 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
     )
     last_order_map = {row.user_id: row.last_at for row in last_order_q.all()}
 
+    # Most recent order address per user (for nameless unregistered clients)
+    from sqlalchemy import text as _text
+    recent_addr_q = await db.execute(
+        _text(
+            "SELECT DISTINCT ON (user_id) user_id, address FROM orders "
+            "WHERE user_id IS NOT NULL ORDER BY user_id, created_at DESC"
+        )
+    )
+    recent_addr_map = {row.user_id: row.address for row in recent_addr_q.all()}
+
     def _label(user_id):
         cnt = delivered_counts_map.get(user_id, 0)
         last_at = last_order_map.get(user_id)
@@ -895,6 +905,7 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "bottles_owed": bottles_map.get(u.id, 0),
             "lent_bottles": lent_map.get(u.id, 0),
             "last_order_at": last_order_map.get(u.id),
+            "last_order_address": recent_addr_map.get(u.id),
             "customer_label": _label(u.id),
         }
         for u in users

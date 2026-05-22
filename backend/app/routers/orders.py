@@ -592,7 +592,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     # Capture everything needed for notifications BEFORE commit
     # (after commit SQLAlchemy expires all attributes → MissingGreenlet on lazy access)
     client_tg = order.user.telegram_id if order.user else None
-    client_name = order.user.name if order.user else "—"
+    client_name = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
     items_bullets = "\n".join(
@@ -672,6 +672,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         return {"ok": True}
 
     await _reserve_inventory(order, db)
+    order_assigner_name = order.assigner_name  # capture before commit expires it
     await db.commit()
 
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
@@ -684,6 +685,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     else:
         _client_label = client_name if client_name and client_name != "—" else "Клиент"
         _creator_line = f"\n✍️ Клиент: {_client_label}"
+    _assigner_line = f"\n👤 Назначил: {order_assigner_name}" if order_assigner_name else ""
     sync_text = (
         f"✅ Курьер {courier_name} назначен\n\n"
         f"👤 {client_name}  |  {order_phone}\n"
@@ -692,11 +694,13 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         f"💰 {order_total:,} сум  |  {pay_label_str}"
         f"{_creator_line}\n"
         f"🚴 {courier_name}{c_phone_part}"
+        f"{_assigner_line}"
     )
 
+    from app.services.tg_notify import edit_all_notifications
+    await edit_all_notifications(notification_msg_ids, sync_text)
+
     if not from_bot:
-        from app.services.tg_notify import edit_all_notifications
-        await edit_all_notifications(notification_msg_ids, sync_text)
 
         eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
         courier_text = (

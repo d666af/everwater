@@ -159,8 +159,8 @@ def _order_detail_lines(o: dict) -> str:
     items_text = "\n".join(item_lines) if item_lines else "—"
     pay = PAY_RU.get(o.get("payment_method", ""), "—")
     lines = [
-        f"👤 {o.get('client_name', '—')}  |  {o.get('recipient_phone', '—')}",
-        f"📍 {o.get('address', '—')}",
+        f"👤 {o.get('client_name') or '—'}  |  {o.get('recipient_phone') or '—'}",
+        f"📍 {o.get('address') or '—'}",
     ]
     if o.get("extra_info"):
         lines.append(f"ℹ️ {o['extra_info']}")
@@ -424,13 +424,10 @@ async def admin_set_courier(call: CallbackQuery):
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
-    assigner_name = call.from_user.full_name or "Администратор"
-    assigner_label = f"{assigner_name} (администратор)"
     try:
         await call.message.edit_text(result_text, parse_mode="HTML")
     except Exception:
         await call.message.answer(result_text, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, result_text, assigner_label=assigner_label)
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))

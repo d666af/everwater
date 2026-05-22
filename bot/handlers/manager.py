@@ -362,8 +362,6 @@ async def mgr_set_courier(call: CallbackQuery):
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
-    assigner_name = call.from_user.full_name or "Менеджер"
-    assigner_label = f"{assigner_name} (менеджер)"
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Заказы", url=_app("/manager"))]
     ])
@@ -371,7 +369,6 @@ async def mgr_set_courier(call: CallbackQuery):
         await call.message.edit_text(result_text, reply_markup=back_kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(result_text, reply_markup=back_kb, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, result_text, assigner_label=assigner_label)
 
 
 @router.callback_query(F.data.startswith("mgr:in_delivery:"))
