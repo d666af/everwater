@@ -643,6 +643,7 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
     lent_bottles = data.get("aco_lent_bottles", 0)
     surcharge = _calc_surcharge(data["aco_items"], products, return_bottles, lent_bottles)
     agent_id = data.get("aco_agent_id")
+    agent_self = await api.get_agent_by_telegram(call.from_user.id)
     try:
         result = await api.courier_create_order({
             "phone": data.get("aco_phone", ""),
@@ -653,6 +654,7 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "agent",
+            "creator_name": (agent_self or {}).get("name") or call.from_user.full_name or "",
             "agent_id": agent_id,
         })
         oid = result.get("order_id") or result.get("id", "?")
