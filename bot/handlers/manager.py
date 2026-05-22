@@ -360,10 +360,10 @@ async def mgr_set_courier(call: CallbackQuery):
         client_err = "нет telegram_id у клиента"
 
     courier_name = courier["name"] if courier else "?"
-    courier_phone = courier.get("phone", "") if courier else ""
-    phone_line = f"  |  {courier_phone}" if _is_phone(courier_phone) else ""
     body = _order_detail_lines(order)
-    result_text = f"✅ <b>Курьер {courier_name} назначен</b>{phone_line}\n\n{body}"
+    result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
+    assigner_name = call.from_user.full_name or "Менеджер"
+    assigner_label = f"{assigner_name} (менеджер)"
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Заказы", url=_app("/manager"))]
     ])
@@ -371,7 +371,7 @@ async def mgr_set_courier(call: CallbackQuery):
         await call.message.edit_text(result_text, reply_markup=back_kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(result_text, reply_markup=back_kb, parse_mode="HTML")
-    await _notify_order_staff(call.bot, call.from_user.id, result_text)
+    await _notify_order_staff(call.bot, call.from_user.id, result_text, assigner_label=assigner_label)
 
 
 @router.callback_query(F.data.startswith("mgr:in_delivery:"))
@@ -1415,6 +1415,7 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "manager",
+            "creator_name": (mgr or {}).get("name"),
             "manager_name": (mgr or {}).get("name"),
             "manager_phone": (mgr or {}).get("phone"),
         })

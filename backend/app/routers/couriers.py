@@ -755,6 +755,7 @@ class CourierOrderCreate(BaseModel):
     courier_telegram_id: int | None = None  # set when a courier creates the order
     courier_id: int | None = None           # set when manager pre-selects courier
     creator_role: str = "manager"           # "courier" | "manager" | "admin" | "agent"
+    creator_name: str | None = None
     manager_name: str | None = None
     manager_phone: str | None = None
     agent_id: int | None = None             # set when an agent creates the order
@@ -842,6 +843,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         longitude=body.longitude,
         status=OrderStatus.CONFIRMED,
         creator_role=body.creator_role,
+        creator_name=body.creator_name,
         agent_id=body.agent_id,
         manager_phone=body.manager_phone,
     )
@@ -1126,8 +1128,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"Ожидайте доставку.{phone_line}"
                 ))
 
+            _creator_label_m = f" {body.creator_name}" if body.creator_name else ""
             info_text = (
-                f"🆕 Новый заказ! Создан {role_label}\n"
+                f"🆕 Новый заказ! Создан {role_label}{_creator_label_m}\n"
                 f"Клиент: {mgr_client_identity}\n"
                 f"Адрес: {body.address}{note_line}\n\n"
                 f"Состав:\n{mgr_items_lines}"
@@ -1162,8 +1165,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"Мы уведомим вас когда подтвердят."
                 ))
 
+            _creator_label_nm = f" {body.creator_name}" if body.creator_name else ""
             text = (
-                f"🆕 Новый заказ! Создан {role_label}\n"
+                f"🆕 Новый заказ! Создан {role_label}{_creator_label_nm}\n"
                 f"Клиент: {mgr_client_identity}\n"
                 f"Адрес: {body.address}{note_line}\n\n"
                 f"Состав:\n{mgr_items_lines}"

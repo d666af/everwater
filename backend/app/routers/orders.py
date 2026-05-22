@@ -110,11 +110,18 @@ async def _save_status_msg_id(db: AsyncSession, order_id: int, msg_id: int):
 
 async def _notify_admins(db: AsyncSession, text: str):
     from app.services.tg_notify import get_all_admin_ids
+    seen: set[int] = set()
     for aid in await get_all_admin_ids(db):
+        if aid in seen:
+            continue
+        seen.add(aid)
         await _tg(aid, text)
     from app.models.manager import Manager
     mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
     for m in mgrs:
+        if not m.telegram_id or int(m.telegram_id) in seen:
+            continue
+        seen.add(int(m.telegram_id))
         await _tg(m.telegram_id, text)
 
 
@@ -1330,6 +1337,8 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         courier_name=order.courier.name if order.courier else None,
         courier_phone=order.courier.phone if order.courier else None,
         manager_phone=order.manager_phone,
+        creator_role=order.creator_role,
+        creator_name=order.creator_name,
         review_id=order.review.id if order.review else None,
         notification_msg_ids=order.notification_msg_ids,
         client_bottles_owed=client_bottles_owed,
