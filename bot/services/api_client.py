@@ -671,6 +671,29 @@ async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note
     return await _post("/warehouse/issue_batch", body)
 
 
+async def get_factories() -> list:
+    try:
+        return await _get("/warehouse/factories")
+    except Exception:
+        return []
+
+
+async def create_factory(name: str) -> dict:
+    return await _post("/warehouse/factories", {"name": name})
+
+
+async def factory_issue_batch(factory_name: str, items: list, performed_by: str = None,
+                               created_at: str = None) -> dict:
+    body = {
+        "factory_name": factory_name,
+        "items": items,
+        "performed_by": performed_by,
+    }
+    if created_at:
+        body["created_at"] = created_at
+    return await _post("/warehouse/factory_issue_batch", body)
+
+
 async def get_courier_by_phone(phone: str) -> dict | None:
     try:
         return await _get("/admin/couriers/by_phone", params={"phone": phone})

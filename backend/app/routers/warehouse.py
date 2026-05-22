@@ -11,6 +11,7 @@ from io import BytesIO
 
 from app.database import get_db
 from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff
+from app.models.factory import Factory
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
@@ -48,6 +49,8 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "product_id": tx.product_id,
         "product_name": tx.product.name if tx.product else None,
         "courier_id": tx.courier_id,
+        "factory_id": tx.factory_id,
+        "factory_name": tx.factory.name if tx.factory else None,
         "order_id": tx.order_id,
         "type": tx.transaction_type,
         "quantity": tx.quantity,
@@ -402,9 +405,11 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
     # Show "Итого" only when there are multiple regular items
     total_line = f"\nИтого: <b>{total_fmt} сум</b>" if len(regular) > 1 else ""
 
+    recip_name = getattr(courier, 'name', '—')
+    recip_phone = getattr(courier, 'phone', None)
     caption = (
         f"📋 <b>Накладная — выдача со склада</b>\n"
-        f"Курьер: <b>{courier.name}</b>{f' · {courier.phone}' if courier.phone else ''}\n\n"
+        f"Получатель: <b>{recip_name}</b>{f' · {recip_phone}' if recip_phone else ''}\n\n"
         f"{items_block}"
         f"{total_line}"
         f"{return_line}"
@@ -724,6 +729,140 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             pass
 
     return {"ok": True, "batch_id": batch_id}
+
+
+# ─── Factories CRUD ───────────────────────────────────────────────────────────
+
+@router.get("/factories")
+async def list_factories(db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(Factory).order_by(Factory.name))).scalars().all()
+    return [{"id": f.id, "name": f.name, "is_active": f.is_active} for f in rows]
+
+
+class FactoryBody(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+@router.post("/factories")
+async def create_factory(body: FactoryBody, db: AsyncSession = Depends(get_db)):
+    existing = (await db.execute(
+        select(Factory).where(Factory.name == body.name)
+    )).scalar_one_or_none()
+    if existing:
+        return {"id": existing.id, "name": existing.name, "is_active": existing.is_active}
+    f = Factory(name=body.name, is_active=body.is_active)
+    db.add(f)
+    await db.commit()
+    await db.refresh(f)
+    return {"id": f.id, "name": f.name, "is_active": f.is_active}
+
+
+@router.delete("/factories/{factory_id}")
+async def delete_factory(factory_id: int, db: AsyncSession = Depends(get_db)):
+    f = (await db.execute(select(Factory).where(Factory.id == factory_id))).scalar_one_or_none()
+    if f:
+        await db.delete(f)
+        await db.commit()
+    return {"ok": True}
+
+
+# ─── Factory issue batch ──────────────────────────────────────────────────────
+
+class FactoryIssueItem(BaseModel):
+    product_id: int | None = None
+    product_name: str | None = None
+    quantity: int
+
+
+class FactoryIssueBatchBody(BaseModel):
+    factory_id: int | None = None
+    factory_name: str | None = None
+    items: list[FactoryIssueItem] = []
+    note: str | None = None
+    performed_by: str | None = None
+    created_at: datetime | None = None
+
+
+@router.post("/factory_issue_batch")
+async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = Depends(get_db)):
+    """Issue water to a factory (no courier tracking, no bottle debt)."""
+    if not body.items:
+        raise HTTPException(400, "items is empty")
+
+    # Resolve or create factory
+    factory: Factory | None = None
+    if body.factory_id:
+        factory = (await db.execute(select(Factory).where(Factory.id == body.factory_id))).scalar_one_or_none()
+    if not factory and body.factory_name:
+        factory = (await db.execute(
+            select(Factory).where(Factory.name == body.factory_name)
+        )).scalar_one_or_none()
+        if not factory:
+            factory = Factory(name=body.factory_name)
+            db.add(factory)
+            await db.flush()
+    if not factory:
+        raise HTTPException(400, "factory_id or factory_name required")
+
+    resolved: list[tuple[Product, int]] = []
+    for it in body.items:
+        if it.quantity <= 0:
+            continue
+        prod = await _resolve_product(db, it.product_id, it.product_name)
+        resolved.append((prod, it.quantity))
+    if not resolved:
+        raise HTTPException(400, "All items have zero quantity")
+
+    batch_id = str(uuid.uuid4())
+    _ts: datetime | None = None
+    if body.created_at:
+        _ts = body.created_at.replace(tzinfo=None) if body.created_at.tzinfo else body.created_at
+
+    invoice_items: list[dict] = []
+    for prod, qty in resolved:
+        stock = await _ensure_stock(db, prod.id)
+        stock.quantity -= qty
+
+        tx = WaterTransaction(
+            product_id=prod.id,
+            factory_id=factory.id,
+            courier_id=None,
+            order_id=None,
+            transaction_type="factory_issue",
+            quantity=qty,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+            performed_by=body.performed_by,
+        )
+        if _ts:
+            tx.created_at = _ts
+        db.add(tx)
+        price = float(prod.price or 0)
+        invoice_items.append({
+            "name": prod.name, "unit": "Шт", "qty": qty,
+            "bonus": 0, "price": price, "sum": qty * price,
+        })
+
+    await db.commit()
+
+    # Generate and send invoice PNG to admins
+    try:
+        _when_utc = _ts or datetime.utcnow()
+        _when = _when_utc + timedelta(hours=5)
+        png = generate_invoice_png(
+            items=[{"name": "Возврат бутылок", "unit": "Шт", "qty": 0, "is_return": True}] + invoice_items,
+            courier_name=factory.name,
+            courier_phone=None,
+            vehicle_type=None,
+            vehicle_plate=None,
+            when=_when,
+        )
+        await _send_invoice_to_admins(png, factory, invoice_items, batch_id, body.performed_by, db)
+    except Exception:
+        pass
+
+    return {"ok": True, "batch_id": batch_id, "factory_id": factory.id}
 
 
 class IssueOrderBody(BaseModel):
@@ -1129,6 +1268,7 @@ async def get_history(
         .options(
             selectinload(WaterTransaction.product),
             selectinload(WaterTransaction.courier),
+            selectinload(WaterTransaction.factory),
         )
         .order_by(WaterTransaction.created_at.desc())
     )
@@ -1157,6 +1297,7 @@ async def get_history(
         {
             **_tx_out(tx),
             "courier_name": tx.courier.name if tx.courier else None,
+            "factory_name": tx.factory.name if tx.factory else None,
         }
         for tx in txs
     ]

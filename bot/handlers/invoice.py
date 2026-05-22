@@ -29,7 +29,7 @@ from aiogram.types import Message, PhotoSize
 from config import settings
 from services.roles import get_all_admin_ids
 from services.api_client import (
-    create_courier_from_invoice, issue_batch, get_products,
+    create_courier_from_invoice, issue_batch, get_products, factory_issue_batch,
 )
 
 log = logging.getLogger(__name__)
@@ -199,6 +199,7 @@ def _parse_invoice(text: str) -> dict | None:
         'items': [],
         'courier_phone': None,
         'courier_name': None,
+        'factory_name': None,
         'vehicle_type': None,
         'vehicle_plate': None,
     }
@@ -280,10 +281,12 @@ def _parse_invoice(text: str) -> dict | None:
             # Strip volume annotations ("20л") so they don't look like quantities
             cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
             found_qty = None
+            inline_found = False
             for n in re.findall(r'\b(\d+)\b', cleaned):
                 v = int(n)
                 if 1 <= v <= 500:
                     found_qty = v
+                    inline_found = True
                     break
             # OCR column-scan puts the qty BEFORE the product-name line.
             # "возврат" label line is skipped (continue) rather than stopped
@@ -333,36 +336,43 @@ def _parse_invoice(text: str) -> dict | None:
                     if found_qty:
                         break
             if found_qty:
-                # Deduplicate: only add if no EVER item with same qty already recorded
-                already = any(it['raw_name'] == 'EVER 20л' for it in result['items'])
-                if not already:
+                existing = next((it for it in result['items'] if it['raw_name'] == 'EVER 20л'), None)
+                if existing is None:
                     result['items'].append({'raw_name': 'EVER 20л', 'qty': found_qty})
+                elif inline_found and found_qty != existing['qty']:
+                    existing['qty'] = found_qty
 
-        # ── Courier row: "получатель  AKMAL  998 99 054 13 30" ──────────────
+        # ── Courier/Factory row: "получатель  AKMAL  998 99 054 13 30"
+        #                   or: "получатель  ZAVOD  MILK VILL" ──────────────
         if 'получатель' in low or re.search(r'poluch', low):
-            after = re.split(r'получатель|poluchatel?', line, flags=re.IGNORECASE)[-1]
-            name_m = _NAME_RE.search(after)
-            if name_m:
-                result['courier_name'] = name_m.group(0)
+            after = re.split(r'получатель|poluchatel?', line, flags=re.IGNORECASE)[-1].strip()
+            # ZAVOD / ЗАВОД as first token → factory delivery, no courier
+            zavod_m = re.match(r'(?:ZAVOD|ЗАВОД)\s+(.+)', after, re.IGNORECASE)
+            if zavod_m:
+                result['factory_name'] = zavod_m.group(1).strip()
             else:
-                # Name may be on the next line(s) when OCR splits label and value
-                for nxt in lines[i + 1:i + 4]:
-                    if _SECTION_STOP.search(nxt):
-                        break
-                    nm = _NAME_RE.search(nxt)
-                    if nm:
-                        result['courier_name'] = nm.group(0)
-                        break
-            if not result['courier_phone']:
-                ph2 = _normalize_phone(line)
-                if ph2:
-                    result['courier_phone'] = ph2
+                name_m = _NAME_RE.search(after)
+                if name_m:
+                    result['courier_name'] = name_m.group(0)
                 else:
-                    for nxt in lines[i + 1:i + 5]:
-                        ph2 = _normalize_phone(nxt)
-                        if ph2:
-                            result['courier_phone'] = ph2
+                    # Name may be on the next line(s) when OCR splits label and value
+                    for nxt in lines[i + 1:i + 4]:
+                        if _SECTION_STOP.search(nxt):
                             break
+                        nm = _NAME_RE.search(nxt)
+                        if nm:
+                            result['courier_name'] = nm.group(0)
+                            break
+                if not result['courier_phone']:
+                    ph2 = _normalize_phone(line)
+                    if ph2:
+                        result['courier_phone'] = ph2
+                    else:
+                        for nxt in lines[i + 1:i + 5]:
+                            ph2 = _normalize_phone(nxt)
+                            if ph2:
+                                result['courier_phone'] = ph2
+                                break
 
         # ── Vehicle row: "тип машины  LABO  30L700QA" ───────────────────────
         if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
@@ -441,8 +451,8 @@ def _parse_invoice(text: str) -> dict | None:
         if type_m and type_m.group(1) not in {'EVER', 'BCA'}:
             result['vehicle_type'] = type_m.group(1)
 
-    if not result['courier_phone'] and not result['courier_name']:
-        log.warning("Invoice parse: no courier info found in:\n%s", text[:400])
+    if not result['factory_name'] and not result['courier_phone'] and not result['courier_name']:
+        log.warning("Invoice parse: no courier or factory info found in:\n%s", text[:400])
         return None
     if not result['items'] and result['return_qty'] == 0:
         log.warning("Invoice parse: no items and no return in:\n%s", text[:400])
@@ -496,25 +506,6 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, perform
     if not parsed:
         return "❌ Не удалось распознать данные накладной.\n\nРаспознанный текст:\n" + text[:300]
 
-    phone = parsed['courier_phone']
-    name = parsed['courier_name'] or 'Неизвестный'
-    v_type = parsed['vehicle_type']
-    v_plate = parsed['vehicle_plate']
-
-    # Find or create courier (backend deduplicates by phone then by name)
-    try:
-        courier = await create_courier_from_invoice(
-            name=name, phone=phone or '',
-            vehicle_type=v_type, vehicle_plate=v_plate,
-        )
-    except Exception as e:
-        return f"❌ Ошибка создания/поиска курьера: {e}"
-
-    # Created new if the courier has no telegram_id (was created from invoice, not registered)
-    created_new = not courier.get('telegram_id')
-
-    courier_id = courier['id']
-
     # Resolve product IDs (one products fetch for all items)
     try:
         products = await get_products() or []
@@ -538,10 +529,50 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, perform
     if parsed['dt']:
         created_at_iso = parsed['dt'].astimezone(timezone.utc).isoformat()
 
-    # Issue (strip internal _name field before sending to API)
     api_items = [{"product_id": it["product_id"], "quantity": it["quantity"]} for it in issue_items]
+    dt_str = parsed['dt'].strftime('%d.%m.%Y %H:%M') if parsed['dt'] else '—'
+
+    # ── Factory delivery ──────────────────────────────────────────────────────
+    if parsed['factory_name']:
+        factory_name = parsed['factory_name']
+        try:
+            await factory_issue_batch(
+                factory_name=factory_name,
+                items=api_items,
+                performed_by=performed_by,
+                created_at=created_at_iso,
+            )
+        except Exception as e:
+            return f"❌ Ошибка выдачи заводу: {e}"
+
+        lines = [f"✅ Выдача заводу выполнена (накладная {dt_str})"]
+        lines.append(f"🏭 Завод: {factory_name}")
+        for it in issue_items:
+            prod_label = it.get('_name') or f"товар #{it['product_id']}"
+            lines.append(f"📦 Выдано: {it['quantity']} шт. ({prod_label})")
+        if not issue_items and re.search(r'\bever\b', text, re.IGNORECASE):
+            lines.append("⚠️ EVER не распознан — проверьте и добавьте вручную")
+        return '\n'.join(lines)
+
+    # ── Courier delivery ──────────────────────────────────────────────────────
+    phone = parsed['courier_phone']
+    name = parsed['courier_name'] or 'Неизвестный'
+    v_type = parsed['vehicle_type']
+    v_plate = parsed['vehicle_plate']
+
     try:
-        result = await issue_batch(
+        courier = await create_courier_from_invoice(
+            name=name, phone=phone or '',
+            vehicle_type=v_type, vehicle_plate=v_plate,
+        )
+    except Exception as e:
+        return f"❌ Ошибка создания/поиска курьера: {e}"
+
+    created_new = not courier.get('telegram_id')
+    courier_id = courier['id']
+
+    try:
+        await issue_batch(
             courier_id=courier_id,
             items=api_items,
             bottle_return=parsed['return_qty'],
@@ -553,8 +584,6 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, perform
     except Exception as e:
         return f"❌ Ошибка выдачи: {e}"
 
-    # Build result text
-    dt_str = parsed['dt'].strftime('%d.%m.%Y %H:%M') if parsed['dt'] else '—'
     lines = [f"✅ Выдача выполнена (накладная {dt_str})"]
     lines.append(f"👤 Курьер: {courier.get('name', name)}" + (" (новый)" if created_new else ""))
     if phone:

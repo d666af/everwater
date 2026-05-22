@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.warehouse import (
     warehouse_menu_kb, wh_prod_product_kb, wh_courier_select_kb,
-    wh_ir_catalog_kb, wh_report_period_kb,
+    wh_factory_select_kb, wh_ir_catalog_kb, wh_report_period_kb,
     wh_history_filter_kb, wh_period_kb, wh_stock_actions_kb, wh_low_stock_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
@@ -61,6 +61,7 @@ class ProductionState(StatesGroup):
 
 class IssueReturnState(StatesGroup):
     choosing_courier = State()
+    choosing_factory = State()
     choosing_item = State()
     entering_qty = State()
     entering_return = State()
@@ -176,21 +177,25 @@ async def _show_ir_catalog(message: Message, state: FSMContext, edit: bool = Fal
     catalog = data.get("ir_catalog", [])
     cart = data.get("ir_cart", {})
     return_qty = data.get("ir_return_qty", 0)
-    courier_name = data.get("ir_courier_name", "")
+    factory_mode = data.get("ir_factory_mode", False)
+    label = data.get("ir_factory_name", "") if factory_mode else data.get("ir_courier_name", "")
+    icon = "🏭" if factory_mode else "🔄"
 
-    lines = [f"🔄 <b>Выдать/Возврат · {courier_name}</b>\n"]
+    lines = [f"{icon} <b>{'Выдача заводу' if factory_mode else 'Выдать/Возврат'} · {label}</b>\n"]
     cart_items = [(v["name"], v["qty"]) for v in cart.values() if v["qty"] > 0]
     if cart_items:
         lines.append("📦 <b>Выдача:</b>")
         for name, qty in cart_items:
             lines.append(f"  • {name} — {qty} шт.")
-    if return_qty > 0:
+    if not factory_mode and return_qty > 0:
         lines.append(f"↩ <b>Возврат бутылок:</b> {return_qty} шт.")
-    if not cart_items and return_qty == 0:
+    if not cart_items and (factory_mode or return_qty == 0):
+        lines.append("Выберите продукт")
+    elif not cart_items:
         lines.append("Выберите продукт или укажите возврат бутылок")
 
     text = "\n".join(lines)
-    kb = wh_ir_catalog_kb(catalog, cart, return_qty)
+    kb = wh_ir_catalog_kb(catalog, cart, return_qty, show_return=not factory_mode)
     if edit:
         try:
             await message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -212,7 +217,8 @@ async def wh_ir_start(message: Message, state: FSMContext):
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
     operator = await _operator_name(message.from_user.id)
-    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0,
+                            ir_operator=operator, ir_factory_mode=False)
     await state.set_state(IssueReturnState.choosing_courier)
     await message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
 
@@ -222,9 +228,43 @@ async def wh_ir_courier(call: CallbackQuery, state: FSMContext):
     courier_id = int(call.data.split(":")[3])
     data = await state.get_data()
     courier = next((c for c in data.get("ir_couriers", []) if c["id"] == courier_id), {})
-    await state.update_data(ir_courier_id=courier_id, ir_courier_name=courier.get("name", ""))
+    await state.update_data(ir_courier_id=courier_id, ir_courier_name=courier.get("name", ""),
+                            ir_factory_mode=False)
     await state.set_state(IssueReturnState.choosing_item)
     await _show_ir_catalog(call.message, state, edit=True)
+    await call.answer()
+
+
+@router.callback_query(IssueReturnState.choosing_courier, F.data == "wh:ir:factory")
+async def wh_ir_factory_list(call: CallbackQuery, state: FSMContext):
+    factories = await api.get_factories()
+    if not factories:
+        await call.answer("Нет заводов. Добавьте завод через сайт.", show_alert=True)
+        return
+    await state.update_data(ir_factories=factories)
+    await state.set_state(IssueReturnState.choosing_factory)
+    await call.message.edit_text("🏭 Выберите завод:", reply_markup=wh_factory_select_kb(factories, "ir"))
+    await call.answer()
+
+
+@router.callback_query(IssueReturnState.choosing_factory, F.data.startswith("wh:ir:factpick:"))
+async def wh_ir_factory_pick(call: CallbackQuery, state: FSMContext):
+    factory_id = int(call.data.split(":")[3])
+    data = await state.get_data()
+    factory = next((f for f in data.get("ir_factories", []) if f["id"] == factory_id), {})
+    await state.update_data(ir_factory_id=factory_id, ir_factory_name=factory.get("name", ""),
+                            ir_factory_mode=True, ir_return_qty=0)
+    await state.set_state(IssueReturnState.choosing_item)
+    await _show_ir_catalog(call.message, state, edit=True)
+    await call.answer()
+
+
+@router.callback_query(IssueReturnState.choosing_factory, F.data == "wh:ir:fback")
+async def wh_ir_factory_back(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    couriers = data.get("ir_couriers", [])
+    await state.set_state(IssueReturnState.choosing_courier)
+    await call.message.edit_text("Выберите курьера:", reply_markup=wh_courier_select_kb(couriers, "ir"))
     await call.answer()
 
 
@@ -299,20 +339,49 @@ async def wh_ir_enter_return(message: Message, state: FSMContext):
 @router.callback_query(IssueReturnState.choosing_item, F.data == "wh:ir:submit")
 async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    courier_id = data.get("ir_courier_id")
-    courier_name = data.get("ir_courier_name", "")
+    factory_mode = data.get("ir_factory_mode", False)
     cart = data.get("ir_cart", {})
     return_qty = data.get("ir_return_qty", 0)
     operator = data.get("ir_operator", "")
     catalog = data.get("ir_catalog", [])
 
-    # Build items; use effective_price (post-discount) for the total
     price_map = {str(p["id"]): float(p.get("effective_price") or p.get("price") or 0) for p in catalog}
     items = [
         {"product_id": int(k), "product_name": v["name"], "quantity": v["qty"]}
         for k, v in cart.items() if v["qty"] > 0
     ]
     total_sum = sum(v["qty"] * price_map.get(k, 0) for k, v in cart.items() if v["qty"] > 0)
+
+    if factory_mode:
+        # ── Factory issue ────────────────────────────────────────────────
+        factory_name = data.get("ir_factory_name", "")
+        if not items:
+            await call.answer("Добавьте хотя бы один товар", show_alert=True)
+            return
+        try:
+            await api.factory_issue_batch(factory_name, items, performed_by=operator)
+        except Exception as e:
+            await call.answer()
+            await call.message.answer(f"❌ Ошибка при выдаче заводу: {e}")
+            await _show_ir_catalog(call.message, state, edit=False)
+            return
+        await state.clear()
+        lines = [f"✅ <b>Выдача записана</b>\n🏭 Завод: {factory_name}"]
+        lines.append("\n📦 Выдано:")
+        for it in items:
+            lines.append(f"  • {it['product_name']} — {it['quantity']} шт.")
+        if total_sum > 0:
+            lines.append(f"💰 Итого: {int(total_sum):,} сум".replace(",", " "))
+        try:
+            await call.message.edit_text("\n".join(lines), parse_mode="HTML")
+        except Exception:
+            await call.message.answer("\n".join(lines), parse_mode="HTML")
+        await call.answer()
+        return
+
+    # ── Courier issue/return ─────────────────────────────────────────────────
+    courier_id = data.get("ir_courier_id")
+    courier_name = data.get("ir_courier_name", "")
 
     if not items and return_qty <= 0:
         await call.answer("Добавьте товар или укажите возврат бутылок", show_alert=True)
@@ -324,7 +393,6 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     try:
         await api.issue_batch(courier_id, items, return_qty, performed_by=operator)
     except Exception as e:
-        # Keep the state so the operator can adjust quantities and resubmit
         await call.answer()
         await call.message.answer(f"❌ Ошибка при выдаче: {e}")
         await _show_ir_catalog(call.message, state, edit=False)
@@ -332,7 +400,6 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
-    # Confirmation to operator
     lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
     if items:
         lines.append("\n📦 Выдано:")
@@ -347,7 +414,6 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     except Exception:
         await call.message.answer("\n".join(lines), parse_mode="HTML")
 
-    # Notify courier — formatted as shown in design
     couriers_list = data.get("ir_couriers", [])
     courier = next((c for c in couriers_list if c["id"] == courier_id), {})
     if courier.get("telegram_id") and (items or return_qty > 0):
@@ -586,7 +652,8 @@ async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
     operator = await _operator_name(call.from_user.id)
-    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0, ir_operator=operator)
+    await state.update_data(ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0,
+                            ir_operator=operator, ir_factory_mode=False)
     await state.set_state(IssueReturnState.choosing_courier)
     await call.message.answer("Выберите курьера:", reply_markup=wh_courier_select_kb(active, "ir"))
 
