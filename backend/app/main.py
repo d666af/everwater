@@ -22,6 +22,8 @@ from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa:
 from app.models import agent as agent_model  # noqa: F401
 from app.models import courier_product_earning as cpe_model  # noqa: F401
 from app.models import agent_product_earning as ape_model  # noqa: F401
+from app.models import factory as factory_model  # noqa: F401
+from app.models import admin_user as admin_user_model  # noqa: F401
 
 
 @asynccontextmanager

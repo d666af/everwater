@@ -36,10 +36,20 @@ def wh_courier_select_kb(couriers: list, action: str) -> InlineKeyboardMarkup:
         )]
         for c in couriers
     ]
+    buttons.append([InlineKeyboardButton(text="🏭 Завод", callback_data=f"wh:{action}:factory")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def wh_ir_catalog_kb(catalog: list, cart: dict, return_qty: int) -> InlineKeyboardMarkup:
+def wh_factory_select_kb(factories: list, action: str) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=f["name"], callback_data=f"wh:{action}:factpick:{f['id']}")]
+        for f in factories
+    ]
+    buttons.append([InlineKeyboardButton(text="◀ Назад к курьерам", callback_data=f"wh:{action}:fback")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def wh_ir_catalog_kb(catalog: list, cart: dict, return_qty: int, show_return: bool = True) -> InlineKeyboardMarkup:
     buttons = []
     for p in catalog:
         qty = cart.get(str(p['id']), {}).get('qty', 0)
@@ -48,9 +58,10 @@ def wh_ir_catalog_kb(catalog: list, cart: dict, return_qty: int) -> InlineKeyboa
             text=f"{p['name']}{mark}",
             callback_data=f"wh:ir:p:{p['id']}"
         )])
-    ret_mark = f" ✓{return_qty}" if return_qty > 0 else ""
-    buttons.append([InlineKeyboardButton(text=f"↩ Бутылки 19л{ret_mark}", callback_data="wh:ir:ret")])
-    has_items = any(v.get('qty', 0) > 0 for v in cart.values()) or return_qty > 0
+    if show_return:
+        ret_mark = f" ✓{return_qty}" if return_qty > 0 else ""
+        buttons.append([InlineKeyboardButton(text=f"↩ Бутылки 19л{ret_mark}", callback_data="wh:ir:ret")])
+    has_items = any(v.get('qty', 0) > 0 for v in cart.values()) or (show_return and return_qty > 0)
     if has_items:
         buttons.append([InlineKeyboardButton(text="✅ Выдать", callback_data="wh:ir:submit")])
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="wh:ir:cancel")])

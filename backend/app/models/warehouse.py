@@ -21,8 +21,9 @@ class WaterTransaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"), nullable=True)
+    factory_id: Mapped[int | None] = mapped_column(ForeignKey("factories.id"), nullable=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
-    # production | issue | return | adjustment
+    # production | issue | factory_issue | return | adjustment
     transaction_type: Mapped[str] = mapped_column(String(32))
     quantity: Mapped[int] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -32,6 +33,7 @@ class WaterTransaction(Base):
 
     product: Mapped["Product | None"] = relationship("Product")  # noqa: F821
     courier: Mapped["Courier | None"] = relationship("Courier")  # noqa: F821
+    factory: Mapped["Factory | None"] = relationship("Factory")  # noqa: F821
 
 
 class CourierWater(Base):
