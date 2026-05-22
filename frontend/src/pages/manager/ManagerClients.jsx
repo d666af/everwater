@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -60,6 +60,7 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
   const [loadingC, setLoadingC] = useState(true)
   const [showCoolerForm, setShowCoolerForm] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
+  const [cancellingId, setCancellingId] = useState(null)
   const subsEnabled = useSubscriptionsEnabled()
   const visibleTabs = TABS.map((label, idx) => ({ label, idx }))
     .filter(t => !(subsEnabled === false && t.label === 'Подписки'))
@@ -181,6 +182,11 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
           const dt = o.created_at ? new Date(new Date(o.created_at).getTime() + 5 * 60 * 60 * 1000) : null
           const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
           const orderItems = (o.items || []).filter(i => i.quantity > 0)
+          const isDone = o.status === 'delivered' || o.status === 'rejected'
+          const CREATOR_LABEL_MAP = { manager: 'Менеджер', admin: 'Администратор', courier: 'Курьер', agent: 'Агент' }
+          const creatorStr = o.creator_role
+            ? `${CREATOR_LABEL_MAP[o.creator_role] || o.creator_role}${o.creator_name ? ': ' + o.creator_name : ''}`
+            : `Клиент${o.client_name ? ': ' + o.client_name : ''}`
           return (
             <div key={o.id} style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -208,6 +214,26 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
                   )}
                   {o.bottle_surcharge > 0 && (
                     <div style={{ fontSize: 12, color: '#E67700', marginTop: 3 }}>🫙 Надбавка за невозврат: +{Number(o.bottle_surcharge).toLocaleString()} сум</div>
+                  )}
+                  <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 11, color: TEXT2 }}>✍️ Создал: <span style={{ color: TEXT, fontWeight: 600 }}>{creatorStr}</span></div>
+                    {o.assigner_name && <div style={{ fontSize: 11, color: TEXT2 }}>🚴 Назначил курьера: <span style={{ color: TEXT, fontWeight: 600 }}>{o.assigner_name}</span></div>}
+                  </div>
+                  {!isDone && cancellingId !== o.id && (
+                    <button
+                      style={{ marginTop: 8, padding: '5px 12px', borderRadius: 8, border: '1.5px solid rgba(224,49,49,0.35)', background: 'transparent', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => setCancellingId(o.id)}
+                    >Отменить заказ</button>
+                  )}
+                  {cancellingId === o.id && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                      <button style={{ padding: '5px 12px', borderRadius: 8, border: '1.5px solid #E03131', background: '#FFF5F5', color: '#E03131', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        onClick={() => rejectOrder(o.id, 'Отменён менеджером').then(() => { setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: 'rejected' } : x)); setCancellingId(null) }).catch(() => setCancellingId(null))}>
+                        Подтвердить отмену
+                      </button>
+                      <button style={{ padding: '5px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 12, cursor: 'pointer' }}
+                        onClick={() => setCancellingId(null)}>Нет</button>
+                    </div>
                   )}
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, flexShrink: 0 }}>{(o.total || 0).toLocaleString()} сум</div>

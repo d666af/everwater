@@ -576,6 +576,7 @@ async def store_notification_msg_ids(order_id: int, body: NotificationMsgIdsBody
 class AssignBody(BaseModel):
     courier_id: int
     manager_telegram_id: int | None = None
+    assigner_name: str | None = None
 
 
 @router.patch("/{order_id}/assign_courier")
@@ -622,21 +623,29 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     order.delivery_reminder_sent = False
     order.delivery_reminder_2_sent = False
 
-    # Store which manager assigned this courier
+    # Store which manager/admin assigned this courier (name + phone)
+    if body.assigner_name:
+        order.assigner_name = body.assigner_name
     if body.manager_telegram_id:
         from app.models.manager import Manager
         from app.config import settings as cfg
         mgr = (await db.execute(
             select(Manager).where(Manager.telegram_id == body.manager_telegram_id, Manager.is_active == True)
         )).scalar_one_or_none()
-        if mgr and mgr.phone:
-            order.manager_phone = mgr.phone
+        if mgr:
+            if mgr.phone:
+                order.manager_phone = mgr.phone
+            if not order.assigner_name and mgr.name:
+                order.assigner_name = mgr.name
         elif body.manager_telegram_id in cfg.ADMIN_IDS:
             admin_user = (await db.execute(
                 select(User).where(User.telegram_id == body.manager_telegram_id)
             )).scalar_one_or_none()
-            if admin_user and admin_user.phone:
-                order.manager_phone = admin_user.phone
+            if admin_user:
+                if admin_user.phone:
+                    order.manager_phone = admin_user.phone
+                if not order.assigner_name and admin_user.name:
+                    order.assigner_name = admin_user.name
 
     # Return-only manager orders: record bottle return and auto-deliver on courier assignment
     is_return_only_manager = (
@@ -1350,6 +1359,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         manager_phone=order.manager_phone,
         creator_role=order.creator_role,
         creator_name=order.creator_name,
+        assigner_name=order.assigner_name,
         review_id=order.review.id if order.review else None,
         notification_msg_ids=order.notification_msg_ids,
         client_bottles_owed=client_bottles_owed,
