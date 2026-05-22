@@ -510,46 +510,58 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     old_msg_id = order.client_status_msg_id
     courier_tg = order.courier.telegram_id if order.courier else None
     courier_status_msg_id = order.courier_status_msg_id
-    items_text = _order_items_text(order.items)
-    items_priced = "\n".join(
-        f"  • {i.product.name} {i.quantity} шт. х {int(i.price):,} сум"
-        for i in order.items if i.product
-    ) or "—"
     order_phone = order.recipient_phone
     oid = order.id
+    return_bottles = order.return_bottles_count or 0
+    bottles_lent = order.bottles_lent or 0
+    bottle_surcharge = order.bottle_surcharge or 0.0
+
+    items_lines = [
+        f"• {i.product.name} {i.quantity} шт. х {int(i.price):,} сум"
+        for i in order.items if i.product
+    ]
+    items_block = "\n".join(items_lines)
+
+    bottle_lines = []
+    if return_bottles:
+        bottle_lines.append(f"♻️ Возврат бутылок: {return_bottles} шт.")
+    if bottles_lent:
+        bottle_lines.append(f"📦 Одолжено: {bottles_lent} шт.")
+    if bottle_surcharge:
+        bottle_lines.append(f"💰 Надбавка за невозврат: {int(bottle_surcharge):,} сум")
+    bottle_block = "\n".join(bottle_lines)
 
     if was_assigned:
         await _release_inventory(order, db, consume=False)
     await db.commit()
 
-    # Build detailed rejection notification for staff
-    _ROLE_LABELS = {"manager": "Менеджером", "admin": "Администратором", "courier": "Курьером"}
-    reason_txt = f"\nПричина: {body.reason}" if body.reason else ""
-    if body.rejected_by_name and body.rejected_by_role:
-        role_label = _ROLE_LABELS.get(body.rejected_by_role, body.rejected_by_role.capitalize())
-        by_line = f" {role_label} {body.rejected_by_name}"
-    else:
-        by_line = ""
+    # Build unified rejection text for all staff recipients (admins, managers, courier)
     client_line = f"Клиент: {client_name} {order_phone}".strip() if (client_name or order_phone) else ""
-    staff_text = (
-        f"❌ Заказ #{oid} отклонён{by_line}\n"
-        + (f"{client_line}\n" if client_line else "")
-        + (f"{items_priced}\n" if items_priced != "—" else "")
-        + (f"Причина: {body.reason}" if body.reason else "")
-    ).strip()
+    reject_text = (
+        "❌ Заказ отклонён"
+        + (f"\n{client_line}" if client_line else "")
+        + (f"\n{items_block}" if items_block else "")
+        + (f"\n{bottle_block}" if bottle_block else "")
+        + (f"\nПричина: {body.reason}" if body.reason else "")
+    )
 
     from app.services.tg_notify import edit_all_notifications
-    await edit_all_notifications(msg_ids_json, staff_text)
+    await edit_all_notifications(msg_ids_json, reject_text)
 
-    # Notify courier if assigned
+    # Notify courier if assigned — edit their assignment message (removes buttons)
     if courier_tg:
-        courier_reject_text = f"❌ Заказ #{oid} отменён\n{reason_txt}".strip()
         if courier_status_msg_id:
-            await _tg_edit(courier_tg, courier_status_msg_id, courier_reject_text, reply_markup=None)
+            await _tg_edit(courier_tg, courier_status_msg_id, reject_text, reply_markup=None)
         else:
-            await _tg(courier_tg, courier_reject_text)
+            await _tg(courier_tg, reject_text)
 
-    client_reject_text = f"❌ Заказ отклонён.\n{items_text}{reason_txt}"
+    # Client gets the same structured text (without "Клиент:" line since it's their own order)
+    client_reject_text = (
+        "❌ Заказ отклонён"
+        + (f"\n{items_block}" if items_block else "")
+        + (f"\n{bottle_block}" if bottle_block else "")
+        + (f"\nПричина: {body.reason}" if body.reason else "")
+    )
     new_msg_id = await _tg_edit_or_send(client_tg, client_reject_text, old_msg_id)
     if new_msg_id and new_msg_id != old_msg_id:
         await _save_status_msg_id(db, oid, new_msg_id)
