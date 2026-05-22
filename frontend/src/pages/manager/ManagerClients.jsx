@@ -554,7 +554,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
 
   const handleDeleteUser = async (e, u) => {
     e.stopPropagation()
-    if (!window.confirm(`Удалить клиента ${u.name || 'Без имени'}? Это действие нельзя отменить.`)) return
+    if (!window.confirm(`Удалить клиента ${u.name || u.last_order_address || 'Без имени'}? Это действие нельзя отменить.`)) return
     try {
       await deleteUser(u.id)
       setUsers(prev => prev.filter(x => x.id !== u.id))
@@ -678,10 +678,10 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
             return (
               <div key={u.id} style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || '?')[0].toUpperCase()}</div>
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || u.last_order_address || '?')[0].toUpperCase()}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || 'Без имени'}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.last_order_address || 'Без имени'}</span>
                       {u.customer_label === 'permanent' && (
                         <span style={{ fontSize: 10, color: '#2B8A3E', background: '#EBFBEE', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>★ Пост.</span>
                       )}

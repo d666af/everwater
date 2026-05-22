@@ -128,6 +128,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
       ...data,
       manager_name: currentUser?.name || '',
       manager_phone: currentUser?.phone || '',
+      creator_name: currentUser?.name || null,
     })
     load()
   }
@@ -266,6 +267,7 @@ function OrderCard({
   assigningId, setAssigningId, selectedCourier, setSelectedCourier,
   actionLoading, act,
 }) {
+  const { user: currentUser } = useAuthStore()
   const orderStage = getStage(order)
   const [showMore, setShowMore] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
