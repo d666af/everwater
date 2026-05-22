@@ -606,6 +606,8 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     order_time = order.delivery_time or "—"
     order_total = int(order.total)
     order_payment = order.payment_method or "cash"
+    order_creator_role = order.creator_role
+    order_creator_name = order.creator_name
     courier_tg = courier.telegram_id
     courier_name = courier.name
     courier_phone = courier.phone or ""
@@ -666,18 +668,27 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
     c_phone_part = f"  |  {courier_phone}" if courier_phone else ""
+    _CREATOR_LABELS_SYNC = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    if order_creator_role:
+        _cr_label = _CREATOR_LABELS_SYNC.get(order_creator_role, order_creator_role.capitalize())
+        _creator_line = f"\n✍️ {_cr_label}: {order_creator_name}" if order_creator_name else f"\n✍️ {_cr_label}"
+    else:
+        _client_label = client_name if client_name and client_name != "—" else "Клиент"
+        _creator_line = f"\n✍️ Клиент: {_client_label}"
     sync_text = (
-        f"✅ Курьер {courier_name} назначен{c_phone_part}\n\n"
+        f"✅ Курьер {courier_name} назначен\n\n"
         f"👤 {client_name}  |  {order_phone}\n"
         f"📍 {order_address}\n\n"
         f"Товары:\n{items_bullets}\n"
-        f"💰 {order_total:,} сум  |  {pay_label_str}\n"
+        f"💰 {order_total:,} сум  |  {pay_label_str}"
+        f"{_creator_line}\n"
         f"🚴 {courier_name}{c_phone_part}"
     )
-    from app.services.tg_notify import edit_all_notifications
-    await edit_all_notifications(notification_msg_ids, sync_text)
 
     if not from_bot:
+        from app.services.tg_notify import edit_all_notifications
+        await edit_all_notifications(notification_msg_ids, sync_text)
+
         eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
         courier_text = (
             f"🚴 Вам назначен заказ!\n\n"
