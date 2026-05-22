@@ -513,6 +513,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     courier_name = (order.courier.name if order.courier else None) or ""
     courier_phone = (order.courier.phone if order.courier else None) or ""
     assigner_name = order.assigner_name or ""
+    assigner_role = order.assigner_role or ""
     creator_role = order.creator_role or ""
     creator_name = order.creator_name or ""
     order_phone = order.recipient_phone
@@ -565,12 +566,16 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 
     # Extra lines shown only to admin/manager
     courier_line = f"🚴 Курьер: {courier_name} {courier_phone}".strip() if courier_name else ""
-    assigner_line = f"👤 Назначил: {assigner_name}" if assigner_name else ""
-    _CREATOR_LABELS = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    _ROLE_LABELS = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    if assigner_name:
+        _asgn_lbl = _ROLE_LABELS.get(assigner_role, "") if assigner_role else ""
+        assigner_line = f"👤 Назначил курьера: {_asgn_lbl} {assigner_name}".strip()
+    else:
+        assigner_line = ""
     if creator_role and creator_name:
-        creator_line = f"✍️ Заказ создан: {_CREATOR_LABELS.get(creator_role, creator_role.capitalize())} {creator_name}"
+        creator_line = f"✍️ Создал заказ: {_ROLE_LABELS.get(creator_role, creator_role.capitalize())} {creator_name}"
     elif creator_role:
-        creator_line = f"✍️ Заказ создан: {_CREATOR_LABELS.get(creator_role, creator_role.capitalize())}"
+        creator_line = f"✍️ Создал заказ: {_ROLE_LABELS.get(creator_role, creator_role.capitalize())}"
     else:
         creator_line = ""
     staff_extra = "\n".join(filter(None, [courier_line, assigner_line, creator_line]))
@@ -700,6 +705,7 @@ class AssignBody(BaseModel):
     courier_id: int
     manager_telegram_id: int | None = None
     assigner_name: str | None = None
+    assigner_role: str | None = None
 
 
 @router.patch("/{order_id}/assign_courier")
@@ -746,9 +752,11 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     order.delivery_reminder_sent = False
     order.delivery_reminder_2_sent = False
 
-    # Store which manager/admin assigned this courier (name + phone)
+    # Store which manager/admin assigned this courier (name + role)
     if body.assigner_name:
         order.assigner_name = body.assigner_name
+    if body.assigner_role:
+        order.assigner_role = body.assigner_role
     if body.manager_telegram_id:
         from app.models.manager import Manager
         from app.config import settings as cfg
@@ -760,6 +768,8 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
                 order.manager_phone = mgr.phone
             if not order.assigner_name and mgr.name:
                 order.assigner_name = mgr.name
+            if not order.assigner_role:
+                order.assigner_role = "manager"
         elif body.manager_telegram_id in cfg.ADMIN_IDS:
             admin_user = (await db.execute(
                 select(User).where(User.telegram_id == body.manager_telegram_id)
@@ -769,6 +779,8 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
                     order.manager_phone = admin_user.phone
                 if not order.assigner_name and admin_user.name:
                     order.assigner_name = admin_user.name
+                if not order.assigner_role:
+                    order.assigner_role = "admin"
 
     # Return-only manager orders: record bottle return and auto-deliver on courier assignment
     is_return_only_manager = (
@@ -796,19 +808,24 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     await _reserve_inventory(order, db)
     order_assigner_name = order.assigner_name  # capture before commit expires it
+    order_assigner_role = order.assigner_role or ""
     await db.commit()
 
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
     c_phone_part = f"  |  {courier_phone}" if courier_phone else ""
-    _CREATOR_LABELS_SYNC = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    _ROLE_LABELS_SYNC = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
     if order_creator_role:
-        _cr_label = _CREATOR_LABELS_SYNC.get(order_creator_role, order_creator_role.capitalize())
-        _creator_line = f"\n✍️ {_cr_label}: {order_creator_name}" if order_creator_name else f"\n✍️ {_cr_label}"
+        _cr_label = _ROLE_LABELS_SYNC.get(order_creator_role, order_creator_role.capitalize())
+        _creator_line = f"\n✍️ Создал заказ: {_cr_label} {order_creator_name}" if order_creator_name else f"\n✍️ Создал заказ: {_cr_label}"
     else:
         _client_label = client_name if client_name and client_name != "—" else "Клиент"
-        _creator_line = f"\n✍️ Клиент: {_client_label}"
-    _assigner_line = f"\n👤 Назначил: {order_assigner_name}" if order_assigner_name else ""
+        _creator_line = f"\n✍️ Создал заказ: Клиент {_client_label}"
+    if order_assigner_name:
+        _asgn_role_lbl = _ROLE_LABELS_SYNC.get(order_assigner_role, "") if order_assigner_role else ""
+        _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
+    else:
+        _assigner_line = ""
     sync_text = (
         f"✅ Курьер {courier_name} назначен\n\n"
         f"👤 {client_name}  |  {order_phone}\n"
