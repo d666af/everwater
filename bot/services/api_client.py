@@ -751,9 +751,12 @@ async def get_warehouse_staff_db() -> list:
         return []
 
 
-async def get_warehouse_batches(performed_by: str = "Группа накладных") -> list:
+async def get_warehouse_batches(performed_by: str | None = None) -> list:
     try:
-        return await _get("/warehouse/issue_batches", params={"performed_by": performed_by, "limit": 200})
+        params: dict = {"limit": 200}
+        if performed_by:
+            params["performed_by"] = performed_by
+        return await _get("/warehouse/issue_batches", params=params)
     except Exception:
         return []
 
