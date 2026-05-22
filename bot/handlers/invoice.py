@@ -70,6 +70,60 @@ def _qty_from_price_sum(line_text: str) -> int | None:
     return None
 
 
+_VALID_PLATE_RE = re.compile(
+    r'\d{2}[A-Z]\d{3}[A-Z]{2}'   # format 1: DD L DDD LL  e.g. 30L700QA
+    r'|\d{5}[A-Z]{3}'             # format 2: DD DDD LLL   e.g. 30700QAB
+)
+
+
+def _canonical_plate(raw: str) -> str:
+    """Fix common OCR errors in Uzbek plates.
+
+    Supported formats:
+      Format 1: DD L DDD LL  (e.g. 30L700QA)
+      Format 2: DD DDD LLL   (e.g. 30700QAB)
+
+    OCR reads 'Q' as '0', causing:
+      - Format 1: 4-digit middle + 1 trailing letter → restore Q before letter
+                  4-digit middle + 2 trailing letters → strip extra 0
+      - Format 2: 6 digits + 2 trailing letters → first extra digit was Q
+                  6 digits + 3 trailing letters → strip extra 0
+    """
+    p = raw.upper().strip()
+    if _VALID_PLATE_RE.fullmatch(p):
+        return p
+
+    # ── Format 1 corrections (DD L DDD LL) ──────────────────────────────────
+    # "30L7000A" → last digit of 4-digit group was Q → "30L700QA"
+    m = re.fullmatch(r'(\d{2}[A-Z])(\d{4})([A-Z])', p)
+    if m:
+        candidate = m.group(1) + m.group(2)[:-1] + 'Q' + m.group(3)
+        if re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', candidate):
+            return candidate
+    # "30A1700QB" → extra 0 before letters → strip last digit → "30A170QB"
+    m = re.fullmatch(r'(\d{2}[A-Z])(\d{4})([A-Z]{2})', p)
+    if m:
+        candidate = m.group(1) + m.group(2)[:-1] + m.group(3)
+        if re.fullmatch(r'\d{2}[A-Z]\d{3}[A-Z]{2}', candidate):
+            return candidate
+
+    # ── Format 2 corrections (DD DDD LLL) ────────────────────────────────────
+    # "307000AB" → 6th digit was Q → "30700QAB"
+    m = re.fullmatch(r'(\d{5})(\d)([A-Z]{2})', p)
+    if m and m.group(2) == '0':
+        candidate = m.group(1) + 'Q' + m.group(3)
+        if re.fullmatch(r'\d{5}[A-Z]{3}', candidate):
+            return candidate
+    # "307000QAB" → extra 0 before letters → strip last digit → "30700QAB"
+    m = re.fullmatch(r'(\d{6})([A-Z]{3})', p)
+    if m:
+        candidate = m.group(1)[:-1] + m.group(2)
+        if re.fullmatch(r'\d{5}[A-Z]{3}', candidate):
+            return candidate
+
+    return p
+
+
 # ─── OCR ──────────────────────────────────────────────────────────────────────
 
 def _remove_grid_lines(img):
@@ -303,8 +357,10 @@ def _parse_invoice(text: str) -> dict | None:
             cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
             found_qty = None
             inline_found = False
-            # Prefer price/sum cross-check: qty = sum ÷ price (survives OCR digit drops)
-            computed_qty = _qty_from_price_sum(line)
+            # Prefer price/sum cross-check on current line AND a wider window —
+            # price/sum columns may land in adjacent y-buckets (different OCR lines)
+            _nearby = ' '.join(lines[max(0, i - 1):i + 4])
+            computed_qty = _qty_from_price_sum(line) or _qty_from_price_sum(_nearby)
             if computed_qty:
                 found_qty = computed_qty
                 inline_found = True
@@ -316,6 +372,12 @@ def _parse_invoice(text: str) -> dict | None:
                         found_qty = v
                         inline_found = True
                         break
+            # Cross-validate digit-scanned qty against price/sum (catches OCR digit drops)
+            if found_qty and not inline_found:
+                val = _qty_from_price_sum(' '.join(lines[max(0, i - 2):i + 6]))
+                if val and val != found_qty:
+                    found_qty = val
+                    inline_found = True
             # OCR column-scan puts the qty BEFORE the product-name line.
             # "возврат" label line is skipped (continue) rather than stopped
             # so we can look past it to the qty that lies further back.
@@ -406,9 +468,16 @@ def _parse_invoice(text: str) -> dict | None:
         if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
             tokens = re.sub(r'тип\s*машины?|тип|маш\w*|tip\s*ma\w*', '', line, flags=re.IGNORECASE)
             parts = [p.strip() for p in re.split(r'\s{2,}|\s*\|\s*|\t', tokens) if p.strip()]
+
+            def _set_plate(raw: str) -> None:
+                new = _canonical_plate(raw.upper())
+                # Prefer canonical format over what's already stored
+                if not result['vehicle_plate'] or _VALID_PLATE_RE.fullmatch(new):
+                    result['vehicle_plate'] = new
+
             if len(parts) >= 2:
                 result['vehicle_type'] = parts[0].upper()
-                result['vehicle_plate'] = parts[1].upper()
+                _set_plate(parts[1])
             elif len(parts) == 1:
                 p = parts[0].upper()
                 if re.search(r'\d', p):
@@ -416,9 +485,9 @@ def _parse_invoice(text: str) -> dict | None:
                     tp_m = re.match(r'^([A-ZА-ЯЁ][A-ZА-ЯЁ\-]*)\s+(\S.*)$', p)
                     if tp_m and re.search(r'\d', tp_m.group(2)):
                         result['vehicle_type'] = tp_m.group(1)
-                        result['vehicle_plate'] = tp_m.group(2)
+                        _set_plate(tp_m.group(2))
                     else:
-                        result['vehicle_plate'] = p
+                        _set_plate(p)
                 else:
                     result['vehicle_type'] = p
             else:
@@ -426,16 +495,16 @@ def _parse_invoice(text: str) -> dict | None:
                 next_parts = [l.strip() for l in lines[i + 1:i + 3] if l.strip()]
                 if len(next_parts) >= 2:
                     result['vehicle_type'] = next_parts[0].upper()
-                    result['vehicle_plate'] = next_parts[1].upper()
+                    _set_plate(next_parts[1])
                 elif len(next_parts) == 1:
                     p = next_parts[0].upper()
                     if re.search(r'\d', p):
                         tp_m = re.match(r'^([A-ZА-ЯЁ][A-ZА-ЯЁ\-]*)\s+(\S.*)$', p)
                         if tp_m and re.search(r'\d', tp_m.group(2)):
                             result['vehicle_type'] = tp_m.group(1)
-                            result['vehicle_plate'] = tp_m.group(2)
+                            _set_plate(tp_m.group(2))
                         else:
-                            result['vehicle_plate'] = p
+                            _set_plate(p)
                     else:
                         result['vehicle_type'] = p
 
@@ -473,7 +542,7 @@ def _parse_invoice(text: str) -> dict | None:
     if not result['vehicle_plate']:
         plate_m = re.search(r'\b(\d{2,3}[A-Z]{1,3}\d{2,4}[A-Z]{1,3})\b', full)
         if plate_m:
-            result['vehicle_plate'] = plate_m.group(1)
+            result['vehicle_plate'] = _canonical_plate(plate_m.group(1))
         else:
             sp_m = re.search(r'\b(\d{2,3})\s+(\d{2,4})\s+([A-Z]{2,3})\b', full)
             if sp_m:
