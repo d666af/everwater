@@ -791,7 +791,7 @@ function CreateOrderModal({ onClose, onSave, couriers = [] }) {
         courier_id: courierId ? Number(courierId) : null,
       })
       onClose()
-    } catch { alert('Ошибка при создании заказа') }
+    } catch (err) { alert(err?.response?.data?.detail || 'Ошибка при создании заказа') }
     finally { setLoading(false) }
   }
 
