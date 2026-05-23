@@ -216,7 +216,8 @@ def _confirm_text(data: dict, products: list) -> str:
     surcharge = _calc_surcharge(items, products, return_bottles, lent_bottles)
 
     lines = ["📋 <b>Подтверждение заказа</b>\n"]
-    lines.append(f"👤 {client.get('name', '—')} · {phone}" if client else f"👤 {phone}")
+    _cname = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—') if client else None
+    lines.append(f"👤 {_cname} · {phone}" if client else f"👤 {phone}")
     lines.append(f"📍 {address}")
     lines.append("\nТовары:")
 
@@ -386,7 +387,8 @@ async def aco_input(message: Message, state: FSMContext):
 
         if client:
             bottles_owed = client.get("bottles_owed", 0)
-            info = f"✅ {client.get('name', '—')} · {client.get('phone', phone)}"
+            _cn = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—')
+            info = f"✅ {_cn} · {client.get('phone', phone)}"
             if bottles_owed > 0:
                 info += f"\n🫙 Долг бутылок: {bottles_owed} шт."
         else:
@@ -421,7 +423,8 @@ async def aco_input(message: Message, state: FSMContext):
 
         if client:
             bottles_owed = client.get("bottles_owed", 0)
-            info = f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}"
+            _cn = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—')
+            info = f"✅ Клиент найден: {_cn} | {client.get('phone', phone)}"
             if bottles_owed > 0:
                 info += f"\n🫙 Долг по бутылкам: {bottles_owed} шт."
         else:

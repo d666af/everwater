@@ -495,7 +495,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
           {client && (
             <div style={{ background: '#F8FFED', borderRadius: 14, border: `1px solid ${C}33`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{client.name || 'Клиент'}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{client.name || client.order_addresses?.[0]?.address || 'Клиент'}</div>
                 <div style={{ fontSize: 12, color: TEXT2 }}>{client.phone}</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
