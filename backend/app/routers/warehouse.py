@@ -1689,6 +1689,7 @@ async def list_issue_batches(
             for tx, p in items_rows
         )
         recipient_name = "—"
+        courier = None
         if tx_type == "issue" and row.courier_id:
             courier = (await db.execute(
                 select(Courier).where(Courier.id == row.courier_id)
