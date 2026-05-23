@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, Filter
@@ -1388,7 +1389,7 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
         return
 
     await state.clear()
-    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
+    sent = await call.message.edit_text(f"✅ Заказ #{oid} создан!")
     await call.message.answer(
         "Панель менеджера:",
         reply_markup=manager_menu_kb(
@@ -1396,6 +1397,11 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
             support_enabled=await api.is_support_chat_enabled(),
         ),
     )
+    await asyncio.sleep(2)
+    try:
+        await sent.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(MgrOrderCreate.confirming, F.data == "mco:cancel")

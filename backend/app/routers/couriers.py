@@ -1169,13 +1169,14 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             )
             import json as _json_mod
             from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
+            _cancel_kb_m = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
             _all_aids_m = await _get_all_admin_ids(db)
             _msg_ids_m: list = []
             _seen_m: set[int] = set()
             for _aid in _all_aids_m:
                 if _aid not in _seen_m:
                     _seen_m.add(_aid)
-                    _r = await _tsc(_aid, info_text)
+                    _r = await _tsc(_aid, info_text, _cancel_kb_m)
                     if _r:
                         _msg_ids_m.append(_r)
             for _mgr in mgrs:
@@ -1185,7 +1186,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     _tid = int(_tg_id)
                     if _tid not in _seen_m:
                         _seen_m.add(_tid)
-                        _r = await _tsc(_tid, info_text)
+                        _r = await _tsc(_tid, info_text, _cancel_kb_m)
                         if _r:
                             _msg_ids_m.append(_r)
             await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod.dumps(_msg_ids_m)))
@@ -1223,10 +1224,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
             admin_kb = {"inline_keyboard": [
                 [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
                 [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
             mgr_kb = {"inline_keyboard": [
                 [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
+                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
                 [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
             import json as _json_mod
