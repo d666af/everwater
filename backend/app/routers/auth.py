@@ -69,6 +69,10 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
     if not all_roles:
         all_roles = ["client"]
 
+    # Pure agents don't get the client role; only admins who are also agents keep it
+    if "agent" in all_roles and "admin" not in all_roles:
+        all_roles = [r for r in all_roles if r != "client"]
+
     primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
     name = (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or (agent.name if agent else None) or ""
     phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or (agent.phone if agent else None) or ""

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deleteAgent, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders, getAdmins, addAdminUser, removeAdminUser, checkIsMainAdmin } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deleteAgent, linkAgentTelegram, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders, getAdmins, addAdminUser, removeAdminUser, checkIsMainAdmin } from '../../api'
 import { formatPhone } from '../../utils/phone'
 import AgentReportModal from '../../components/AgentReportModal'
 
@@ -291,13 +291,28 @@ function WarehouseTab() {
   )
 }
 
-function AgentCard({ agent: a, onDelete }) {
+function AgentCard({ agent: a, onDelete, onRefresh }) {
   const [showReport, setShowReport] = useState(false)
   const [orderCount, setOrderCount] = useState(null)
+  const [tgInput, setTgInput] = useState('')
+  const [tgSaving, setTgSaving] = useState(false)
+  const [tgError, setTgError] = useState('')
 
   useEffect(() => {
     getAgentOrders(a.id).then(r => setOrderCount((r || []).length)).catch(() => {})
   }, [a.id])
+
+  const handleLinkTelegram = async () => {
+    const id = parseInt(tgInput.trim(), 10)
+    if (!id || isNaN(id)) { setTgError('Введите корректный Telegram ID'); return }
+    setTgSaving(true); setTgError('')
+    try {
+      await linkAgentTelegram(a.id, id)
+      onRefresh()
+    } catch (err) {
+      setTgError(err?.response?.data?.detail || 'Ошибка при привязке')
+    } finally { setTgSaving(false) }
+  }
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: a.is_active ? 1 : 0.6 }}>
@@ -316,6 +331,28 @@ function AgentCard({ agent: a, onDelete }) {
               <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#FFF3BF', color: '#E67700', fontWeight: 600 }}>Telegram не привязан</span>
             )}
           </div>
+          {!a.telegram_id && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Telegram ID"
+                  value={tgInput}
+                  onChange={e => { setTgInput(e.target.value); setTgError('') }}
+                  style={{ flex: 1, fontSize: 13, padding: '5px 10px', borderRadius: 8, border: `1.5px solid ${tgError ? '#FA5252' : BORDER}`, outline: 'none', fontFamily: 'inherit' }}
+                  onKeyDown={e => e.key === 'Enter' && handleLinkTelegram()}
+                />
+                <button
+                  onClick={handleLinkTelegram}
+                  disabled={tgSaving || !tgInput.trim()}
+                  style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: C, color: '#fff', fontSize: 12, fontWeight: 700, cursor: tgSaving || !tgInput.trim() ? 'default' : 'pointer', opacity: tgSaving || !tgInput.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                  {tgSaving ? '...' : 'Привязать'}
+                </button>
+              </div>
+              {tgError && <div style={{ fontSize: 11, color: '#FA5252' }}>{tgError}</div>}
+            </div>
+          )}
         </div>
         <button
           style={{ height: 34, padding: '0 12px', borderRadius: 10, flexShrink: 0, border: `1.5px solid ${C}`, background: '#F0FFF4', color: CD, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
@@ -440,13 +477,13 @@ function AgentsTab() {
         <>
           {activeAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} />)}
+              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} />)}
             </div>
           )}
           {inactiveAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Деактивированные · {inactiveAgents.length}</div>
-              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} />)}
+              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} />)}
             </div>
           )}
         </>
