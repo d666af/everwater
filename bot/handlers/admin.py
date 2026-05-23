@@ -268,10 +268,20 @@ async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.reject_order(order_id, "Отменён администратором", from_bot=True,
-                           rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
+    try:
+        await api.reject_order(order_id, "Отменён администратором", from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+        return
     order = await api.get_order(order_id)
-    await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    try:
+        await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    except Exception:
+        pass
     await call.answer("❌ Заказ отменён")
 
 
