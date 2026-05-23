@@ -429,10 +429,13 @@ async def admin_set_courier(call: CallbackQuery):
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
+    _cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"order:cancel:{order_id}")
+    ]])
     try:
-        await call.message.edit_text(result_text, parse_mode="HTML")
+        await call.message.edit_text(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text, parse_mode="HTML")
+        await call.message.answer(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))

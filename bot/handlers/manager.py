@@ -336,7 +336,8 @@ async def mgr_set_courier(call: CallbackQuery):
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Заказы", url=_app("/manager"))]
+        [InlineKeyboardButton(text="📋 Заказы", url=_app("/manager"))],
+        [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"order:cancel:{order_id}")],
     ])
     try:
         await call.message.edit_text(result_text, reply_markup=back_kb, parse_mode="HTML")

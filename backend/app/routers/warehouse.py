@@ -1595,16 +1595,18 @@ async def list_issue_batches(
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
 ):
-    """List distinct issue batches, optionally filtered by performed_by."""
+    """List distinct issue batches (courier + factory), optionally filtered by performed_by."""
     q = (
         select(
             WaterTransaction.batch_id,
             WaterTransaction.courier_id,
+            WaterTransaction.factory_id,
+            WaterTransaction.transaction_type,
             WaterTransaction.created_at,
             WaterTransaction.performed_by,
         )
         .where(
-            WaterTransaction.transaction_type == "issue",
+            WaterTransaction.transaction_type.in_(["issue", "factory_issue"]),
             WaterTransaction.batch_id.isnot(None),
         )
         .order_by(WaterTransaction.created_at.desc())
@@ -1619,27 +1621,37 @@ async def list_issue_batches(
         if row.batch_id in seen:
             continue
         seen.add(row.batch_id)
+        tx_type = row.transaction_type
         items_rows = (await db.execute(
             select(WaterTransaction, Product)
             .join(Product, WaterTransaction.product_id == Product.id, isouter=True)
             .where(
                 WaterTransaction.batch_id == row.batch_id,
-                WaterTransaction.transaction_type == "issue",
+                WaterTransaction.transaction_type == tx_type,
             )
         )).all()
         total_sum = sum(
             (tx.quantity * float(p.price or 0)) if p else 0
             for tx, p in items_rows
         )
-        courier = None
-        if row.courier_id:
+        recipient_name = "—"
+        if tx_type == "issue" and row.courier_id:
             courier = (await db.execute(
                 select(Courier).where(Courier.id == row.courier_id)
             )).scalar_one_or_none()
+            recipient_name = courier.name if courier else "—"
+        elif tx_type == "factory_issue" and row.factory_id:
+            factory = (await db.execute(
+                select(Factory).where(Factory.id == row.factory_id)
+            )).scalar_one_or_none()
+            recipient_name = factory.name if factory else "—"
         result.append({
             "batch_id": row.batch_id,
             "courier_id": row.courier_id,
-            "courier_name": courier.name if courier else "—",
+            "factory_id": row.factory_id if tx_type == "factory_issue" else None,
+            "recipient_name": recipient_name,
+            "courier_name": recipient_name,  # kept for backwards compat
+            "transaction_type": tx_type,
             "performed_by": row.performed_by,
             "created_at": row.created_at,
             "total_sum": round(total_sum),
@@ -1675,6 +1687,9 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
             if cw:
                 cw.quantity = max(0, cw.quantity - tx.quantity)
                 cw.issued_today = max(0, cw.issued_today - tx.quantity)
+        elif tx.transaction_type == "factory_issue" and tx.product_id:
+            stock = await _ensure_stock(db, tx.product_id)
+            stock.quantity += tx.quantity
         await db.delete(tx)
 
     await db.commit()
