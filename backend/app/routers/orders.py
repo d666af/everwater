@@ -503,6 +503,8 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
 
     msg_ids_json = order.notification_msg_ids
     was_assigned = order.courier_id is not None
+    was_delivered = order.status == OrderStatus.DELIVERED
+    _bd_user_id = order.user_id
     order.status = OrderStatus.REJECTED
     order.rejection_reason = body.reason
     if body.rejected_by_name:
@@ -527,6 +529,9 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     return_bottles = order.return_bottles_count or 0
     bottles_lent = order.bottles_lent or 0
     bottle_surcharge_val = order.bottle_surcharge or 0.0
+    _bd_bottles_delivered = sum(
+        i.quantity for i in order.items if i.product and i.product.has_bottle_deposit
+    )
 
     # Build all blocks before commit (relationships expire after)
     items_lines_priced = [
@@ -552,6 +557,16 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     if was_assigned:
         await _release_inventory(order, db, consume=False)
     await db.commit()
+
+    # Reverse BottleDebt if order was previously delivered
+    if was_delivered and _bd_user_id:
+        _bd_net_change = _bd_bottles_delivered + bottles_lent - return_bottles
+        if _bd_net_change != 0:
+            debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == _bd_user_id))
+            debt_row = debt_q.scalar_one_or_none()
+            if debt_row:
+                debt_row.count = max(0, debt_row.count - _bd_net_change)
+                await db.commit()
 
     # Build rejector title suffix
     _REJECTOR_LABELS = {
@@ -966,21 +981,22 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
                 from datetime import timedelta
                 user.bonus_expires_at = datetime.utcnow() + timedelta(days=expiry_days)
 
-        # Track 19L bottle debt: add newly delivered bottles, subtract returned ones.
-        # net_change = bottles client now has extra vs before this delivery.
+        # Track 19L bottle debt: delivered + lent bottles increase debt, returned reduce it.
         bottles_delivered = sum(
             i.quantity for i in order.items
             if i.product and i.product.has_bottle_deposit
         )
         returned = order.return_bottles_count or 0
-        net_change = bottles_delivered - returned
-        if bottles_delivered > 0 and user:
+        lent = order.bottles_lent or 0
+        net_change = bottles_delivered + lent - returned
+        if (bottles_delivered > 0 or lent > 0 or returned > 0) and user:
             debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == user.id))
             debt_row = debt_q.scalar_one_or_none()
             if debt_row:
                 debt_row.count = max(0, debt_row.count + net_change)
             else:
-                db.add(BottleDebt(user_id=user.id, count=max(0, net_change)))
+                if net_change > 0:
+                    db.add(BottleDebt(user_id=user.id, count=net_change))
 
         if order.courier_id:
             result = await db.execute(select(Courier).where(Courier.id == order.courier_id))
