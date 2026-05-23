@@ -954,7 +954,8 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         if c_msg_id:
             await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_msg_id))
             await db.commit()
-        text = f"✅ Заказ подтверждён!\n{items}\n🚴 Курьер {courier_name} назначен. Ожидайте доставку."
+        _phone_line = f"\nТелефон курьера: {courier_phone}" if courier_phone else ""
+        text = f"🚴 Курьер {courier_name} назначен на ваш заказ!\nОжидайте доставку.{_phone_line}"
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
