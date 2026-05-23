@@ -93,6 +93,7 @@ class Order(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="orders")  # noqa: F821
     courier: Mapped["Courier | None"] = relationship("Courier", back_populates="orders")  # noqa: F821
+    agent: Mapped["Agent | None"] = relationship("Agent", foreign_keys=[agent_id])  # noqa: F821
     items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     review: Mapped["Review | None"] = relationship("Review", back_populates="order", uselist=False)  # noqa: F821
 

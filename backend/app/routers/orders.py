@@ -399,6 +399,7 @@ def _order_opts():
         selectinload(Order.items).selectinload(OrderItem.product),
         selectinload(Order.user),
         selectinload(Order.courier),
+        selectinload(Order.agent),
         selectinload(Order.review),
     )
 
@@ -1530,7 +1531,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         courier_phone=order.courier.phone if order.courier else None,
         manager_phone=order.manager_phone,
         creator_role=order.creator_role,
-        creator_name=order.creator_name,
+        creator_name=order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None),
         assigner_name=order.assigner_name,
         assigner_role=order.assigner_role,
         rejected_by_name=order.rejected_by_name,
