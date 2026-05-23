@@ -33,8 +33,8 @@ const PRESETS = [
 function fmt(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) +
-    ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function AgentReportModal({ agentId, agentName, onClose }) {

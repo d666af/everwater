@@ -560,7 +560,7 @@ function PaymentBlock({ order }) {
       <Row k="Способ" v={PAY_LABEL[order.payment_method] || order.payment_method} />
       {order.payment_method === 'card' && order.payment_details && (<>
         <Row k="Карта" v={`**** ${order.payment_details.card_last4}`} />
-        <Row k="Время" v={new Date(order.payment_details.paid_at).toLocaleString('ru')} />
+        <Row k="Время" v={new Date(order.payment_details.paid_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' })} />
         <Row k="Сумма" v={`${(order.payment_details.amount || 0).toLocaleString()} сум`} />
         <Row k="Статус" v={order.payment_confirmed ? 'Подтверждена' : 'Ожидает проверки'} accent={order.payment_confirmed ? '#2B8A3E' : CD} />
       </>)}

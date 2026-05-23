@@ -84,7 +84,7 @@ function SubCard({ sub, onCreateOrder }) {
             <Row label="💳 Оплата" value={{ cash: 'Наличные', card: 'Карта' }[sub.payment_method] || sub.payment_method} />
             <Row label="💰 Сумма" value={`${Math.round(sub.total).toLocaleString('ru')} сум`} />
             {sub.last_delivered_at && (
-              <Row label="✅ Посл. доставка" value={new Date(sub.last_delivered_at).toLocaleDateString('ru-RU')} />
+              <Row label="✅ Посл. доставка" value={new Date(sub.last_delivered_at).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' })} />
             )}
           </div>
           <button
