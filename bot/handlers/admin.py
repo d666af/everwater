@@ -430,10 +430,12 @@ async def admin_set_courier(call: CallbackQuery):
     client_tg = order.get("client_telegram_id")
     if client_tg:
         courier_name_for_client = courier["name"] if courier else "?"
+        courier_phone_for_client = courier.get("phone") if courier else None
+        phone_line = f"\nТелефон курьера: {courier_phone_for_client}" if courier_phone_for_client else ""
         try:
             client_sent = await call.bot.send_message(
                 client_tg,
-                f"✅ Курьер {courier_name_for_client} назначен, ожидайте доставку",
+                f"🚴 Курьер {courier_name_for_client} назначен на ваш заказ!\nОжидайте доставку.{phone_line}",
             )
             try:
                 await api.save_client_msg_id(order_id, client_sent.message_id)
