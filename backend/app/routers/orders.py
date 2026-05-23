@@ -1580,7 +1580,10 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     else:
         _client_label = client_name if client_name and client_name != "—" else "Клиент"
         _creator_line = f"\n✍️ Создал заказ: Клиент {_client_label}"
-    if order_assigner_name:
+    _auto_assigned = order_creator_role_raw == "courier" and order_assigner_role == "courier"
+    if _auto_assigned:
+        _assigner_line = "\n👤 Назначил курьера: Автоматически"
+    elif order_assigner_name:
         _asgn_role_lbl = _ROLE_LABELS.get(order_assigner_role, "") if order_assigner_role else ""
         _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
     else:
@@ -1607,7 +1610,8 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
             f"{_creator_line}"
             f"{change_marker}"
         )
-    await edit_all_notifications(notification_msg_ids, staff_text)
+    _cancel_kb = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+    await edit_all_notifications(notification_msg_ids, staff_text, reply_markup=_cancel_kb)
 
     client_text = (
         f"✏️ Состав вашего заказа изменён\n\n"
@@ -1718,6 +1722,11 @@ async def delete_order(order_id: int, db: AsyncSession = Depends(get_db)):
 
     # Nullify FK in WaterTransaction so cascade doesn't fail
     await db.execute(sa_update(WaterTransaction).where(WaterTransaction.order_id == order_id).values(order_id=None))
+
+    # Delete review if present (no cascade on the relationship)
+    if order.review:
+        await db.delete(order.review)
+        await db.flush()
 
     # Try to delete Telegram notification messages
     msg_ids_json = order.notification_msg_ids
