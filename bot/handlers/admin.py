@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import Command
@@ -2297,9 +2298,14 @@ async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
+    sent = await call.message.edit_text(f"✅ Заказ #{oid} создан!")
     subs_on = await api.is_subscriptions_enabled()
     await call.message.answer("Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
+    await asyncio.sleep(2)
+    try:
+        await sent.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(AdminOrderCreate.confirming, F.data == "aco:cancel")
