@@ -1071,13 +1071,15 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         )
         import json as _json_mod_c
         from app.services.tg_notify import tg_send_capture as _tsc_c, get_all_admin_ids as _get_all_admin_ids
+        _admin_cancel_kb = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"admin:cancel_order:{oid}"}]]}
+        _mgr_cancel_kb = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"mgr:cancel_order:{oid}"}]]}
         _all_aids_c = await _get_all_admin_ids(db)
         _msg_ids_c: list = []
         _seen_c: set[int] = set()
         for _aid in _all_aids_c:
             if _aid not in _seen_c:
                 _seen_c.add(_aid)
-                _r = await _tsc_c(_aid, info_text)
+                _r = await _tsc_c(_aid, info_text, _admin_cancel_kb)
                 if _r:
                     _msg_ids_c.append(_r)
         for _mgr in mgrs:
@@ -1087,7 +1089,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 _tid = int(_tg_id)
                 if _tid not in _seen_c:
                     _seen_c.add(_tid)
-                    _r = await _tsc_c(_tid, info_text)
+                    _r = await _tsc_c(_tid, info_text, _mgr_cancel_kb)
                     if _r:
                         _msg_ids_c.append(_r)
         await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod_c.dumps(_msg_ids_c)))

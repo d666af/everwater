@@ -60,6 +60,7 @@ async def tg_edit_msg(chat_id: int, message_id: int, text: str) -> None:
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "text": text,
+                "reply_markup": {},
             }, timeout=aiohttp.ClientTimeout(total=5))
     except Exception:
         pass
