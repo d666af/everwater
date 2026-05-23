@@ -401,12 +401,20 @@ def _parse_invoice(text: str) -> dict | None:
                     found_qty = v
                     inline_found = True
             if not found_qty and not _sht_zero:
-                # Prefer price/sum cross-check on current line AND a wider window —
-                # price/sum columns may land in adjacent y-buckets (different OCR lines)
-                _nearby = ' '.join(lines[max(0, i - 1):i + 4])
-                computed_qty = (_qty_from_price_sum(line)
-                                or _qty_from_price_sum(_nearby)
-                                or _qty_from_price_sum(full))
+                # Price/sum cross-check: build a bounded window that NEVER
+                # crosses into another EVER product row.
+                # Look 1 line back (y-bucket merge in PSM-6) then forward
+                # until we hit another EVER/возврат boundary.
+                _back = (lines[i - 1] if i > 0
+                         and not re.search(r'\bever\b|\bвозврат\b', lines[i - 1], re.IGNORECASE)
+                         else '')
+                _fwd_lines = []
+                for _nl in lines[i + 1:i + 3]:
+                    if re.search(r'\bever\b|\bвозврат\b', _nl, re.IGNORECASE):
+                        break
+                    _fwd_lines.append(_nl)
+                _nearby = ' '.join(filter(None, [_back, line] + _fwd_lines))
+                computed_qty = _qty_from_price_sum(line) or _qty_from_price_sum(_nearby)
                 if computed_qty:
                     found_qty = computed_qty
                     inline_found = True
@@ -418,9 +426,15 @@ def _parse_invoice(text: str) -> dict | None:
                         found_qty = v
                         inline_found = True
                         break
-            # Cross-validate digit-scanned qty against price/sum (catches OCR digit drops)
+            # Cross-validate digit-scanned qty against price/sum (catches OCR digit drops).
+            # Use the same bounded window to avoid mixing data from adjacent EVER rows.
             if found_qty and not inline_found:
-                val = _qty_from_price_sum(' '.join(lines[max(0, i - 2):i + 6]))
+                _cv_lines = []
+                for _nl in lines[max(0, i - 2):i + 6]:
+                    if _nl is not line and re.search(r'\bever\b', _nl, re.IGNORECASE):
+                        break
+                    _cv_lines.append(_nl)
+                val = _qty_from_price_sum(' '.join(_cv_lines))
                 if val and val != found_qty:
                     found_qty = val
                     inline_found = True
@@ -431,6 +445,8 @@ def _parse_invoice(text: str) -> dict | None:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
+                    if re.search(r'\bever\b', prev, re.IGNORECASE):
+                        break  # another product row — don't steal its qty
                     if re.search(r'возврат', prev, re.IGNORECASE):
                         continue  # skip the label, keep looking for the number
                     # Skip date/time lines
