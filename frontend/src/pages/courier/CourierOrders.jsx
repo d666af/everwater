@@ -117,6 +117,11 @@ function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoa
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 999, fontWeight: 700, background: st.bg, color: st.color }}>{st.label}</span>
+              {order.is_items_edited && (
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#FFF3BF', color: '#E67700' }}>
+                  ✏️{order.items_edited_by ? ` Изм. ${order.items_edited_by}` : ' Изменено'}
+                </span>
+              )}
             </div>
             {order.client_name && <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 4 }}>{order.client_name}</div>}
             {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.address}</div>}

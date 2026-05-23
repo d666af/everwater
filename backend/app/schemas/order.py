@@ -86,6 +86,8 @@ class OrderOut(BaseModel):
     client_bottles_owed: int = 0
     client_bottles_pending: int = 0
     eta_human: str | None = None
+    is_items_edited: bool = False
+    items_edited_by: str | None = None
 
     model_config = {"from_attributes": True}
 

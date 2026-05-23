@@ -960,6 +960,24 @@ export const factoryReturnBatch = (factoryName, items, performedBy) =>
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )
 
+export const getIssueBatches = (performedBy, includeFactory = true, limit = 100) =>
+  safeCall(
+    () => {
+      const params = new URLSearchParams()
+      if (performedBy) params.set('performed_by', performedBy)
+      params.set('include_factory', includeFactory ? 'true' : 'false')
+      params.set('limit', limit)
+      return http.get(`/warehouse/issue_batches?${params}`).then(r => r.data)
+    },
+    () => []
+  )
+
+export const cancelIssueBatch = (batchId) =>
+  safeCall(
+    () => http.delete(`/warehouse/issue_batch/${batchId}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const updateCourier = (courierId, data) =>
   safeCall(
     () => http.patch(`/admin/couriers/${courierId}`, data).then(r => r.data),

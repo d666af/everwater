@@ -174,10 +174,17 @@ async def get_stats(
         )
     )
     bottles_returned_to_warehouse = int(bottles_returned_to_warehouse_q.scalar() or 0)
+    courier_delivery_net_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            WaterTransaction.transaction_type == "delivery_net",
+            WaterTransaction.courier_id.isnot(None),
+        )
+    )
     courier_debt_count = max(
         0,
         ((courier_issued_q.scalar() if courier_issued_q else None) or 0)
         - (courier_returned_q.scalar() or 0)
+        - (courier_delivery_net_q.scalar() or 0)
     )
 
     # Factory debt: 19L factory_issue − factory_return (all-time)
@@ -805,9 +812,18 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
             )
         )
     )
+    delivery_net_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.courier_id == courier_id,
+                WaterTransaction.transaction_type == "delivery_net",
+            )
+        )
+    )
     total_issued = (issued_q.scalar() if issued_q else None) or 0
     total_returned = returned_q.scalar() or 0
-    bottles_must_return = max(0, total_issued - total_returned)
+    total_delivery_net = delivery_net_q.scalar() or 0
+    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net)
 
     return {
         "courier_id": courier.id,

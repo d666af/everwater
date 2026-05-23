@@ -123,9 +123,18 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
             )
         )
     )
+    delivery_net_q = await db.execute(
+        select(func.sum(WaterTransaction.quantity)).where(
+            and_(
+                WaterTransaction.courier_id == courier.id,
+                WaterTransaction.transaction_type == "delivery_net",
+            )
+        )
+    )
     total_issued = (issued_q.scalar() if issued_q else None) or 0
     total_returned = returned_q.scalar() or 0
-    bottles_must_return = max(0, total_issued - total_returned)
+    total_delivery_net = delivery_net_q.scalar() or 0
+    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net)
 
     # Bottle debt value: bottles_must_return × bottle_surcharge of the 19L product
     surcharge_q = await db.execute(

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
   issueBatchToCourier, getInvoiceUrl,
   getFactoryStats, factoryIssueBatch, factoryReturnBatch,
+  getIssueBatches, cancelIssueBatch,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
@@ -33,6 +34,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [factoryModal, setFactoryModal] = useState(null) // { factory, mode }
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
+  const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
 
   const load = () => {
     setLoading(true)
@@ -117,6 +119,12 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onClose={() => setReportModal(null)}
         />
       )}
+      {cancelModal && (
+        <CancelBatchModal
+          label={cancelModal.label}
+          onClose={() => { setCancelModal(null); load() }}
+        />
+      )}
       {factoryModal && (
         <FactoryIssueModal
           factory={factoryModal.factory}
@@ -191,6 +199,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
                     f={f}
                     onIssue={() => setFactoryModal({ factory: f, mode: 'issue' })}
                     onReturn={() => setFactoryModal({ factory: f, mode: 'return' })}
+                    onCancel={() => setCancelModal({ label: f.name })}
                   />
                 ))}
               </div>
@@ -201,7 +210,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {couriers.map(c => (
-              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} />
+              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} />
             ))}
           </div>
         </>
@@ -210,7 +219,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function CourierCard({ c, onIssue, onReport }) {
+function CourierCard({ c, onIssue, onReport, onCancel }) {
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
   const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
@@ -276,21 +285,32 @@ function CourierCard({ c, onIssue, onReport }) {
         </div>
       </div>
 
-      {/* Report button */}
-      <button onClick={onReport} style={{
-        marginTop: 10, width: '100%', padding: '8px 12px', borderRadius: 10,
-        border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
-        fontSize: 12, fontWeight: 600, cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-      }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-        Отчёт курьера
-      </button>
+      {/* Action buttons row */}
+      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+        <button onClick={onReport} style={{
+          flex: 1, padding: '8px 12px', borderRadius: 10,
+          border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          Отчёт
+        </button>
+        <button onClick={onCancel} style={{
+          flex: 1, padding: '8px 12px', borderRadius: 10,
+          border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          Отменить выдачу
+        </button>
+      </div>
     </div>
   )
 }
 
-function FactoryCard({ f, onIssue, onReturn }) {
+function FactoryCard({ f, onIssue, onReturn, onCancel }) {
   const PURP = '#9C36B5'
   const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
   const issuedProducts = Object.entries(f.issued || {}).filter(([, q]) => q > 0)
@@ -349,6 +369,14 @@ function FactoryCard({ f, onIssue, onReturn }) {
         }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Вернуть
+        </button>
+        <button onClick={onCancel} style={{
+          padding: '9px 10px', borderRadius: 10,
+          border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
     </div>
@@ -614,6 +642,84 @@ function InvoiceSuccessModal({ batchId, courierName, onClose }) {
           style={{ padding: 16, borderRadius: 14, border: 'none', background: GRAD, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', textAlign: 'center', boxShadow: '0 4px 16px rgba(141,198,63,0.35)' }}>
           Посмотреть в боте
         </button>
+        <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
+          Закрыть
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CancelBatchModal({ label, onClose }) {
+  const [batches, setBatches] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
+
+  const load = useCallback(() => {
+    getIssueBatches(undefined, true, 200).then(all => {
+      if (!label) { setBatches(all); return }
+      setBatches((all || []).filter(b => (b.courier_name || '').toLowerCase() === label.toLowerCase() || (b.factory_name || '').toLowerCase() === label.toLowerCase()))
+    }).catch(() => setBatches([]))
+  }, [label])
+
+  useEffect(() => { load() }, [load])
+
+  const doCancel = async (batchId) => {
+    setCancelling(batchId)
+    try {
+      await cancelIssueBatch(batchId)
+      load()
+    } finally {
+      setCancelling(null)
+    }
+  }
+
+  const fmtDate = s => {
+    if (!s) return '—'
+    return new Date(s).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={st.handle} />
+        <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Отменить выдачу</div>
+        {label && <div style={{ fontSize: 13, color: TEXT2, marginTop: -8 }}>{label}</div>}
+        {batches === null ? (
+          <div style={{ textAlign: 'center', padding: 30, color: TEXT2 }}>Загрузка...</div>
+        ) : batches.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Нет выдач для отмены</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {batches.map(b => (
+              <div key={b.batch_id} style={{ background: '#FAFAFA', borderRadius: 14, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{b.courier_name}</div>
+                    {b.batch_type === 'factory' && (
+                      <div style={{ fontSize: 11, color: '#9C36B5', fontWeight: 600 }}>Завод</div>
+                    )}
+                    <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{fmtDate(b.created_at)}</div>
+                    <div style={{ marginTop: 6 }}>
+                      {(b.items || []).map((it, i) => (
+                        <div key={i} style={{ fontSize: 12, color: TEXT }}>{it.product_name}: <b>{it.quantity}</b> шт.</div>
+                      ))}
+                    </div>
+                    {b.total_sum > 0 && (
+                      <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{b.total_sum.toLocaleString()} сум</div>
+                    )}
+                  </div>
+                  <button
+                    disabled={cancelling === b.batch_id}
+                    onClick={() => doCancel(b.batch_id)}
+                    style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, opacity: cancelling === b.batch_id ? 0.6 : 1 }}
+                  >
+                    {cancelling === b.batch_id ? '...' : 'Отменить'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
           Закрыть
         </button>

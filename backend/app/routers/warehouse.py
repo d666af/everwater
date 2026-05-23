@@ -72,6 +72,31 @@ async def _ensure_stock(db: AsyncSession, product_id: int) -> WaterStock:
     return stock
 
 
+async def _recalculate_stock(db: AsyncSession, product_id: int) -> None:
+    """Recompute WaterStock.quantity from all WaterTransaction records for a product.
+    Used after backdated entries so the current balance stays accurate.
+    Inflow types: factory_issue, production, adjustment (positive).
+    Outflow types: issue, factory_return (negative).
+    """
+    inflow_q = await db.execute(
+        select(func.coalesce(func.sum(WaterTransaction.quantity), 0))
+        .where(
+            WaterTransaction.product_id == product_id,
+            WaterTransaction.transaction_type.in_(["factory_issue", "production", "adjustment"]),
+        )
+    )
+    outflow_q = await db.execute(
+        select(func.coalesce(func.sum(WaterTransaction.quantity), 0))
+        .where(
+            WaterTransaction.product_id == product_id,
+            WaterTransaction.transaction_type.in_(["issue", "factory_return"]),
+        )
+    )
+    new_qty = int(inflow_q.scalar() or 0) - int(outflow_q.scalar() or 0)
+    stock = await _ensure_stock(db, product_id)
+    stock.quantity = new_qty
+
+
 async def _resolve_product(db: AsyncSession, product_id: int | None, product_name: str | None) -> Product:
     """Return Product by id or by name (short or full). Raises 404 if not found."""
     if product_id:
@@ -228,7 +253,17 @@ async def get_overview(
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.transaction_type == "bottle_return")
         )
-        bottles_on_couriers = max(0, (q19_issued.scalar() or 0) - (q19_returned.scalar() or 0))
+        q19_delivery_net = await db.execute(
+            select(func.sum(WaterTransaction.quantity))
+            .where(WaterTransaction.transaction_type == "delivery_net")
+            .where(WaterTransaction.courier_id.isnot(None))
+        )
+        bottles_on_couriers = max(
+            0,
+            (q19_issued.scalar() or 0)
+            - (q19_returned.scalar() or 0)
+            - (q19_delivery_net.scalar() or 0)
+        )
         # Factory bottle debt = all-time 19L factory_issue − factory_return
         f19_issued = await db.execute(
             select(func.sum(WaterTransaction.quantity))
@@ -762,6 +797,12 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
     })
 
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
+
+    # If backdated, recalculate current stock from all transactions so the balance stays accurate
+    if _ts:
+        for prod, _ in resolved:
+            await _recalculate_stock(db, prod.id)
+
     await db.commit()
 
     if courier:
@@ -897,6 +938,10 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
             "bonus": 0, "price": price, "sum": qty * price,
         })
 
+    if _ts:
+        for prod, _ in resolved:
+            await _recalculate_stock(db, prod.id)
+
     await db.commit()
 
     # Generate and send invoice PNG to admins
@@ -965,6 +1010,10 @@ async def factory_return_batch(body: FactoryIssueBatchBody, db: AsyncSession = D
         if _ts:
             tx.created_at = _ts
         db.add(tx)
+
+    if _ts:
+        for prod, _ in resolved:
+            await _recalculate_stock(db, prod.id)
 
     await db.commit()
     return {"ok": True, "batch_id": batch_id, "factory_id": factory.id}
@@ -1592,21 +1641,23 @@ async def list_warehouse_staff(db: AsyncSession = Depends(get_db)):
 @router.get("/issue_batches")
 async def list_issue_batches(
     performed_by: str | None = None,
+    include_factory: bool = True,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
 ):
     """List distinct issue batches (courier + factory), optionally filtered by performed_by."""
+    tx_types = ["issue", "factory_issue"] if include_factory else ["issue"]
     q = (
         select(
             WaterTransaction.batch_id,
             WaterTransaction.courier_id,
             WaterTransaction.factory_id,
-            WaterTransaction.transaction_type,
             WaterTransaction.created_at,
             WaterTransaction.performed_by,
+            WaterTransaction.transaction_type,
         )
         .where(
-            WaterTransaction.transaction_type.in_(["issue", "factory_issue"]),
+            WaterTransaction.transaction_type.in_(tx_types),
             WaterTransaction.batch_id.isnot(None),
         )
         .order_by(WaterTransaction.created_at.desc())
@@ -1639,19 +1690,18 @@ async def list_issue_batches(
             courier = (await db.execute(
                 select(Courier).where(Courier.id == row.courier_id)
             )).scalar_one_or_none()
-            recipient_name = courier.name if courier else "—"
-        elif tx_type == "factory_issue" and row.factory_id:
+        factory = None
+        if row.factory_id:
             factory = (await db.execute(
                 select(Factory).where(Factory.id == row.factory_id)
             )).scalar_one_or_none()
-            recipient_name = factory.name if factory else "—"
         result.append({
             "batch_id": row.batch_id,
+            "batch_type": "factory" if tx_type == "factory_issue" else "courier",
             "courier_id": row.courier_id,
-            "factory_id": row.factory_id if tx_type == "factory_issue" else None,
-            "recipient_name": recipient_name,
-            "courier_name": recipient_name,  # kept for backwards compat
-            "transaction_type": tx_type,
+            "courier_name": courier.name if courier else (factory.name if factory else "—"),
+            "factory_id": row.factory_id,
+            "factory_name": factory.name if factory else None,
             "performed_by": row.performed_by,
             "created_at": row.created_at,
             "total_sum": round(total_sum),
@@ -1687,10 +1737,12 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
             if cw:
                 cw.quantity = max(0, cw.quantity - tx.quantity)
                 cw.issued_today = max(0, cw.issued_today - tx.quantity)
+            await db.delete(tx)
         elif tx.transaction_type == "factory_issue" and tx.product_id:
             stock = await _ensure_stock(db, tx.product_id)
             stock.quantity += tx.quantity
-        await db.delete(tx)
+            await db.delete(tx)
+        # bottle_return and factory_return transactions represent real physical returns — keep them
 
     await db.commit()
     return {"ok": True, "batch_id": batch_id}
