@@ -23,7 +23,7 @@ function renderOrderItems(order) {
   items.forEach((i, idx) => {
     const vol = Number(i.volume || 0)
     const is19L = vol > 18 && vol < 20
-    if (!is19L) {
+    if (!is19L || perUnitDisc <= 0) {
       rows.push(
         <div key={`${idx}-x`} style={rmS.itemRow}>
           <span style={rmS.itemName}>{i.product_name}</span>
