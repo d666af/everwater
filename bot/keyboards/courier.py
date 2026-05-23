@@ -117,3 +117,12 @@ def courier_card_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Да, проверил", callback_data=f"courier:card_ok:{order_id}")],
         [InlineKeyboardButton(text="❌ Нет", callback_data=f"courier:card_no:{order_id}")],
     ])
+
+
+def courier_location_prompt_kb(order_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да", callback_data=f"courier:addloc:yes:{order_id}"),
+            InlineKeyboardButton(text="❌ Нет", callback_data=f"courier:addloc:no:{order_id}"),
+        ]
+    ])

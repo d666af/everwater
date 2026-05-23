@@ -286,6 +286,13 @@ async def report_payment_issue(order_id: int, payment_method: str, reason: str, 
         return {}
 
 
+async def update_order_location(order_id: int, lat: float, lng: float):
+    try:
+        return await _patch(f"/orders/{order_id}/location", {"latitude": lat, "longitude": lng})
+    except Exception:
+        return {}
+
+
 async def create_review(user_id: int, order_id: int, rating: int, comment: str = None):
     return await _post("/orders/reviews/", {
         "user_id": user_id, "order_id": order_id, "rating": rating, "comment": comment

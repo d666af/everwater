@@ -1473,6 +1473,51 @@ async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
+class LocationBody(BaseModel):
+    latitude: float
+    longitude: float
+
+
+@router.patch("/{order_id}/location")
+async def update_order_location(order_id: int, body: LocationBody, db: AsyncSession = Depends(get_db)):
+    import json as _j
+    order = await _get_order(order_id, db)
+    order.latitude = body.latitude
+    order.longitude = body.longitude
+
+    # Back-fill all same-address orders for this user that still have no location
+    if order.user_id and order.address:
+        await db.execute(
+            sa_update(Order)
+            .where(
+                Order.user_id == order.user_id,
+                Order.address == order.address,
+                Order.latitude.is_(None),
+            )
+            .values(latitude=body.latitude, longitude=body.longitude)
+        )
+        # Also update matching saved_addresses entries
+        user_q = await db.execute(select(User).where(User.id == order.user_id))
+        user = user_q.scalar_one_or_none()
+        if user and user.saved_addresses:
+            try:
+                addrs = _j.loads(user.saved_addresses)
+                norm = order.address.strip().lower()
+                changed = False
+                for a in addrs:
+                    if a.get("address", "").strip().lower() == norm and not a.get("lat") and not a.get("lng"):
+                        a["lat"] = body.latitude
+                        a["lng"] = body.longitude
+                        changed = True
+                if changed:
+                    user.saved_addresses = _j.dumps(addrs, ensure_ascii=False)
+            except Exception:
+                pass
+
+    await db.commit()
+    return {"ok": True}
+
+
 async def _get_order(order_id: int, db: AsyncSession) -> Order:
     result = await db.execute(
         select(Order)

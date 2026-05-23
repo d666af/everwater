@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
-from keyboards.courier import courier_menu_kb, courier_cash_confirm_kb, courier_card_confirm_kb
+from keyboards.courier import courier_menu_kb, courier_cash_confirm_kb, courier_card_confirm_kb, courier_location_prompt_kb
 from config import settings
 
 router = Router()
@@ -50,6 +50,27 @@ async def _get_courier(telegram_id: int):
     return await api.get_courier_by_telegram(telegram_id)
 
 
+async def _maybe_send_location_prompt(message, order_id: int):
+    """After payment resolved: prompt courier to add map location if order has none."""
+    try:
+        order = await api.get_order(order_id)
+    except Exception:
+        return
+    if order.get("latitude") or order.get("longitude"):
+        return
+    addr = order.get("address") or "—"
+    client_name = order.get("client_name") or order.get("recipient_phone") or "—"
+    brief = _order_brief(order)
+    text = (
+        f"📍 У адреса этого заказа нет локации на карте\n\n"
+        f"👤 {client_name}\n"
+        f"📍 {addr}\n"
+        f"🛒 {brief}\n\n"
+        f"Хотите добавить локацию?"
+    )
+    await message.answer(text, reply_markup=courier_location_prompt_kb(order_id))
+
+
 # ─── FSM ──────────────────────────────────────────────────────────────────────
 
 class CourierOrderCreate(StatesGroup):
@@ -64,6 +85,10 @@ class CourierOrderCreate(StatesGroup):
 
 class PaymentIssueReason(StatesGroup):
     waiting_reason = State()
+
+
+class LocationAddState(StatesGroup):
+    waiting_location = State()
 
 
 
@@ -1235,6 +1260,7 @@ async def courier_cash_received(call: CallbackQuery):
     except Exception:
         await call.message.answer("✅ Наличные зафиксированы!")
     await call.answer()
+    await _maybe_send_location_prompt(call.message, order_id)
 
 
 @router.callback_query(F.data.startswith("courier:card_ok:"))
@@ -1249,6 +1275,7 @@ async def courier_card_received(call: CallbackQuery):
     except Exception:
         await call.message.answer("✅ Оплата по карте подтверждена!")
     await call.answer()
+    await _maybe_send_location_prompt(call.message, order_id)
 
 
 @router.callback_query(F.data.startswith("courier:cash_no:"))
@@ -1283,3 +1310,48 @@ async def payment_issue_reason_received(message: Message, state: FSMContext):
     except Exception:
         pass
     await message.answer("✅ Сообщение отправлено менеджеру. Причина зафиксирована.")
+    if order_id:
+        await _maybe_send_location_prompt(message, order_id)
+
+
+# ── Location prompt handlers ─────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("courier:addloc:yes:"))
+async def courier_addloc_yes(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[3])
+    await state.set_state(LocationAddState.waiting_location)
+    await state.update_data(order_id=order_id)
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await call.message.answer("📍 Отправьте геолокацию для этого адреса:")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:addloc:no:"))
+async def courier_addloc_no(call: CallbackQuery):
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await call.answer()
+
+
+@router.message(LocationAddState.waiting_location, F.location)
+async def courier_location_received(message: Message, state: FSMContext):
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    await state.clear()
+    lat = message.location.latitude
+    lng = message.location.longitude
+    try:
+        await api.update_order_location(order_id, lat, lng)
+        await message.answer("✅ Локация сохранена! Теперь этот адрес будет с картой.")
+    except Exception:
+        await message.answer("❌ Не удалось сохранить локацию.")
+
+
+@router.message(LocationAddState.waiting_location)
+async def courier_location_wrong_type(message: Message):
+    await message.answer("📍 Пожалуйста, отправьте геолокацию (📎 → Геолокация).")
