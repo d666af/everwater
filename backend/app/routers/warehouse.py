@@ -631,7 +631,13 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
             .where(WaterTransaction.courier_id == body.courier_id,
                    WaterTransaction.transaction_type == "bottle_return")
         )).scalar() or 0
-        debt_after = max(0, c_issued - c_returned - bottle_return_qty)
+        # Single-product issue: current batch contributes body.quantity if product is 19L
+        _cur_19l = body.quantity if product.volume >= 18.9 else 0
+        is_first_transaction = (c_issued - _cur_19l == 0 and c_returned == 0)
+        if is_first_transaction:
+            debt_after = max(0, c_issued - c_returned)
+        else:
+            debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         db.add(WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
@@ -781,7 +787,13 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             .where(WaterTransaction.courier_id == body.courier_id,
                    WaterTransaction.transaction_type == "bottle_return")
         )).scalar() or 0
-        debt_after = max(0, c_issued - c_returned - bottle_return_qty)
+        # On the courier's very first transaction the return does not reduce debt
+        current_batch_19l = sum(qty for prod, qty in resolved if prod.volume >= 18.9)
+        is_first_transaction = (c_issued - current_batch_19l == 0 and c_returned == 0)
+        if is_first_transaction:
+            debt_after = max(0, c_issued - c_returned)
+        else:
+            debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         ret_tx = WaterTransaction(
             product_id=None,
             courier_id=body.courier_id,
