@@ -351,7 +351,7 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                 order.items.forEach((i, idx) => {
                   const vol = Number(i.volume || 0)
                   const is19L = vol > 18 && vol < 20
-                  if (!is19L) {
+                  if (!is19L || perUnitDisc <= 0) {
                     rows.push(
                       <div key={`${idx}-x`} style={s.itemRow}>
                         <span style={s.itemName}>{i.product_name}</span>
@@ -387,6 +387,12 @@ function OrderCard({ order, expanded, setExpanded, onRepeat, onReview, reviewedI
                 <div style={{ ...s.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
                   <span style={s.itemName}>♻️ Возврат тары</span>
                   <span style={s.itemQty}>{order.return_bottles_count} шт.</span>
+                </div>
+              )}
+              {(order.bottle_surcharge || 0) > 0 && (
+                <div style={{ ...s.itemRow, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6, marginTop: 4 }}>
+                  <span style={s.itemName}>💰 Надбавка за невозврат</span>
+                  <span style={s.itemQty}>+{Math.round(order.bottle_surcharge).toLocaleString()} сум</span>
                 </div>
               )}
               {order.delivery_fee > 0 && (
