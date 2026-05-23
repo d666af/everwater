@@ -813,17 +813,20 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
                 order.assigner_name = mgr.name
             if not order.assigner_role:
                 order.assigner_role = "manager"
-        elif body.manager_telegram_id in cfg.ADMIN_IDS:
-            admin_user = (await db.execute(
-                select(User).where(User.telegram_id == body.manager_telegram_id)
-            )).scalar_one_or_none()
-            if admin_user:
-                if admin_user.phone:
-                    order.manager_phone = admin_user.phone
-                if not order.assigner_name and admin_user.name:
-                    order.assigner_name = admin_user.name
-                if not order.assigner_role:
-                    order.assigner_role = "admin"
+        else:
+            from app.services.tg_notify import get_all_admin_ids as _gaa
+            _all_aids = await _gaa(db)
+            if body.manager_telegram_id in _all_aids:
+                admin_user = (await db.execute(
+                    select(User).where(User.telegram_id == body.manager_telegram_id)
+                )).scalar_one_or_none()
+                if admin_user:
+                    if admin_user.phone:
+                        order.manager_phone = admin_user.phone
+                    if not order.assigner_name and admin_user.name:
+                        order.assigner_name = admin_user.name
+                    if not order.assigner_role:
+                        order.assigner_role = "admin"
 
     # Return-only manager orders: record bottle return and auto-deliver on courier assignment
     is_return_only_manager = (
