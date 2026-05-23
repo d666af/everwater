@@ -41,7 +41,7 @@ function StatusBadge({ status }) {
 
 function OrderCard({ order }) {
   const [open, setOpen] = useState(false)
-  const date = new Date(order.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const date = new Date(order.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   return (
     <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', border: `1px solid ${BORDER}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
       <div style={{ padding: '14px 16px', cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>

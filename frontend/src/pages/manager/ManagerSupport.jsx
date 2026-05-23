@@ -14,9 +14,9 @@ function formatTime(date) {
   const d = date instanceof Date ? date : new Date(date)
   const now = new Date()
   if (d.toDateString() === now.toDateString())
-    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) +
-    ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' }) +
+    ' ' + d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })
 }
 
 function formatRelTime(date) {
@@ -25,7 +25,7 @@ function formatRelTime(date) {
   if (diff < 60) return 'только что'
   if (diff < 3600) return `${Math.floor(diff / 60)} мин`
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч`
-  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })
 }
 
 function Avatar({ name, size = 40 }) {
@@ -246,7 +246,7 @@ export default function ManagerSupport({ Layout = ManagerLayout, title = 'Чат
     let currentDate = null
     for (const msg of msgs) {
       const d = new Date(msg.time)
-      const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+      const dateStr = d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'long', year: 'numeric' })
       if (dateStr !== currentDate) {
         currentDate = dateStr
         groups.push({ type: 'date', label: dateStr, key: 'date-' + dateStr })

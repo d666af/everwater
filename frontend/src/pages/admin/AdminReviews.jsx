@@ -132,7 +132,7 @@ export default function AdminReviews() {
                 </div>
                 {r.created_at && (
                   <span style={{ fontSize: 11, color: TEXT2 }}>
-                    {new Date(r.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(r.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>

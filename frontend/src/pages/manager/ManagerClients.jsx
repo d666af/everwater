@@ -99,7 +99,7 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
     setCoolers(prev => prev.filter(c => c.id !== coolerId))
   }
 
-  const fmtDate = (d) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+  const fmtDate = (d) => new Date(d).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', year: 'numeric' })
 
   const [customTag, setCustomTag] = useState('')
 
@@ -181,8 +181,8 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {orders.map(o => {
           const ss = STATUS_STYLE[o.status] || { bg: '#F2F2F7', color: TEXT2 }
-          const dt = o.created_at ? new Date(new Date(o.created_at).getTime() + 5 * 60 * 60 * 1000) : null
-          const dateStr = dt ? dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''
+          const dt = o.created_at ? new Date(o.created_at) : null
+          const dateStr = dt ? dt.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' }) : ''
           const orderItems = (o.items || []).filter(i => i.quantity > 0)
           const isDone = o.status === 'delivered' || o.status === 'rejected'
           const ROLE_MAP = { manager: 'Менеджер', admin: 'Администратор', courier: 'Курьер', agent: 'Агент', client: 'Клиент' }
@@ -449,7 +449,7 @@ function CoolerCard({ cooler, onRemove, onPayment }) {
             <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 0 }}>
               {[...(cooler.payments || [])].reverse().map((p, i, arr) => {
                 const dt = new Date(p.created_at)
-                const dateStr = dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                const dateStr = dt.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' }) + ' ' + dt.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })
                 return (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                     <div style={{ flex: 1 }}>

@@ -15,7 +15,7 @@ const QUICK_REPLIES = [
 function formatTime(dateStr) {
   const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
   if (isNaN(d)) return ''
-  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })
 }
 
 export default function Support() {
