@@ -10,7 +10,10 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
-from keyboards.courier import courier_menu_kb, courier_cash_confirm_kb, courier_card_confirm_kb, courier_location_prompt_kb
+from keyboards.courier import (
+    courier_menu_kb, courier_cash_confirm_kb, courier_card_confirm_kb,
+    courier_location_prompt_kb, build_edit_items_kb,
+)
 from config import settings
 
 router = Router()
@@ -89,6 +92,10 @@ class PaymentIssueReason(StatesGroup):
 
 class LocationAddState(StatesGroup):
     waiting_location = State()
+
+
+class CourierEditItems(StatesGroup):
+    editing = State()
 
 
 
@@ -251,6 +258,9 @@ def _order_detail_kb(order_id: int, status: str, tab: str, page: int, order: dic
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"corl:done:{order_id}:{tab}:{page}")])
 
+    if status in ("confirmed", "assigned_to_courier", "in_delivery"):
+        rows.append([InlineKeyboardButton(text="✏️ Изменить состав", callback_data=f"corl:edit_items:{order_id}:{tab}:{page}")])
+
     rows.append([InlineKeyboardButton(text="📋 К списку", callback_data=f"cor:back:{tab}:{page}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -272,6 +282,9 @@ def _notif_detail_kb(order_id: int, status: str, order: dict) -> InlineKeyboardM
         rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
     elif status == "in_delivery":
         rows.append([InlineKeyboardButton(text="✔️ Доставлено", callback_data=f"courier:done:{order_id}")])
+
+    if status in ("assigned_to_courier", "in_delivery"):
+        rows.append([InlineKeyboardButton(text="✏️ Изменить состав", callback_data=f"courier:edit_items:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1355,3 +1368,196 @@ async def courier_location_received(message: Message, state: FSMContext):
 @router.message(LocationAddState.waiting_location)
 async def courier_location_wrong_type(message: Message):
     await message.answer("📍 Пожалуйста, отправьте геолокацию (📎 → Геолокация).")
+
+
+# ── Edit order items handlers ─────────────────────────────────────────────────
+
+async def _start_edit_items(call: CallbackQuery, state: FSMContext, order_id: int):
+    """Common logic for opening the edit-items UI from any source."""
+    try:
+        order = await api.get_order(order_id)
+        all_products = await api.get_products()
+    except Exception:
+        await call.answer("Ошибка загрузки данных", show_alert=True)
+        return
+
+    active = [p for p in (all_products or []) if p.get("is_active", True)]
+    products_data = [{"id": p["id"], "name": p["name"], "price": p.get("price", 0)} for p in active]
+
+    items: dict[str, int] = {}
+    for it in order.get("items", []):
+        pid = str(it.get("product_id", ""))
+        if pid:
+            items[pid] = it.get("quantity", 0)
+
+    return_bottles = order.get("return_bottles_count") or 0
+    lent_bottles = order.get("bottles_lent") or 0
+
+    kb = build_edit_items_kb(order_id, items, return_bottles, lent_bottles, products_data)
+    sent = await call.message.answer("✏️ Изменить состав заказа:", reply_markup=kb)
+
+    await state.set_state(CourierEditItems.editing)
+    await state.update_data(
+        order_id=order_id,
+        edit_msg_id=sent.message_id,
+        items=items,
+        return_bottles=return_bottles,
+        lent_bottles=lent_bottles,
+        products=products_data,
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("courier:edit_items:"))
+async def courier_edit_items_notif(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[2])
+    await _start_edit_items(call, state, order_id)
+
+
+@router.callback_query(F.data.startswith("corl:edit_items:"))
+async def courier_edit_items_list(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[2])
+    await _start_edit_items(call, state, order_id)
+
+
+async def _cedit_update_kb(call: CallbackQuery, state: FSMContext):
+    """Edit the keyboard after any +/- change."""
+    data = await state.get_data()
+    kb = build_edit_items_kb(
+        data["order_id"], data["items"],
+        data["return_bottles"], data["lent_bottles"], data["products"],
+    )
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cedit:inc:"))
+async def cedit_inc(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    pid = parts[3]
+    data = await state.get_data()
+    items = dict(data.get("items", {}))
+    items[pid] = items.get(pid, 0) + 1
+    await state.update_data(items=items)
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data.startswith("cedit:dec:"))
+async def cedit_dec(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    pid = parts[3]
+    data = await state.get_data()
+    items = dict(data.get("items", {}))
+    items[pid] = max(0, items.get(pid, 0) - 1)
+    await state.update_data(items=items)
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data.startswith("cedit:ret_inc:"))
+async def cedit_ret_inc(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(return_bottles=data.get("return_bottles", 0) + 1)
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data.startswith("cedit:ret_dec:"))
+async def cedit_ret_dec(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(return_bottles=max(0, data.get("return_bottles", 0) - 1))
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data.startswith("cedit:lent_inc:"))
+async def cedit_lent_inc(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(lent_bottles=data.get("lent_bottles", 0) + 1)
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data.startswith("cedit:lent_dec:"))
+async def cedit_lent_dec(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(lent_bottles=max(0, data.get("lent_bottles", 0) - 1))
+    await _cedit_update_kb(call, state)
+
+
+@router.callback_query(F.data == "cedit:noop")
+async def cedit_noop(call: CallbackQuery):
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cedit:back:"))
+async def cedit_back(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("cedit:done:"))
+async def cedit_done(call: CallbackQuery, state: FSMContext):
+    order_id = int(call.data.split(":")[2])
+    data = await state.get_data()
+    items = data.get("items", {})
+    return_bottles = data.get("return_bottles", 0)
+    lent_bottles = data.get("lent_bottles", 0)
+    await state.clear()
+
+    items_payload = [
+        {"product_id": int(pid), "quantity": qty}
+        for pid, qty in items.items()
+        if qty > 0
+    ]
+
+    try:
+        await call.message.edit_text("⏳ Обновляю состав...", reply_markup=None)
+    except Exception:
+        pass
+
+    try:
+        await api.update_order_items(
+            order_id=order_id,
+            items=items_payload,
+            return_bottles_count=return_bottles,
+            bottles_lent=lent_bottles,
+            courier_name=call.from_user.full_name,
+        )
+
+        # Reload order for updated text and keyboard
+        order = await api.get_order(order_id)
+        status = order.get("status", "assigned_to_courier")
+
+        try:
+            await call.message.edit_text("✅ Состав обновлён!", reply_markup=None)
+        except Exception:
+            pass
+
+        # Update the assignment notification message if it still exists
+        courier_status_msg_id = order.get("courier_status_msg_id")
+        if courier_status_msg_id:
+            from keyboards.courier import courier_assignment_text
+            new_text = courier_assignment_text(order)
+            new_kb = _notif_detail_kb(order_id, status, order)
+            try:
+                await call.bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=courier_status_msg_id,
+                    text=new_text,
+                    reply_markup=new_kb,
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+    except Exception:
+        try:
+            await call.message.edit_text("❌ Ошибка при обновлении состава.", reply_markup=None)
+        except Exception:
+            pass
+
+    await call.answer()

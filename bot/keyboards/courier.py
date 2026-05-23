@@ -76,6 +76,36 @@ def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
     elif address:
         rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
     rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
+    rows.append([InlineKeyboardButton(text="✏️ Изменить состав", callback_data=f"courier:edit_items:{order_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_edit_items_kb(order_id: int, items: dict, return_bottles: int,
+                         lent_bottles: int, products: list) -> InlineKeyboardMarkup:
+    """Keyboard for editing order composition: one row per product with −/+ buttons."""
+    rows = []
+    for p in products:
+        pid = str(p["id"])
+        qty = items.get(pid, 0)
+        rows.append([
+            InlineKeyboardButton(text="−", callback_data=f"cedit:dec:{order_id}:{pid}"),
+            InlineKeyboardButton(text=f"{p['name']} {qty} шт.", callback_data="cedit:noop"),
+            InlineKeyboardButton(text="+", callback_data=f"cedit:inc:{order_id}:{pid}"),
+        ])
+    rows.append([
+        InlineKeyboardButton(text="−", callback_data=f"cedit:ret_dec:{order_id}"),
+        InlineKeyboardButton(text=f"♻️ Возврат {return_bottles} шт.", callback_data="cedit:noop"),
+        InlineKeyboardButton(text="+", callback_data=f"cedit:ret_inc:{order_id}"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="−", callback_data=f"cedit:lent_dec:{order_id}"),
+        InlineKeyboardButton(text=f"📦 Одолжить {lent_bottles} шт.", callback_data="cedit:noop"),
+        InlineKeyboardButton(text="+", callback_data=f"cedit:lent_inc:{order_id}"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="✅ Готово", callback_data=f"cedit:done:{order_id}"),
+        InlineKeyboardButton(text="◀️ Назад", callback_data=f"cedit:back:{order_id}"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

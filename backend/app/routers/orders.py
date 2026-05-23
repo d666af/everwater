@@ -1478,6 +1478,82 @@ class LocationBody(BaseModel):
     longitude: float
 
 
+class UpdateItemsBody(BaseModel):
+    items: list[dict]  # [{product_id: int, quantity: int}]
+    return_bottles_count: int = 0
+    bottles_lent: int = 0
+    courier_name: str | None = None
+
+
+@router.patch("/{order_id}/items")
+async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import delete as sa_delete
+    from app.services.tg_notify import edit_all_notifications
+
+    order = await _get_order(order_id, db)
+
+    # Capture notification refs before relationships expire
+    client_tg = order.user.telegram_id if order.user else None
+    old_client_msg_id = order.client_status_msg_id
+    notification_msg_ids = order.notification_msg_ids
+    oid = order.id
+
+    # Rebuild items
+    await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
+    await db.flush()
+
+    subtotal = 0.0
+    items_data: list = []
+    for it in body.items:
+        qty = int(it.get("quantity", 0))
+        pid = it.get("product_id")
+        if qty > 0 and pid:
+            prod_q = await db.execute(select(Product).where(Product.id == pid))
+            prod = prod_q.scalar_one_or_none()
+            if prod:
+                subtotal += prod.price * qty
+                db.add(OrderItem(order_id=order_id, product_id=prod.id, quantity=qty, price=prod.price))
+                items_data.append((prod, qty))
+
+    settings_cfg = await get_all_settings(db)
+    bottle_surcharge = calc_bottle_surcharge(items_data, body.return_bottles_count, settings_cfg, body.bottles_lent)
+
+    order.subtotal = subtotal
+    order.bottle_surcharge = bottle_surcharge
+    order.total = max(0.0, subtotal + bottle_surcharge + (order.delivery_fee or 0) - (order.bonus_used or 0) - (order.balance_used or 0))
+    order.return_bottles_count = body.return_bottles_count
+    order.bottles_lent = body.bottles_lent
+
+    await db.commit()
+
+    # Notification texts
+    def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
+    items_priced = "\n".join(f"• {p.name} {q} шт. — {_fmtv(p.price * q)}" for p, q in items_data) or "—"
+    items_simple = "\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—"
+    total_str = _fmtv(order.total)
+    ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
+    lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
+    courier_label = f"курьером {body.courier_name}" if body.courier_name else "курьером"
+
+    staff_text = (
+        f"✏️ Состав заказа #{oid} изменён {courier_label}\n\n"
+        f"{items_priced}{ret_line}{lent_line}\n\n"
+        f"Итого: {total_str}"
+    )
+    await edit_all_notifications(notification_msg_ids, staff_text)
+
+    client_text = (
+        f"✏️ Состав вашего заказа изменён\n\n"
+        f"{items_simple}{ret_line}{lent_line}\n\n"
+        f"Итого: {total_str}"
+    )
+    new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
+    if new_client_msg and new_client_msg != old_client_msg_id:
+        await _save_status_msg_id(db, oid, new_client_msg)
+
+    return {"ok": True}
+
+
 @router.patch("/{order_id}/location")
 async def update_order_location(order_id: int, body: LocationBody, db: AsyncSession = Depends(get_db)):
     import json as _j
