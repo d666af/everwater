@@ -1492,11 +1492,24 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
 
     order = await _get_order(order_id, db)
 
-    # Capture notification refs before relationships expire
+    # Capture ALL metadata before commit expires relationships
     client_tg = order.user.telegram_id if order.user else None
+    client_name = (order.user.name if order.user else None) or "—"
     old_client_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
     oid = order.id
+    order_address = order.address or "—"
+    order_phone = order.recipient_phone or "—"
+    order_payment = order.payment_method or "cash"
+    order_creator_role = order.creator_role
+    order_creator_name = order.creator_name or (
+        order.agent.name if order.creator_role == "agent" and order.agent else None
+    )
+    order_assigner_name = order.assigner_name
+    order_assigner_role = order.assigner_role or ""
+    _courier = order.courier
+    courier_name = _courier.name if _courier else None
+    courier_phone = (_courier.phone or "") if _courier else ""
 
     # Rebuild items
     await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
@@ -1526,20 +1539,56 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
 
     await db.commit()
 
-    # Notification texts
+    # Build full staff notification preserving all original info + change marker
     def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
-    items_priced = "\n".join(f"• {p.name} {q} шт. — {_fmtv(p.price * q)}" for p, q in items_data) or "—"
+    items_bullets = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) or "—"
     items_simple = "\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—"
     total_str = _fmtv(order.total)
     ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
     lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
     courier_label = f"курьером {body.courier_name}" if body.courier_name else "курьером"
+    change_marker = f"\n✏️ Изменено {courier_label}"
 
-    staff_text = (
-        f"✏️ Состав заказа #{oid} изменён {courier_label}\n\n"
-        f"{items_priced}{ret_line}{lent_line}\n\n"
-        f"Итого: {total_str}"
-    )
+    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+    pay_label_str = _pay_labels.get(order_payment, order_payment)
+    c_phone_part = f"  |  {courier_phone}" if courier_phone else ""
+    _ROLE_LABELS = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    if order_creator_role:
+        _cr_label = _ROLE_LABELS.get(order_creator_role, order_creator_role.capitalize())
+        _creator_line = (
+            f"\n✍️ Создал заказ: {_cr_label} {order_creator_name}" if order_creator_name
+            else f"\n✍️ Создал заказ: {_cr_label}"
+        )
+    else:
+        _client_label = client_name if client_name and client_name != "—" else "Клиент"
+        _creator_line = f"\n✍️ Создал заказ: Клиент {_client_label}"
+    if order_assigner_name:
+        _asgn_role_lbl = _ROLE_LABELS.get(order_assigner_role, "") if order_assigner_role else ""
+        _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
+    else:
+        _assigner_line = ""
+
+    if courier_name:
+        staff_text = (
+            f"✅ Курьер {courier_name} назначен\n\n"
+            f"👤 {client_name}  |  {order_phone}\n"
+            f"📍 {order_address}\n\n"
+            f"Товары:\n{items_bullets}{ret_line}{lent_line}\n"
+            f"💰 {total_str}  |  {pay_label_str}"
+            f"{_creator_line}\n"
+            f"🚴 {courier_name}{c_phone_part}"
+            f"{_assigner_line}"
+            f"{change_marker}"
+        )
+    else:
+        staff_text = (
+            f"👤 {client_name}  |  {order_phone}\n"
+            f"📍 {order_address}\n\n"
+            f"Товары:\n{items_bullets}{ret_line}{lent_line}\n"
+            f"💰 {total_str}  |  {pay_label_str}"
+            f"{_creator_line}"
+            f"{change_marker}"
+        )
     await edit_all_notifications(notification_msg_ids, staff_text)
 
     client_text = (
