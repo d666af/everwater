@@ -186,12 +186,16 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
           const orderItems = (o.items || []).filter(i => i.quantity > 0)
           const isDone = o.status === 'delivered' || o.status === 'rejected'
           const ROLE_MAP = { manager: 'Менеджер', admin: 'Администратор', courier: 'Курьер', agent: 'Агент', client: 'Клиент' }
+          const effectiveCreatorName = o.creator_name || (o.creator_role === 'courier' ? o.courier_name : null)
           const creatorStr = o.creator_role
-            ? `${ROLE_MAP[o.creator_role] || o.creator_role}${o.creator_name ? ' ' + o.creator_name : ''}`
+            ? `${ROLE_MAP[o.creator_role] || o.creator_role}${effectiveCreatorName ? ' ' + effectiveCreatorName : ''}`
             : `Клиент${o.client_name ? ' ' + o.client_name : ''}`
-          const assignerStr = (o.assigner_name || o.assigner_role)
-            ? `${o.assigner_role ? (ROLE_MAP[o.assigner_role] || o.assigner_role) : ''}${o.assigner_name ? ' ' + o.assigner_name : ''}`.trim()
-            : null
+          const autoAssigned = o.creator_role === 'courier' && o.assigner_role === 'courier'
+          const assignerStr = autoAssigned
+            ? 'Автоматически'
+            : (o.assigner_name || o.assigner_role)
+              ? `${o.assigner_role ? (ROLE_MAP[o.assigner_role] || o.assigner_role) : ''}${o.assigner_name ? ' ' + o.assigner_name : ''}`.trim()
+              : null
           const rejectorStr = o.rejected_by_role || o.rejected_by_name
             ? `${o.rejected_by_role ? (ROLE_MAP[o.rejected_by_role] || o.rejected_by_role) : ''}${o.rejected_by_name ? ' ' + o.rejected_by_name : ''}`.trim()
             : null

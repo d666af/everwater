@@ -579,16 +579,18 @@ const CREATOR_LABEL = { manager: 'Менеджер', admin: 'Администр�
 
 function CreatorBlock({ order }) {
   const role = order.creator_role
-  const name = order.creator_name
+  const effectiveName = order.creator_name || (role === 'courier' ? order.courier_name : null)
   const creatorStr = role
-    ? `${CREATOR_LABEL[role] || role}${name ? ': ' + name : ''}`
+    ? `${CREATOR_LABEL[role] || role}${effectiveName ? ': ' + effectiveName : ''}`
     : `Клиент${order.client_name ? ': ' + order.client_name : ''}`
+  const autoAssigned = role === 'courier' && order.assigner_role === 'courier'
+  const assignerDisplay = autoAssigned ? 'Автоматически' : order.assigner_name
   const hasInfo = role || order.assigner_name
   if (!hasInfo && !order.client_name) return null
   return (
     <Section title="Источник">
       <Row k="Создал" v={creatorStr} />
-      {order.assigner_name && <Row k="Назначил курьера" v={order.assigner_name} />}
+      {assignerDisplay && <Row k="Назначил курьера" v={assignerDisplay} />}
     </Section>
   )
 }
