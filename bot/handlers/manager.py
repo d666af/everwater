@@ -893,7 +893,8 @@ def _mco_confirm_text(data: dict, products: list) -> str:
 
     lines = ["📋 <b>Подтверждение заказа</b>\n"]
     if client:
-        lines.append(f"👤 {client.get('name', '—')} · {phone}")
+        _cname = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—')
+        lines.append(f"👤 {_cname} · {phone}")
     else:
         lines.append(f"👤 {phone}")
     lines.append(f"📍 {address}")
@@ -1060,7 +1061,8 @@ async def mgr_co_input(message: Message, state: FSMContext):
 
         if client:
             bottles_owed = client.get("bottles_owed", 0)
-            info = f"✅ {client.get('name', '—')} · {client.get('phone', phone)}"
+            _cn = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—')
+            info = f"✅ {_cn} · {client.get('phone', phone)}"
             if bottles_owed > 0:
                 info += f"\n🫙 Долг бутылок: {bottles_owed} шт."
         else:
@@ -1107,7 +1109,8 @@ async def mgr_co_input(message: Message, state: FSMContext):
                     bottle_line = f"\n🫙 Долг по бутылкам: {bottles_owed} шт."
             else:
                 bottle_line = ""
-            info = f"✅ Клиент найден: {client.get('name', '—')} | {client.get('phone', phone)}{bottle_line}"
+            _cn = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—')
+            info = f"✅ Клиент найден: {_cn} | {client.get('phone', phone)}{bottle_line}"
         else:
             info = "ℹ️ Клиент не найден — заказ создастся по номеру телефона"
 
