@@ -447,33 +447,65 @@ def _parse_invoice(text: str) -> dict | None:
         #                   or: "получатель  ZAVOD  MILK VILL" ──────────────
         if 'получатель' in low or re.search(r'poluch', low):
             after = re.split(r'получатель|poluchatel?', line, flags=re.IGNORECASE)[-1].strip()
-            # ZAVOD / ЗАВОД as first token → factory delivery, no courier
-            zavod_m = re.match(r'(?:ZAVOD|ЗАВОД)\s+(.+)', after, re.IGNORECASE)
+            # ZAVOD / ЗАВОД as first token → factory delivery, no courier.
+            # Allow ZAVOD alone (factory name may be on the next line).
+            zavod_m = re.match(r'(?:ZAVOD|ЗАВОД)\s*(.*)', after, re.IGNORECASE)
             if zavod_m:
-                result['factory_name'] = zavod_m.group(1).strip()
-            else:
-                name_m = _NAME_RE.search(after)
-                if name_m:
-                    result['courier_name'] = name_m.group(0)
+                factory_part = zavod_m.group(1).strip()
+                if factory_part:
+                    result['factory_name'] = factory_part
                 else:
-                    # Name may be on the next line(s) when OCR splits label and value
+                    # Factory name is on the next line(s) — column-scan split
                     for nxt in lines[i + 1:i + 4]:
                         if _SECTION_STOP.search(nxt):
                             break
-                        nm = _NAME_RE.search(nxt)
-                        if nm:
-                            result['courier_name'] = nm.group(0)
+                        nxt_clean = nxt.strip()
+                        if nxt_clean:
+                            result['factory_name'] = nxt_clean
                             break
-                if not result['courier_phone']:
-                    ph2 = _normalize_phone(line)
-                    if ph2:
-                        result['courier_phone'] = ph2
+            else:
+                # Also check if next lines open with ZAVOD (label on its own line)
+                is_factory = False
+                for j, nxt in enumerate(lines[i + 1:i + 4]):
+                    zm = re.match(r'(?:ZAVOD|ЗАВОД)\s*(.*)', nxt.strip(), re.IGNORECASE)
+                    if zm:
+                        factory_part = zm.group(1).strip()
+                        if factory_part:
+                            result['factory_name'] = factory_part
+                        else:
+                            # Factory name one more line down
+                            deeper = lines[i + 1 + j + 1:i + 1 + j + 3]
+                            for dl in deeper:
+                                if dl.strip():
+                                    result['factory_name'] = dl.strip()
+                                    break
+                        is_factory = True
+                        break
+                    if _SECTION_STOP.search(nxt):
+                        break
+                if not is_factory:
+                    name_m = _NAME_RE.search(after)
+                    if name_m:
+                        result['courier_name'] = name_m.group(0)
                     else:
-                        for nxt in lines[i + 1:i + 5]:
-                            ph2 = _normalize_phone(nxt)
-                            if ph2:
-                                result['courier_phone'] = ph2
+                        # Name may be on the next line(s) when OCR splits label and value
+                        for nxt in lines[i + 1:i + 4]:
+                            if _SECTION_STOP.search(nxt):
                                 break
+                            nm = _NAME_RE.search(nxt)
+                            if nm:
+                                result['courier_name'] = nm.group(0)
+                                break
+                    if not result['courier_phone']:
+                        ph2 = _normalize_phone(line)
+                        if ph2:
+                            result['courier_phone'] = ph2
+                        else:
+                            for nxt in lines[i + 1:i + 5]:
+                                ph2 = _normalize_phone(nxt)
+                                if ph2:
+                                    result['courier_phone'] = ph2
+                                    break
 
         # ── Vehicle row: "тип машины  LABO  30L700QA" ───────────────────────
         if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
