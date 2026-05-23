@@ -689,6 +689,7 @@ function Stepper({ value, onDec, onInc, onChange, min = 0, max = Infinity }) {
 }
 
 function CreateOrderModal({ onClose, onSave, couriers = [] }) {
+  const { user: currentUser } = useAuthStore()
   const [phone, setPhone] = useState('')
   const [client, setClient] = useState(null)
   const [looking, setLooking] = useState(false)

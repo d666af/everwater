@@ -737,6 +737,12 @@ export const activateAgent = (id) =>
     () => ({ ok: true })
   )
 
+export const linkAgentTelegram = (agentId, telegramId) =>
+  safeCall(
+    () => http.patch(`/agents/${agentId}/link_telegram`, null, { params: { telegram_id: telegramId } }).then(r => r.data),
+    () => ({})
+  )
+
 export const deleteAgent = (id) =>
   safeCall(
     () => http.delete(`/agents/${id}`).then(r => r.data),
