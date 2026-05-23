@@ -520,7 +520,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
     assigner_name = order.assigner_name or ""
     assigner_role = order.assigner_role or ""
     creator_role = order.creator_role or ""
-    creator_name = order.creator_name or ""
+    creator_name = order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else "") or ""
     agent_id_for_notify = order.agent_id
     order_phone = order.recipient_phone
     oid = order.id
@@ -763,7 +763,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     order_total = int(order.total)
     order_payment = order.payment_method or "cash"
     order_creator_role = order.creator_role
-    order_creator_name = order.creator_name
+    order_creator_name = order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None)
     courier_tg = courier.telegram_id
     courier_name = courier.name
     courier_phone = courier.phone or ""
