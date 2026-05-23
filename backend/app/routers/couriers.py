@@ -1020,7 +1020,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
-        await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+        _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+        if _courier_msg_id:
+            await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=_courier_msg_id))
+            await db.commit()
 
         # Notify client about created+assigned order (two messages)
         if client_tg:
@@ -1066,13 +1069,29 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             f"Сумма: {_fmt_n3(total_int)} сум\n\n"
             f"✅ Курьер {courier_name} назначен автоматически"
         )
-        from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+        import json as _json_mod_c
+        from app.services.tg_notify import tg_send_capture as _tsc_c, get_all_admin_ids as _get_all_admin_ids
         _all_aids_c = await _get_all_admin_ids(db)
-        for aid in _all_aids_c:
-            await _tg(aid, info_text)
-        for m in mgrs:
-            if m.telegram_id and m.telegram_id not in _all_aids_c:
-                await _tg(m.telegram_id, info_text)
+        _msg_ids_c: list = []
+        _seen_c: set[int] = set()
+        for _aid in _all_aids_c:
+            if _aid not in _seen_c:
+                _seen_c.add(_aid)
+                _r = await _tsc_c(_aid, info_text)
+                if _r:
+                    _msg_ids_c.append(_r)
+        for _mgr in mgrs:
+            _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else None
+            _active = _mgr.is_active if hasattr(_mgr, "is_active") else True
+            if _active and _tg_id:
+                _tid = int(_tg_id)
+                if _tid not in _seen_c:
+                    _seen_c.add(_tid)
+                    _r = await _tsc_c(_tid, info_text)
+                    if _r:
+                        _msg_ids_c.append(_r)
+        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod_c.dumps(_msg_ids_c)))
+        await db.commit()
 
     # ── Manager/admin-created order ──
     else:
