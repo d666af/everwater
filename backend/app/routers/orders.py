@@ -102,7 +102,7 @@ async def _tg_edit_or_send(chat_id: int, text: str, msg_id: int | None) -> int |
     return await _tg_send(chat_id, text)
 
 
-async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None) -> bool:
+async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
     """Edit a Telegram message text and remove/replace its inline keyboard.
     Pass reply_markup=None to remove the keyboard (sends empty InlineKeyboardMarkup)."""
     from app.config import settings as cfg
@@ -111,6 +111,8 @@ async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None) 
         return False
     payload: dict = {"chat_id": chat_id, "message_id": message_id, "text": text,
                      "reply_markup": reply_markup if reply_markup is not None else {}}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/editMessageText"
     try:
         async with aiohttp.ClientSession() as s:
@@ -1510,6 +1512,12 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     _courier = order.courier
     courier_name = _courier.name if _courier else None
     courier_phone = (_courier.phone or "") if _courier else ""
+    courier_tg = _courier.telegram_id if _courier else None
+    courier_status_msg = order.courier_status_msg_id
+    order_lat = order.latitude
+    order_lng = order.longitude
+    order_note = order.extra_info
+    order_creator_role_raw = order.creator_role
 
     # Rebuild items
     await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
@@ -1541,8 +1549,19 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
 
     # Build full staff notification preserving all original info + change marker
     def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
-    items_bullets = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) or "—"
-    items_simple = "\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—"
+    qty_with_deposit = sum(q for p, q in items_data if getattr(p, "has_bottle_deposit", False))
+    missing_bottles = max(0, qty_with_deposit - body.return_bottles_count)
+    surcharge_num = f"{int(bottle_surcharge):,}".replace(",", " ")
+    surcharge_suffix = (
+        f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{surcharge_num} сум"
+        if bottle_surcharge > 0 and missing_bottles > 0 else ""
+    )
+    surcharge_suffix_simple = (
+        f"\n• Невозвращённые бутылки {missing_bottles} шт. — +{surcharge_num} сум"
+        if bottle_surcharge > 0 and missing_bottles > 0 else ""
+    )
+    items_bullets = ("\n".join(f"  • {p.name} {q} шт." for p, q in items_data) or "—") + surcharge_suffix
+    items_simple = ("\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—") + surcharge_suffix_simple
     total_str = _fmtv(order.total)
     ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
     lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
@@ -1599,6 +1618,41 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
     if new_client_msg and new_client_msg != old_client_msg_id:
         await _save_status_msg_id(db, oid, new_client_msg)
+
+    # Edit courier's "Вы создали новый заказ" message in-place (courier-created orders)
+    if courier_tg and courier_status_msg and order_creator_role_raw == "courier":
+        def _map_url_u(addr, lat, lng):
+            from urllib.parse import quote as _uq
+            if lat and lng:
+                return f"https://maps.google.com/?q={lat},{lng}"
+            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
+
+        _note_line = f"\n🏠 {order_note}" if order_note else ""
+        _snum = f"{int(bottle_surcharge):,}".replace(",", " ")
+        _items_c = "\n".join(
+            f"  • {p.name} {q} шт. — {f'{int(p.price * q):,}'.replace(',', ' ')} сум"
+            for p, q in items_data
+        ) if items_data else "  —"
+        if bottle_surcharge > 0 and missing_bottles > 0:
+            _items_c += f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum} сум"
+        _courier_upd = (
+            f"🚴 <b>Вы создали новый заказ!</b>\n\n"
+            f"📍 {order_address}{_note_line}\n"
+            f"👤 {order_phone}\n\n"
+            f"Состав:\n{_items_c}"
+        )
+        if body.return_bottles_count > 0:
+            _courier_upd += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
+        _courier_upd += f"\n\nИтого: {total_str}"
+        _map_u = _map_url_u(order_address, order_lat, order_lng)
+        _kb = []
+        if _map_u:
+            _kb.append([{"text": "🗺 На карте", "url": _map_u}])
+        _kb.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        _kb.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+        _kb.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+        await _tg_edit(int(courier_tg), courier_status_msg, _courier_upd,
+                       reply_markup={"inline_keyboard": _kb}, parse_mode="HTML")
 
     return {"ok": True}
 
