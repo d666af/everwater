@@ -469,7 +469,8 @@ async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
 
 async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: list[dict],
                                     batch_id: str, performed_by: str | None,
-                                    db: AsyncSession | None = None):
+                                    db: AsyncSession | None = None,
+                                    invoice_phone: str | None = None):
     """Push the invoice PNG to all admins and warehouse staff (deduplicated)."""
     when_str = datetime.now(tz=timezone.utc).astimezone(_TZ_UZB).strftime("%d.%m.%Y %H:%M")
 
@@ -495,7 +496,8 @@ async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: l
     total_line = f"\nИтого: <b>{total_fmt} сум</b>" if len(regular) > 1 else ""
 
     recip_name = getattr(courier, 'name', '—')
-    recip_phone = getattr(courier, 'phone', None)
+    # Prefer phone from the invoice (may be more current than stored DB phone)
+    recip_phone = invoice_phone or getattr(courier, 'phone', None)
     caption = (
         f"📋 <b>Накладная — выдача со склада</b>\n"
         f"Получатель: <b>{recip_name}</b>{f' · {recip_phone}' if recip_phone else ''}\n\n"
@@ -693,6 +695,7 @@ class BatchIssueBody(BaseModel):
     vehicle_plate: str | None = None
     bottle_return: int = 0
     created_at: datetime | None = None  # for backdating (invoice nakl)
+    invoice_phone: str | None = None    # phone from OCR invoice (may differ from DB)
 
 
 @router.post("/issue_batch")
@@ -815,15 +818,17 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             # Display time in UTC+5 (Tashkent)
             _when_utc = _ts or datetime.utcnow()
             _when = _when_utc + timedelta(hours=5)
+            _display_phone = body.invoice_phone or courier.phone
             png = generate_invoice_png(
                 items=invoice_items,
                 courier_name=courier.name,
-                courier_phone=courier.phone,
+                courier_phone=_display_phone,
                 vehicle_type=courier.vehicle_type,
                 vehicle_plate=courier.vehicle_plate,
                 when=_when,
             )
-            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by, db)
+            await _send_invoice_to_admins(png, courier, invoice_items, batch_id, body.performed_by, db,
+                                          invoice_phone=_display_phone)
         except Exception:
             pass
 

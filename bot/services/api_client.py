@@ -688,7 +688,7 @@ async def get_warehouse_history(limit: int = 30, tx_type: str = None, courier_id
 
 async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note: str = None,
                       performed_by: str = None, vehicle_type: str = None, vehicle_plate: str = None,
-                      created_at: str = None) -> dict:
+                      created_at: str = None, invoice_phone: str = None) -> dict:
     body = {
         "courier_id": courier_id,
         "items": items,
@@ -702,6 +702,8 @@ async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note
         body["vehicle_plate"] = vehicle_plate
     if created_at:
         body["created_at"] = created_at
+    if invoice_phone:
+        body["invoice_phone"] = invoice_phone
     return await _post("/warehouse/issue_batch", body)
 
 

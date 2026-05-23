@@ -772,7 +772,7 @@ async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncS
         )
         existing = name_q.scalar_one_or_none()
         if existing:
-            if data.phone and not existing.phone:
+            if data.phone:
                 existing.phone = data.phone
             if data.vehicle_type:
                 existing.vehicle_type = data.vehicle_type
