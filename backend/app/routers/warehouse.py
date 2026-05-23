@@ -1503,6 +1503,9 @@ async def get_history(
 
     if type and type != "all":
         q = q.where(WaterTransaction.transaction_type == type)
+    else:
+        # delivery_net is internal accounting — hide from default history view
+        q = q.where(WaterTransaction.transaction_type != "delivery_net")
 
     if product and product != "all":
         all_prods = (await db.execute(select(Product).where(Product.is_active == True))).scalars().all()
@@ -1746,3 +1749,82 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     return {"ok": True, "batch_id": batch_id}
+
+
+@router.delete("/clear_order_issues")
+async def clear_order_issues(db: AsyncSession = Depends(get_db)):
+    """Delete all unbatched 'issue' WaterTransactions (auto-created by manager orders).
+    These inflate courier debt without corresponding real warehouse handouts.
+    After calling this, manually re-enter real handouts as batched invoices."""
+    txs = (await db.execute(
+        select(WaterTransaction).where(
+            WaterTransaction.transaction_type == "issue",
+            WaterTransaction.batch_id.is_(None),
+        )
+    )).scalars().all()
+    count = 0
+    for tx in txs:
+        if tx.courier_id and tx.product_id:
+            cw = (await db.execute(
+                select(CourierWater).where(
+                    CourierWater.courier_id == tx.courier_id,
+                    CourierWater.product_id == tx.product_id,
+                )
+            )).scalar_one_or_none()
+            if cw:
+                cw.reserved = max(0, (cw.reserved or 0) - tx.quantity)
+        await db.delete(tx)
+        count += 1
+    await db.commit()
+    return {"ok": True, "deleted": count}
+
+
+@router.post("/sync_delivery_net")
+async def sync_delivery_net(db: AsyncSession = Depends(get_db)):
+    """Retroactively create delivery_net WaterTransactions for all delivered orders.
+    delivery_net tracks the net bottle change per delivery (bottles at client home
+    reduce courier debt to warehouse). Idempotent: deletes all existing delivery_net
+    records first then rebuilds from order history."""
+    from app.models.order import Order, OrderItem, OrderStatus
+    from app.models.product import Product
+
+    # Delete all existing delivery_net transactions
+    existing = (await db.execute(
+        select(WaterTransaction).where(WaterTransaction.transaction_type == "delivery_net")
+    )).scalars().all()
+    for tx in existing:
+        await db.delete(tx)
+
+    # Rebuild from delivered orders
+    delivered_orders = (await db.execute(
+        select(Order)
+        .where(Order.status == OrderStatus.DELIVERED, Order.courier_id.isnot(None))
+        .options(selectinload(Order.items).selectinload(OrderItem.product))
+    )).scalars().all()
+
+    created = 0
+    for order in delivered_orders:
+        bottles_19l = sum(
+            i.quantity for i in order.items
+            if i.product and i.product.has_bottle_deposit
+        )
+        if bottles_19l == 0 and (order.bottles_lent or 0) == 0:
+            continue
+        net_change = bottles_19l + (order.bottles_lent or 0) - (order.return_bottles_count or 0)
+        if net_change == 0:
+            continue
+        tx_time = order.delivered_at or order.created_at
+        tx = WaterTransaction(
+            courier_id=order.courier_id,
+            order_id=order.id,
+            transaction_type="delivery_net",
+            quantity=net_change,
+            note=f"Доставка #{order.id}: выдано {bottles_19l}, возврат {order.return_bottles_count or 0}, одолжено {order.bottles_lent or 0}",
+        )
+        if tx_time:
+            tx.created_at = tx_time
+        db.add(tx)
+        created += 1
+
+    await db.commit()
+    return {"ok": True, "deleted": len(existing), "created": created}

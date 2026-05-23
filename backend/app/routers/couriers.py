@@ -1245,7 +1245,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             from app.services.tg_notify import tg_send_capture as _tg_send_capture
             from app.models.admin_user import AdminUser as _AdminUser
             _secondary_admins = (await db.execute(select(_AdminUser))).scalars().all()
-            _all_admin_ids = set(cfg.ADMIN_IDS) | {int(a.telegram_id) for a in _secondary_admins}
+            _all_admin_ids = set(cfg.ADMIN_IDS) | {int(a.telegram_id) for a in _secondary_admins if a.telegram_id}
             _msg_ids: list = []
             _seen: set[int] = set()
             for _aid in _all_admin_ids:
