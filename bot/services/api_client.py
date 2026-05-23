@@ -286,6 +286,26 @@ async def report_payment_issue(order_id: int, payment_method: str, reason: str, 
         return {}
 
 
+async def update_order_location(order_id: int, lat: float, lng: float):
+    try:
+        return await _patch(f"/orders/{order_id}/location", {"latitude": lat, "longitude": lng})
+    except Exception:
+        return {}
+
+
+async def update_order_items(order_id: int, items: list, return_bottles_count: int,
+                              bottles_lent: int, courier_name: str = None):
+    try:
+        return await _patch(f"/orders/{order_id}/items", {
+            "items": items,
+            "return_bottles_count": return_bottles_count,
+            "bottles_lent": bottles_lent,
+            "courier_name": courier_name,
+        })
+    except Exception:
+        return {}
+
+
 async def create_review(user_id: int, order_id: int, rating: int, comment: str = None):
     return await _post("/orders/reviews/", {
         "user_id": user_id, "order_id": order_id, "rating": rating, "comment": comment

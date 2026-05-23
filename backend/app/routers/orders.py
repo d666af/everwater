@@ -1473,6 +1473,127 @@ async def repeat_order(order_id: int, db: AsyncSession = Depends(get_db)):
     }
 
 
+class LocationBody(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class UpdateItemsBody(BaseModel):
+    items: list[dict]  # [{product_id: int, quantity: int}]
+    return_bottles_count: int = 0
+    bottles_lent: int = 0
+    courier_name: str | None = None
+
+
+@router.patch("/{order_id}/items")
+async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import delete as sa_delete
+    from app.services.tg_notify import edit_all_notifications
+
+    order = await _get_order(order_id, db)
+
+    # Capture notification refs before relationships expire
+    client_tg = order.user.telegram_id if order.user else None
+    old_client_msg_id = order.client_status_msg_id
+    notification_msg_ids = order.notification_msg_ids
+    oid = order.id
+
+    # Rebuild items
+    await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
+    await db.flush()
+
+    subtotal = 0.0
+    items_data: list = []
+    for it in body.items:
+        qty = int(it.get("quantity", 0))
+        pid = it.get("product_id")
+        if qty > 0 and pid:
+            prod_q = await db.execute(select(Product).where(Product.id == pid))
+            prod = prod_q.scalar_one_or_none()
+            if prod:
+                subtotal += prod.price * qty
+                db.add(OrderItem(order_id=order_id, product_id=prod.id, quantity=qty, price=prod.price))
+                items_data.append((prod, qty))
+
+    settings_cfg = await get_all_settings(db)
+    bottle_surcharge = calc_bottle_surcharge(items_data, body.return_bottles_count, settings_cfg, body.bottles_lent)
+
+    order.subtotal = subtotal
+    order.bottle_surcharge = bottle_surcharge
+    order.total = max(0.0, subtotal + bottle_surcharge + (order.delivery_fee or 0) - (order.bonus_used or 0) - (order.balance_used or 0))
+    order.return_bottles_count = body.return_bottles_count
+    order.bottles_lent = body.bottles_lent
+
+    await db.commit()
+
+    # Notification texts
+    def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
+    items_priced = "\n".join(f"• {p.name} {q} шт. — {_fmtv(p.price * q)}" for p, q in items_data) or "—"
+    items_simple = "\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—"
+    total_str = _fmtv(order.total)
+    ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
+    lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
+    courier_label = f"курьером {body.courier_name}" if body.courier_name else "курьером"
+
+    staff_text = (
+        f"✏️ Состав заказа #{oid} изменён {courier_label}\n\n"
+        f"{items_priced}{ret_line}{lent_line}\n\n"
+        f"Итого: {total_str}"
+    )
+    await edit_all_notifications(notification_msg_ids, staff_text)
+
+    client_text = (
+        f"✏️ Состав вашего заказа изменён\n\n"
+        f"{items_simple}{ret_line}{lent_line}\n\n"
+        f"Итого: {total_str}"
+    )
+    new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
+    if new_client_msg and new_client_msg != old_client_msg_id:
+        await _save_status_msg_id(db, oid, new_client_msg)
+
+    return {"ok": True}
+
+
+@router.patch("/{order_id}/location")
+async def update_order_location(order_id: int, body: LocationBody, db: AsyncSession = Depends(get_db)):
+    import json as _j
+    order = await _get_order(order_id, db)
+    order.latitude = body.latitude
+    order.longitude = body.longitude
+
+    # Back-fill all same-address orders for this user that still have no location
+    if order.user_id and order.address:
+        await db.execute(
+            sa_update(Order)
+            .where(
+                Order.user_id == order.user_id,
+                Order.address == order.address,
+                Order.latitude.is_(None),
+            )
+            .values(latitude=body.latitude, longitude=body.longitude)
+        )
+        # Also update matching saved_addresses entries
+        user_q = await db.execute(select(User).where(User.id == order.user_id))
+        user = user_q.scalar_one_or_none()
+        if user and user.saved_addresses:
+            try:
+                addrs = _j.loads(user.saved_addresses)
+                norm = order.address.strip().lower()
+                changed = False
+                for a in addrs:
+                    if a.get("address", "").strip().lower() == norm and not a.get("lat") and not a.get("lng"):
+                        a["lat"] = body.latitude
+                        a["lng"] = body.longitude
+                        changed = True
+                if changed:
+                    user.saved_addresses = _j.dumps(addrs, ensure_ascii=False)
+            except Exception:
+                pass
+
+    await db.commit()
+    return {"ok": True}
+
+
 async def _get_order(order_id: int, db: AsyncSession) -> Order:
     result = await db.execute(
         select(Order)
