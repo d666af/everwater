@@ -1062,11 +1062,36 @@ async def get_user_details(user_id: int, db: AsyncSession = Depends(get_db)):
     addrs_q = await db.execute(
         select(SavedAddress).where(SavedAddress.user_id == user_id).order_by(SavedAddress.created_at.desc())
     )
+    saved_addrs = addrs_q.scalars().all()
     addresses = [
         {"id": a.id, "label": a.label, "address": a.address,
          "lat": a.latitude, "lng": a.longitude}
-        for a in addrs_q.scalars().all()
+        for a in saved_addrs
     ]
+
+    # Also include unique delivery addresses from orders (deduplicated, not already in saved)
+    order_addrs_q = await db.execute(
+        select(Order.address, Order.latitude, Order.longitude)
+        .where(Order.user_id == user_id, Order.address.isnot(None))
+        .order_by(Order.created_at.desc())
+    )
+    seen_texts = {a.address.strip().lower() for a in saved_addrs if a.address}
+    order_addr_list = []
+    for addr, lat, lng in order_addrs_q.all():
+        if not addr or not addr.strip():
+            continue
+        norm = addr.strip().lower()
+        if norm not in seen_texts:
+            seen_texts.add(norm)
+            order_addr_list.append({
+                "id": f"order_{len(order_addr_list)}",
+                "label": None,
+                "address": addr.strip(),
+                "lat": lat,
+                "lng": lng,
+                "from_order": True,
+            })
+    addresses = addresses + order_addr_list
 
     if await is_subscriptions_enabled(db):
         subs_q = await db.execute(

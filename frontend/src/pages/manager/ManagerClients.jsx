@@ -283,16 +283,17 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
       </div>
     )
 
-    if (tab === 3) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет сохранённых адресов" /> : (
+    if (tab === 3) return loadingD ? <Spinner /> : !details?.addresses?.length ? <Empty text="Нет адресов" /> : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {details.addresses.map(a => (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill={C}/></svg>
+        {details.addresses.map((a, i) => (
+          <div key={a.id ?? i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: a.from_order ? 'rgba(60,60,67,0.06)' : `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill={a.from_order ? TEXT2 : C}/></svg>
             </div>
             <div style={{ flex: 1 }}>
               {a.label && <span style={{ fontSize: 11, background: `${C}18`, color: CD, padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>{a.label}</span>}
-              <div style={{ fontSize: 14, color: TEXT, marginTop: a.label ? 4 : 0, lineHeight: 1.4 }}>{a.address}</div>
+              {a.from_order && <span style={{ fontSize: 10, background: 'rgba(60,60,67,0.07)', color: TEXT2, padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>из заказа</span>}
+              <div style={{ fontSize: 14, color: TEXT, marginTop: (a.label || a.from_order) ? 4 : 0, lineHeight: 1.4 }}>{a.address}</div>
             </div>
           </div>
         ))}
@@ -326,9 +327,9 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
           <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}><div style={st.handle} /></div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px 10px' }}>
-            <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 20, fontWeight: 800, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(user.name || '?')[0].toUpperCase()}</div>
+            <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 20, fontWeight: 800, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(user.name || user.last_order_address || '?')[0].toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{user.name || 'Без имени'}</div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{user.name || user.last_order_address || 'Без имени'}</div>
               {user.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 1 }}>{formatPhone(user.phone)}</div>}
             </div>
             <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: '#F2F2F7', color: TEXT2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
