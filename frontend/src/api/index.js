@@ -1384,7 +1384,7 @@ export const getWarehouseCourierStats = (period = 'today', date = null, dateTo =
 // Filtered warehouse history — uses same period/time range semantics as overview
 export const getWarehouseHistory = (filters = {}) => {
   const { period = 'all', type, product, courier_id, factory_id, customDate, customDateTo } = filters
-  const params = { period, limit: 200 }
+  const params = { period, limit: 500 }
   if (type && type !== 'all') params.type = type
   if (product && product !== 'all') params.product = product
   if (courier_id) params.courier_id = courier_id

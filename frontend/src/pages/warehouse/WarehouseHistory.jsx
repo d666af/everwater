@@ -21,7 +21,7 @@ const TYPES = [
 const fmtSum = v => v > 0 ? v.toLocaleString('ru-RU') + ' сум' : null
 
 export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
-  const [period, setPeriod] = useState('today')
+  const [period, setPeriod] = useState('all')
   const [customDate, setCustomDate] = useState(null)
   const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -187,6 +187,13 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
 
       {/* Period filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button onClick={() => { setPeriod('all'); setCustomDate(null); setCustomDateTo(null) }} style={{
+          flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
+          background: period === 'all' ? GRAD : '#fff',
+          color: period === 'all' ? '#fff' : TEXT2,
+          border: period === 'all' ? 'none' : `1.5px solid ${BORDER}`,
+          fontSize: 12, fontWeight: 700,
+        }}>Все</button>
         <button onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }} style={{
           flex: 1, padding: '9px 10px', borderRadius: 12, cursor: 'pointer',
           background: period === 'today' ? GRAD : '#fff',

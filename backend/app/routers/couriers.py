@@ -937,363 +937,366 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     await db.commit()
 
     oid = order.id
-    items_text = ", ".join(f"{p.name} {q} шт." for p, q in items_data) if items_data else "—"
-    items_lines = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
-    total_int = int(total)
-
-    # Map URL: prefer lat/lng, fall back to address string
-    def _map_url(addr, lat, lng):
-        from urllib.parse import quote as _uq
-        if lat and lng:
-            return f"https://maps.google.com/?q={lat},{lng}"
-        return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
-
-    note_line = f"\n🏠 {body.note}" if body.note else ""
-    client_tg = user.telegram_id if user else None
-    mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-
-    # ── Return-only order ──
-    if is_return_only:
-        client_phone_r = (user.phone if user and user.phone else None) or body.phone
-        client_name_r = (user.name if user else None) or ""
-        client_identity_r = f"{client_name_r} | {client_phone_r}".strip(" |") if client_name_r else client_phone_r
-        assigned_courier_r = creator_courier or manager_assigned_courier
-
-        if assigned_courier_r:
-            # Courier known: auto-delivered, notify courier + admins
-            await _tg(assigned_courier_r.telegram_id, (
-                f"♻️ Возврат бутылок оформлен!\n\n"
-                f"👤 {client_identity_r}\n"
-                f"📍 {body.address}{note_line}\n"
-                f"Бутылки 19л: {body.return_bottles_count} шт."
-            ))
-            extra_line = f"\nКурьер: {assigned_courier_r.name} ({assigned_courier_r.phone or '—'})"
-            info_text_r = (
-                f"♻️ Возврат бутылок\n"
-                f"Клиент: {client_identity_r}\n"
-                f"Адрес: {body.address}{note_line}\n"
-                f"Бутылки 19л: {body.return_bottles_count} шт."
-                f"{extra_line}"
-            )
-            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
-            _all_aids_r = await _get_all_admin_ids(db)
-            for aid in _all_aids_r:
-                await _tg(aid, info_text_r)
-            for m in mgrs:
-                if m.telegram_id and m.telegram_id not in _all_aids_r:
-                    await _tg(m.telegram_id, info_text_r)
-            return {"id": oid, "status": "delivered"}
-        else:
-            # No courier yet — notify admins/managers to assign one
-            phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
-            mgr_line = f"\nМенеджер: {body.manager_name}{phone_part}" if body.manager_name else ""
-            info_text_r = (
-                f"♻️ Возврат бутылок (нужен курьер)\n"
-                f"Клиент: {client_identity_r}\n"
-                f"Адрес: {body.address}{note_line}\n"
-                f"Бутылки 19л: {body.return_bottles_count} шт."
-                f"{mgr_line}"
-            )
-            from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
-            _all_aids_r2 = await _get_all_admin_ids(db)
-            for aid in _all_aids_r2:
-                await _tg(aid, info_text_r)
-            for m in mgrs:
-                if m.telegram_id and m.telegram_id not in _all_aids_r2:
-                    await _tg(m.telegram_id, info_text_r)
-            return {"id": oid, "status": "confirmed"}
-
-    # ── Courier-created order (already assigned) ──
-    if body.creator_role == "courier" and creator_courier:
-        courier_name = creator_courier.name
-        courier_phone = creator_courier.phone or ""
-
-        # Notify courier with new order confirmation
-        def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
-        qty19L_c = sum(q for p, q in items_data if p.has_bottle_deposit)
-        missing_c = max(0, qty19L_c - body.return_bottles_count)
-        client_phone_display = (user.phone if user and user.phone else None) or body.phone
-        items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
-        if missing_c > 0 and bottle_surcharge > 0:
-            items_lines_c += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n(bottle_surcharge)} сум"
-        courier_text = (
-            f"🚴 <b>Вы создали новый заказ!</b>\n\n"
-            f"📍 {body.address}{note_line}\n"
-            f"👤 {client_phone_display}\n\n"
-            f"Состав:\n{items_lines_c}"
-        )
-        if body.return_bottles_count > 0:
-            courier_text += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
-        courier_text += f"\n\nИтого: {_fmt_n(total_int)} сум"
-        from urllib.parse import quote as url_quote
-        kb_rows = []
-        _m = _map_url(body.address, body.latitude, body.longitude)
-        if _m:
-            kb_rows.append([{"text": "🗺 На карте", "url": _m}])
-        kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-        kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
-        kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
-        courier_kb = {"inline_keyboard": kb_rows}
-        _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
-        if _courier_msg_id:
-            await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=_courier_msg_id))
-            await db.commit()
-
-        # Notify client about created+assigned order (two messages)
-        if client_tg:
-            def _fmt_n2(n): return f"{int(n):,}".replace(',', ' ')
-            items_lines_client = "\n".join(
-                f"  • {p.name} {q} шт. — {_fmt_n2(p.price * q)} сум"
-                for p, q in items_data
-            ) if items_data else "  —"
-            return_block_c = (
-                f"\n\nВозврат:\n• Бутылки 19л — {body.return_bottles_count} шт."
-                if body.return_bottles_count else ""
-            )
-            await _tg(client_tg, (
-                f"✅ Для вас создан заказ!\n\n"
-                f"Состав:\n{items_lines_client}"
-                f"{return_block_c}\n\n"
-                f"Сумма: {_fmt_n2(total_int)} сум\n"
-                f"Адрес: {body.address}"
-            ))
-            phone_line = f"\nТелефон курьера: {courier_phone}" if courier_phone else ""
-            await _tg(client_tg, (
-                f"🚴 Курьер {courier_name} назначен на ваш заказ!\n"
-                f"Ожидайте доставку.{phone_line}"
-            ))
-
-        # Inform admins/managers (no action needed)
-        def _fmt_n3(n): return f"{int(n):,}".replace(',', ' ')
-        client_name_display = (user.name if user and user.name else None) or ""
-        client_identity = f"{client_name_display} | {client_phone_display}".strip(" |") if client_name_display else client_phone_display
-        admin_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n3(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
-        if missing_c > 0 and bottle_surcharge > 0:
-            admin_items_lines += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n3(bottle_surcharge)} сум"
-        return_block_adm = (
-            f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
-            if body.return_bottles_count else ""
-        )
-        info_text = (
-            f"🆕 Новый заказ! Создан курьером {courier_name}\n"
-            f"Клиент: {client_identity}\n"
-            f"Адрес: {body.address}{note_line}\n\n"
-            f"Состав:\n{admin_items_lines}"
-            f"{return_block_adm}\n\n"
-            f"Сумма: {_fmt_n3(total_int)} сум\n\n"
-            f"✅ Курьер {courier_name} назначен автоматически"
-        )
-        import json as _json_mod_c
-        from app.services.tg_notify import tg_send_capture as _tsc_c, get_all_admin_ids as _get_all_admin_ids
-        _cancel_kb_c = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
-        _all_aids_c = await _get_all_admin_ids(db)
-        _msg_ids_c: list = []
-        _seen_c: set[int] = set()
-        for _aid in _all_aids_c:
-            if _aid not in _seen_c:
-                _seen_c.add(_aid)
-                _r = await _tsc_c(_aid, info_text, _cancel_kb_c)
-                if _r:
-                    _msg_ids_c.append(_r)
-        for _mgr in mgrs:
-            _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else None
-            _active = _mgr.is_active if hasattr(_mgr, "is_active") else True
-            if _active and _tg_id:
-                _tid = int(_tg_id)
-                if _tid not in _seen_c:
-                    _seen_c.add(_tid)
-                    _r = await _tsc_c(_tid, info_text, _cancel_kb_c)
-                    if _r:
-                        _msg_ids_c.append(_r)
-        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod_c.dumps(_msg_ids_c)))
-        await db.commit()
-
-    # ── Manager/admin-created order ──
-    else:
-        _ROLE_LABELS_RU = {"manager": "менеджером", "admin": "администратором", "agent": "агентом"}
-        role_label = _ROLE_LABELS_RU.get(body.creator_role, "администратором")
-
-        def _fmt_nm(n): return f"{int(n):,}".replace(',', ' ')
-        mgr_client_name = (user.name if user and user.name else None) or ""
-        mgr_client_phone = (user.phone if user and user.phone else None) or body.phone
-        mgr_client_identity = f"{mgr_client_name} | {mgr_client_phone}".strip(" |") if mgr_client_name else mgr_client_phone
-        mgr_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
-        qty19L_m = sum(q for p, q in items_data if p.has_bottle_deposit)
-        missing_m = max(0, qty19L_m - body.return_bottles_count)
-        if missing_m > 0 and bottle_surcharge > 0:
-            mgr_items_lines += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
-        mgr_return_block = (
-            f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
-            if body.return_bottles_count else ""
-        )
-
-        if manager_assigned_courier:
-            courier_name_m = manager_assigned_courier.name
-            courier_phone_m = manager_assigned_courier.phone or ""
-
-            items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
-            if missing_m > 0 and bottle_surcharge > 0:
-                items_lines_c += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
+    try:
+        items_text = ", ".join(f"{p.name} {q} шт." for p, q in items_data) if items_data else "—"
+        items_lines = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
+        total_int = int(total)
+    
+        # Map URL: prefer lat/lng, fall back to address string
+        def _map_url(addr, lat, lng):
+            from urllib.parse import quote as _uq
+            if lat and lng:
+                return f"https://maps.google.com/?q={lat},{lng}"
+            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
+    
+        note_line = f"\n🏠 {body.note}" if body.note else ""
+        client_tg = user.telegram_id if user else None
+        mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
+    
+        # ── Return-only order ──
+        if is_return_only:
+            client_phone_r = (user.phone if user and user.phone else None) or body.phone
+            client_name_r = (user.name if user else None) or ""
+            client_identity_r = f"{client_name_r} | {client_phone_r}".strip(" |") if client_name_r else client_phone_r
+            assigned_courier_r = creator_courier or manager_assigned_courier
+    
+            if assigned_courier_r:
+                # Courier known: auto-delivered, notify courier + admins
+                await _tg(assigned_courier_r.telegram_id, (
+                    f"♻️ Возврат бутылок оформлен!\n\n"
+                    f"👤 {client_identity_r}\n"
+                    f"📍 {body.address}{note_line}\n"
+                    f"Бутылки 19л: {body.return_bottles_count} шт."
+                ))
+                extra_line = f"\nКурьер: {assigned_courier_r.name} ({assigned_courier_r.phone or '—'})"
+                info_text_r = (
+                    f"♻️ Возврат бутылок\n"
+                    f"Клиент: {client_identity_r}\n"
+                    f"Адрес: {body.address}{note_line}\n"
+                    f"Бутылки 19л: {body.return_bottles_count} шт."
+                    f"{extra_line}"
+                )
+                from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+                _all_aids_r = await _get_all_admin_ids(db)
+                for aid in _all_aids_r:
+                    await _tg(aid, info_text_r)
+                for m in mgrs:
+                    if m.telegram_id and m.telegram_id not in _all_aids_r:
+                        await _tg(m.telegram_id, info_text_r)
+                return {"id": oid, "status": "delivered"}
+            else:
+                # No courier yet — notify admins/managers to assign one
+                phone_part = f" ({body.manager_phone})" if body.manager_phone else ""
+                mgr_line = f"\nМенеджер: {body.manager_name}{phone_part}" if body.manager_name else ""
+                info_text_r = (
+                    f"♻️ Возврат бутылок (нужен курьер)\n"
+                    f"Клиент: {client_identity_r}\n"
+                    f"Адрес: {body.address}{note_line}\n"
+                    f"Бутылки 19л: {body.return_bottles_count} шт."
+                    f"{mgr_line}"
+                )
+                from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+                _all_aids_r2 = await _get_all_admin_ids(db)
+                for aid in _all_aids_r2:
+                    await _tg(aid, info_text_r)
+                for m in mgrs:
+                    if m.telegram_id and m.telegram_id not in _all_aids_r2:
+                        await _tg(m.telegram_id, info_text_r)
+                return {"id": oid, "status": "confirmed"}
+    
+        # ── Courier-created order (already assigned) ──
+        if body.creator_role == "courier" and creator_courier:
+            courier_name = creator_courier.name
+            courier_phone = creator_courier.phone or ""
+    
+            # Notify courier with new order confirmation
+            def _fmt_n(n): return f"{int(n):,}".replace(',', ' ')
+            qty19L_c = sum(q for p, q in items_data if p.has_bottle_deposit)
+            missing_c = max(0, qty19L_c - body.return_bottles_count)
+            client_phone_display = (user.phone if user and user.phone else None) or body.phone
+            items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            if missing_c > 0 and bottle_surcharge > 0:
+                items_lines_c += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n(bottle_surcharge)} сум"
             courier_text = (
-                f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
+                f"🚴 <b>Вы создали новый заказ!</b>\n\n"
                 f"📍 {body.address}{note_line}\n"
-                f"👤 {mgr_client_identity}\n\n"
+                f"👤 {client_phone_display}\n\n"
                 f"Состав:\n{items_lines_c}"
-                f"{mgr_return_block}\n\n"
-                f"Итого: {_fmt_nm(total_int)} сум"
             )
+            if body.return_bottles_count > 0:
+                courier_text += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
+            courier_text += f"\n\nИтого: {_fmt_n(total_int)} сум"
             from urllib.parse import quote as url_quote
             kb_rows = []
             _m = _map_url(body.address, body.latitude, body.longitude)
             if _m:
                 kb_rows.append([{"text": "🗺 На карте", "url": _m}])
             kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-            c_sent = await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
-            if c_sent:
-                await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_sent))
+            kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+            kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+            courier_kb = {"inline_keyboard": kb_rows}
+            _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+            if _courier_msg_id:
+                await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=_courier_msg_id))
                 await db.commit()
-
+    
+            # Notify client about created+assigned order (two messages)
             if client_tg:
-                await _tg(client_tg, (
-                    f"✅ Для вас создан заказ!\n\n"
-                    f"Состав:\n{items_lines_c}"
-                    f"{mgr_return_block}\n\n"
-                    f"Сумма: {_fmt_nm(total_int)} сум\n"
-                    f"Адрес: {body.address}"
-                ))
-                phone_line = f"\nТелефон курьера: {courier_phone_m}" if courier_phone_m else ""
-                await _tg(client_tg, (
-                    f"🚴 Курьер {courier_name_m} назначен на ваш заказ!\n"
-                    f"Ожидайте доставку.{phone_line}"
-                ))
-
-            _creator_label_m = f" {body.creator_name}" if body.creator_name else ""
-            info_text = (
-                f"🆕 Новый заказ! Создан {role_label}{_creator_label_m}\n"
-                f"Клиент: {mgr_client_identity}\n"
-                f"Адрес: {body.address}{note_line}\n\n"
-                f"Состав:\n{mgr_items_lines}"
-                f"{mgr_return_block}\n\n"
-                f"Сумма: {_fmt_nm(total_int)} сум\n\n"
-                f"✅ Курьер {courier_name_m} назначен"
-            )
-            import json as _json_mod
-            from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
-            _cancel_kb_m = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
-            _all_aids_m = await _get_all_admin_ids(db)
-            _msg_ids_m: list = []
-            _seen_m: set[int] = set()
-            for _aid in _all_aids_m:
-                if _aid not in _seen_m:
-                    _seen_m.add(_aid)
-                    _r = await _tsc(_aid, info_text, _cancel_kb_m)
-                    if _r:
-                        _msg_ids_m.append(_r)
-            for _mgr in mgrs:
-                _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else _mgr.get("telegram_id")
-                _active = _mgr.is_active if hasattr(_mgr, "is_active") else _mgr.get("is_active", True)
-                if _active and _tg_id:
-                    _tid = int(_tg_id)
-                    if _tid not in _seen_m:
-                        _seen_m.add(_tid)
-                        _r = await _tsc(_tid, info_text, _cancel_kb_m)
-                        if _r:
-                            _msg_ids_m.append(_r)
-            await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod.dumps(_msg_ids_m)))
-            await db.commit()
-        else:
-            if client_tg:
-                items_lines_fmt = "\n".join(
-                    f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум"
+                def _fmt_n2(n): return f"{int(n):,}".replace(',', ' ')
+                items_lines_client = "\n".join(
+                    f"  • {p.name} {q} шт. — {_fmt_n2(p.price * q)} сум"
                     for p, q in items_data
                 ) if items_data else "  —"
-                if missing_m > 0 and bottle_surcharge > 0:
-                    items_lines_fmt += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
-                await _tg(client_tg, (
-                    f"✅ Для вас создан заказ!\n\n"
-                    f"Состав:\n{items_lines_fmt}"
-                    f"{mgr_return_block}\n\n"
-                    f"Сумма: {_fmt_nm(total_int)} сум\n"
-                    f"Адрес: {body.address}"
-                ))
-                await _tg(client_tg, (
-                    f"✅ Заказ передан на подтверждение.\n"
-                    f"Мы уведомим вас когда подтвердят."
-                ))
-
-            _creator_label_nm = f" {body.creator_name}" if body.creator_name else ""
-            text = (
-                f"🆕 Новый заказ! Создан {role_label}{_creator_label_nm}\n"
-                f"Клиент: {mgr_client_identity}\n"
-                f"Адрес: {body.address}{note_line}\n\n"
-                f"Состав:\n{mgr_items_lines}"
-                f"{mgr_return_block}\n\n"
-                f"Сумма: {_fmt_nm(total_int)} сум\n\n"
-                f"Назначьте курьера!"
-            )
-            site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
-            admin_kb = {"inline_keyboard": [
-                [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
-                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
-                [{"text": "🌐 Заказ на сайте", "url": site_url}],
-            ]}
-            mgr_kb = {"inline_keyboard": [
-                [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
-                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
-                [{"text": "🌐 Заказ на сайте", "url": site_url}],
-            ]}
-            import json as _json_mod
-            from app.services.tg_notify import tg_send_capture as _tg_send_capture
-            from app.models.admin_user import AdminUser as _AdminUser
-            _secondary_admins = (await db.execute(select(_AdminUser))).scalars().all()
-            _all_admin_ids = set(cfg.ADMIN_IDS) | {int(a.telegram_id) for a in _secondary_admins if a.telegram_id}
-            _msg_ids: list = []
-            _seen: set[int] = set()
-            for _aid in _all_admin_ids:
-                if _aid not in _seen:
-                    _seen.add(_aid)
-                    _r = await _tg_send_capture(_aid, text, admin_kb)
-                    if _r:
-                        _msg_ids.append(_r)
-            for _m in mgrs:
-                _m_tg_id = _m.telegram_id if hasattr(_m, "telegram_id") else _m.get("telegram_id")
-                _active = _m.is_active if hasattr(_m, "is_active") else _m.get("is_active", True)
-                if _active and _m_tg_id:
-                    _tid = int(_m_tg_id)
-                    if _tid not in _seen:
-                        _seen.add(_tid)
-                        _r = await _tg_send_capture(_tid, text, mgr_kb)
-                        if _r:
-                            _msg_ids.append(_r)
-            msg_ids_json = _json_mod.dumps(_msg_ids)
-            await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
-            await db.commit()
-
-        # Notify the agent who created the order
-        if body.creator_role == "agent" and body.agent_id:
-            from app.models.agent import Agent
-            agent_row = (await db.execute(
-                select(Agent).where(Agent.id == body.agent_id)
-            )).scalar_one_or_none()
-            if agent_row and agent_row.telegram_id:
-                def _fmt_na(n): return f"{int(n):,}".replace(',', ' ')
-                agent_items = "\n".join(
-                    f"  • {p.name} {q} шт. — {_fmt_na(p.price * q)} сум"
-                    for p, q in items_data
-                ) if items_data else "  —"
-                agent_return = (
-                    f"\n♻️ Возврат: {body.return_bottles_count} шт."
+                return_block_c = (
+                    f"\n\nВозврат:\n• Бутылки 19л — {body.return_bottles_count} шт."
                     if body.return_bottles_count else ""
                 )
-                if missing_m > 0 and bottle_surcharge > 0:
-                    agent_items += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
-                await _tg(agent_row.telegram_id, (
-                    f"✅ Заказ #{oid} создан!\n\n"
-                    f"📍 {body.address}\n"
-                    f"👤 {mgr_client_identity}\n\n"
-                    f"Состав:\n{agent_items}"
-                    f"{agent_return}\n\n"
-                    f"Итого: {_fmt_na(total_int)} сум"
+                await _tg(client_tg, (
+                    f"✅ Для вас создан заказ!\n\n"
+                    f"Состав:\n{items_lines_client}"
+                    f"{return_block_c}\n\n"
+                    f"Сумма: {_fmt_n2(total_int)} сум\n"
+                    f"Адрес: {body.address}"
                 ))
-
+                phone_line = f"\nТелефон курьера: {courier_phone}" if courier_phone else ""
+                await _tg(client_tg, (
+                    f"🚴 Курьер {courier_name} назначен на ваш заказ!\n"
+                    f"Ожидайте доставку.{phone_line}"
+                ))
+    
+            # Inform admins/managers (no action needed)
+            def _fmt_n3(n): return f"{int(n):,}".replace(',', ' ')
+            client_name_display = (user.name if user and user.name else None) or ""
+            client_identity = f"{client_name_display} | {client_phone_display}".strip(" |") if client_name_display else client_phone_display
+            admin_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_n3(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            if missing_c > 0 and bottle_surcharge > 0:
+                admin_items_lines += f"\n  • Невозвращённые бутылки {missing_c} шт. — +{_fmt_n3(bottle_surcharge)} сум"
+            return_block_adm = (
+                f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
+                if body.return_bottles_count else ""
+            )
+            info_text = (
+                f"🆕 Новый заказ! Создан курьером {courier_name}\n"
+                f"Клиент: {client_identity}\n"
+                f"Адрес: {body.address}{note_line}\n\n"
+                f"Состав:\n{admin_items_lines}"
+                f"{return_block_adm}\n\n"
+                f"Сумма: {_fmt_n3(total_int)} сум\n\n"
+                f"✅ Курьер {courier_name} назначен автоматически"
+            )
+            import json as _json_mod_c
+            from app.services.tg_notify import tg_send_capture as _tsc_c, get_all_admin_ids as _get_all_admin_ids
+            _cancel_kb_c = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+            _all_aids_c = await _get_all_admin_ids(db)
+            _msg_ids_c: list = []
+            _seen_c: set[int] = set()
+            for _aid in _all_aids_c:
+                if _aid not in _seen_c:
+                    _seen_c.add(_aid)
+                    _r = await _tsc_c(_aid, info_text, _cancel_kb_c)
+                    if _r:
+                        _msg_ids_c.append(_r)
+            for _mgr in mgrs:
+                _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else None
+                _active = _mgr.is_active if hasattr(_mgr, "is_active") else True
+                if _active and _tg_id:
+                    _tid = int(_tg_id)
+                    if _tid not in _seen_c:
+                        _seen_c.add(_tid)
+                        _r = await _tsc_c(_tid, info_text, _cancel_kb_c)
+                        if _r:
+                            _msg_ids_c.append(_r)
+            await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod_c.dumps(_msg_ids_c)))
+            await db.commit()
+    
+        # ── Manager/admin-created order ──
+        else:
+            _ROLE_LABELS_RU = {"manager": "менеджером", "admin": "администратором", "agent": "агентом"}
+            role_label = _ROLE_LABELS_RU.get(body.creator_role, "администратором")
+    
+            def _fmt_nm(n): return f"{int(n):,}".replace(',', ' ')
+            mgr_client_name = (user.name if user and user.name else None) or ""
+            mgr_client_phone = (user.phone if user and user.phone else None) or body.phone
+            mgr_client_identity = f"{mgr_client_name} | {mgr_client_phone}".strip(" |") if mgr_client_name else mgr_client_phone
+            mgr_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            qty19L_m = sum(q for p, q in items_data if p.has_bottle_deposit)
+            missing_m = max(0, qty19L_m - body.return_bottles_count)
+            if missing_m > 0 and bottle_surcharge > 0:
+                mgr_items_lines += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
+            mgr_return_block = (
+                f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
+                if body.return_bottles_count else ""
+            )
+    
+            if manager_assigned_courier:
+                courier_name_m = manager_assigned_courier.name
+                courier_phone_m = manager_assigned_courier.phone or ""
+    
+                items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+                if missing_m > 0 and bottle_surcharge > 0:
+                    items_lines_c += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
+                courier_text = (
+                    f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
+                    f"📍 {body.address}{note_line}\n"
+                    f"👤 {mgr_client_identity}\n\n"
+                    f"Состав:\n{items_lines_c}"
+                    f"{mgr_return_block}\n\n"
+                    f"Итого: {_fmt_nm(total_int)} сум"
+                )
+                from urllib.parse import quote as url_quote
+                kb_rows = []
+                _m = _map_url(body.address, body.latitude, body.longitude)
+                if _m:
+                    kb_rows.append([{"text": "🗺 На карте", "url": _m}])
+                kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+                c_sent = await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
+                if c_sent:
+                    await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_sent))
+                    await db.commit()
+    
+                if client_tg:
+                    await _tg(client_tg, (
+                        f"✅ Для вас создан заказ!\n\n"
+                        f"Состав:\n{items_lines_c}"
+                        f"{mgr_return_block}\n\n"
+                        f"Сумма: {_fmt_nm(total_int)} сум\n"
+                        f"Адрес: {body.address}"
+                    ))
+                    phone_line = f"\nТелефон курьера: {courier_phone_m}" if courier_phone_m else ""
+                    await _tg(client_tg, (
+                        f"🚴 Курьер {courier_name_m} назначен на ваш заказ!\n"
+                        f"Ожидайте доставку.{phone_line}"
+                    ))
+    
+                _creator_label_m = f" {body.creator_name}" if body.creator_name else ""
+                info_text = (
+                    f"🆕 Новый заказ! Создан {role_label}{_creator_label_m}\n"
+                    f"Клиент: {mgr_client_identity}\n"
+                    f"Адрес: {body.address}{note_line}\n\n"
+                    f"Состав:\n{mgr_items_lines}"
+                    f"{mgr_return_block}\n\n"
+                    f"Сумма: {_fmt_nm(total_int)} сум\n\n"
+                    f"✅ Курьер {courier_name_m} назначен"
+                )
+                import json as _json_mod
+                from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
+                _cancel_kb_m = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+                _all_aids_m = await _get_all_admin_ids(db)
+                _msg_ids_m: list = []
+                _seen_m: set[int] = set()
+                for _aid in _all_aids_m:
+                    if _aid not in _seen_m:
+                        _seen_m.add(_aid)
+                        _r = await _tsc(_aid, info_text, _cancel_kb_m)
+                        if _r:
+                            _msg_ids_m.append(_r)
+                for _mgr in mgrs:
+                    _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else _mgr.get("telegram_id")
+                    _active = _mgr.is_active if hasattr(_mgr, "is_active") else _mgr.get("is_active", True)
+                    if _active and _tg_id:
+                        _tid = int(_tg_id)
+                        if _tid not in _seen_m:
+                            _seen_m.add(_tid)
+                            _r = await _tsc(_tid, info_text, _cancel_kb_m)
+                            if _r:
+                                _msg_ids_m.append(_r)
+                await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod.dumps(_msg_ids_m)))
+                await db.commit()
+            else:
+                if client_tg:
+                    items_lines_fmt = "\n".join(
+                        f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум"
+                        for p, q in items_data
+                    ) if items_data else "  —"
+                    if missing_m > 0 and bottle_surcharge > 0:
+                        items_lines_fmt += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
+                    await _tg(client_tg, (
+                        f"✅ Для вас создан заказ!\n\n"
+                        f"Состав:\n{items_lines_fmt}"
+                        f"{mgr_return_block}\n\n"
+                        f"Сумма: {_fmt_nm(total_int)} сум\n"
+                        f"Адрес: {body.address}"
+                    ))
+                    await _tg(client_tg, (
+                        f"✅ Заказ передан на подтверждение.\n"
+                        f"Мы уведомим вас когда подтвердят."
+                    ))
+    
+                _creator_label_nm = f" {body.creator_name}" if body.creator_name else ""
+                text = (
+                    f"🆕 Новый заказ! Создан {role_label}{_creator_label_nm}\n"
+                    f"Клиент: {mgr_client_identity}\n"
+                    f"Адрес: {body.address}{note_line}\n\n"
+                    f"Состав:\n{mgr_items_lines}"
+                    f"{mgr_return_block}\n\n"
+                    f"Сумма: {_fmt_nm(total_int)} сум\n\n"
+                    f"Назначьте курьера!"
+                )
+                site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+                admin_kb = {"inline_keyboard": [
+                    [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+                    [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+                    [{"text": "🌐 Заказ на сайте", "url": site_url}],
+                ]}
+                mgr_kb = {"inline_keyboard": [
+                    [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
+                    [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+                    [{"text": "🌐 Заказ на сайте", "url": site_url}],
+                ]}
+                import json as _json_mod
+                from app.services.tg_notify import tg_send_capture as _tg_send_capture
+                from app.models.admin_user import AdminUser as _AdminUser
+                _secondary_admins = (await db.execute(select(_AdminUser))).scalars().all()
+                _all_admin_ids = set(cfg.ADMIN_IDS) | {int(a.telegram_id) for a in _secondary_admins if a.telegram_id}
+                _msg_ids: list = []
+                _seen: set[int] = set()
+                for _aid in _all_admin_ids:
+                    if _aid not in _seen:
+                        _seen.add(_aid)
+                        _r = await _tg_send_capture(_aid, text, admin_kb)
+                        if _r:
+                            _msg_ids.append(_r)
+                for _m in mgrs:
+                    _m_tg_id = _m.telegram_id if hasattr(_m, "telegram_id") else _m.get("telegram_id")
+                    _active = _m.is_active if hasattr(_m, "is_active") else _m.get("is_active", True)
+                    if _active and _m_tg_id:
+                        _tid = int(_m_tg_id)
+                        if _tid not in _seen:
+                            _seen.add(_tid)
+                            _r = await _tg_send_capture(_tid, text, mgr_kb)
+                            if _r:
+                                _msg_ids.append(_r)
+                msg_ids_json = _json_mod.dumps(_msg_ids)
+                await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
+                await db.commit()
+    
+            # Notify the agent who created the order
+            if body.creator_role == "agent" and body.agent_id:
+                from app.models.agent import Agent
+                agent_row = (await db.execute(
+                    select(Agent).where(Agent.id == body.agent_id)
+                )).scalar_one_or_none()
+                if agent_row and agent_row.telegram_id:
+                    def _fmt_na(n): return f"{int(n):,}".replace(',', ' ')
+                    agent_items = "\n".join(
+                        f"  • {p.name} {q} шт. — {_fmt_na(p.price * q)} сум"
+                        for p, q in items_data
+                    ) if items_data else "  —"
+                    agent_return = (
+                        f"\n♻️ Возврат: {body.return_bottles_count} шт."
+                        if body.return_bottles_count else ""
+                    )
+                    if missing_m > 0 and bottle_surcharge > 0:
+                        agent_items += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
+                    await _tg(agent_row.telegram_id, (
+                        f"✅ Заказ #{oid} создан!\n\n"
+                        f"📍 {body.address}\n"
+                        f"👤 {mgr_client_identity}\n\n"
+                        f"Состав:\n{agent_items}"
+                        f"{agent_return}\n\n"
+                        f"Итого: {_fmt_na(total_int)} сум"
+                    ))
+    
+    except Exception:
+        pass
     return {"ok": True, "order_id": oid}
