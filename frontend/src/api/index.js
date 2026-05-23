@@ -243,6 +243,12 @@ export const rejectOrder = (orderId, reason, rejectedByName, rejectedByRole) =>
     () => ({ ok: true })
   )
 
+export const deleteOrder = (orderId) =>
+  safeCall(
+    () => http.delete(`/orders/${orderId}`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const assignCourier = (orderId, courierId, assignerName, assignerRole) =>
   safeCall(
     () => http.patch(`/orders/${orderId}/assign_courier`, { courier_id: courierId, assigner_name: assignerName || undefined, assigner_role: assignerRole || undefined }).then(r => r.data),

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
+import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts, deleteOrder } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useAuthStore } from '../../store/auth'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
@@ -506,6 +506,12 @@ function OrderCard({
                 Отменить заказ
               </button>
             )}
+            {order.status === 'delivered' && (
+              <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} disabled={actionLoading}
+                onClick={() => { if (window.confirm('Удалить заказ? Это действие необратимо.')) act(() => deleteOrder(order.id).then(() => setOrders(prev => prev.filter(o => o.id !== order.id)))) }}>
+                Удалить заказ
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -517,6 +523,7 @@ function OrderCard({
 
 function ItemsBlock({ order }) {
   if (!order.items?.length) return null
+  const surcharge = order.bottle_surcharge || 0
   return (
     <Section title="Состав">
       {order.items.map(i => (
@@ -527,6 +534,13 @@ function ItemsBlock({ order }) {
           <span style={{ fontWeight: 700, color: TEXT, flexShrink: 0 }}>{((i.price || 0) * i.quantity).toLocaleString()} сум</span>
         </div>
       ))}
+      {surcharge > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, paddingBottom: 6, borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#E67700', flexShrink: 0 }} />
+          <span style={{ flex: 1, color: '#E67700' }}>Невозвращённые бутылки</span>
+          <span style={{ fontWeight: 700, color: '#E67700', flexShrink: 0 }}>+{Math.round(surcharge).toLocaleString()} сум</span>
+        </div>
+      )}
     </Section>
   )
 }

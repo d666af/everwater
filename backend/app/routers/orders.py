@@ -1565,8 +1565,7 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     total_str = _fmtv(order.total)
     ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
     lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
-    courier_label = f"курьером {body.courier_name}" if body.courier_name else "курьером"
-    change_marker = f"\n✏️ Изменено {courier_label}"
+    change_marker = "\n✏️ Изменено курьером"
 
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
@@ -1693,6 +1692,54 @@ async def update_order_location(order_id: int, body: LocationBody, db: AsyncSess
             except Exception:
                 pass
 
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{order_id}")
+async def delete_order(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Physically delete a delivered or rejected order, reversing any bottle debt."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.warehouse import WaterTransaction
+
+    order = await _get_order(order_id, db)
+    if order.status not in (OrderStatus.DELIVERED, OrderStatus.REJECTED):
+        raise HTTPException(status_code=400, detail="Only delivered or rejected orders can be deleted")
+
+    # Reverse bottle debt if delivered
+    if order.status == OrderStatus.DELIVERED and order.user_id:
+        bottles_delivered = sum(i.quantity for i in order.items if i.product and i.product.has_bottle_deposit)
+        net_change = bottles_delivered + (order.bottles_lent or 0) - (order.return_bottles_count or 0)
+        if net_change != 0:
+            debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
+            debt_row = debt_q.scalar_one_or_none()
+            if debt_row:
+                debt_row.count = max(0, debt_row.count - net_change)
+
+    # Nullify FK in WaterTransaction so cascade doesn't fail
+    await db.execute(sa_update(WaterTransaction).where(WaterTransaction.order_id == order_id).values(order_id=None))
+
+    # Try to delete Telegram notification messages
+    msg_ids_json = order.notification_msg_ids
+    if msg_ids_json:
+        import json as _j
+        from app.config import settings as cfg
+        import aiohttp
+        try:
+            for m in _j.loads(msg_ids_json):
+                try:
+                    async with aiohttp.ClientSession() as s:
+                        await s.post(
+                            f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/deleteMessage",
+                            json={"chat_id": m["chat_id"], "message_id": m["message_id"]},
+                            timeout=aiohttp.ClientTimeout(total=3),
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    await db.delete(order)
     await db.commit()
     return {"ok": True}
 
