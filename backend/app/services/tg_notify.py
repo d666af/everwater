@@ -9,7 +9,7 @@ async def get_all_admin_ids(db) -> set[int]:
     from sqlalchemy import select
     from app.models.admin_user import AdminUser
     secondary = (await db.execute(select(AdminUser))).scalars().all()
-    return set(settings.ADMIN_IDS) | {int(a.telegram_id) for a in secondary}
+    return set(settings.ADMIN_IDS) | {int(a.telegram_id) for a in secondary if a.telegram_id}
 
 
 async def tg_send_capture(chat_id: int, text: str, reply_markup=None) -> dict | None:

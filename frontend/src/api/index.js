@@ -978,6 +978,18 @@ export const cancelIssueBatch = (batchId) =>
     () => ({ ok: true })
   )
 
+export const clearOrderIssues = () =>
+  safeCall(
+    () => http.delete('/warehouse/clear_order_issues').then(r => r.data),
+    () => ({ ok: true, deleted: 0 })
+  )
+
+export const syncDeliveryNet = () =>
+  safeCall(
+    () => http.post('/warehouse/sync_delivery_net').then(r => r.data),
+    () => ({ ok: true, created: 0 })
+  )
+
 export const updateCourier = (courierId, data) =>
   safeCall(
     () => http.patch(`/admin/couriers/${courierId}`, data).then(r => r.data),

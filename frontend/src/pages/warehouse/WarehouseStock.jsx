@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, clearOrderIssues, syncDeliveryNet } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -40,6 +40,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   const [factoryModal, setFactoryModal] = useState(null) // { factory, mode: 'issue' | 'return' }
   const [adjustProduct, setAdjustProduct] = useState(null)
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
+  const [maintLoading, setMaintLoading] = useState(null) // 'clear' | 'sync'
+  const [maintResult, setMaintResult] = useState(null) // { msg: string }
 
   const load = () => {
     setLoading(true)
@@ -361,6 +363,51 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         )}
       </div>
       </>}
+
+      {/* Maintenance section */}
+      <div style={{ marginTop: 24, background: '#FFF8F0', border: '1.5px solid #FFD699', borderRadius: 16, padding: '14px 16px' }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Обслуживание</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            style={{ padding: '12px 16px', borderRadius: 12, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#C2410C', fontSize: 14, fontWeight: 700, cursor: maintLoading ? 'not-allowed' : 'pointer', opacity: maintLoading ? 0.6 : 1, textAlign: 'left' }}
+            disabled={!!maintLoading}
+            onClick={async () => {
+              if (!window.confirm('Удалить все фантомные выдачи (без партии)? Это удалит все WaterTransaction типа issue без batch_id.')) return
+              setMaintLoading('clear')
+              setMaintResult(null)
+              try {
+                const res = await clearOrderIssues()
+                setMaintResult({ msg: `Удалено ${res.deleted ?? 0} фантомных транзакций` })
+                load()
+              } catch { setMaintResult({ msg: 'Ошибка' }) }
+              setMaintLoading(null)
+            }}
+          >
+            {maintLoading === 'clear' ? 'Удаляю...' : 'Удалить фантомные выдачи'}
+          </button>
+          <button
+            style={{ padding: '12px 16px', borderRadius: 12, border: '1.5px solid #0EA5E9', background: '#F0F9FF', color: '#0369A1', fontSize: 14, fontWeight: 700, cursor: maintLoading ? 'not-allowed' : 'pointer', opacity: maintLoading ? 0.6 : 1, textAlign: 'left' }}
+            disabled={!!maintLoading}
+            onClick={async () => {
+              if (!window.confirm('Пересчитать delivery_net по всем доставленным заказам? Старые записи будут удалены и созданы заново.')) return
+              setMaintLoading('sync')
+              setMaintResult(null)
+              try {
+                const res = await syncDeliveryNet()
+                setMaintResult({ msg: `Создано ${res.created ?? 0} записей (удалено ${res.deleted ?? 0} старых)` })
+              } catch { setMaintResult({ msg: 'Ошибка' }) }
+              setMaintLoading(null)
+            }}
+          >
+            {maintLoading === 'sync' ? 'Синхронизирую...' : 'Синхронизировать долг по доставкам'}
+          </button>
+          {maintResult && (
+            <div style={{ fontSize: 13, color: '#065F46', background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 10, padding: '8px 12px', fontWeight: 600 }}>
+              {maintResult.msg}
+            </div>
+          )}
+        </div>
+      </div>
     </Layout>
   )
 }
