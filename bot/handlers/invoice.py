@@ -57,7 +57,7 @@ def _qty_from_price_sum(line_text: str) -> int | None:
     """
     big = sorted([
         int(m.group().replace(' ', ''))
-        for m in re.finditer(r'\b\d{1,3}(?:\s\d{3})+\b|\b\d{5,}\b', line_text)
+        for m in re.finditer(r'\b\d{1,4}(?:\s\d{3})+\b|\b\d{5,}\b', line_text)
     ])
     prices = [v for v in big if 1_000 <= v <= 99_999]
     sums   = [v for v in big if v >= 100_000]
@@ -141,8 +141,8 @@ def _remove_grid_lines(img):
     dark = arr < 100
     h_frac = dark.mean(axis=1)   # dark fraction per row
     v_frac = dark.mean(axis=0)   # dark fraction per column
-    arr[h_frac > 0.5, :] = 255   # erase horizontal lines
-    arr[:, v_frac > 0.5] = 255   # erase vertical lines
+    arr[h_frac > 0.7, :] = 255   # erase horizontal lines
+    arr[:, v_frac > 0.7] = 255   # erase vertical lines
     return Image.fromarray(arr)
 
 
@@ -305,13 +305,22 @@ def _parse_invoice(text: str) -> dict | None:
 
         # ── Return row: "возврат  Шт  <qty>  0" ─────────────────────────────
         if 'возврат' in low or 'vozvrat' in low:
-            # If the row has ANY numbers, use them (0 on the row means qty=0)
             row_has_numbers = bool(re.search(r'\b\d+\b', line))
-            for n in re.findall(r'\b(\d+)\b', line):
-                v = int(n)
-                if 0 <= v < 500:  # include 0 — explicit "0" on row is the answer
-                    result['return_qty'] = v
-                    break
+            if row_has_numbers:
+                # Collect all integers ≤500 on the line (strips years/prices/etc.)
+                all_nums = [int(n) for n in re.findall(r'\b(\d+)\b', line) if int(n) <= 500]
+                # Remove trailing zeros: the Бонус column is always 0 at the right end
+                while all_nums and all_nums[-1] == 0:
+                    all_nums.pop()
+                pos_nums = [n for n in all_nums if n > 0]
+                if not pos_nums:
+                    result['return_qty'] = 0  # all zeros → no return
+                elif len(pos_nums) == 1:
+                    result['return_qty'] = pos_nums[0]
+                else:
+                    # OCR often splits "85" → "8 5" or "46" → "4 6"; concatenate digits
+                    combined = int(''.join(str(n) for n in pos_nums))
+                    result['return_qty'] = combined if 1 <= combined <= 999 else pos_nums[0]
             # Only do backward/forward search when the row has NO numbers at all
             # (column-scan split the qty to a separate line)
             if not row_has_numbers:
@@ -360,7 +369,9 @@ def _parse_invoice(text: str) -> dict | None:
             # Prefer price/sum cross-check on current line AND a wider window —
             # price/sum columns may land in adjacent y-buckets (different OCR lines)
             _nearby = ' '.join(lines[max(0, i - 1):i + 4])
-            computed_qty = _qty_from_price_sum(line) or _qty_from_price_sum(_nearby)
+            computed_qty = (_qty_from_price_sum(line)
+                            or _qty_from_price_sum(_nearby)
+                            or _qty_from_price_sum(full))
             if computed_qty:
                 found_qty = computed_qty
                 inline_found = True
@@ -436,33 +447,65 @@ def _parse_invoice(text: str) -> dict | None:
         #                   or: "получатель  ZAVOD  MILK VILL" ──────────────
         if 'получатель' in low or re.search(r'poluch', low):
             after = re.split(r'получатель|poluchatel?', line, flags=re.IGNORECASE)[-1].strip()
-            # ZAVOD / ЗАВОД as first token → factory delivery, no courier
-            zavod_m = re.match(r'(?:ZAVOD|ЗАВОД)\s+(.+)', after, re.IGNORECASE)
+            # ZAVOD / ЗАВОД as first token → factory delivery, no courier.
+            # Allow ZAVOD alone (factory name may be on the next line).
+            zavod_m = re.match(r'(?:ZAVOD|ЗАВОД)\s*(.*)', after, re.IGNORECASE)
             if zavod_m:
-                result['factory_name'] = zavod_m.group(1).strip()
-            else:
-                name_m = _NAME_RE.search(after)
-                if name_m:
-                    result['courier_name'] = name_m.group(0)
+                factory_part = zavod_m.group(1).strip()
+                if factory_part:
+                    result['factory_name'] = factory_part
                 else:
-                    # Name may be on the next line(s) when OCR splits label and value
+                    # Factory name is on the next line(s) — column-scan split
                     for nxt in lines[i + 1:i + 4]:
                         if _SECTION_STOP.search(nxt):
                             break
-                        nm = _NAME_RE.search(nxt)
-                        if nm:
-                            result['courier_name'] = nm.group(0)
+                        nxt_clean = nxt.strip()
+                        if nxt_clean:
+                            result['factory_name'] = nxt_clean
                             break
-                if not result['courier_phone']:
-                    ph2 = _normalize_phone(line)
-                    if ph2:
-                        result['courier_phone'] = ph2
+            else:
+                # Also check if next lines open with ZAVOD (label on its own line)
+                is_factory = False
+                for j, nxt in enumerate(lines[i + 1:i + 4]):
+                    zm = re.match(r'(?:ZAVOD|ЗАВОД)\s*(.*)', nxt.strip(), re.IGNORECASE)
+                    if zm:
+                        factory_part = zm.group(1).strip()
+                        if factory_part:
+                            result['factory_name'] = factory_part
+                        else:
+                            # Factory name one more line down
+                            deeper = lines[i + 1 + j + 1:i + 1 + j + 3]
+                            for dl in deeper:
+                                if dl.strip():
+                                    result['factory_name'] = dl.strip()
+                                    break
+                        is_factory = True
+                        break
+                    if _SECTION_STOP.search(nxt):
+                        break
+                if not is_factory:
+                    name_m = _NAME_RE.search(after)
+                    if name_m:
+                        result['courier_name'] = name_m.group(0)
                     else:
-                        for nxt in lines[i + 1:i + 5]:
-                            ph2 = _normalize_phone(nxt)
-                            if ph2:
-                                result['courier_phone'] = ph2
+                        # Name may be on the next line(s) when OCR splits label and value
+                        for nxt in lines[i + 1:i + 4]:
+                            if _SECTION_STOP.search(nxt):
                                 break
+                            nm = _NAME_RE.search(nxt)
+                            if nm:
+                                result['courier_name'] = nm.group(0)
+                                break
+                    if not result['courier_phone']:
+                        ph2 = _normalize_phone(line)
+                        if ph2:
+                            result['courier_phone'] = ph2
+                        else:
+                            for nxt in lines[i + 1:i + 5]:
+                                ph2 = _normalize_phone(nxt)
+                                if ph2:
+                                    result['courier_phone'] = ph2
+                                    break
 
         # ── Vehicle row: "тип машины  LABO  30L700QA" ───────────────────────
         if ('тип' in low and 'маш' in low) or re.search(r'tip\s+ma', low):
