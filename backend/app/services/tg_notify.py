@@ -52,26 +52,26 @@ async def tg_send_photo(chat_id: int, photo_bytes: bytes, caption: str | None = 
         return False
 
 
-async def tg_edit_msg(chat_id: int, message_id: int, text: str) -> None:
+async def tg_edit_msg(chat_id: int, message_id: int, text: str, reply_markup=None) -> None:
     url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/editMessageText"
+    payload: dict = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         async with aiohttp.ClientSession() as s:
-            await s.post(url, json={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-            }, timeout=aiohttp.ClientTimeout(total=5))
+            await s.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5))
     except Exception:
         pass
 
 
-async def edit_all_notifications(msg_ids_json: str | None, text: str) -> None:
-    """Edit every stored notification message to show resolved state (removes buttons)."""
+async def edit_all_notifications(msg_ids_json: str | None, text: str, reply_markup=None) -> None:
+    """Edit every stored notification message. Pass reply_markup to replace keyboard,
+    omit to remove it (Telegram removes keyboard when reply_markup is absent)."""
     if not msg_ids_json:
         return
     try:
         for m in json.loads(msg_ids_json):
-            await tg_edit_msg(m["chat_id"], m["message_id"], text)
+            await tg_edit_msg(m["chat_id"], m["message_id"], text, reply_markup)
     except Exception:
         pass
 

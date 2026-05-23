@@ -263,6 +263,30 @@ async def admin_mark_delivered(call: CallbackQuery):
     await call.answer("✅ Доставлен")
 
 
+@router.callback_query(F.data.startswith("order:cancel:"))
+async def order_cancel_unified(call: CallbackQuery):
+    """Unified cancel handler for courier-order notifications sent to both admins and managers."""
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    reason = "Отменён администратором" if _is_adm else "Отменён менеджером"
+    role = "admin" if _is_adm else "manager"
+    try:
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role=role)
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+        return
+    await call.answer("❌ Заказ отменён")
+
+
 @router.callback_query(F.data.startswith("admin:cancel_order:"))
 async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
