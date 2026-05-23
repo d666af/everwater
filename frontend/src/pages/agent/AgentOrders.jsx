@@ -50,6 +50,11 @@ function OrderCard({ order }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
               <StatusBadge status={order.status} />
               <span style={{ fontSize: 11, color: TEXT2 }}>{date}</span>
+              {order.is_items_edited && (
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, fontWeight: 600, background: '#FFF3BF', color: '#E67700' }}>
+                  ✏️{order.items_edited_by ? ` Изм. ${order.items_edited_by}` : ' Изменено'}
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{order.recipient_phone}</div>
             {order.address && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.address}</div>}

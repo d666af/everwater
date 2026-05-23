@@ -83,6 +83,10 @@ class Order(Base):
     rejected_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
 
+    # Courier item edit tracking
+    is_items_edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    items_edited_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

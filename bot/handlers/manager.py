@@ -331,6 +331,22 @@ async def mgr_set_courier(call: CallbackQuery):
         except Exception:
             pass
 
+    # Notify client that courier has been assigned
+    client_tg = order.get("client_telegram_id")
+    if client_tg:
+        courier_name_for_client = courier["name"] if courier else "?"
+        try:
+            client_sent = await call.bot.send_message(
+                client_tg,
+                f"✅ Курьер {courier_name_for_client} назначен, ожидайте доставку",
+            )
+            try:
+                await api.save_client_msg_id(order_id, client_sent.message_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"

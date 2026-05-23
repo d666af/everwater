@@ -240,11 +240,12 @@ async def _reserve_inventory(order, db: AsyncSession):
 
 async def _release_inventory(order, db: AsyncSession, consume: bool = False):
     """Move reserved items back to available (cancel) or simply remove them (deliver)."""
-    from app.models.warehouse import CourierWater
+    from app.models.warehouse import CourierWater, WaterTransaction
     if not order.courier_id or not order.items:
         return
+    is_manager_order = getattr(order, 'creator_role', None) == 'manager'
     # For manager-created orders always consume (items were never physically with the courier before assignment)
-    if getattr(order, 'creator_role', None) == 'manager':
+    if is_manager_order:
         consume = True
     for item in order.items:
         if not item.product_id or not item.quantity:
@@ -261,6 +262,18 @@ async def _release_inventory(order, db: AsyncSession, consume: bool = False):
             row.reserved = max(0, (row.reserved or 0) - qty)
             if not consume:
                 row.quantity = (row.quantity or 0) + qty
+
+    if is_manager_order:
+        # Delete the unbatched "issue" transactions created for manager orders
+        # so they don't inflate courier bottle debt
+        issue_txs = (await db.execute(
+            select(WaterTransaction).where(
+                WaterTransaction.order_id == order.id,
+                WaterTransaction.transaction_type == "issue",
+            )
+        )).scalars().all()
+        for tx in issue_txs:
+            await db.delete(tx)
 
 
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:
@@ -567,6 +580,15 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
             if debt_row:
                 debt_row.count = max(0, debt_row.count - _bd_net_change)
                 await db.commit()
+        # Also delete the delivery_net WaterTransaction so courier debt is restored
+        from app.models.warehouse import WaterTransaction as WT
+        del_txs = (await db.execute(
+            select(WT).where(WT.order_id == oid, WT.transaction_type == "delivery_net")
+        )).scalars().all()
+        for tx in del_txs:
+            await db.delete(tx)
+        if del_txs:
+            await db.commit()
 
     # Build rejector title suffix
     _REJECTOR_LABELS = {
@@ -672,6 +694,18 @@ class CourierMsgIdBody(BaseModel):
 async def save_courier_msg_id_endpoint(order_id: int, body: CourierMsgIdBody,
                                        db: AsyncSession = Depends(get_db)):
     await db.execute(sa_update(Order).where(Order.id == order_id).values(courier_status_msg_id=body.msg_id))
+    await db.commit()
+    return {"ok": True}
+
+
+class ClientMsgIdBody(BaseModel):
+    msg_id: int
+
+
+@router.patch("/{order_id}/client_msg_id")
+async def save_client_msg_id_endpoint(order_id: int, body: ClientMsgIdBody,
+                                      db: AsyncSession = Depends(get_db)):
+    await db.execute(sa_update(Order).where(Order.id == order_id).values(client_status_msg_id=body.msg_id))
     await db.commit()
     return {"ok": True}
 
@@ -1005,6 +1039,19 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
                 courier.total_deliveries += 1
 
         await _release_inventory(order, db, consume=True)
+
+        # Courier bottle debt adjustment: net bottles that stayed with client
+        # positive net_change = client kept bottles → courier owes fewer to warehouse
+        if order.courier_id and net_change != 0 and bottles_delivered > 0:
+            from app.models.warehouse import WaterTransaction as WT
+            db.add(WT(
+                courier_id=order.courier_id,
+                order_id=order.id,
+                transaction_type="delivery_net",
+                quantity=net_change,
+                note=f"Доставка заказа #{order.id}: выдано {bottles_delivered}, возврат {returned}, одолжено {lent}",
+            ))
+
         await db.commit()
 
     if not from_bot and not already_delivered:
@@ -1536,8 +1583,17 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     order.total = max(0.0, subtotal + bottle_surcharge + (order.delivery_fee or 0) - (order.bonus_used or 0) - (order.balance_used or 0))
     order.return_bottles_count = body.return_bottles_count
     order.bottles_lent = body.bottles_lent
+    order.is_items_edited = True
+    if body.courier_name:
+        order.items_edited_by = body.courier_name
 
     await db.commit()
+
+    # Shortage notification after commit
+    try:
+        await _notify_low_stock_if_needed(db, items_data, order_id)
+    except Exception:
+        pass
 
     # Build full staff notification preserving all original info + change marker
     def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
@@ -1591,9 +1647,10 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
         )
     await edit_all_notifications(notification_msg_ids, staff_text)
 
+    surcharge_line = f"\n💰 Надбавка за невозврат: {_fmtv(bottle_surcharge)}" if bottle_surcharge else ""
     client_text = (
         f"✏️ Состав вашего заказа изменён\n\n"
-        f"{items_simple}{ret_line}{lent_line}\n\n"
+        f"{items_simple}{ret_line}{lent_line}{surcharge_line}\n\n"
         f"Итого: {total_str}"
     )
     new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
@@ -1727,4 +1784,6 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         client_bottles_owed=client_bottles_owed,
         client_bottles_pending=client_bottles_pending,
         eta_human=_eta_human(order.delivery_expected_at),
+        is_items_edited=order.is_items_edited or False,
+        items_edited_by=order.items_edited_by,
     )

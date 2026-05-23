@@ -223,6 +223,10 @@ async def save_courier_msg_id(order_id: int, msg_id: int):
     return await _patch(f"/orders/{order_id}/courier_msg_id", {"msg_id": msg_id})
 
 
+async def save_client_msg_id(order_id: int, msg_id: int):
+    return await _patch(f"/orders/{order_id}/client_msg_id", {"msg_id": msg_id})
+
+
 async def cancel_order(order_id: int):
     try:
         return await _patch(f"/orders/{order_id}/cancel")

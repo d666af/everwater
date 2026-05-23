@@ -37,6 +37,8 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS manager_phone VARCHAR(30)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_status_msg_id INTEGER",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_items_edited BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS items_edited_by VARCHAR(255)",
             "ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL",
             "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS factory_id INTEGER REFERENCES factories(id)",
