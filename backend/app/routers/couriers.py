@@ -1219,10 +1219,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     if _r:
                         _msg_ids.append(_r)
             for _m in mgrs:
-                _tg = _m.telegram_id if hasattr(_m, "telegram_id") else _m.get("telegram_id")
+                _m_tg_id = _m.telegram_id if hasattr(_m, "telegram_id") else _m.get("telegram_id")
                 _active = _m.is_active if hasattr(_m, "is_active") else _m.get("is_active", True)
-                if _active and _tg:
-                    _tid = int(_tg)
+                if _active and _m_tg_id:
+                    _tid = int(_m_tg_id)
                     if _tid not in _seen:
                         _seen.add(_tid)
                         _r = await _tg_send_capture(_tid, text, mgr_kb)
