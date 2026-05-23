@@ -307,20 +307,32 @@ def _parse_invoice(text: str) -> dict | None:
         if 'возврат' in low or 'vozvrat' in low:
             row_has_numbers = bool(re.search(r'\b\d+\b', line))
             if row_has_numbers:
-                # Collect all integers ≤500 on the line (strips years/prices/etc.)
-                all_nums = [int(n) for n in re.findall(r'\b(\d+)\b', line) if int(n) <= 500]
-                # Remove trailing zeros: the Бонус column is always 0 at the right end
-                while all_nums and all_nums[-1] == 0:
-                    all_nums.pop()
-                pos_nums = [n for n in all_nums if n > 0]
-                if not pos_nums:
-                    result['return_qty'] = 0  # all zeros → no return
-                elif len(pos_nums) == 1:
-                    result['return_qty'] = pos_nums[0]
-                else:
-                    # OCR often splits "85" → "8 5" or "46" → "4 6"; concatenate digits
-                    combined = int(''.join(str(n) for n in pos_nums))
-                    result['return_qty'] = combined if 1 <= combined <= 999 else pos_nums[0]
+                # Priority: find number immediately after "шт" — most reliable column anchor
+                sht_m = re.search(r'шт[^\d]{0,5}(\d{1,3})\b', line, re.IGNORECASE)
+                if sht_m:
+                    v = int(sht_m.group(1))
+                    if 0 < v <= 500:
+                        result['return_qty'] = v
+                if not result['return_qty']:
+                    # Collect all integers ≤500 on the line (strips years/prices/etc.)
+                    all_nums = [int(n) for n in re.findall(r'\b(\d+)\b', line) if int(n) <= 500]
+                    # Remove trailing zeros: the Бонус column is always 0 at the right end
+                    while all_nums and all_nums[-1] == 0:
+                        all_nums.pop()
+                    pos_nums = [n for n in all_nums if n > 0]
+                    if not pos_nums:
+                        result['return_qty'] = 0  # all zeros → no return
+                    elif len(pos_nums) == 1:
+                        result['return_qty'] = pos_nums[0]
+                    else:
+                        # OCR often splits "85" → "8 5" or "46" → "4 6"; concatenate digits
+                        combined = int(''.join(str(n) for n in pos_nums))
+                        if 1 <= combined <= 999:
+                            result['return_qty'] = combined
+                        else:
+                            # Multiple genuine numbers — take the last one (plate numbers
+                            # from OCR column-scan tend to appear before the qty column)
+                            result['return_qty'] = pos_nums[-1]
             # Only do backward/forward search when the row has NO numbers at all
             # (column-scan split the qty to a separate line)
             if not row_has_numbers:
@@ -366,16 +378,24 @@ def _parse_invoice(text: str) -> dict | None:
             cleaned = re.sub(r'\d+\s*л', '', line, flags=re.IGNORECASE)
             found_qty = None
             inline_found = False
-            # Prefer price/sum cross-check on current line AND a wider window —
-            # price/sum columns may land in adjacent y-buckets (different OCR lines)
-            _nearby = ' '.join(lines[max(0, i - 1):i + 4])
-            computed_qty = (_qty_from_price_sum(line)
-                            or _qty_from_price_sum(_nearby)
-                            or _qty_from_price_sum(full))
-            if computed_qty:
-                found_qty = computed_qty
-                inline_found = True
-            else:
+            # Priority: find number right after "шт" — avoids spurious numbers from other columns
+            sht_qty_m = re.search(r'шт[^\d]{0,5}(\d{1,3})\b', cleaned, re.IGNORECASE)
+            if sht_qty_m:
+                v = int(sht_qty_m.group(1))
+                if 1 <= v <= 500:
+                    found_qty = v
+                    inline_found = True
+            if not found_qty:
+                # Prefer price/sum cross-check on current line AND a wider window —
+                # price/sum columns may land in adjacent y-buckets (different OCR lines)
+                _nearby = ' '.join(lines[max(0, i - 1):i + 4])
+                computed_qty = (_qty_from_price_sum(line)
+                                or _qty_from_price_sum(_nearby)
+                                or _qty_from_price_sum(full))
+                if computed_qty:
+                    found_qty = computed_qty
+                    inline_found = True
+            if not found_qty:
                 for n in re.findall(r'\b(\d+)\b', cleaned):
                     v = int(n)
                     # Skip return_qty — column-scan OCR can interleave rows
@@ -732,6 +752,7 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, perform
             vehicle_type=v_type,
             vehicle_plate=v_plate,
             created_at=created_at_iso,
+            invoice_phone=phone or None,
         )
     except Exception as e:
         return f"❌ Ошибка выдачи: {e}"
