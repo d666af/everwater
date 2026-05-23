@@ -216,13 +216,14 @@ async def get_overview(
         if cw.product_id in per_product:
             per_product[cw.product_id]["on_couriers"] += cw.quantity
 
-    # Bottle debt = all-time 19L issued to couriers − all-time bottle returns
+    # Bottle debt = all-time 19L warehouse dispatches − all-time bottle returns
     if product_19l_ids:
         q19_issued = await db.execute(
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.transaction_type == "issue")
             .where(WaterTransaction.product_id.in_(product_19l_ids))
             .where(WaterTransaction.courier_id.isnot(None))
+            .where(WaterTransaction.batch_id.isnot(None))
         )
         q19_returned = await db.execute(
             select(func.sum(WaterTransaction.quantity))
@@ -585,6 +586,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.courier_id == body.courier_id,
                    WaterTransaction.transaction_type == "issue",
+                   WaterTransaction.batch_id.isnot(None),
                    WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
         )).scalar() or 0
         c_returned = (await db.execute(
@@ -698,7 +700,9 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             cw = CourierWater(courier_id=body.courier_id, product_id=prod.id, quantity=0, issued_today=0)
             db.add(cw)
         cw.quantity += qty
-        cw.issued_today += qty
+        _is_today = (not _ts) or (_ts.date() == datetime.utcnow().date())
+        if _is_today:
+            cw.issued_today += qty
 
         tx = WaterTransaction(
             product_id=prod.id,
@@ -731,6 +735,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.courier_id == body.courier_id,
                    WaterTransaction.transaction_type == "issue",
+                   WaterTransaction.batch_id.isnot(None),
                    WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
         )).scalar() or 0
         c_returned = (await db.execute(
@@ -1286,13 +1291,14 @@ async def get_couriers_water(
             water_dict[short] = water_dict.get(short, 0) + cw.quantity
             on_hand_total += cw.quantity
 
-        # Bottle debt: all-time 19L issued − all-time returned (transaction-based)
+        # Bottle debt: warehouse dispatches (batch_id IS NOT NULL) 19L issued − all-time returned
         if product_19l_ids:
             c_issued_q = await db.execute(
                 select(func.sum(WaterTransaction.quantity))
                 .where(WaterTransaction.courier_id == c.id)
                 .where(WaterTransaction.transaction_type == "issue")
                 .where(WaterTransaction.product_id.in_(product_19l_ids))
+                .where(WaterTransaction.batch_id.isnot(None))
             )
             c_returned_q = await db.execute(
                 select(func.sum(WaterTransaction.quantity))

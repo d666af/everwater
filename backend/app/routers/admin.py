@@ -157,7 +157,8 @@ async def get_stats(
             select(func.sum(WaterTransaction.quantity)).where(
                 and_(WaterTransaction.transaction_type == "issue",
                      WaterTransaction.product_id.in_(prod_19l_ids),
-                     WaterTransaction.courier_id.isnot(None))
+                     WaterTransaction.courier_id.isnot(None),
+                     WaterTransaction.batch_id.isnot(None))
             )
         )
     else:
@@ -791,6 +792,7 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
                     WaterTransaction.courier_id == courier_id,
                     WaterTransaction.transaction_type == "issue",
                     WaterTransaction.product_id.in_(prod_19l_ids),
+                    WaterTransaction.batch_id.isnot(None),
                 )
             )
         )

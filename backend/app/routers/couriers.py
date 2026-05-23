@@ -109,6 +109,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
                     WaterTransaction.courier_id == courier.id,
                     WaterTransaction.transaction_type == "issue",
                     WaterTransaction.product_id.in_(prod_19l_ids),
+                    WaterTransaction.batch_id.isnot(None),
                 )
             )
         )
