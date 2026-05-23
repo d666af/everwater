@@ -87,6 +87,12 @@ class Order(Base):
     is_items_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     items_edited_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Soft delete
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deleted_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

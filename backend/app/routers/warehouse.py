@@ -1752,7 +1752,8 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
             stock = await _ensure_stock(db, tx.product_id)
             stock.quantity += tx.quantity
             await db.delete(tx)
-        # bottle_return and factory_return transactions represent real physical returns — keep them
+        elif tx.transaction_type == "bottle_return":
+            await db.delete(tx)
 
     await db.commit()
     return {"ok": True, "batch_id": batch_id}

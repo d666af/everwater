@@ -597,6 +597,12 @@ def _parse_invoice(text: str) -> dict | None:
         if type_m and type_m.group(1) not in {'EVER', 'BCA'}:
             result['vehicle_type'] = type_m.group(1)
 
+    # Last-resort factory: ZAVOD anywhere in full text (handles OCR column order issues)
+    if not result['factory_name'] and not result['courier_name'] and not result['courier_phone']:
+        zm_full = re.search(r'\b(?:ZAVOD|ЗАВОД)\s+([A-ZА-ЯЁa-zа-яё][^\n\d]{1,30})', full, re.IGNORECASE)
+        if zm_full:
+            result['factory_name'] = zm_full.group(1).strip()
+
     if not result['factory_name'] and not result['courier_phone'] and not result['courier_name']:
         log.warning("Invoice parse: no courier or factory info found in:\n%s", text[:400])
         return None
