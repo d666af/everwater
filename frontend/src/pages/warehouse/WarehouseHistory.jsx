@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, clearOrderIssues, syncDeliveryNet } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -59,6 +59,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     getFactories()
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
       .catch(console.error)
+    clearOrderIssues().then(() => syncDeliveryNet()).catch(() => {})
   }, [])
 
   useEffect(() => {

@@ -513,7 +513,7 @@ function OrderCard({
             )}
             {order.status === 'delivered' && (
               <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} disabled={actionLoading}
-                onClick={() => { if (window.confirm('Удалить заказ? Это действие необратимо.')) act(() => deleteOrder(order.id).then(() => setOrders(prev => prev.filter(o => o.id !== order.id)))) }}>
+                onClick={() => { if (window.confirm('Удалить заказ? Это действие необратимо.')) act(() => deleteOrder(order.id, currentUser?.name, currentUser?.role).then(() => setOrders(prev => prev.filter(o => o.id !== order.id)))) }}>
                 Удалить заказ
               </button>
             )}

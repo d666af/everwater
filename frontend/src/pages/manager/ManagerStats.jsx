@@ -113,10 +113,14 @@ function CancelledCard({ count, dateParams }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {orders.map((o) => (
-                <div key={o.id} style={{ background: '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: '3px solid #E03131' }}>
+                <div key={o.id} style={{ background: o.is_deleted ? '#FFF8F0' : '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: `3px solid ${o.is_deleted ? '#E67700' : '#E03131'}` }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{o.client_name}</span>
-                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#E03131' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{o.client_name || o.client_phone || o.address || '—'}</span>
+                      {o.client_name && o.client_phone && <span style={{ fontSize: 11, color: TEXT2 }}>{o.client_phone}</span>}
+                      {!o.client_name && !o.client_phone && o.address && <span style={{ fontSize: 11, color: TEXT2 }}>{o.address}</span>}
+                    </div>
+                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: o.is_deleted ? '#E67700' : '#E03131' }}>
                       {Math.round(o.total).toLocaleString('ru-RU')} сум
                     </span>
                   </div>
@@ -147,9 +151,15 @@ function CancelledCard({ count, dateParams }) {
                     {o.courier_name && <div style={{ fontSize: 11, color: TEXT2 }}>🚴 Курьер: <span style={{ color: TEXT, fontWeight: 600 }}>{o.courier_name}</span></div>}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                    <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
-                      Отменил: {o.cancelled_by}
-                    </span>
+                    {o.is_deleted ? (
+                      <span style={{ fontSize: 11, background: '#FFF0E0', borderRadius: 8, padding: '3px 8px', color: '#E67700', fontWeight: 600 }}>
+                        🗑 {o.cancelled_by}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
+                        Отменил: {o.cancelled_by}
+                      </span>
+                    )}
                     <span style={{ fontSize: 11, background: 'rgba(60,60,67,0.06)', borderRadius: 8, padding: '3px 8px', color: TEXT2, fontWeight: 500 }}>
                       {fmt(o.created_at)}
                     </span>

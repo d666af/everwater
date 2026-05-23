@@ -578,7 +578,16 @@ async def get_cancelled_orders_list(
 
     q = await db.execute(
         select(Order)
-        .where(and_(Order.status == OrderStatus.REJECTED, Order.created_at >= since, Order.created_at <= until))
+        .where(
+            and_(
+                or_(
+                    and_(Order.status == OrderStatus.REJECTED, Order.is_deleted == False),
+                    Order.is_deleted == True,
+                ),
+                Order.created_at >= since,
+                Order.created_at <= until,
+            )
+        )
         .options(
             selectinload(Order.items).selectinload(OrderItem.product),
             selectinload(Order.user),
@@ -591,17 +600,27 @@ async def get_cancelled_orders_list(
     result = []
     for order in orders:
         reason = order.rejection_reason or order.cancellation_reason or ""
-        # Use stored rejected_by if available, else fall back to heuristic
-        if order.rejected_by_role and order.rejected_by_name:
+        if order.is_deleted:
+            cancelled_by = "Удалён"
+            cancelled_by_role = "deleted"
+            by_name = order.deleted_by_name or ""
+            if by_name:
+                cancelled_by = f"Удалён ({by_name})"
+        elif order.rejected_by_role and order.rejected_by_name:
             cancelled_by = f"{_ROLE_LABELS.get(order.rejected_by_role, order.rejected_by_role)} {order.rejected_by_name}"
+            cancelled_by_role = order.rejected_by_role
         elif order.rejected_by_role:
             cancelled_by = _ROLE_LABELS.get(order.rejected_by_role, order.rejected_by_role)
+            cancelled_by_role = order.rejected_by_role
         elif order.rejection_reason:
             cancelled_by = "Менеджер"
+            cancelled_by_role = ""
         elif order.cancellation_reason:
             cancelled_by = "Клиент"
+            cancelled_by_role = ""
         else:
             cancelled_by = "Администратор"
+            cancelled_by_role = ""
         # Build items list
         items = [
             {"name": i.product.name if i.product else "—", "quantity": i.quantity}
@@ -624,15 +643,22 @@ async def get_cancelled_orders_list(
             assigner_str = f"{assigner_role_lbl} {order.assigner_name}".strip()
         # Courier name
         courier_name = order.courier.name if order.courier else ""
+        # Client identity
+        client_name = order.user.name if order.user else ""
+        client_phone = order.recipient_phone or (order.user.phone if order.user else "") or ""
+        if not order.is_deleted:
+            cancelled_by_role = order.rejected_by_role or cancelled_by_role
         result.append({
             "id": order.id,
-            "client_name": order.user.name if order.user else "",
+            "client_name": client_name,
+            "client_phone": client_phone,
             "address": order.address or "",
             "total": round(order.total, 2),
             "reason": reason,
             "cancelled_by": cancelled_by,
-            "cancelled_by_role": order.rejected_by_role or "",
+            "cancelled_by_role": cancelled_by_role,
             "cancelled_by_name": order.rejected_by_name or "",
+            "is_deleted": order.is_deleted,
             "created_at": order.created_at.isoformat(),
             "items": items,
             "return_bottles_count": order.return_bottles_count or 0,
@@ -703,7 +729,7 @@ async def get_courier_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
 
 class CourierCreateFromInvoice(BaseModel):
     name: str
-    phone: str
+    phone: str = ""
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
 

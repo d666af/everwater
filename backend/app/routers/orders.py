@@ -464,7 +464,7 @@ async def get_user_orders(user_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/", response_model=list[OrderOut])
 async def get_all_orders(status: str | None = None, db: AsyncSession = Depends(get_db)):
-    query = select(Order).options(*_order_opts())
+    query = select(Order).options(*_order_opts()).where(Order.is_deleted == False)
     if status:
         query = query.where(Order.status == status)
     query = query.order_by(Order.created_at.desc())
@@ -1817,55 +1817,23 @@ async def update_order_location(order_id: int, body: LocationBody, db: AsyncSess
     return {"ok": True}
 
 
-@router.delete("/{order_id}")
-async def delete_order(order_id: int, db: AsyncSession = Depends(get_db)):
-    """Physically delete a delivered or rejected order, reversing any bottle debt."""
-    from sqlalchemy import delete as sa_delete
-    from app.models.warehouse import WaterTransaction
+class DeleteBody(BaseModel):
+    deleted_by_name: str | None = None
+    deleted_by_role: str | None = None
 
+
+@router.delete("/{order_id}")
+async def delete_order(order_id: int, body: DeleteBody = DeleteBody(), db: AsyncSession = Depends(get_db)):
+    """Soft-delete a delivered or rejected order so it remains visible in statistics."""
     order = await _get_order(order_id, db)
     if order.status not in (OrderStatus.DELIVERED, OrderStatus.REJECTED):
         raise HTTPException(status_code=400, detail="Only delivered or rejected orders can be deleted")
 
-    # Reverse bottle debt if delivered
-    if order.status == OrderStatus.DELIVERED and order.user_id:
-        bottles_delivered = sum(i.quantity for i in order.items if i.product and i.product.has_bottle_deposit)
-        net_change = bottles_delivered + (order.bottles_lent or 0) - (order.return_bottles_count or 0)
-        if net_change != 0:
-            debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
-            debt_row = debt_q.scalar_one_or_none()
-            if debt_row:
-                debt_row.count = max(0, debt_row.count - net_change)
+    order.is_deleted = True
+    order.deleted_at = datetime.utcnow()
+    order.deleted_by_name = body.deleted_by_name
+    order.deleted_by_role = body.deleted_by_role
 
-    # Nullify FK in WaterTransaction so cascade doesn't fail
-    await db.execute(sa_update(WaterTransaction).where(WaterTransaction.order_id == order_id).values(order_id=None))
-
-    # Delete review if present (no cascade on the relationship)
-    if order.review:
-        await db.delete(order.review)
-        await db.flush()
-
-    # Try to delete Telegram notification messages
-    msg_ids_json = order.notification_msg_ids
-    if msg_ids_json:
-        import json as _j
-        from app.config import settings as cfg
-        import aiohttp
-        try:
-            for m in _j.loads(msg_ids_json):
-                try:
-                    async with aiohttp.ClientSession() as s:
-                        await s.post(
-                            f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/deleteMessage",
-                            json={"chat_id": m["chat_id"], "message_id": m["message_id"]},
-                            timeout=aiohttp.ClientTimeout(total=3),
-                        )
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    await db.delete(order)
     await db.commit()
     return {"ok": True}
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
@@ -238,6 +238,17 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
                       style={{ marginTop: 8, padding: '5px 12px', borderRadius: 8, border: '1.5px solid rgba(224,49,49,0.35)', background: 'transparent', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                       onClick={() => setCancellingId(o.id)}
                     >Отменить заказ</button>
+                  )}
+                  {o.status === 'delivered' && (
+                    <button
+                      style={{ marginTop: 8, padding: '5px 12px', borderRadius: 8, border: '1.5px solid rgba(224,49,49,0.35)', background: 'transparent', color: '#E03131', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => {
+                        if (window.confirm('Удалить заказ?'))
+                          deleteOrder(o.id, currentUser?.name, currentUser?.role)
+                            .then(() => setOrders(prev => prev.filter(x => x.id !== o.id)))
+                            .catch(() => {})
+                      }}
+                    >Удалить заказ</button>
                   )}
                   {cancellingId === o.id && (
                     <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>

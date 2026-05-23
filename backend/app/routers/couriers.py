@@ -836,105 +836,111 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     bottle_surcharge = body.bottle_surcharge or 0.0
     total = max(0.0, subtotal + bottle_surcharge)
 
-    order = Order(
-        user_id=user.id if user else None,
-        recipient_phone=body.phone,
-        address=body.address,
-        extra_info=body.note,
-        delivery_time=body.delivery_time,
-        subtotal=subtotal,
-        total=total,
-        bottle_discount=bottle_discount,
-        bottle_surcharge=bottle_surcharge,
-        payment_method=body.payment_method,
-        return_bottles_count=body.return_bottles_count,
-        bottles_lent=body.bottles_lent,
-        latitude=body.latitude,
-        longitude=body.longitude,
-        status=OrderStatus.CONFIRMED,
-        creator_role=body.creator_role,
-        creator_name=body.creator_name,
-        assigner_name=body.creator_name if body.creator_role in ("courier", "manager", "admin") else None,
-        assigner_role=body.creator_role if body.creator_role in ("courier", "manager", "admin") else None,
-        agent_id=body.agent_id,
-        manager_phone=body.manager_phone,
-    )
-    db.add(order)
-    await db.flush()
-    for product, quantity in items_data:
-        db.add(OrderItem(order_id=order.id, product_id=product.id,
-                         quantity=quantity, price=product.price))
-
-    # Resolve creator courier (courier-created order)
-    creator_courier = None
-    if body.courier_telegram_id:
-        c_q = await db.execute(
-            select(Courier).where(Courier.telegram_id == body.courier_telegram_id)
+    try:
+        order = Order(
+            user_id=user.id if user else None,
+            recipient_phone=body.phone,
+            address=body.address,
+            extra_info=body.note,
+            delivery_time=body.delivery_time,
+            subtotal=subtotal,
+            total=total,
+            bottle_discount=bottle_discount,
+            bottle_surcharge=bottle_surcharge,
+            payment_method=body.payment_method,
+            return_bottles_count=body.return_bottles_count,
+            bottles_lent=body.bottles_lent,
+            latitude=body.latitude,
+            longitude=body.longitude,
+            status=OrderStatus.CONFIRMED,
+            creator_role=body.creator_role,
+            creator_name=body.creator_name,
+            assigner_name=body.creator_name if body.creator_role in ("courier", "manager", "admin") else None,
+            assigner_role=body.creator_role if body.creator_role in ("courier", "manager", "admin") else None,
+            agent_id=body.agent_id,
+            manager_phone=body.manager_phone,
         )
-        creator_courier = c_q.scalar_one_or_none()
-        if creator_courier and body.creator_role == "courier":
-            order.courier_id = creator_courier.id
-            order.status = OrderStatus.ASSIGNED_TO_COURIER
-            if not order.creator_name and creator_courier.name:
-                order.creator_name = creator_courier.name
-                order.assigner_name = creator_courier.name
-
-    # Resolve manager-pre-selected courier (manager-created order with courier chosen at creation)
-    manager_assigned_courier = None
-    if body.creator_role in ("manager", "admin") and body.courier_id and not creator_courier:
-        mac_q = await db.execute(select(Courier).where(Courier.id == body.courier_id))
-        manager_assigned_courier = mac_q.scalar_one_or_none()
-        if manager_assigned_courier:
-            order.courier_id = manager_assigned_courier.id
-
-    is_return_only = not items_data and body.return_bottles_count > 0
-
-    if is_return_only:
-        assigned_courier = creator_courier or manager_assigned_courier
-        if assigned_courier:
-            # Auto-deliver return-only order when courier is known
-            order.status = OrderStatus.DELIVERED
-            order.delivered_at = datetime.utcnow()
-            from app.models.warehouse import WaterTransaction
-            db.add(WaterTransaction(
-                courier_id=assigned_courier.id,
-                transaction_type="bottle_return",
-                quantity=body.return_bottles_count,
-                order_id=order.id,
-            ))
-        # else: no courier yet — stays CONFIRMED for later assignment
-    elif order.courier_id and items_data:
-        from app.models.warehouse import CourierWater, WaterTransaction
+        db.add(order)
+        await db.flush()
         for product, quantity in items_data:
-            row_q = await db.execute(
-                select(CourierWater).where(
-                    CourierWater.courier_id == order.courier_id,
-                    CourierWater.product_id == product.id,
-                )
+            db.add(OrderItem(order_id=order.id, product_id=product.id,
+                             quantity=quantity, price=product.price))
+
+        # Resolve creator courier (courier-created order)
+        creator_courier = None
+        if body.courier_telegram_id:
+            c_q = await db.execute(
+                select(Courier).where(Courier.telegram_id == body.courier_telegram_id)
             )
-            row = row_q.scalar_one_or_none()
+            creator_courier = c_q.scalar_one_or_none()
+            if creator_courier and body.creator_role == "courier":
+                order.courier_id = creator_courier.id
+                order.status = OrderStatus.ASSIGNED_TO_COURIER
+                if not order.creator_name and creator_courier.name:
+                    order.creator_name = creator_courier.name
+                    order.assigner_name = creator_courier.name
+
+        # Resolve manager-pre-selected courier (manager-created order with courier chosen at creation)
+        manager_assigned_courier = None
+        if body.creator_role in ("manager", "admin") and body.courier_id and not creator_courier:
+            mac_q = await db.execute(select(Courier).where(Courier.id == body.courier_id))
+            manager_assigned_courier = mac_q.scalar_one_or_none()
             if manager_assigned_courier:
-                # Manager pre-assigned: record as issue transaction and set reserved
-                if not row:
-                    row = CourierWater(courier_id=order.courier_id, product_id=product.id, quantity=0, reserved=0)
-                    db.add(row)
-                row.reserved = (row.reserved or 0) + quantity
+                order.courier_id = manager_assigned_courier.id
+
+        is_return_only = not items_data and body.return_bottles_count > 0
+
+        if is_return_only:
+            assigned_courier = creator_courier or manager_assigned_courier
+            if assigned_courier:
+                # Auto-deliver return-only order when courier is known
+                order.status = OrderStatus.DELIVERED
+                order.delivered_at = datetime.utcnow()
+                from app.models.warehouse import WaterTransaction
                 db.add(WaterTransaction(
-                    product_id=product.id,
-                    courier_id=order.courier_id,
+                    courier_id=assigned_courier.id,
+                    transaction_type="bottle_return",
+                    quantity=body.return_bottles_count,
                     order_id=order.id,
-                    transaction_type="issue",
-                    quantity=quantity,
-                    note="Заказ создан менеджером",
                 ))
-            elif row:
-                # Courier-created: move from available to reserved
-                qty = min(quantity, max(0, row.quantity))
-                row.quantity = max(0, row.quantity - qty)
-                row.reserved = (row.reserved or 0) + qty
-        if manager_assigned_courier:
-            order.status = OrderStatus.ASSIGNED_TO_COURIER
-    await db.commit()
+            # else: no courier yet — stays CONFIRMED for later assignment
+        elif order.courier_id and items_data:
+            from app.models.warehouse import CourierWater, WaterTransaction
+            for product, quantity in items_data:
+                row_q = await db.execute(
+                    select(CourierWater).where(
+                        CourierWater.courier_id == order.courier_id,
+                        CourierWater.product_id == product.id,
+                    )
+                )
+                row = row_q.scalar_one_or_none()
+                if manager_assigned_courier:
+                    # Manager pre-assigned: record as issue transaction and set reserved
+                    if not row:
+                        row = CourierWater(courier_id=order.courier_id, product_id=product.id, quantity=0, reserved=0)
+                        db.add(row)
+                    row.reserved = (row.reserved or 0) + quantity
+                    db.add(WaterTransaction(
+                        product_id=product.id,
+                        courier_id=order.courier_id,
+                        order_id=order.id,
+                        transaction_type="issue",
+                        quantity=quantity,
+                        note="Заказ создан менеджером",
+                    ))
+                elif row:
+                    # Courier-created: move from available to reserved
+                    qty = min(quantity, max(0, row.quantity))
+                    row.quantity = max(0, row.quantity - qty)
+                    row.reserved = (row.reserved or 0) + qty
+            if manager_assigned_courier:
+                order.status = OrderStatus.ASSIGNED_TO_COURIER
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=f"Ошибка создания заказа: {exc}")
 
     oid = order.id
     try:

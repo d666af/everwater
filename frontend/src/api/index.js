@@ -243,9 +243,9 @@ export const rejectOrder = (orderId, reason, rejectedByName, rejectedByRole) =>
     () => ({ ok: true })
   )
 
-export const deleteOrder = (orderId) =>
+export const deleteOrder = (orderId, deletedByName, deletedByRole) =>
   safeCall(
-    () => http.delete(`/orders/${orderId}`).then(r => r.data),
+    () => http.delete(`/orders/${orderId}`, { data: { deleted_by_name: deletedByName || null, deleted_by_role: deletedByRole || null } }).then(r => r.data),
     () => ({ ok: true })
   )
 
