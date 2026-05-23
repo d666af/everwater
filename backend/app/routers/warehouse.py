@@ -1767,6 +1767,7 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
 @router.delete("/clear_order_issues")
 async def clear_order_issues(db: AsyncSession = Depends(get_db)):
     """Delete all unbatched 'issue' WaterTransactions (auto-created by manager orders).
+    Also deletes orphaned batch bottle_return records (batch was cancelled but return tx survived).
     These inflate courier debt without corresponding real warehouse handouts.
     After calling this, manually re-enter real handouts as batched invoices."""
     txs = (await db.execute(
@@ -1788,6 +1789,26 @@ async def clear_order_issues(db: AsyncSession = Depends(get_db)):
                 cw.reserved = max(0, (cw.reserved or 0) - tx.quantity)
         await db.delete(tx)
         count += 1
+
+    # Clean up orphaned batch bottle_return records:
+    # these have a batch_id but no matching issue/factory_issue in the same batch
+    batched_returns = (await db.execute(
+        select(WaterTransaction).where(
+            WaterTransaction.transaction_type == "bottle_return",
+            WaterTransaction.batch_id.isnot(None),
+        )
+    )).scalars().all()
+    for ret in batched_returns:
+        sibling = (await db.execute(
+            select(WaterTransaction.id).where(
+                WaterTransaction.batch_id == ret.batch_id,
+                WaterTransaction.transaction_type.in_(["issue", "factory_issue"]),
+            ).limit(1)
+        )).scalar()
+        if not sibling:
+            await db.delete(ret)
+            count += 1
+
     await db.commit()
     return {"ok": True, "deleted": count}
 

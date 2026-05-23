@@ -81,6 +81,27 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .finally(() => setLoading(false))
   }, [period, customDate, customDateTo, type, productName, courierId, factoryId])
 
+  // Group batch transactions: merge bottle_return into their parent issue row
+  const groupedHistory = useMemo(() => {
+    const batchReturns = {}
+    for (const h of history) {
+      if (h.batch_id && (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned')) {
+        if (!batchReturns[h.batch_id]) batchReturns[h.batch_id] = { qty: 0, note: null }
+        batchReturns[h.batch_id].qty += h.quantity
+        if (h.note) batchReturns[h.batch_id].note = h.note
+      }
+    }
+    return history
+      .filter(h => !(h.batch_id && (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned')))
+      .map(h => {
+        if (h.batch_id && (h.type === 'issue' || h.type === 'issued' || h.type === 'factory_issue')) {
+          const ret = batchReturns[h.batch_id]
+          if (ret) return { ...h, return_qty: ret.qty, return_note: ret.note }
+        }
+        return h
+      })
+  }, [history])
+
   const summary = useMemo(() => {
     const prodByProduct = {}   // { name: { qty, cost } }
     const issueByProduct = {}  // { name: { qty, cost } }
@@ -339,7 +360,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 18, padding: '4px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-          {history.map((h, i) => {
+          {groupedHistory.map((h, i) => {
             const isProd = h.type === 'production'
             const isIssue = h.type === 'issued' || h.type === 'issue'
             const isFactoryIssue = h.type === 'factory_issue'
@@ -382,7 +403,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             const showInvoice = h.batch_id && (isIssue || isFactoryIssue)
 
             return (
-              <div key={h.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: i < history.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+              <div key={h.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: i < groupedHistory.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                   {isProd && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke={color} strokeWidth="2.2" strokeLinecap="round"/></svg>}
                   {(isIssue || isFactoryIssue) && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -398,6 +419,11 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                   {debtNote && (
                     <div style={{ fontSize: 11, color: '#1971C2', marginTop: 2, fontWeight: 600 }}>
                       {debtNote}
+                    </div>
+                  )}
+                  {(isIssue || isFactoryIssue) && h.return_qty > 0 && (
+                    <div style={{ fontSize: 11, color: '#1971C2', marginTop: 2, fontWeight: 600 }}>
+                      ↩ Возврат: {h.return_qty} бут.{h.return_note ? ` · ${h.return_note}` : ''}
                     </div>
                   )}
                 </div>
