@@ -102,7 +102,7 @@ async def _tg_edit_or_send(chat_id: int, text: str, msg_id: int | None) -> int |
     return await _tg_send(chat_id, text)
 
 
-async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None) -> bool:
+async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
     """Edit a Telegram message text and remove/replace its inline keyboard.
     Pass reply_markup=None to remove the keyboard (sends empty InlineKeyboardMarkup)."""
     from app.config import settings as cfg
@@ -111,6 +111,8 @@ async def _tg_edit(chat_id: int, message_id: int, text: str, reply_markup=None) 
         return False
     payload: dict = {"chat_id": chat_id, "message_id": message_id, "text": text,
                      "reply_markup": reply_markup if reply_markup is not None else {}}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     url = f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/editMessageText"
     try:
         async with aiohttp.ClientSession() as s:
@@ -799,11 +801,19 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     client_name = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
-    items_bullets = "\n".join(
-        f"  • {i.product.name} {i.quantity} шт." for i in order.items if i.product
-    ) or "—"
+    _items_data_ac = [(i.product, i.quantity) for i in order.items if i.product]
+    _ret_cnt = order.return_bottles_count or 0
+    _lent_cnt = order.bottles_lent or 0
+    _surcharge_ac = order.bottle_surcharge or 0.0
+    _qty19_ac = sum(q for p, q in _items_data_ac if p.has_bottle_deposit)
+    _missing_ac = max(0, _qty19_ac - _ret_cnt)
+    _snum_ac = f"{int(_surcharge_ac):,}".replace(",", " ")
+    _bullet_lines_ac = [f"  • {p.name} {q} шт." for p, q in _items_data_ac]
+    if _surcharge_ac > 0 and _missing_ac > 0:
+        _bullet_lines_ac.append(f"  • Невозвращённые бутылки {_missing_ac} шт. — +{_snum_ac} сум")
+    items_bullets = "\n".join(_bullet_lines_ac) or "—"
     items = _order_items_text(order.items)
-    items_data_for_stock = [(i.product, i.quantity) for i in order.items if i.product]
+    items_data_for_stock = _items_data_ac
     order_address = order.address
     order_phone = order.recipient_phone
     order_lat = order.latitude
@@ -845,17 +855,20 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
                 order.assigner_name = mgr.name
             if not order.assigner_role:
                 order.assigner_role = "manager"
-        elif body.manager_telegram_id in cfg.ADMIN_IDS:
-            admin_user = (await db.execute(
-                select(User).where(User.telegram_id == body.manager_telegram_id)
-            )).scalar_one_or_none()
-            if admin_user:
-                if admin_user.phone:
-                    order.manager_phone = admin_user.phone
-                if not order.assigner_name and admin_user.name:
-                    order.assigner_name = admin_user.name
-                if not order.assigner_role:
-                    order.assigner_role = "admin"
+        else:
+            from app.services.tg_notify import get_all_admin_ids as _gaa
+            _all_aids = await _gaa(db)
+            if body.manager_telegram_id in _all_aids:
+                admin_user = (await db.execute(
+                    select(User).where(User.telegram_id == body.manager_telegram_id)
+                )).scalar_one_or_none()
+                if admin_user:
+                    if admin_user.phone:
+                        order.manager_phone = admin_user.phone
+                    if not order.assigner_name and admin_user.name:
+                        order.assigner_name = admin_user.name
+                    if not order.assigner_role:
+                        order.assigner_role = "admin"
 
     # Return-only manager orders: record bottle return and auto-deliver on courier assignment
     is_return_only_manager = (
@@ -901,19 +914,24 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
     else:
         _assigner_line = ""
+    _ret_line_ac = f"\n♻️ Возврат бутылок: {_ret_cnt} шт." if _ret_cnt else ""
+    _lent_line_ac = f"\n📦 Одолжить: {_lent_cnt} шт." if _lent_cnt else ""
+    _surcharge_line_ac = f"\n💰 Надбавка за невозврат: {int(_surcharge_ac):,} сум" if _surcharge_ac > 0 else ""
     sync_text = (
         f"✅ Курьер {courier_name} назначен\n\n"
         f"👤 {client_name}  |  {order_phone}\n"
         f"📍 {order_address}\n\n"
         f"Товары:\n{items_bullets}\n"
         f"💰 {order_total:,} сум  |  {pay_label_str}"
+        f"{_ret_line_ac}{_lent_line_ac}{_surcharge_line_ac}"
         f"{_creator_line}\n"
         f"🚴 {courier_name}{c_phone_part}"
         f"{_assigner_line}"
     )
 
     from app.services.tg_notify import edit_all_notifications
-    await edit_all_notifications(notification_msg_ids, sync_text)
+    _cancel_kb_ac = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+    await edit_all_notifications(notification_msg_ids, sync_text, reply_markup=_cancel_kb_ac)
 
     if not from_bot:
 
@@ -1557,6 +1575,14 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     _courier = order.courier
     courier_name = _courier.name if _courier else None
     courier_phone = (_courier.phone or "") if _courier else ""
+    courier_tg = _courier.telegram_id if _courier else None
+    courier_status_msg = order.courier_status_msg_id
+    order_lat = order.latitude
+    order_lng = order.longitude
+    order_note = order.extra_info
+    order_creator_role_raw = order.creator_role
+    order_delivery_time = order.delivery_time or "—"
+    order_manager_phone = order.manager_phone or ""
 
     # Rebuild items
     await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
@@ -1597,13 +1623,23 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
 
     # Build full staff notification preserving all original info + change marker
     def _fmtv(n): return f"{int(n):,} сум".replace(",", " ")
-    items_bullets = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) or "—"
-    items_simple = "\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—"
+    qty_with_deposit = sum(q for p, q in items_data if getattr(p, "has_bottle_deposit", False))
+    missing_bottles = max(0, qty_with_deposit - body.return_bottles_count)
+    surcharge_num = f"{int(bottle_surcharge):,}".replace(",", " ")
+    surcharge_suffix = (
+        f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{surcharge_num} сум"
+        if bottle_surcharge > 0 and missing_bottles > 0 else ""
+    )
+    surcharge_suffix_simple = (
+        f"\n• Невозвращённые бутылки {missing_bottles} шт. — +{surcharge_num} сум"
+        if bottle_surcharge > 0 and missing_bottles > 0 else ""
+    )
+    items_bullets = ("\n".join(f"  • {p.name} {q} шт." for p, q in items_data) or "—") + surcharge_suffix
+    items_simple = ("\n".join(f"• {p.name} {q} шт." for p, q in items_data) or "—") + surcharge_suffix_simple
     total_str = _fmtv(order.total)
     ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
     lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
-    courier_label = f"курьером {body.courier_name}" if body.courier_name else "курьером"
-    change_marker = f"\n✏️ Изменено {courier_label}"
+    change_marker = "\n✏️ Изменено курьером"
 
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
@@ -1618,7 +1654,10 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     else:
         _client_label = client_name if client_name and client_name != "—" else "Клиент"
         _creator_line = f"\n✍️ Создал заказ: Клиент {_client_label}"
-    if order_assigner_name:
+    _auto_assigned = order_creator_role_raw == "courier" and order_assigner_role == "courier"
+    if _auto_assigned:
+        _assigner_line = "\n👤 Назначил курьера: Автоматически"
+    elif order_assigner_name:
         _asgn_role_lbl = _ROLE_LABELS.get(order_assigner_role, "") if order_assigner_role else ""
         _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
     else:
@@ -1645,7 +1684,8 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
             f"{_creator_line}"
             f"{change_marker}"
         )
-    await edit_all_notifications(notification_msg_ids, staff_text)
+    _cancel_kb = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+    await edit_all_notifications(notification_msg_ids, staff_text, reply_markup=_cancel_kb)
 
     surcharge_line = f"\n💰 Надбавка за невозврат: {_fmtv(bottle_surcharge)}" if bottle_surcharge else ""
     client_text = (
@@ -1656,6 +1696,83 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
     if new_client_msg and new_client_msg != old_client_msg_id:
         await _save_status_msg_id(db, oid, new_client_msg)
+
+    # Edit courier's "Вы создали новый заказ" message in-place (courier-created orders)
+    if courier_tg and courier_status_msg and order_creator_role_raw == "courier":
+        def _map_url_u(addr, lat, lng):
+            from urllib.parse import quote as _uq
+            if lat and lng:
+                return f"https://maps.google.com/?q={lat},{lng}"
+            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
+
+        _note_line = f"\n🏠 {order_note}" if order_note else ""
+        _snum = f"{int(bottle_surcharge):,}".replace(",", " ")
+        _items_c = "\n".join(
+            f"  • {p.name} {q} шт. — {f'{int(p.price * q):,}'.replace(',', ' ')} сум"
+            for p, q in items_data
+        ) if items_data else "  —"
+        if bottle_surcharge > 0 and missing_bottles > 0:
+            _items_c += f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum} сум"
+        _courier_upd = (
+            f"🚴 <b>Вы создали новый заказ!</b>\n\n"
+            f"📍 {order_address}{_note_line}\n"
+            f"👤 {order_phone}\n\n"
+            f"Состав:\n{_items_c}"
+        )
+        if body.return_bottles_count > 0:
+            _courier_upd += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
+        _courier_upd += f"\n\nИтого: {total_str}"
+        _map_u = _map_url_u(order_address, order_lat, order_lng)
+        _kb = []
+        if _map_u:
+            _kb.append([{"text": "🗺 На карте", "url": _map_u}])
+        _kb.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        _kb.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+        _kb.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+        await _tg_edit(int(courier_tg), courier_status_msg, _courier_upd,
+                       reply_markup={"inline_keyboard": _kb}, parse_mode="HTML")
+
+    # Edit courier's assignment message for manager/admin-created orders
+    elif courier_tg and courier_status_msg:
+        def _map_url_mgr(addr, lat, lng):
+            from urllib.parse import quote as _uq
+            if lat and lng:
+                return f"https://maps.google.com/?q={lat},{lng}"
+            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
+
+        _snum_mgr = f"{int(bottle_surcharge):,}".replace(",", " ")
+        _item_lines_mgr = [f"  • {p.name} {q} шт." for p, q in items_data]
+        if bottle_surcharge > 0 and missing_bottles > 0:
+            _item_lines_mgr.append(f"  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum_mgr} сум")
+        _items_mgr = "\n".join(_item_lines_mgr) if _item_lines_mgr else "—"
+        _ret_mgr = f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт." if body.return_bottles_count else ""
+        _lent_mgr = f"\n\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
+        _pay_labels_mgr = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+        _pay_lbl_mgr = _pay_labels_mgr.get(order_payment, order_payment)
+        if order_payment == "cash":
+            _payment_mgr = f"\n\n💵 Получить наличными: {total_str}"
+        else:
+            _payment_mgr = f"\n\nОплата: {_pay_lbl_mgr} — {total_str}"
+        _mgr_phone_line = f"\n👔 Менеджер: {order_manager_phone}" if order_manager_phone else ""
+        _courier_upd_mgr = (
+            f"🚴 Вам назначен заказ!\n\n"
+            f"📍 {order_address}\n"
+            f"👤 {order_phone}\n"
+            f"⏰ {order_delivery_time}\n\n"
+            f"Доставить:\n{_items_mgr}"
+            f"{_ret_mgr}"
+            f"{_lent_mgr}"
+            f"{_payment_mgr}"
+            f"{_mgr_phone_line}"
+        )
+        _map_u_mgr = _map_url_mgr(order_address, order_lat, order_lng)
+        _kb_mgr = []
+        if _map_u_mgr:
+            _kb_mgr.append([{"text": "🗺 На карте", "url": _map_u_mgr}])
+        _kb_mgr.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        _kb_mgr.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+        await _tg_edit(int(courier_tg), courier_status_msg, _courier_upd_mgr,
+                       reply_markup={"inline_keyboard": _kb_mgr})
 
     return {"ok": True}
 
@@ -1696,6 +1813,59 @@ async def update_order_location(order_id: int, body: LocationBody, db: AsyncSess
             except Exception:
                 pass
 
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{order_id}")
+async def delete_order(order_id: int, db: AsyncSession = Depends(get_db)):
+    """Physically delete a delivered or rejected order, reversing any bottle debt."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.warehouse import WaterTransaction
+
+    order = await _get_order(order_id, db)
+    if order.status not in (OrderStatus.DELIVERED, OrderStatus.REJECTED):
+        raise HTTPException(status_code=400, detail="Only delivered or rejected orders can be deleted")
+
+    # Reverse bottle debt if delivered
+    if order.status == OrderStatus.DELIVERED and order.user_id:
+        bottles_delivered = sum(i.quantity for i in order.items if i.product and i.product.has_bottle_deposit)
+        net_change = bottles_delivered + (order.bottles_lent or 0) - (order.return_bottles_count or 0)
+        if net_change != 0:
+            debt_q = await db.execute(select(BottleDebt).where(BottleDebt.user_id == order.user_id))
+            debt_row = debt_q.scalar_one_or_none()
+            if debt_row:
+                debt_row.count = max(0, debt_row.count - net_change)
+
+    # Nullify FK in WaterTransaction so cascade doesn't fail
+    await db.execute(sa_update(WaterTransaction).where(WaterTransaction.order_id == order_id).values(order_id=None))
+
+    # Delete review if present (no cascade on the relationship)
+    if order.review:
+        await db.delete(order.review)
+        await db.flush()
+
+    # Try to delete Telegram notification messages
+    msg_ids_json = order.notification_msg_ids
+    if msg_ids_json:
+        import json as _j
+        from app.config import settings as cfg
+        import aiohttp
+        try:
+            for m in _j.loads(msg_ids_json):
+                try:
+                    async with aiohttp.ClientSession() as s:
+                        await s.post(
+                            f"https://api.telegram.org/bot{cfg.BOT_TOKEN}/deleteMessage",
+                            json={"chat_id": m["chat_id"], "message_id": m["message_id"]},
+                            timeout=aiohttp.ClientTimeout(total=3),
+                        )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    await db.delete(order)
     await db.commit()
     return {"ok": True}
 

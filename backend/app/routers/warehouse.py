@@ -1685,8 +1685,8 @@ async def list_issue_batches(
             (tx.quantity * float(p.price or 0)) if p else 0
             for tx, p in items_rows
         )
-        courier = None
-        if row.courier_id:
+        recipient_name = "—"
+        if tx_type == "issue" and row.courier_id:
             courier = (await db.execute(
                 select(Courier).where(Courier.id == row.courier_id)
             )).scalar_one_or_none()

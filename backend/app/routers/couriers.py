@@ -874,6 +874,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         if creator_courier and body.creator_role == "courier":
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
+            if not order.creator_name and creator_courier.name:
+                order.creator_name = creator_courier.name
+                order.assigner_name = creator_courier.name
 
     # Resolve manager-pre-selected courier (manager-created order with courier chosen at creation)
     manager_assigned_courier = None
@@ -1027,9 +1030,13 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         if _m:
             kb_rows.append([{"text": "🗺 На карте", "url": _m}])
         kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
-        await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+        _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
+        if _courier_msg_id:
+            await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=_courier_msg_id))
+            await db.commit()
 
         # Notify client about created+assigned order (two messages)
         if client_tg:
@@ -1075,13 +1082,30 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             f"Сумма: {_fmt_n3(total_int)} сум\n\n"
             f"✅ Курьер {courier_name} назначен автоматически"
         )
-        from app.services.tg_notify import get_all_admin_ids as _get_all_admin_ids
+        import json as _json_mod_c
+        from app.services.tg_notify import tg_send_capture as _tsc_c, get_all_admin_ids as _get_all_admin_ids
+        _cancel_kb_c = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
         _all_aids_c = await _get_all_admin_ids(db)
-        for aid in _all_aids_c:
-            await _tg(aid, info_text)
-        for m in mgrs:
-            if m.telegram_id and m.telegram_id not in _all_aids_c:
-                await _tg(m.telegram_id, info_text)
+        _msg_ids_c: list = []
+        _seen_c: set[int] = set()
+        for _aid in _all_aids_c:
+            if _aid not in _seen_c:
+                _seen_c.add(_aid)
+                _r = await _tsc_c(_aid, info_text, _cancel_kb_c)
+                if _r:
+                    _msg_ids_c.append(_r)
+        for _mgr in mgrs:
+            _tg_id = _mgr.telegram_id if hasattr(_mgr, "telegram_id") else None
+            _active = _mgr.is_active if hasattr(_mgr, "is_active") else True
+            if _active and _tg_id:
+                _tid = int(_tg_id)
+                if _tid not in _seen_c:
+                    _seen_c.add(_tid)
+                    _r = await _tsc_c(_tid, info_text, _cancel_kb_c)
+                    if _r:
+                        _msg_ids_c.append(_r)
+        await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod_c.dumps(_msg_ids_c)))
+        await db.commit()
 
     # ── Manager/admin-created order ──
     else:
@@ -1154,13 +1178,14 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             )
             import json as _json_mod
             from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
+            _cancel_kb_m = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
             _all_aids_m = await _get_all_admin_ids(db)
             _msg_ids_m: list = []
             _seen_m: set[int] = set()
             for _aid in _all_aids_m:
                 if _aid not in _seen_m:
                     _seen_m.add(_aid)
-                    _r = await _tsc(_aid, info_text)
+                    _r = await _tsc(_aid, info_text, _cancel_kb_m)
                     if _r:
                         _msg_ids_m.append(_r)
             for _mgr in mgrs:
@@ -1170,7 +1195,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     _tid = int(_tg_id)
                     if _tid not in _seen_m:
                         _seen_m.add(_tid)
-                        _r = await _tsc(_tid, info_text)
+                        _r = await _tsc(_tid, info_text, _cancel_kb_m)
                         if _r:
                             _msg_ids_m.append(_r)
             await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=_json_mod.dumps(_msg_ids_m)))
@@ -1208,10 +1233,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
             admin_kb = {"inline_keyboard": [
                 [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
                 [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
             mgr_kb = {"inline_keyboard": [
                 [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
+                [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
                 [{"text": "🌐 Заказ на сайте", "url": site_url}],
             ]}
             import json as _json_mod

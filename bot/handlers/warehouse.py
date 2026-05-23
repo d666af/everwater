@@ -780,7 +780,7 @@ def _cancel_list_kb(batches: list, page: int) -> InlineKeyboardMarkup:
     chunk = batches[start:start + _CANCEL_PAGE_SIZE]
     rows = [
         [InlineKeyboardButton(
-            text=f"{i + 1}. {b.get('courier_name', '?')} · {_fmt_ts(b.get('created_at', ''))}",
+            text=f"{i + 1}. {'🏭 ' if b.get('transaction_type') == 'factory_issue' else ''}{b.get('courier_name', '?')} · {_fmt_ts(b.get('created_at', ''))}",
             callback_data=f"wh:cncl:sel:{b['batch_id']}",
         )]
         for i, b in enumerate(chunk, start=start)
@@ -857,9 +857,11 @@ async def wh_cancel_select(call: CallbackQuery, state: FSMContext):
     items_text = ", ".join(
         f"{it['quantity']} × {it['product_name']}" for it in batch.get("items", [])
     )
+    _is_factory = batch.get("transaction_type") == "factory_issue"
+    _recipient_label = "Завод" if _is_factory else "Курьер"
     text = (
         f"🗑 <b>Отменить выдачу?</b>\n\n"
-        f"Курьер: {batch.get('courier_name', '—')}\n"
+        f"{_recipient_label}: {batch.get('courier_name', '—')}\n"
         f"Дата: {_fmt_ts(batch.get('created_at', ''))}\n"
         f"Состав: {items_text or '—'}"
     )
@@ -882,8 +884,9 @@ async def wh_cancel_confirm(call: CallbackQuery, state: FSMContext):
         return
     data = await state.get_data()
     batch = data.get("wh_cancel_selected", {})
+    _rl = "Завод" if batch.get("transaction_type") == "factory_issue" else "Курьер"
     await call.message.edit_text(
-        f"✅ Выдача отменена.\nКурьер: {batch.get('courier_name', '—')} · {_fmt_ts(batch.get('created_at', ''))}",
+        f"✅ Выдача отменена.\n{_rl}: {batch.get('courier_name', '—')} · {_fmt_ts(batch.get('created_at', ''))}",
         parse_mode="HTML",
     )
     await state.clear()

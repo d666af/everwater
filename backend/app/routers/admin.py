@@ -156,14 +156,16 @@ async def get_stats(
         courier_issued_q = await db.execute(
             select(func.sum(WaterTransaction.quantity)).where(
                 and_(WaterTransaction.transaction_type == "issue",
-                     WaterTransaction.product_id.in_(prod_19l_ids))
+                     WaterTransaction.product_id.in_(prod_19l_ids),
+                     WaterTransaction.courier_id.isnot(None))
             )
         )
     else:
         courier_issued_q = None
     courier_returned_q = await db.execute(
         select(func.sum(WaterTransaction.quantity)).where(
-            WaterTransaction.transaction_type == "bottle_return"
+            and_(WaterTransaction.transaction_type == "bottle_return",
+                 WaterTransaction.courier_id.isnot(None))
         )
     )
     bottles_returned_to_warehouse_q = await db.execute(

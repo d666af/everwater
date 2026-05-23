@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import Command
@@ -263,15 +264,49 @@ async def admin_mark_delivered(call: CallbackQuery):
     await call.answer("✅ Доставлен")
 
 
+@router.callback_query(F.data.startswith("order:cancel:"))
+async def order_cancel_unified(call: CallbackQuery):
+    """Unified cancel handler for courier-order notifications sent to both admins and managers."""
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    reason = "Отменён администратором" if _is_adm else "Отменён менеджером"
+    role = "admin" if _is_adm else "manager"
+    try:
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role=role)
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+        return
+    await call.answer("❌ Заказ отменён")
+
+
 @router.callback_query(F.data.startswith("admin:cancel_order:"))
 async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await api.reject_order(order_id, "Отменён администратором", from_bot=True,
-                           rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
+    try:
+        await api.reject_order(order_id, "Отменён администратором", from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+        return
     order = await api.get_order(order_id)
-    await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    try:
+        await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+    except Exception:
+        pass
     await call.answer("❌ Заказ отменён")
 
 
@@ -410,10 +445,13 @@ async def admin_set_courier(call: CallbackQuery):
     courier_name = courier["name"] if courier else "?"
     body = _order_detail_lines(order)
     result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
+    _cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"order:cancel:{order_id}")
+    ]])
     try:
-        await call.message.edit_text(result_text, parse_mode="HTML")
+        await call.message.edit_text(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(result_text, parse_mode="HTML")
+        await call.message.answer(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))
@@ -2279,9 +2317,14 @@ async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.answer()
-    await call.message.edit_text(f"✅ Заказ #{oid} создан!")
+    sent = await call.message.edit_text(f"✅ Заказ #{oid} создан!")
     subs_on = await api.is_subscriptions_enabled()
     await call.message.answer("Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
+    await asyncio.sleep(2)
+    try:
+        await sent.delete()
+    except Exception:
+        pass
 
 
 @router.callback_query(AdminOrderCreate.confirming, F.data == "aco:cancel")
