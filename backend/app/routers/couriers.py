@@ -865,6 +865,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         if creator_courier and body.creator_role == "courier":
             order.courier_id = creator_courier.id
             order.status = OrderStatus.ASSIGNED_TO_COURIER
+            if not order.creator_name and creator_courier.name:
+                order.creator_name = creator_courier.name
+                order.assigner_name = creator_courier.name
 
     # Resolve manager-pre-selected courier (manager-created order with courier chosen at creation)
     manager_assigned_courier = None
@@ -1018,6 +1021,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
         if _m:
             kb_rows.append([{"text": "🗺 На карте", "url": _m}])
         kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
         kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         courier_kb = {"inline_keyboard": kb_rows}
         _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
