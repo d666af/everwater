@@ -244,13 +244,18 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                 row_words = []
                 for idx2 in range(len(data['text'])):
                     w2 = data['text'][idx2].strip()
-                    if w2 and int(data['conf'][idx2]) >= 0 and abs(data['top'][idx2] - vozv_top) <= 80:
+                    # ±150px tolerance: PSM11 column-scan can assign very different
+                    # y-positions to words on the same physical table row.
+                    if w2 and int(data['conf'][idx2]) >= 0 and abs(data['top'][idx2] - vozv_top) <= 150:
                         row_words.append((data['left'][idx2], w2))
                 if row_words:
                     row_line = ' '.join(w for _, w in sorted(row_words))
-                    if row_line not in seen and re.search(r'\d', row_line):
+                    if re.search(r'\d', row_line):
+                        # Always force to front regardless of seen — a later PSM11
+                        # column-scan line may produce a different (wrong) string
+                        # for the same physical row that would overwrite this one.
                         seen.add(row_line)
-                        combined.insert(0, row_line)  # insert at front — parsed first
+                        combined.insert(0, row_line)
         except Exception as e:
             log.warning("image_to_data pass failed: %s", e)
 
@@ -338,14 +343,22 @@ def _parse_invoice(text: str) -> dict | None:
 
         # ── Return row: "возврат  Шт  <qty>  0" ─────────────────────────────
         if 'возврат' in low or 'vozvrat' in low:
-            row_has_numbers = bool(re.search(r'\b\d+\b', line))
-            if row_has_numbers:
+            # Once we found a confident qty via sht_m (the dedicated extracted row
+            # is at position 0 and always wins), skip subsequent "возврат" lines.
+            # PSM11 column-scan can produce a second "возврат Шт 54" line that
+            # would otherwise overwrite a correctly-found 63.
+            if result.get('_return_qty_locked'):
+                pass
+            else:
+              row_has_numbers = bool(re.search(r'\b\d+\b', line))
+              if row_has_numbers:
                 # Priority: find number immediately after "шт" — most reliable column anchor
                 sht_m = re.search(r'шт[^\d]{0,5}(\d{1,3})\b', line, re.IGNORECASE)
                 if sht_m:
                     v = int(sht_m.group(1))
                     if 0 < v <= 500:
                         result['return_qty'] = v
+                        result['_return_qty_locked'] = True  # lock — sht_m is authoritative
                 if not result['return_qty']:
                     # Collect all integers ≤500 on the line (strips years/prices/etc.)
                     all_nums = [int(n) for n in re.findall(r'\b(\d+)\b', line) if int(n) <= 500]
