@@ -41,12 +41,24 @@ class TestNaklState(StatesGroup):
 
 TZ_UZB = timezone(timedelta(hours=5))
 
-# Product name patterns found in invoices → mapped to keywords for DB lookup
+# Product name patterns found in invoices → target volume in DB (litres)
 PRODUCT_PATTERNS = [
-    (re.compile(r'ever\s*20', re.IGNORECASE), 'EVER'),   # EVER 20л → 19L product
-    (re.compile(r'ever\s*19', re.IGNORECASE), 'EVER'),
-    (re.compile(r'ever\s*5',  re.IGNORECASE), 'EVER 5'),
+    (re.compile(r'ever\s*20', re.IGNORECASE), 19),   # EVER 20л → Вода 19л
+    (re.compile(r'ever\s*19', re.IGNORECASE), 19),   # EVER 19л → Вода 19л
+    (re.compile(r'ever\s*10', re.IGNORECASE), 10),   # EVER 10л → Вода 10л
+    (re.compile(r'ever\s*5',  re.IGNORECASE), 5),    # EVER 5л  → Вода 5л
 ]
+
+
+def _ever_product_name(text: str) -> str:
+    """Return the canonical EVER product name detected in text."""
+    if re.search(r'ever\s*(?:20|19)', text, re.IGNORECASE):
+        return 'EVER 20л'
+    if re.search(r'ever\s*10', text, re.IGNORECASE):
+        return 'EVER 10л'
+    if re.search(r'ever\s*5', text, re.IGNORECASE):
+        return 'EVER 5л'
+    return 'EVER 20л'
 
 
 def _qty_from_price_sum(line_text: str) -> int | None:
@@ -384,6 +396,7 @@ def _parse_invoice(text: str) -> dict | None:
             inline_found = False
             # Priority: find number right after "шт" — avoids spurious numbers from other columns
             sht_qty_m = re.search(r'шт[^\d]{0,5}(\d{1,3})\b', cleaned, re.IGNORECASE)
+            _sht_zero = False  # шт column explicitly shows 0 → item not delivered
             if sht_qty_m:
                 v = int(sht_qty_m.group(1))
                 if v == 0:
@@ -393,7 +406,7 @@ def _parse_invoice(text: str) -> dict | None:
                 if 1 <= v <= 500:
                     found_qty = v
                     inline_found = True
-            if not found_qty:
+            if not found_qty and not _sht_zero:
                 # Prefer price/sum cross-check on current line AND a wider window —
                 # price/sum columns may land in adjacent y-buckets (different OCR lines)
                 _nearby = ' '.join(lines[max(0, i - 1):i + 4])
@@ -403,7 +416,7 @@ def _parse_invoice(text: str) -> dict | None:
                 if computed_qty:
                     found_qty = computed_qty
                     inline_found = True
-            if not found_qty:
+            if not found_qty and not _sht_zero:
                 for n in re.findall(r'\b(\d+)\b', cleaned):
                     v = int(n)
                     # Skip return_qty — column-scan OCR can interleave rows
@@ -420,7 +433,7 @@ def _parse_invoice(text: str) -> dict | None:
             # OCR column-scan puts the qty BEFORE the product-name line.
             # "возврат" label line is skipped (continue) rather than stopped
             # so we can look past it to the qty that lies further back.
-            if not found_qty:
+            if not found_qty and not _sht_zero:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
@@ -443,7 +456,7 @@ def _parse_invoice(text: str) -> dict | None:
             # Forward search: qty may appear after the name row in column-scan
             # Use a wide window (15 lines) because the qty column may be far after
             # the name column in column-scan output
-            if not found_qty:
+            if not found_qty and not _sht_zero:
                 for nxt in lines[i + 1:i + 15]:
                     if re.search(r'наимен|получатель|тип\s*маш', nxt, re.IGNORECASE):
                         break
@@ -465,9 +478,10 @@ def _parse_invoice(text: str) -> dict | None:
                     if found_qty:
                         break
             if found_qty:
-                existing = next((it for it in result['items'] if it['raw_name'] == 'EVER 20л'), None)
+                raw_name = _ever_product_name(line)
+                existing = next((it for it in result['items'] if it['raw_name'] == raw_name), None)
                 if existing is None:
-                    result['items'].append({'raw_name': 'EVER 20л', 'qty': found_qty})
+                    result['items'].append({'raw_name': raw_name, 'qty': found_qty})
                 elif inline_found and found_qty != existing['qty']:
                     existing['qty'] = found_qty
 
@@ -585,7 +599,8 @@ def _parse_invoice(text: str) -> dict | None:
         # First try price/sum cross-check on the full text
         computed_qty = _qty_from_price_sum(full)
         if computed_qty:
-            result['items'].append({'raw_name': 'EVER 20л', 'qty': computed_qty})
+            raw_name = _ever_product_name(full)
+            result['items'].append({'raw_name': raw_name, 'qty': computed_qty})
             log.info("Last-resort EVER qty=%d from price/sum", computed_qty)
         else:
             # Strip prices (4+ digit numbers), dates, times, volume annotations
@@ -598,7 +613,8 @@ def _parse_invoice(text: str) -> dict | None:
             if candidates:
                 # Prefer a value different from return_qty; fallback to any
                 qty = next((n for n in candidates if n != result['return_qty']), candidates[0])
-                result['items'].append({'raw_name': 'EVER 20л', 'qty': qty})
+                raw_name = _ever_product_name(full)
+                result['items'].append({'raw_name': raw_name, 'qty': qty})
                 log.info("Last-resort EVER qty=%d from text scan", qty)
 
     # Last-resort phone: scan every line individually
@@ -645,19 +661,19 @@ def _parse_invoice(text: str) -> dict | None:
 
 def _resolve_product_id_from_list(raw_name: str, products: list) -> int | None:
     """Match a raw product name from invoice to a DB product ID using pre-fetched list."""
-    raw_low = raw_name.lower().replace(' ', '')
-    for pat, keyword in PRODUCT_PATTERNS:
+    for pat, target_vol in PRODUCT_PATTERNS:
         if pat.search(raw_name):
-            kw_low = keyword.lower().replace(' ', '')
-            for p in products:
-                name_low = p.get('name', '').lower().replace(' ', '')
-                vol = float(p.get('volume', 0) or 0)
-                if kw_low in name_low and vol >= 18:
-                    return p['id']
-            for p in products:
-                vol = float(p.get('volume', 0) or 0)
-                if vol >= 18:
-                    return p['id']
+            # Prefer still (non-carbonated) products; pick closest volume within 2L tolerance
+            still = [p for p in products
+                     if p.get('type', 'still') != 'carbonated'
+                     and abs(float(p.get('volume', 0) or 0) - target_vol) <= 2]
+            if still:
+                return min(still, key=lambda p: abs(float(p.get('volume', 0) or 0) - target_vol))['id']
+            any_vol = [p for p in products
+                       if abs(float(p.get('volume', 0) or 0) - target_vol) <= 2]
+            if any_vol:
+                return min(any_vol, key=lambda p: abs(float(p.get('volume', 0) or 0) - target_vol))['id']
+    raw_low = raw_name.lower().replace(' ', '')
     for p in products:
         if p.get('name', '').lower().replace(' ', '') == raw_low:
             return p['id']
