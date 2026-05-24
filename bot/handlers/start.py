@@ -261,11 +261,17 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     tg_id = message.from_user.id
 
+    # Check roles first so we don't create client records for staff members
+    roles = await get_user_roles(tg_id)
+    _NON_CLIENT_STAFF = {"warehouse", "manager", "courier", "agent"}
+    has_staff_role = any(r in _NON_CLIENT_STAFF for r in roles)
+
     user = await api.get_user(tg_id)
-    if not user:
+    if not user and not has_staff_role:
+        # Only create a client record if user has no staff roles
         user = await api.create_or_get_user(tg_id)
 
-    if not user.get("is_registered"):
+    if user and not user.get("is_registered") and not has_staff_role:
         await state.set_state(Registration.waiting_name)
         await message.answer(
             "👋 Добро пожаловать в Ever Water!\n\n"
@@ -274,7 +280,7 @@ async def cmd_start(message: Message, state: FSMContext):
         return
 
     # Auto-link unlinked agent by phone (silent, fall through to role picker)
-    user_phone = user.get("phone", "")
+    user_phone = (user or {}).get("phone", "")
     if user_phone:
         unlinked_agent = await api.get_agent_by_phone(user_phone)
         if unlinked_agent:
@@ -282,18 +288,21 @@ async def cmd_start(message: Message, state: FSMContext):
             await message.answer(
                 f"🤝 Аккаунт привязан к профилю агента «{unlinked_agent['name']}»."
             )
+            # Refresh roles after linking
+            roles = await get_user_roles(tg_id)
 
-    roles = await get_user_roles(tg_id)
+    name = (user or {}).get("name") or message.from_user.first_name or "Вы"
+
     if len(roles) > 1:
         labels = " | ".join(ROLE_LABELS[r] for r in roles)
-        await message.answer(f"👋 С возвращением, {user['name']}!", reply_markup=ReplyKeyboardRemove())
+        await message.answer(f"👋 С возвращением, {name}!", reply_markup=ReplyKeyboardRemove())
         await message.answer(
             f"Ваши роли: {labels}\n\nВыберите режим:",
             reply_markup=roles_inline_kb(roles),
         )
     else:
         role = roles[0] if roles else "client"
-        await message.answer(f"👋 С возвращением, {user['name']}!", reply_markup=ReplyKeyboardRemove())
+        await message.answer(f"👋 С возвращением, {name}!", reply_markup=ReplyKeyboardRemove())
         await show_role_menu(message, role)
 
 

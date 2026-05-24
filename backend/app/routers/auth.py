@@ -69,8 +69,9 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
     if not all_roles:
         all_roles = ["client"]
 
-    # Pure agents don't get the client role; only admins who are also agents keep it
-    if "agent" in all_roles and "admin" not in all_roles:
+    # Staff roles don't grant client access; only admins can also be clients
+    _STAFF_ROLES = {"warehouse", "manager", "courier", "agent"}
+    if any(r in _STAFF_ROLES for r in all_roles) and "admin" not in all_roles:
         all_roles = [r for r in all_roles if r != "client"]
 
     primary_role = next((r for r in _PRIORITY if r in all_roles), "client")

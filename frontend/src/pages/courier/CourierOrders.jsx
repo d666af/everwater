@@ -415,7 +415,7 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   const debounceRef = useRef(null)
 
   useEffect(() => {
-    getProducts().then(p => setProducts((p || []).filter(x => x.is_active !== false))).catch(() => {})
+    getProducts(true).then(p => setProducts(p || [])).catch(() => {})
   }, [])
 
   const handlePhoneChange = (val) => {
@@ -661,8 +661,8 @@ function EditItemsModal({ order, courierName, onClose, onSave }) {
     }
     setItems(initial)
     setProductsLoading(true)
-    getProducts()
-      .then(p => setProducts((p || []).filter(x => x.is_active !== false)))
+    getProducts(true)
+      .then(p => setProducts(p || []))
       .catch(() => {})
       .finally(() => setProductsLoading(false))
   }, [])
