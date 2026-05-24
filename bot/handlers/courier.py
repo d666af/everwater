@@ -1534,6 +1534,10 @@ async def cedit_done(call: CallbackQuery, state: FSMContext):
         if qty > 0
     ]
 
+    if not items_payload:
+        await call.answer("⚠️ Добавьте хотя бы один товар", show_alert=True)
+        return
+
     try:
         await call.message.edit_text("⏳ Обновляю состав...", reply_markup=None)
     except Exception:
