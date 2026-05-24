@@ -19,12 +19,14 @@ const PRESET_TAGS = ['VIP', 'Офис', 'Оптовик', 'Проблемный'
 
 // filter key → broadcast target key mapping
 const FILTER_DEFS = [
-  { key: 'all',         label: 'Все',          broadcastKey: 'clients' },
-  { key: 'permanent',   label: 'Постоянные',   broadcastKey: 'clients:permanent' },
-  { key: 'inactive',    label: 'Не активные',  broadcastKey: 'clients:inactive' },
-  { key: 'bonus',       label: 'С бонусами',   broadcastKey: 'clients:bonus' },
-  { key: 'bottle_debt', label: 'Должники',     broadcastKey: 'clients:bottle_debt' },
-  { key: 'new',         label: 'Новые',        broadcastKey: 'clients:new' },
+  { key: 'all',           label: 'Все',                    broadcastKey: 'clients' },
+  { key: 'registered',    label: 'Зарегистрированные',     broadcastKey: 'clients:registered' },
+  { key: 'not_registered',label: 'Не зарегистрированные',  broadcastKey: 'clients:not_registered' },
+  { key: 'permanent',     label: 'Постоянные',             broadcastKey: 'clients:permanent' },
+  { key: 'inactive',      label: 'Не активные',            broadcastKey: 'clients:inactive' },
+  { key: 'bonus',         label: 'С бонусами',             broadcastKey: 'clients:bonus' },
+  { key: 'bottle_debt',   label: 'Должники',               broadcastKey: 'clients:bottle_debt' },
+  { key: 'new',           label: 'Новые',                  broadcastKey: 'clients:new' },
 ]
 
 const loadStoredTags = () => {
@@ -551,6 +553,8 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
 
   const matchesFilter = (u) => {
     if (labelFilter === 'all') return true
+    if (labelFilter === 'registered') return u.is_registered === true
+    if (labelFilter === 'not_registered') return !u.is_registered
     if (labelFilter === 'permanent') return u.customer_label === 'permanent'
     if (labelFilter === 'inactive') return u.customer_label === 'inactive'
     if (labelFilter === 'bonus') return (u.bonus_points || 0) > 0
