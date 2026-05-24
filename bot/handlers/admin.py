@@ -276,9 +276,10 @@ async def order_cancel_unified(call: CallbackQuery):
     order_id = int(call.data.split(":")[2])
     reason = "Отменён администратором" if _is_adm else "Отменён менеджером"
     role = "admin" if _is_adm else "manager"
+    db_name = await api.get_staff_db_name(call.from_user.id, _is_adm)
     try:
         await api.reject_order(order_id, reason, from_bot=True,
-                               rejected_by_name=call.from_user.full_name, rejected_by_role=role)
+                               rejected_by_name=db_name or call.from_user.full_name, rejected_by_role=role)
     except Exception as e:
         if "409" in str(e):
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
@@ -293,9 +294,10 @@ async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
+    db_name_ac = await api.get_staff_db_name(call.from_user.id, True)
     try:
         await api.reject_order(order_id, "Отменён администратором", from_bot=True,
-                               rejected_by_name=call.from_user.full_name, rejected_by_role="admin")
+                               rejected_by_name=db_name_ac or call.from_user.full_name, rejected_by_role="admin")
     except Exception as e:
         if "409" in str(e):
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
@@ -478,9 +480,10 @@ async def order_reject_reason_cb(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
     reason = _REJECT_REASONS.get(reason_key, reason_key)
+    db_name_rj = await api.get_staff_db_name(call.from_user.id, _is_adm)
     try:
         await api.reject_order(order_id, reason, from_bot=True,
-                               rejected_by_name=call.from_user.full_name, rejected_by_role=role)
+                               rejected_by_name=db_name_rj or call.from_user.full_name, rejected_by_role=role)
     except Exception as e:
         if "409" in str(e):
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
@@ -504,9 +507,10 @@ async def admin_reject_reason(message: Message, state: FSMContext):
     order_id = data["reject_order_id"]
     role = data.get("reject_role", "admin")
     reason = message.text.strip()
+    db_name_msg = await api.get_staff_db_name(message.from_user.id, role == "admin")
     try:
         await api.reject_order(order_id, reason, from_bot=True,
-                               rejected_by_name=message.from_user.full_name, rejected_by_role=role)
+                               rejected_by_name=db_name_msg or message.from_user.full_name, rejected_by_role=role)
     except Exception as e:
         await state.clear()
         if "409" in str(e):

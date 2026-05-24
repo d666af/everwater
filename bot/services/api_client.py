@@ -901,6 +901,21 @@ async def get_secondary_admins() -> list[dict]:
         return []
 
 
+async def get_staff_db_name(tg_id: int, is_admin_role: bool) -> str:
+    """Return the staff member's name from the database (manager or user table)."""
+    try:
+        if not is_admin_role:
+            mgr = await get_manager_by_telegram(tg_id)
+            if mgr and mgr.get("name"):
+                return mgr["name"]
+        user = await get_user(tg_id)
+        if user and user.get("name"):
+            return user["name"]
+    except Exception:
+        pass
+    return ""
+
+
 async def delete_order(order_id: int, deleted_by_name: str | None = None, deleted_by_role: str | None = None):
     async with aiohttp.ClientSession() as s:
         async with s.delete(
