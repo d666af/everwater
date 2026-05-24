@@ -938,22 +938,24 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     if not from_bot:
 
-        eta_text = f"⏱ ETA: ~{int(eta_hours)} ч (до {(datetime.utcnow() + timedelta(hours=eta_hours)).strftime('%H:%M')} UTC)\n"
+        from app.config import settings as _cfg_ac
+        _site_url_ac = _cfg_ac.MINI_APP_URL.rstrip("/") + "/courier/map"
+        _client_id_ac = f"{client_name}  |  {order_phone}" if client_name and client_name != "—" else order_phone
+        _ret_line_c = f"\n♻️ Возврат бутылок: {_ret_cnt} шт." if _ret_cnt else ""
+        _lent_line_c = f"\n📦 Одолжить: {_lent_cnt} шт." if _lent_cnt else ""
         courier_text = (
-            f"🚴 Вам назначен заказ!\n\n"
-            f"Адрес: {order_address}\nТелефон: {order_phone}\n"
-            f"Время: {order_time}\n{eta_text}"
-            f"Товары:\n{items}\n"
-            f"Сумма: {order_total:,} сум"
+            f"🚴 <b>Вам назначен заказ!</b>\n\n"
+            f"👤 {_client_id_ac}\n"
+            f"📍 {order_address}\n\n"
+            f"Товары:\n{items_bullets}\n"
+            f"💰 {order_total:,} сум  |  {pay_label_str}"
+            f"{_ret_line_c}{_lent_line_c}"
         )
-        from urllib.parse import quote as _uq
-        _kb_rows = []
-        if order_lat and order_lng:
-            _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={order_lat},{order_lng}"}])
-        elif order_address:
-            _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={_uq(order_address)}"}])
-        _kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-        _kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+        _kb_rows = [
+            [{"text": "🗺 Карта заказов", "web_app": {"url": _site_url_ac}}],
+            [{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}],
+            [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        ]
         c_msg_id = await _tg_send(courier_tg, courier_text, {"inline_keyboard": _kb_rows})
         if c_msg_id:
             await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_msg_id))
@@ -1690,6 +1692,7 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     client_tg = order.user.telegram_id if order.user else None
     client_name = (order.user.name if order.user else None) or "—"
     old_client_msg_id = order.client_status_msg_id
+    order_status = order.status
     notification_msg_ids = order.notification_msg_ids
     oid = order.id
     order_address = order.address or "—"
@@ -1825,9 +1828,11 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     else:
         _assigner_line = ""
 
+    _is_in_delivery = order_status == OrderStatus.IN_DELIVERY
     if courier_name:
+        _status_hdr = f"🚴 Курьер {courier_name} в пути" if _is_in_delivery else f"✅ Курьер {courier_name} назначен"
         staff_text = (
-            f"✅ Курьер {courier_name} назначен\n\n"
+            f"{_status_hdr}\n\n"
             f"👤 {client_name}  |  {order_phone}\n"
             f"📍 {order_address}\n\n"
             f"Товары:\n{items_bullets}{ret_line}{lent_line}\n"
@@ -1846,7 +1851,10 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
             f"{_creator_line}"
             f"{change_marker}"
         )
-    _cancel_kb = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+    _cancel_kb = {"inline_keyboard": [
+        [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+    ]}
     await edit_all_notifications(notification_msg_ids, staff_text, reply_markup=_cancel_kb)
 
     surcharge_line = f"\n💰 Надбавка за невозврат: {_fmtv(bottle_surcharge)}" if bottle_surcharge else ""
@@ -1855,86 +1863,50 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
         f"{items_simple}{ret_line}{lent_line}{surcharge_line}\n\n"
         f"Итого: {total_str}"
     )
-    new_client_msg = await _tg_edit_or_send(client_tg, client_text, old_client_msg_id)
-    if new_client_msg and new_client_msg != old_client_msg_id:
-        await _save_status_msg_id(db, oid, new_client_msg)
+    await _tg(client_tg, client_text)
 
-    # Edit courier's "Вы создали новый заказ" message in-place (courier-created orders)
-    if courier_tg and courier_status_msg and order_creator_role_raw == "courier":
-        def _map_url_u(addr, lat, lng):
-            from urllib.parse import quote as _uq
-            if lat and lng:
-                return f"https://maps.google.com/?q={lat},{lng}"
-            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
-
-        _note_line = f"\n🏠 {order_note}" if order_note else ""
-        _snum = f"{int(bottle_surcharge):,}".replace(",", " ")
-        _items_c = "\n".join(
+    # Rebuild courier's assignment message with updated items
+    if courier_tg and courier_status_msg:
+        from app.config import settings as _cfg_u
+        _site_map_url = _cfg_u.MINI_APP_URL.rstrip("/") + "/courier/map"
+        _note_line_u = f"\n🏠 {order_note}" if order_note else ""
+        _pay_labels_u = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+        _pay_lbl_u = _pay_labels_u.get(order_payment, order_payment)
+        _snum_u = f"{int(bottle_surcharge):,}".replace(",", " ")
+        _items_u = "\n".join(
             f"  • {p.name} {q} шт. — {f'{int(p.price * q):,}'.replace(',', ' ')} сум"
             for p, q in items_data
         ) if items_data else "  —"
         if bottle_surcharge > 0 and missing_bottles > 0:
-            _items_c += f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum} сум"
+            _items_u += f"\n  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum_u} сум"
+        _client_id_u = f"{client_name}  |  {order_phone}" if client_name and client_name != "—" else order_phone
+        _inline_ret_u = []
+        if body.return_bottles_count:
+            _inline_ret_u.append(f"♻️ Возврат бутылок: {body.return_bottles_count} шт.")
+        if body.bottles_lent:
+            _inline_ret_u.append(f"📦 Одолжить: {body.bottles_lent} шт.")
+        _inline_ret_str_u = ("\n" + "\n".join(_inline_ret_u)) if _inline_ret_u else ""
         _courier_upd = (
-            f"🚴 <b>Вы создали новый заказ!</b>\n\n"
-            f"📍 {order_address}{_note_line}\n"
-            f"👤 {order_phone}\n\n"
-            f"Состав:\n{_items_c}"
+            f"🚴 <b>Вам назначен заказ!</b>\n\n"
+            f"👤 {_client_id_u}\n"
+            f"📍 {order_address}{_note_line_u}\n\n"
+            f"Товары:\n{_items_u}\n"
+            f"💰 {total_str}  |  {_pay_lbl_u}"
+            f"{_inline_ret_str_u}"
         )
-        if body.return_bottles_count > 0:
-            _courier_upd += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
-        _courier_upd += f"\n\nИтого: {total_str}"
-        _map_u = _map_url_u(order_address, order_lat, order_lng)
-        _kb = []
-        if _map_u:
-            _kb.append([{"text": "🗺 На карте", "url": _map_u}])
-        _kb.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-        _kb.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
-        _kb.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+        _del_btn = (
+            f"courier:done:{oid}" if _is_in_delivery else f"courier:in_delivery:{oid}"
+        )
+        _del_lbl = "✔️ Доставлено" if _is_in_delivery else "🚴 В пути"
+        _kb_u = [
+            [{"text": "🗺 Карта заказов", "web_app": {"url": _site_map_url}}],
+            [{"text": _del_lbl, "callback_data": _del_btn}],
+            [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        ]
+        if order_creator_role_raw == "courier":
+            _kb_u.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
         await _tg_edit(int(courier_tg), courier_status_msg, _courier_upd,
-                       reply_markup={"inline_keyboard": _kb}, parse_mode="HTML")
-
-    # Edit courier's assignment message for manager/admin-created orders
-    elif courier_tg and courier_status_msg:
-        def _map_url_mgr(addr, lat, lng):
-            from urllib.parse import quote as _uq
-            if lat and lng:
-                return f"https://maps.google.com/?q={lat},{lng}"
-            return f"https://maps.google.com/?q={_uq(addr)}" if addr else None
-
-        _snum_mgr = f"{int(bottle_surcharge):,}".replace(",", " ")
-        _item_lines_mgr = [f"  • {p.name} {q} шт." for p, q in items_data]
-        if bottle_surcharge > 0 and missing_bottles > 0:
-            _item_lines_mgr.append(f"  • Невозвращённые бутылки {missing_bottles} шт. — +{_snum_mgr} сум")
-        _items_mgr = "\n".join(_item_lines_mgr) if _item_lines_mgr else "—"
-        _ret_mgr = f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт." if body.return_bottles_count else ""
-        _lent_mgr = f"\n\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
-        _pay_labels_mgr = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
-        _pay_lbl_mgr = _pay_labels_mgr.get(order_payment, order_payment)
-        if order_payment == "cash":
-            _payment_mgr = f"\n\n💵 Получить наличными: {total_str}"
-        else:
-            _payment_mgr = f"\n\nОплата: {_pay_lbl_mgr} — {total_str}"
-        _mgr_phone_line = f"\n👔 Менеджер: {order_manager_phone}" if order_manager_phone else ""
-        _courier_upd_mgr = (
-            f"🚴 Вам назначен заказ!\n\n"
-            f"📍 {order_address}\n"
-            f"👤 {order_phone}\n"
-            f"⏰ {order_delivery_time}\n\n"
-            f"Доставить:\n{_items_mgr}"
-            f"{_ret_mgr}"
-            f"{_lent_mgr}"
-            f"{_payment_mgr}"
-            f"{_mgr_phone_line}"
-        )
-        _map_u_mgr = _map_url_mgr(order_address, order_lat, order_lng)
-        _kb_mgr = []
-        if _map_u_mgr:
-            _kb_mgr.append([{"text": "🗺 На карте", "url": _map_u_mgr}])
-        _kb_mgr.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-        _kb_mgr.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
-        await _tg_edit(int(courier_tg), courier_status_msg, _courier_upd_mgr,
-                       reply_markup={"inline_keyboard": _kb_mgr})
+                       reply_markup={"inline_keyboard": _kb_u}, parse_mode="HTML")
 
     return {"ok": True}
 

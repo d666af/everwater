@@ -244,14 +244,8 @@ def _orders_page_kb(filtered: list, tab: str, page: int) -> InlineKeyboardMarkup
 
 def _order_detail_kb(order_id: int, status: str, tab: str, page: int, order: dict) -> InlineKeyboardMarkup:
     rows = []
-    lat = order.get("latitude")
-    lng = order.get("longitude")
-    address = order.get("address", "")
-
-    if lat and lng:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
-    elif address:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+    _map_url = settings.MINI_APP_URL.rstrip("/") + "/courier/map"
+    rows.append([InlineKeyboardButton(text="🗺 Карта заказов", web_app=WebAppInfo(url=_map_url))])
 
     if status == "confirmed":
         rows.append([InlineKeyboardButton(text="✅ Принял заказ", callback_data=f"corl:accept:{order_id}:{tab}:{page}")])
@@ -271,14 +265,8 @@ def _order_detail_kb(order_id: int, status: str, tab: str, page: int, order: dic
 
 def _notif_detail_kb(order_id: int, status: str, order: dict) -> InlineKeyboardMarkup:
     rows = []
-    lat = order.get("latitude")
-    lng = order.get("longitude")
-    address = order.get("address", "")
-
-    if lat and lng:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
-    elif address:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+    _map_url = settings.MINI_APP_URL.rstrip("/") + "/courier/map"
+    rows.append([InlineKeyboardButton(text="🗺 Карта заказов", web_app=WebAppInfo(url=_map_url))])
 
     if status == "assigned_to_courier":
         rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
@@ -1561,7 +1549,9 @@ async def cedit_done(call: CallbackQuery, state: FSMContext):
         _ROLE_LABELS_ED = {"admin": "Администратор", "manager": "Менеджер", "courier": "Курьер"}
         editor_role = data.get("editor_role", "courier")
         role_prefix = _ROLE_LABELS_ED.get(editor_role, "")
-        editor_display = f"{role_prefix} {call.from_user.full_name}".strip()
+        is_admin_role = editor_role == "admin"
+        db_name = await api.get_staff_db_name(call.from_user.id, is_admin_role)
+        editor_display = f"{role_prefix} {db_name or call.from_user.full_name}".strip()
         await api.update_order_items(
             order_id=order_id,
             items=items_payload,
@@ -1569,32 +1559,11 @@ async def cedit_done(call: CallbackQuery, state: FSMContext):
             bottles_lent=lent_bottles,
             courier_name=editor_display,
         )
-
-        # Reload order for updated text and keyboard
-        order = await api.get_order(order_id)
-        status = order.get("status", "assigned_to_courier")
-
+        # Backend handles updating the courier's assignment message
         try:
             await call.message.edit_text("✅ Состав обновлён!", reply_markup=None)
         except Exception:
             pass
-
-        # Update the assignment notification message if it still exists
-        courier_status_msg_id = order.get("courier_status_msg_id")
-        if courier_status_msg_id:
-            from keyboards.courier import courier_assignment_text
-            new_text = courier_assignment_text(order)
-            new_kb = _notif_detail_kb(order_id, status, order)
-            try:
-                await call.bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    message_id=courier_status_msg_id,
-                    text=new_text,
-                    reply_markup=new_kb,
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
 
     except Exception:
         try:
