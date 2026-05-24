@@ -1374,6 +1374,21 @@ async def courier_location_wrong_type(message: Message):
 
 # ── Edit order items handlers ─────────────────────────────────────────────────
 
+def _build_edit_text(items: dict, products: list, return_bottles: int, lent_bottles: int) -> str:
+    prod_map = {str(p["id"]): p for p in products}
+    lines = ["✏️ Изменить состав заказа:\n"]
+    for pid, qty in items.items():
+        name = prod_map.get(pid, {}).get("name", pid)
+        lines.append(f"• {name}: {qty} шт.")
+    if return_bottles > 0 or lent_bottles > 0:
+        lines.append("")
+    if return_bottles > 0:
+        lines.append(f"♻️ Возврат: {return_bottles} шт.")
+    if lent_bottles > 0:
+        lines.append(f"📦 Одолжить: {lent_bottles} шт.")
+    return "\n".join(lines)
+
+
 async def _start_edit_items(call: CallbackQuery, state: FSMContext, order_id: int):
     """Common logic for opening the edit-items UI from any source."""
     try:
@@ -1396,7 +1411,8 @@ async def _start_edit_items(call: CallbackQuery, state: FSMContext, order_id: in
     lent_bottles = order.get("bottles_lent") or 0
 
     kb = build_edit_items_kb(order_id, items, return_bottles, lent_bottles, products_data)
-    sent = await call.message.answer("✏️ Изменить состав заказа:", reply_markup=kb)
+    text = _build_edit_text(items, products_data, return_bottles, lent_bottles)
+    sent = await call.message.answer(text, reply_markup=kb)
 
     await state.set_state(CourierEditItems.editing)
     await state.update_data(
@@ -1423,14 +1439,16 @@ async def courier_edit_items_list(call: CallbackQuery, state: FSMContext):
 
 
 async def _cedit_update_kb(call: CallbackQuery, state: FSMContext):
-    """Edit the keyboard after any +/- change."""
+    """Edit the message text + keyboard after any +/- change."""
     data = await state.get_data()
-    kb = build_edit_items_kb(
-        data["order_id"], data["items"],
-        data["return_bottles"], data["lent_bottles"], data["products"],
-    )
+    items = data["items"]
+    return_bottles = data["return_bottles"]
+    lent_bottles = data["lent_bottles"]
+    products = data["products"]
+    kb = build_edit_items_kb(data["order_id"], items, return_bottles, lent_bottles, products)
+    text = _build_edit_text(items, products, return_bottles, lent_bottles)
     try:
-        await call.message.edit_reply_markup(reply_markup=kb)
+        await call.message.edit_text(text, reply_markup=kb)
     except Exception:
         pass
     await call.answer()
