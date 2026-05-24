@@ -1156,6 +1156,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 if _m:
                     kb_rows.append([{"text": "🗺 На карте", "url": _m}])
                 kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+                kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
                 c_sent = await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
                 if c_sent:
                     await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_sent))
