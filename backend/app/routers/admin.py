@@ -1582,6 +1582,18 @@ async def broadcast_message(data: BroadcastData, db: AsyncSession = Depends(get_
             )
             telegram_ids.extend(r[0] for r in users_q.all())
 
+        if data.target == "clients:registered":
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.is_registered == True, User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
+        if data.target == "clients:not_registered":
+            users_q = await db.execute(
+                select(User.telegram_id).where(User.is_registered == False, User.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in users_q.all())
+
         if data.target in ("all", "couriers"):
             couriers_q = await db.execute(
                 select(Courier.telegram_id).where(Courier.is_active == True)
@@ -1593,6 +1605,20 @@ async def broadcast_message(data: BroadcastData, db: AsyncSession = Depends(get_
                 select(Manager.telegram_id).where(Manager.is_active == True)
             )
             telegram_ids.extend(r[0] for r in mgrs_q.all())
+
+        if data.target in ("all", "agents"):
+            from app.models.agent import Agent as _Agent
+            agents_q = await db.execute(
+                select(_Agent.telegram_id).where(_Agent.is_active == True, _Agent.telegram_id.isnot(None))
+            )
+            telegram_ids.extend(r[0] for r in agents_q.all())
+
+        if data.target in ("all", "warehouse"):
+            from app.models.warehouse import WarehouseStaff as _WS
+            wh_q = await db.execute(
+                select(_WS.telegram_id).where(_WS.is_active == True)
+            )
+            telegram_ids.extend(r[0] for r in wh_q.all())
 
     telegram_ids = list(set(telegram_ids))
     sent, failed = 0, 0

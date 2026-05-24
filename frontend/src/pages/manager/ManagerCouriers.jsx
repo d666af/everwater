@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage } from '../../api'
 import CourierReportModal from '../../components/CourierReportModal'
 import AgentReportModal from '../../components/AgentReportModal'
 import { formatPhone } from '../../utils/phone'
@@ -303,6 +303,11 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
   const [couriers, setCouriers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showBroadcast, setShowBroadcast] = useState(false)
+  const [broadcastTarget, setBroadcastTarget] = useState('couriers')
+  const [broadcastText, setBroadcastText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -319,10 +324,85 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
     try { await deleteCourier(courier.id); load() } catch { alert('Ошибка при удалении') }
   }
 
+  const sendBroadcast = async () => {
+    if (!broadcastText.trim()) return
+    setSending(true)
+    try {
+      await broadcastMessage(broadcastText, broadcastTarget)
+      setSent(true); setBroadcastText('')
+      setTimeout(() => { setSent(false); setShowBroadcast(false) }, 2000)
+    } catch { alert('Ошибка при отправке') } finally { setSending(false) }
+  }
+
+  const BROADCAST_TARGETS = [
+    { key: 'couriers', label: 'Курьерам' },
+    { key: 'agents',   label: 'Агентам' },
+    { key: 'all',      label: 'Всем' },
+  ]
+
   return (
     <Layout title={title}>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
+
+      {/* Broadcast panel */}
+      <button
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+          padding: '10px 14px', borderRadius: 12, marginBottom: showBroadcast ? 0 : 12,
+          background: showBroadcast ? `${C}18` : '#fff',
+          border: showBroadcast ? `1.5px solid ${C}55` : '1.5px solid rgba(60,60,67,0.08)',
+          color: showBroadcast ? CD : TEXT2, fontSize: 13, fontWeight: 600,
+          cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+        onClick={() => setShowBroadcast(v => !v)}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+          <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        Рассылка
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {showBroadcast && (
+        <div style={{ background: '#fff', borderRadius: '0 0 14px 14px', padding: 14, marginBottom: 12, border: '1.5px solid rgba(60,60,67,0.08)', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {BROADCAST_TARGETS.map(t => (
+              <button key={t.key} onClick={() => setBroadcastTarget(t.key)} style={{
+                flex: 1, padding: '8px 4px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+                background: broadcastTarget === t.key ? `${C}22` : '#F2F2F7',
+                color: broadcastTarget === t.key ? CD : TEXT2,
+                outline: broadcastTarget === t.key ? `2px solid ${C}66` : 'none',
+              }}>{t.label}</button>
+            ))}
+          </div>
+          <textarea
+            style={{ border: '1.5px solid rgba(60,60,67,0.12)', borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', resize: 'vertical', background: '#FAFAFA', color: TEXT, fontFamily: 'inherit', minHeight: 70 }}
+            rows={3}
+            placeholder="Введите сообщение..."
+            value={broadcastText}
+            onChange={e => setBroadcastText(e.target.value)}
+          />
+          {sent && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#2B8A3E', fontSize: 13, fontWeight: 600, background: '#EBFBEE', padding: '8px 12px', borderRadius: 10 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="#2B8A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Отправлено!
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button style={{ padding: '9px 16px', border: '1.5px solid rgba(60,60,67,0.12)', borderRadius: 10, background: '#fff', color: TEXT2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={() => setShowBroadcast(false)}>Отмена</button>
+            <button
+              style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: !broadcastText.trim() || sending ? '#E0E0E5' : `linear-gradient(135deg, ${C}, ${CD})`, color: !broadcastText.trim() || sending ? TEXT2 : '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              onClick={sendBroadcast}
+              disabled={!broadcastText.trim() || sending}
+            >{sending ? 'Отправка...' : 'Отправить'}</button>
+          </div>
+        </div>
+      )}
 
       {/* Курьеры / Агенты toggle */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: '#F2F2F7', borderRadius: 14, padding: 4 }}>
