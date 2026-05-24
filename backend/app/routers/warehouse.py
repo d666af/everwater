@@ -468,66 +468,19 @@ async def _save_courier_vehicle(db: AsyncSession, courier_id: int,
     return c
 
 
-async def _send_invoice_to_admins(png: bytes, courier: Courier, items_summary: list[dict],
+async def _send_invoice_to_admins(png: bytes, courier, items_summary: list[dict],
                                     batch_id: str, performed_by: str | None,
                                     db: AsyncSession | None = None,
                                     invoice_phone: str | None = None):
-    """Push the invoice PNG to all admins and warehouse staff (deduplicated)."""
-    when_str = datetime.now(tz=timezone.utc).astimezone(_TZ_UZB).strftime("%d.%m.%Y %H:%M")
-
-    regular = [it for it in items_summary if not it.get("is_return")]
-    returns  = [it for it in items_summary if it.get("is_return")]
-
-    lines: list[str] = []
-    grand_total = 0
-    for it in regular:
-        qty = int(it.get("qty") or 0)
-        s   = int(round(float(it.get("sum") or 0)))
-        grand_total += s
-        s_fmt = f"{s:,}".replace(",", " ")
-        lines.append(f"• {it.get('name')}: <b>{qty} шт. · {s_fmt} сум</b>")
-
-    return_qty_total = sum(int(it.get("qty") or 0) for it in returns)
-    return_line = f"\n↩ Возврат бутылок: <b>{return_qty_total} шт.</b>"
-
-    total_fmt  = f"{grand_total:,}".replace(",", " ")
-    actor_line = f"\nВыдал: <b>{performed_by}</b>" if performed_by else ""
-    items_block = "\n".join(lines) if lines else "—"
-    # Show "Итого" only when there are multiple regular items
-    total_line = f"\nИтого: <b>{total_fmt} сум</b>" if len(regular) > 1 else ""
-
-    recip_name = getattr(courier, 'name', '—')
-    # Prefer phone from the invoice (may be more current than stored DB phone)
-    recip_phone = invoice_phone or getattr(courier, 'phone', None)
-    caption = (
-        f"📋 <b>Накладная — выдача со склада</b>\n"
-        f"Получатель: <b>{recip_name}</b>{f' · {recip_phone}' if recip_phone else ''}\n\n"
-        f"{items_block}"
-        f"{total_line}"
-        f"{return_line}"
-        f"\n\nВремя: {when_str}{actor_line}"
-    )
-
-    # Collect unique recipients: admins (env + DB secondary) + warehouse IDs + DB staff
-    from app.services.tg_notify import get_all_admin_ids
-    recipient_ids: set[int] = await get_all_admin_ids(db) if db else set(app_settings.ADMIN_IDS)
-    recipient_ids.update(app_settings.WAREHOUSE_IDS)
-    if db:
-        try:
-            staff_q = await db.execute(
-                select(WarehouseStaff).where(WarehouseStaff.is_active == True)
-            )
-            for staff in staff_q.scalars().all():
-                recipient_ids.add(staff.telegram_id)
-        except Exception:
-            pass
-
-    for rid in recipient_ids:
-        try:
-            await tg_send_photo(rid, png, caption=caption,
-                                 filename=f"nakladnaya_{batch_id[:8]}.png")
-        except Exception:
-            pass
+    """Send invoice PNG (photo only, no caption) to the invoice group."""
+    group_id = app_settings.INVOICE_GROUP_ID
+    if not group_id or not png:
+        return
+    try:
+        await tg_send_photo(group_id, png, caption=None,
+                            filename=f"nakladnaya_{batch_id[:8]}.png")
+    except Exception:
+        pass
 
 
 async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[bytes, Courier, list[dict]]:
