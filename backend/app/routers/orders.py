@@ -950,6 +950,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         elif order_address:
             _kb_rows.append([{"text": "🗺 На карте", "url": f"https://maps.google.com/?q={_uq(order_address)}"}])
         _kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
+        _kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
         c_msg_id = await _tg_send(courier_tg, courier_text, {"inline_keyboard": _kb_rows})
         if c_msg_id:
             await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_msg_id))
