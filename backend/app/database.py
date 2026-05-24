@@ -40,6 +40,7 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_items_edited BOOLEAN DEFAULT FALSE",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS items_edited_by VARCHAR(255)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS items_change_log TEXT",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigner_name VARCHAR(255)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigner_role VARCHAR(32)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)",

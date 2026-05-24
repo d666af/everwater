@@ -88,6 +88,7 @@ class OrderOut(BaseModel):
     eta_human: str | None = None
     is_items_edited: bool = False
     items_edited_by: str | None = None
+    items_change_log: str | None = None
 
     model_config = {"from_attributes": True}
 

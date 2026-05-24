@@ -363,11 +363,13 @@ function OrderCard({
               </div>
               <Collapsible label="Доставка и состав" open={showMore} onToggle={() => setShowMore(v => !v)}>
                 <ItemsBlock order={order} />
+                <ItemsChangeDiff order={order} />
                 <DeliveryBlock order={order} />
                 <BottlesBlock order={order} />
               </Collapsible>
             </>) : (<>
               <ItemsBlock order={order} />
+              <ItemsChangeDiff order={order} />
               <DeliveryBlock order={order} />
               <BottlesBlock order={order} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -412,6 +414,7 @@ function OrderCard({
           {orderStage === 'delivery' && (<>
             <DeliveryBlock order={order} />
             <ItemsBlock order={order} />
+            <ItemsChangeDiff order={order} />
             {(order.courier_name || order.courier_id) && (
               <Section title="Курьер">
                 <Row k="Имя" v={order.courier_name || `ID: ${order.courier_id}`} />
@@ -452,6 +455,7 @@ function OrderCard({
           {/* ─── DONE: show all ─── */}
           {orderStage === 'done' && (<>
             <ItemsBlock order={order} />
+            <ItemsChangeDiff order={order} />
             <DeliveryBlock order={order} />
             <PaymentBlock order={order} />
             <BottlesBlock order={order} />
@@ -546,6 +550,30 @@ function ItemsBlock({ order }) {
           <span style={{ fontWeight: 700, color: '#E67700', flexShrink: 0 }}>+{Math.round(surcharge).toLocaleString()} сум</span>
         </div>
       )}
+    </Section>
+  )
+}
+
+function ItemsChangeDiff({ order }) {
+  if (!order.items_change_log) return null
+  let diff = []
+  try { diff = JSON.parse(order.items_change_log) } catch { return null }
+  if (!diff.length) return null
+  return (
+    <Section title={`✏️ Изменено${order.items_edited_by ? ` — ${order.items_edited_by}` : ''}`}>
+      {diff.map((d, i) => {
+        const added = d.new > d.old
+        const color = added ? '#0A7A5C' : '#C92A2A'
+        const bg = added ? '#E6FCF5' : '#FFF5F5'
+        const sign = added ? `+${d.new - d.old}` : `−${d.old - d.new}`
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 8px', borderRadius: 8, background: bg, marginBottom: 4 }}>
+            <span style={{ fontWeight: 800, color, width: 36, flexShrink: 0 }}>{sign} шт.</span>
+            <span style={{ flex: 1, color: '#1a1a1a' }}>{d.name}</span>
+            <span style={{ color: '#888', fontSize: 12, flexShrink: 0 }}>{d.old} → {d.new}</span>
+          </div>
+        )
+      })}
     </Section>
   )
 }
