@@ -1594,7 +1594,7 @@ async def broadcast_message(data: BroadcastData, db: AsyncSession = Depends(get_
             )
             telegram_ids.extend(r[0] for r in users_q.all())
 
-        if data.target in ("all", "couriers"):
+        if data.target in ("all", "couriers", "couriers_and_agents"):
             couriers_q = await db.execute(
                 select(Courier.telegram_id).where(Courier.is_active == True)
             )
@@ -1606,7 +1606,7 @@ async def broadcast_message(data: BroadcastData, db: AsyncSession = Depends(get_
             )
             telegram_ids.extend(r[0] for r in mgrs_q.all())
 
-        if data.target in ("all", "agents"):
+        if data.target in ("all", "agents", "couriers_and_agents"):
             from app.models.agent import Agent as _Agent
             agents_q = await db.execute(
                 select(_Agent.telegram_id).where(_Agent.is_active == True, _Agent.telegram_id.isnot(None))

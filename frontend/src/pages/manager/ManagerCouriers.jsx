@@ -335,9 +335,9 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
   }
 
   const BROADCAST_TARGETS = [
-    { key: 'couriers', label: 'Курьерам' },
-    { key: 'agents',   label: 'Агентам' },
-    { key: 'all',      label: 'Всем' },
+    { key: 'couriers',           label: 'Курьерам' },
+    { key: 'agents',             label: 'Агентам' },
+    { key: 'couriers_and_agents',label: 'Всем' },
   ]
 
   return (
