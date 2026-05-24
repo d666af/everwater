@@ -2435,7 +2435,7 @@ async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
             "creator_role": "admin",
-            "creator_name": call.from_user.full_name or "",
+            "creator_name": (await api.get_staff_db_name(call.from_user.id, True)) or call.from_user.full_name or "",
         })
         oid = result.get("order_id") or result.get("id", "?")
     except Exception:

@@ -1130,10 +1130,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             missing_m = max(0, qty19L_m - body.return_bottles_count)
             if missing_m > 0 and bottle_surcharge > 0:
                 mgr_items_lines += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
-            mgr_return_block = (
-                f"\n\nВозврат:\n  • Бутылки 19л — {body.return_bottles_count} шт."
-                if body.return_bottles_count else ""
-            )
+            _ret_lines_m = []
+            if body.return_bottles_count:
+                _ret_lines_m.append(f"  • Бутылки 19л — {body.return_bottles_count} шт.")
+            if body.bottles_lent:
+                _ret_lines_m.append(f"  • Одолжить — {body.bottles_lent} шт.")
+            mgr_return_block = ("\n\nВозврат:\n" + "\n".join(_ret_lines_m)) if _ret_lines_m else ""
     
             if manager_assigned_courier:
                 courier_name_m = manager_assigned_courier.name
@@ -1177,18 +1179,25 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     ))
     
                 _creator_label_m = f" {body.creator_name}" if body.creator_name else ""
+                c_phone_part_m = f"  |  {courier_phone_m}" if courier_phone_m else ""
+                _ROLE_NOM = {"manager": "Менеджер", "admin": "Администратор", "agent": "Агент"}
+                _creator_role_nom = _ROLE_NOM.get(body.creator_role, body.creator_role.capitalize())
                 info_text = (
-                    f"🆕 Новый заказ! Создан {role_label}{_creator_label_m}\n"
-                    f"Клиент: {mgr_client_identity}\n"
-                    f"Адрес: {body.address}{note_line}\n\n"
+                    f"✅ Курьер {courier_name_m} назначен\n\n"
+                    f"👤 {mgr_client_identity}\n"
+                    f"📍 {body.address}{note_line}\n\n"
                     f"Состав:\n{mgr_items_lines}"
                     f"{mgr_return_block}\n\n"
-                    f"Сумма: {_fmt_nm(total_int)} сум\n\n"
-                    f"✅ Курьер {courier_name_m} назначен"
+                    f"💰 {_fmt_nm(total_int)} сум\n"
+                    f"✍️ Создал заказ: {_creator_role_nom}{_creator_label_m}\n"
+                    f"🚴 {courier_name_m}{c_phone_part_m}"
                 )
                 import json as _json_mod
                 from app.services.tg_notify import tg_send_capture as _tsc, get_all_admin_ids as _get_all_admin_ids
-                _cancel_kb_m = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+                _cancel_kb_m = {"inline_keyboard": [
+                    [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+                    [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+                ]}
                 _all_aids_m = await _get_all_admin_ids(db)
                 _msg_ids_m: list = []
                 _seen_m: set[int] = set()
@@ -1240,16 +1249,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"Сумма: {_fmt_nm(total_int)} сум\n\n"
                     f"Назначьте курьера!"
                 )
-                site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
-                admin_kb = {"inline_keyboard": [
-                    [{"text": "🚴 Назначить курьера", "callback_data": f"admin:assign:{oid}"}],
+                unified_kb = {"inline_keyboard": [
+                    [{"text": "📦 Назначить курьера", "callback_data": f"order:assign:{oid}"}],
                     [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
-                    [{"text": "🌐 Заказ на сайте", "url": site_url}],
-                ]}
-                mgr_kb = {"inline_keyboard": [
-                    [{"text": "🚴 Назначить курьера", "callback_data": f"mgr:assign:{oid}"}],
-                    [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
-                    [{"text": "🌐 Заказ на сайте", "url": site_url}],
                 ]}
                 import json as _json_mod
                 from app.services.tg_notify import tg_send_capture as _tg_send_capture
@@ -1261,7 +1263,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 for _aid in _all_admin_ids:
                     if _aid not in _seen:
                         _seen.add(_aid)
-                        _r = await _tg_send_capture(_aid, text, admin_kb)
+                        _r = await _tg_send_capture(_aid, text, unified_kb)
                         if _r:
                             _msg_ids.append(_r)
                 for _m in mgrs:
@@ -1271,7 +1273,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                         _tid = int(_m_tg_id)
                         if _tid not in _seen:
                             _seen.add(_tid)
-                            _r = await _tg_send_capture(_tid, text, mgr_kb)
+                            _r = await _tg_send_capture(_tid, text, unified_kb)
                             if _r:
                                 _msg_ids.append(_r)
                 msg_ids_json = _json_mod.dumps(_msg_ids)
