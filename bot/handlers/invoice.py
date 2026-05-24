@@ -274,31 +274,33 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                         seen.add(row_line)
                         combined.insert(0, row_line)
 
-            # Pass 4: crop the возврат row from the unprocessed image and re-OCR
-            # it as a single line. Grid-line removal can erase digits in sparse
-            # rows (возврат has no price/sum so its qty cell is easily clipped).
+            # Pass 4: crop the full возврат row and re-OCR it with PSM 6 and PSM 7.
+            # Uses the full image width so column-position guesses aren't needed
+            # (photos rarely have the invoice filling the exact same fraction of
+            # the frame every time). Runs on both the cleaned and uncleaned image
+            # so grid-removal artifacts and the original pixels are both tried.
             if vozv_idx is not None:
                 try:
                     _vt = data['top'][vozv_idx]
                     _vh = max(data['height'][vozv_idx], 30)
                     _iw, _ih = img_no_clean.size
-                    _y0 = max(0, _vt - 15)
-                    _y1 = min(_ih, _vt + _vh + 15)
-                    # Кол-во and Бонус columns: roughly 35–72 % of image width
-                    _x0 = int(_iw * 0.35)
-                    _x1 = int(_iw * 0.72)
-                    if _y1 > _y0 and _x1 > _x0:
-                        _crop = img_no_clean.crop((_x0, _y0, _x1, _y1))
-                        _cw, _ch = _crop.size
-                        _crop = _crop.resize((_cw * 4, _ch * 4), Image.LANCZOS)
-                        _t = pytesseract.image_to_string(
-                            _crop, lang='rus+eng', config='--psm 7 --oem 3'
-                        )
-                        for _ln in _t.splitlines():
-                            _ln = _ln.strip()
-                            if _ln and _ln not in seen:
-                                seen.add(_ln)
-                                combined.insert(0, _ln)
+                    _y0 = max(0, _vt - 20)
+                    _y1 = min(_ih, _vt + _vh + 20)
+                    if _y1 > _y0:
+                        for _src in (img, img_no_clean):
+                            _crop = _src.crop((0, _y0, _iw, _y1))
+                            _cw, _ch = _crop.size
+                            _crop = _crop.resize((_cw * 3, _ch * 3), Image.LANCZOS)
+                            for _psm in ('6', '7'):
+                                _t = pytesseract.image_to_string(
+                                    _crop, lang='rus+eng',
+                                    config=f'--psm {_psm} --oem 3',
+                                )
+                                for _ln in _t.splitlines():
+                                    _ln = _ln.strip()
+                                    if _ln and _ln not in seen:
+                                        seen.add(_ln)
+                                        combined.insert(0, _ln)
                 except Exception as _ec:
                     log.warning("vozvrat crop OCR: %s", _ec)
         except Exception as e:
@@ -540,10 +542,12 @@ def _parse_invoice(text: str) -> dict | None:
                     # Skip date/time lines
                     if re.search(r'\d{1,2}[.:]\d{2}', prev):
                         continue
-                    # Skip rows with space-grouped prices ("18 000", "972 000") — digit
-                    # scan would split "18 000" into 18 and 000, picking up 18 as qty.
+                    # A price/sum row in the backward window belongs to the previous
+                    # EVER product, not the current one — stop searching here to
+                    # avoid picking up that product's qty (e.g. "шт 54" for EVER 20л
+                    # when we're parsing EVER 10л).
                     if re.search(r'\b\d{1,4}(?:\s\d{3})+\b', prev):
-                        continue
+                        break
                     cleaned_prev = re.sub(r'\d+\s*л', '', prev, flags=re.IGNORECASE).strip()
                     if not cleaned_prev:
                         continue
