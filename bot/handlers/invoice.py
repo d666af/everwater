@@ -261,6 +261,11 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 
         text = '\n'.join(combined)
         log.info("OCR result:\n%s", text)
+        try:
+            with open('/tmp/last_ocr.txt', 'w', encoding='utf-8') as _f:
+                _f.write(text)
+        except Exception:
+            pass
         return text
     except Exception as e:
         log.error("OCR error: %s", e)
@@ -908,3 +913,12 @@ async def cmd_testnakl_photo(message: Message, state: FSMContext):
     except Exception as e:
         log.exception("testnakl photo error")
         await message.answer(f"❌ Ошибка: {e}")
+    # Send raw OCR text so parsing issues can be diagnosed
+    try:
+        with open('/tmp/last_ocr.txt', encoding='utf-8') as _f:
+            ocr_text = _f.read()
+        # Telegram message limit is 4096; send first 3800 chars
+        preview = ocr_text[:3800]
+        await message.answer(f"📄 OCR текст:\n<pre>{preview}</pre>", parse_mode="HTML")
+    except Exception:
+        pass
