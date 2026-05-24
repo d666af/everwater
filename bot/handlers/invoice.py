@@ -273,6 +273,34 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                         # for the same physical row that would overwrite this one.
                         seen.add(row_line)
                         combined.insert(0, row_line)
+
+            # Pass 4: crop the возврат row from the unprocessed image and re-OCR
+            # it as a single line. Grid-line removal can erase digits in sparse
+            # rows (возврат has no price/sum so its qty cell is easily clipped).
+            if vozv_idx is not None:
+                try:
+                    _vt = data['top'][vozv_idx]
+                    _vh = max(data['height'][vozv_idx], 30)
+                    _iw, _ih = img_no_clean.size
+                    _y0 = max(0, _vt - 15)
+                    _y1 = min(_ih, _vt + _vh + 15)
+                    # Кол-во and Бонус columns: roughly 35–72 % of image width
+                    _x0 = int(_iw * 0.35)
+                    _x1 = int(_iw * 0.72)
+                    if _y1 > _y0 and _x1 > _x0:
+                        _crop = img_no_clean.crop((_x0, _y0, _x1, _y1))
+                        _cw, _ch = _crop.size
+                        _crop = _crop.resize((_cw * 4, _ch * 4), Image.LANCZOS)
+                        _t = pytesseract.image_to_string(
+                            _crop, lang='rus+eng', config='--psm 7 --oem 3'
+                        )
+                        for _ln in _t.splitlines():
+                            _ln = _ln.strip()
+                            if _ln and _ln not in seen:
+                                seen.add(_ln)
+                                combined.insert(0, _ln)
+                except Exception as _ec:
+                    log.warning("vozvrat crop OCR: %s", _ec)
         except Exception as e:
             log.warning("image_to_data pass failed: %s", e)
 
@@ -421,12 +449,14 @@ def _parse_invoice(text: str) -> dict | None:
                     if result['return_qty']:
                         break
                 if result['return_qty'] == 0:
+                    _last_ever = False
                     for nxt in lines[i + 1:i + 10]:
                         if re.search(r'наимен|получатель|тип\s*маш', nxt, re.IGNORECASE):
                             break
                         # PSM11 column-scan puts EVER product names between "возврат" and
                         # its qty — skip them instead of stopping
                         if re.search(r'ever|итого', nxt, re.IGNORECASE):
+                            _last_ever = True
                             continue
                         if re.search(r'\d{1,2}[.:]\d{2}', nxt):
                             continue
@@ -438,6 +468,12 @@ def _parse_invoice(text: str) -> dict | None:
                         cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
                         if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
                             continue
+                        # "шт N" immediately following an EVER product line is the unit+qty
+                        # of that product (OCR column-scan artifact) — not the return qty.
+                        if _last_ever and re.match(r'^шт\b', cleaned_nxt, re.IGNORECASE):
+                            _last_ever = False
+                            continue
+                        _last_ever = False
                         for n in re.findall(r'\b(\d+)\b', cleaned_nxt):
                             v = int(n)
                             if 0 < v < 500:
