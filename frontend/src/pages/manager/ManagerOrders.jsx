@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts, deleteOrder } from '../../api'
+import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts, deleteOrder, updateOrderItems } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useAuthStore } from '../../store/auth'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
@@ -87,6 +88,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
   const [selectedCourier, setSelectedCourier] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
+  const [editOrder, setEditOrder] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -145,6 +147,14 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
       )}
       {showCreate && (
         <CreateOrderModal onClose={() => setShowCreate(false)} onSave={handleCreateOrder} couriers={couriers} />
+      )}
+      {editOrder && (
+        <EditItemsModal
+          order={editOrder}
+          editorName={currentUser?.name || ''}
+          onClose={() => setEditOrder(null)}
+          onSave={load}
+        />
       )}
 
       {/* Create order button */}
@@ -251,6 +261,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
               setSelectedCourier={setSelectedCourier}
               actionLoading={actionLoading}
               act={act}
+              onEditItems={setEditOrder}
             />
           ))}
         </div>
@@ -261,11 +272,13 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
 
 /* ─── Order card ─────────────────────────────────────────────────────────────── */
 
+const EDIT_STATUSES = new Set(['confirmed', 'assigned_to_courier', 'in_delivery'])
+
 function OrderCard({
   order, expanded, onToggle, couriers,
   rejectingId, setRejectingId, rejectReason, setRejectReason,
   assigningId, setAssigningId, selectedCourier, setSelectedCourier,
-  actionLoading, act,
+  actionLoading, act, onEditItems,
 }) {
   const { user: currentUser } = useAuthStore()
   const orderStage = getStage(order)
@@ -491,19 +504,20 @@ function OrderCard({
 
           <CreatorBlock order={order} />
 
-          {/* Always visible: cancel + contact client */}
+          {/* Always visible: actions */}
           {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
-            {order.recipient_phone && (<>
+            {EDIT_STATUSES.has(order.status) && onEditItems && (
+              <button onClick={() => onEditItems(order)} style={{ ...st.btnOutline, color: CD, borderColor: `${C}60` }}>
+                ✏️ Изменить состав
+              </button>
+            )}
+            {order.recipient_phone && (
               <button onClick={() => setPhoneModal({ number: order.recipient_phone, label: 'Телефон клиента' })} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
                 Позвонить
               </button>
-              <a href={`tg://user?id=${order.client_telegram_id}`} style={st.btnOutline}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>
-                Написать
-              </a>
-            </>)}
+            )}
             {order.courier_phone && (
               <button onClick={() => setPhoneModal({ number: order.courier_phone, label: 'Телефон курьера' })} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
@@ -517,7 +531,7 @@ function OrderCard({
             )}
             {order.status === 'delivered' && (
               <button style={{ ...st.btnOutline, color: '#E03131', borderColor: 'rgba(224,49,49,0.3)' }} disabled={actionLoading}
-                onClick={() => { if (window.confirm('Удалить заказ? Это действие необратимо.')) act(() => deleteOrder(order.id, currentUser?.name, currentUser?.role).then(() => setOrders(prev => prev.filter(o => o.id !== order.id)))) }}>
+                onClick={() => { if (window.confirm('Удалить заказ? Это действие необратимо.')) act(() => deleteOrder(order.id, currentUser?.name, currentUser?.role)) }}>
                 Удалить заказ
               </button>
             )}
@@ -628,10 +642,15 @@ function CreatorBlock({ order }) {
   const role = order.creator_role
   const effectiveName = order.creator_name || (role === 'courier' ? order.courier_name : null)
   const creatorStr = role
-    ? `${CREATOR_LABEL[role] || role}${effectiveName ? ': ' + effectiveName : ''}`
+    ? `${CREATOR_LABEL[role] || role}${effectiveName ? ' ' + effectiveName : ''}`
     : `Клиент${order.client_name ? ': ' + order.client_name : ''}`
   const autoAssigned = role === 'courier' && order.assigner_role === 'courier'
-  const assignerDisplay = autoAssigned ? 'Автоматически' : order.assigner_name
+  const assignerRoleLabel = CREATOR_LABEL[order.assigner_role] || order.assigner_role || ''
+  const assignerDisplay = autoAssigned
+    ? 'Автоматически'
+    : order.assigner_name
+      ? `${assignerRoleLabel} ${order.assigner_name}`.trim()
+      : null
   const hasInfo = role || order.assigner_name
   if (!hasInfo && !order.client_name) return null
   return (
@@ -694,6 +713,148 @@ function Row({ k, v, accent }) {
       <span style={{ fontSize: 13, color: TEXT2, minWidth: 90, flexShrink: 0, paddingTop: 1 }}>{k}</span>
       <span style={{ fontSize: 14, color: accent || TEXT, fontWeight: accent ? 700 : 400, flex: 1, lineHeight: 1.4 }}>{v}</span>
     </div>
+  )
+}
+
+/* ─── Edit items modal ──────────────────────────────────────────────────────── */
+
+function EditItemsModal({ order, editorName, onClose, onSave }) {
+  const [items, setItems] = useState({})
+  const [products, setProducts] = useState([])
+  const [returnBottles, setReturnBottles] = useState(order.return_bottles_count || 0)
+  const [lentBottles, setLentBottles] = useState(order.bottles_lent || 0)
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const initial = {}
+    for (const item of order.items || []) {
+      const pid = String(item.product_id ?? item.id)
+      if (pid) initial[pid] = item.quantity
+    }
+    setItems(initial)
+    setProductsLoading(true)
+    getProducts()
+      .then(p => setProducts((p || []).filter(x => x.is_active !== false)))
+      .catch(() => {})
+      .finally(() => setProductsLoading(false))
+  }, [])
+
+  const allProducts = useMemo(() => {
+    const activeIds = new Set(products.map(p => String(p.id)))
+    const extras = []
+    for (const item of order.items || []) {
+      const pid = String(item.product_id ?? item.id)
+      if (pid && !activeIds.has(pid)) {
+        extras.push({ id: parseInt(pid), name: item.product_name, is_active: false })
+      }
+    }
+    return [...products, ...extras]
+  }, [products, order.items])
+
+  const setQty = (pid, qty) => {
+    setItems(prev => {
+      const n = { ...prev }
+      if (qty <= 0) delete n[pid]
+      else n[pid] = qty
+      return n
+    })
+  }
+
+  const handleSave = async () => {
+    const payload = Object.entries(items)
+      .filter(([, qty]) => qty > 0)
+      .map(([pid, qty]) => ({ product_id: parseInt(pid), quantity: qty }))
+    if (payload.length === 0) { alert('Добавьте хотя бы один товар'); return }
+    setSaving(true)
+    try {
+      await updateOrderItems(order.id, payload, returnBottles, lentBottles, editorName)
+      onSave()
+      onClose()
+    } catch {
+      alert('Ошибка при сохранении состава')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '88vh', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ padding: '14px 20px 0', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 14px' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>Изменить состав #{order.id}</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{order.address}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 0' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Товары</div>
+          {productsLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', border: `3px solid ${C}30`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {allProducts.map(p => {
+                const pid = String(p.id)
+                const qty = items[pid] || 0
+                const inOrder = qty > 0
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: inOrder ? `${C}0D` : '#F8F9FA', borderRadius: 14, padding: '11px 14px', border: inOrder ? `1.5px solid ${C}35` : '1.5px solid transparent', transition: 'all 0.15s' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: inOrder ? 700 : 500, color: inOrder ? TEXT : TEXT2, lineHeight: 1.2 }}>{p.name}</div>
+                      {!p.is_active && <div style={{ fontSize: 11, color: '#E67700', marginTop: 1 }}>недоступен</div>}
+                    </div>
+                    <Stepper value={qty} onDec={() => setQty(pid, qty - 1)} onInc={() => setQty(pid, qty + 1)} onChange={v => setQty(pid, v)} min={0} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, margin: '18px 0 10px' }}>Бутылки</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#E6FCF5', borderRadius: 14, padding: '11px 14px', border: '1.5px solid rgba(18,184,134,0.2)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0A7A5C' }}>♻️ Забрать пустых</div>
+              </div>
+              <Stepper value={returnBottles} onDec={() => setReturnBottles(v => Math.max(0, v - 1))} onInc={() => setReturnBottles(v => v + 1)} onChange={v => setReturnBottles(Math.max(0, v))} min={0} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#FFF8ED', borderRadius: 14, padding: '11px 14px', border: '1.5px solid rgba(230,119,0,0.2)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#E67700' }}>📦 Одолжить</div>
+              </div>
+              <Stepper value={lentBottles} onDec={() => setLentBottles(v => Math.max(0, v - 1))} onInc={() => setLentBottles(v => v + 1)} onChange={v => setLentBottles(Math.max(0, v))} min={0} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 20px 40px', borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, background: '#fff' }}>
+          <button
+            disabled={saving}
+            onClick={handleSave}
+            style={{ padding: '15px 0', borderRadius: 14, border: 'none', background: saving ? '#C8D6BC' : `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 800, cursor: saving ? 'default' : 'pointer', boxShadow: saving ? 'none' : '0 4px 14px rgba(141,198,63,0.35)', transition: 'all 0.2s' }}
+          >
+            {saving ? 'Сохранение…' : '✅ Сохранить'}
+          </button>
+          <button onClick={onClose} style={{ padding: '14px 0', borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>Отмена</button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
 

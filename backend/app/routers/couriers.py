@@ -1283,24 +1283,30 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     select(Agent).where(Agent.id == body.agent_id)
                 )).scalar_one_or_none()
                 if agent_row and agent_row.telegram_id:
-                    def _fmt_na(n): return f"{int(n):,}".replace(',', ' ')
-                    agent_items = "\n".join(
+                    _pay_labels_a = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+                    _pay_label_a = _pay_labels_a.get(body.payment_method or "cash", "💵 Наличные")
+                    _fmt_na = _fmt_nm  # reuse formatter
+                    _items_a = "\n".join(
                         f"  • {p.name} {q} шт. — {_fmt_na(p.price * q)} сум"
                         for p, q in items_data
                     ) if items_data else "  —"
-                    agent_return = (
-                        f"\n♻️ Возврат: {body.return_bottles_count} шт."
-                        if body.return_bottles_count else ""
-                    )
                     if missing_m > 0 and bottle_surcharge > 0:
-                        agent_items += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
+                        _items_a += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
+                    _inline_ret_a = []
+                    if body.return_bottles_count:
+                        _inline_ret_a.append(f"♻️ Возврат бутылок: {body.return_bottles_count} шт.")
+                    if body.bottles_lent:
+                        _inline_ret_a.append(f"📦 Одолжить: {body.bottles_lent} шт.")
+                    if missing_m > 0 and bottle_surcharge > 0:
+                        _inline_ret_a.append(f"💸 Надбавка за невозврат: +{_fmt_na(bottle_surcharge)} сум")
+                    _inline_ret_str_a = ("\n" + "\n".join(_inline_ret_a)) if _inline_ret_a else ""
                     await _tg(agent_row.telegram_id, (
                         f"✅ Заказ #{oid} создан!\n\n"
-                        f"📍 {body.address}\n"
-                        f"👤 {mgr_client_identity}\n\n"
-                        f"Состав:\n{agent_items}"
-                        f"{agent_return}\n\n"
-                        f"Итого: {_fmt_na(total_int)} сум"
+                        f"👤 {mgr_client_identity}\n"
+                        f"📍 {body.address}{note_line}\n\n"
+                        f"Товары:\n{_items_a}\n"
+                        f"💰 {_fmt_na(total_int)} сум  |  {_pay_label_a}"
+                        f"{_inline_ret_str_a}"
                     ))
     
     except Exception:
