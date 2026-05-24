@@ -345,9 +345,10 @@ def _parse_invoice(text: str) -> dict | None:
                             # Multiple genuine numbers — take the last one (plate numbers
                             # from OCR column-scan tend to appear before the qty column)
                             result['return_qty'] = pos_nums[-1]
-            # Do backward/forward search when the row has NO numbers at all OR when
-            # we still have 0 (PSM11 may split the qty to a separate OCR line)
-            if not row_has_numbers or result['return_qty'] == 0:
+            # Only search when return_qty is still 0 — prevents a later standalone
+            # "возврат" OCR line (row_has_numbers=False) from overwriting a qty
+            # that was already correctly found from a previous "возврат Шт N" line.
+            if result['return_qty'] == 0:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
