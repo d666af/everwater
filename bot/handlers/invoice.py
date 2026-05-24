@@ -373,6 +373,11 @@ def _parse_invoice(text: str) -> dict | None:
                             continue
                         if re.search(r'\d{1,2}[.:]\d{2}', nxt):
                             continue
+                        # EVER data rows contain space-grouped prices ("18 000", "972 000").
+                        # The return row only has small plain numbers — skip price rows so
+                        # we don't pick up EVER 20л qty (54) before the return qty (63).
+                        if re.search(r'\b\d{1,4}(?:\s\d{3})+\b', nxt):
+                            continue
                         cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
                         if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
                             continue
@@ -407,12 +412,12 @@ def _parse_invoice(text: str) -> dict | None:
                     found_qty = v
                     inline_found = True
             if not found_qty and not _sht_zero:
-                # Prefer price/sum cross-check on current line AND a wider window —
-                # price/sum columns may land in adjacent y-buckets (different OCR lines)
+                # Prefer price/sum cross-check on current line AND a wider window.
+                # Do NOT fall back to full invoice text — other products' prices/sums
+                # (e.g. 972 000 ÷ 12 000 = 81) would give a wrong qty for zero-qty rows.
                 _nearby = ' '.join(lines[max(0, i - 1):i + 4])
                 computed_qty = (_qty_from_price_sum(line)
-                                or _qty_from_price_sum(_nearby)
-                                or _qty_from_price_sum(full))
+                                or _qty_from_price_sum(_nearby))
                 if computed_qty:
                     found_qty = computed_qty
                     inline_found = True
