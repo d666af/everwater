@@ -29,6 +29,21 @@ def manager_menu_kb(subs_enabled: bool = True, support_enabled: bool = True) -> 
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
+def manager_links_kb() -> InlineKeyboardMarkup:
+    """Inline URL links to manager web sections — works on all Telegram clients."""
+    base = settings.MINI_APP_URL.rstrip("/")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📋 Заказы", url=f"{base}/manager"),
+            InlineKeyboardButton(text="👥 Клиенты", url=f"{base}/manager/clients"),
+        ],
+        [
+            InlineKeyboardButton(text="🚴 Курьеры", url=f"{base}/manager/couriers"),
+            InlineKeyboardButton(text="📊 Статистика", url=f"{base}/manager/stats"),
+        ],
+    ])
+
+
 def mgr_order_kb(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
