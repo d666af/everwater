@@ -253,6 +253,7 @@ async def get_overview(
         q19_returned = await db.execute(
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.transaction_type == "bottle_return")
+            .where(WaterTransaction.counts_for_debt != False)
         )
         q19_delivery_net = await db.execute(
             select(func.sum(WaterTransaction.quantity))
@@ -629,7 +630,8 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
         c_returned = (await db.execute(
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "bottle_return")
+                   WaterTransaction.transaction_type == "bottle_return",
+                   WaterTransaction.counts_for_debt != False)
         )).scalar() or 0
         # Single-product issue: current batch contributes body.quantity if product is 19L
         _cur_19l = body.quantity if product.volume >= 18.9 else 0
@@ -646,6 +648,7 @@ async def issue_to_courier(body: IssueBody, db: AsyncSession = Depends(get_db)):
             quantity=bottle_return_qty,
             note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
+            counts_for_debt=not is_first_transaction,
         ))
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
     await db.commit()
@@ -785,7 +788,8 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         c_returned = (await db.execute(
             select(func.sum(WaterTransaction.quantity))
             .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "bottle_return")
+                   WaterTransaction.transaction_type == "bottle_return",
+                   WaterTransaction.counts_for_debt != False)
         )).scalar() or 0
         # On the courier's very first transaction the return does not reduce debt
         current_batch_19l = sum(qty for prod, qty in resolved if prod.volume >= 18.9)
@@ -795,6 +799,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         else:
             debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         ret_tx = WaterTransaction(
+            counts_for_debt=not is_first_transaction,
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
@@ -1370,6 +1375,7 @@ async def get_couriers_water(
                 select(func.sum(WaterTransaction.quantity))
                 .where(WaterTransaction.courier_id == c.id)
                 .where(WaterTransaction.transaction_type == "bottle_return")
+                .where(WaterTransaction.counts_for_debt != False)
             )
             bottles_must_return = max(0, (c_issued_q.scalar() or 0) - (c_returned_q.scalar() or 0))
         else:

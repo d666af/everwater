@@ -33,6 +33,7 @@ async def create_tables():
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS creator_role VARCHAR(32)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS bottles_lent INTEGER DEFAULT 0",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS performed_by VARCHAR(64)",
+            "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS counts_for_debt BOOLEAN DEFAULT TRUE",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS notification_msg_ids TEXT",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS manager_phone VARCHAR(30)",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_status_msg_id INTEGER",

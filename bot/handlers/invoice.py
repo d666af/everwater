@@ -345,9 +345,9 @@ def _parse_invoice(text: str) -> dict | None:
                             # Multiple genuine numbers — take the last one (plate numbers
                             # from OCR column-scan tend to appear before the qty column)
                             result['return_qty'] = pos_nums[-1]
-            # Only do backward/forward search when the row has NO numbers at all
-            # (column-scan split the qty to a separate line)
-            if not row_has_numbers:
+            # Do backward/forward search when the row has NO numbers at all OR when
+            # we still have 0 (PSM11 may split the qty to a separate OCR line)
+            if not row_has_numbers or result['return_qty'] == 0:
                 for prev in reversed(lines[max(0, i - 3):i]):
                     if re.search(r'ever|наимен|итого|получатель|тип\s*маш', prev, re.IGNORECASE):
                         break
@@ -364,9 +364,13 @@ def _parse_invoice(text: str) -> dict | None:
                     if result['return_qty']:
                         break
                 if result['return_qty'] == 0:
-                    for nxt in lines[i + 1:i + 5]:
-                        if re.search(r'ever|наимен|итого|получатель|тип\s*маш', nxt, re.IGNORECASE):
+                    for nxt in lines[i + 1:i + 10]:
+                        if re.search(r'наимен|получатель|тип\s*маш', nxt, re.IGNORECASE):
                             break
+                        # PSM11 column-scan puts EVER product names between "возврат" and
+                        # its qty — skip them instead of stopping
+                        if re.search(r'ever|итого', nxt, re.IGNORECASE):
+                            continue
                         if re.search(r'\d{1,2}[.:]\d{2}', nxt):
                             continue
                         cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
@@ -396,8 +400,10 @@ def _parse_invoice(text: str) -> dict | None:
             if sht_qty_m:
                 v = int(sht_qty_m.group(1))
                 if v == 0:
-                    _sht_zero = True
-                elif 1 <= v <= 500:
+                    # Explicit zero qty — this EVER variant is not in this batch.
+                    # Skip fallback (price/sum would find other products' totals).
+                    continue
+                if 1 <= v <= 500:
                     found_qty = v
                     inline_found = True
             if not found_qty and not _sht_zero:
