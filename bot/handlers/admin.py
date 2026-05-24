@@ -178,11 +178,17 @@ def _order_detail_lines(o: dict) -> str:
     creator_name = o.get("creator_name")
     if creator_role:
         role_label = _CREATOR_ROLE_RU.get(creator_role, creator_role.capitalize())
-        creator_line = f"✍️ {role_label}: {creator_name}" if creator_name else f"✍️ {role_label}"
+        creator_line = f"✍️ Создал заказ: {role_label} {creator_name}".rstrip() if creator_name else f"✍️ Создал заказ: {role_label}"
     else:
         client_label = o.get("client_name") or "Клиент"
-        creator_line = f"✍️ Клиент: {client_label}"
+        creator_line = f"✍️ Создал заказ: Клиент {client_label}"
     lines.append(creator_line)
+    assigner_name = o.get("assigner_name")
+    assigner_role = o.get("assigner_role")
+    if assigner_name:
+        _ROLE_NOM = {"manager": "Менеджер", "admin": "Администратор", "agent": "Агент"}
+        asgn_role_lbl = _ROLE_NOM.get(assigner_role or "", "")
+        lines.append(f"👤 Назначил курьера: {asgn_role_lbl} {assigner_name}".rstrip())
     if o.get("courier_name"):
         cp = o.get("courier_phone", "")
         lines.append(f"🚴 {o['courier_name']}{f'  |  {cp}' if cp else ''}")
@@ -568,15 +574,8 @@ async def admin_set_courier(call: CallbackQuery):
             pass
 
     courier_name = courier["name"] if courier else "?"
-    body = _order_detail_lines(order)
-    result_text = f"✅ <b>Курьер {courier_name} назначен</b>\n\n{body}"
-    _cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"order:cancel:{order_id}")
-    ]])
-    try:
-        await call.message.edit_text(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
-    except Exception:
-        await call.message.answer(result_text, reply_markup=_cancel_kb, parse_mode="HTML")
+    # assign_courier already updated the staff notification via edit_all_notifications;
+    # no need to overwrite it here
 
 
 @router.callback_query(F.data.startswith("admin:assign:"))
