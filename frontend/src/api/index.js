@@ -712,6 +712,35 @@ export const courierCreateOrder = (data) =>
     }
   )
 
+// ─── Update order items (courier edit) ───────────────────────────────────────
+export const updateOrderItems = (orderId, items, returnBottlesCount, bottlesLent, courierName) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/items`, {
+      items,
+      return_bottles_count: returnBottlesCount,
+      bottles_lent: bottlesLent,
+      courier_name: courierName || undefined,
+    }).then(r => r.data),
+    () => {
+      const order = mockOrdersStore.find(o => o.id === orderId)
+      if (order) {
+        const prodMap = Object.fromEntries(MOCK_PRODUCTS.map(p => [p.id, p]))
+        order.items = items.map(it => ({
+          id: it.product_id,
+          product_id: it.product_id,
+          product_name: prodMap[it.product_id]?.name || '?',
+          quantity: it.quantity,
+          price: prodMap[it.product_id]?.price || 0,
+        }))
+        order.return_bottles_count = returnBottlesCount
+        order.bottles_lent = bottlesLent
+        order.is_items_edited = true
+        order.items_edited_by = courierName || ''
+      }
+      return { ok: true }
+    }
+  )
+
 // ─── Agents ──────────────────────────────────────────────────────────────────
 export const getAgents = () =>
   safeCall(

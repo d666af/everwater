@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import CourierLayout from '../../components/courier/CourierLayout'
-import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue, setPaymentCollected } from '../../api'
+import { getCourierOrders, courierAccept, courierInDelivery, courierDelivered, courierCreateOrder, lookupClientByPhone, getProducts, reportPaymentIssue, setPaymentCollected, updateOrderItems } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import CourierOrdersMap from '../../components/courier/CourierOrdersMap'
@@ -57,7 +57,7 @@ const PhoneIcon = () => (
 )
 
 /* ── OrderCard ───────────────────────────────────────────────────────────────── */
-function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoading }) {
+function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, onEditItems, actionLoading }) {
   const [open, setOpen] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
   const st = STATUS_CFG[order.status] || { label: order.status, bg: '#F2F2F7', color: TEXT2 }
@@ -288,6 +288,26 @@ function OrderCard({ order, onAction, onDeliverCash, onDeliverConfirm, actionLoa
                 </button>
               )}
             </div>
+          )}
+
+          {/* Edit items button */}
+          {isActive && (
+            <button
+              onClick={() => onEditItems(order)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                width: '100%', padding: '12px 0', borderRadius: 14,
+                border: `1.5px solid ${C}50`, background: `${C}0D`,
+                color: CD, fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Изменить состав
+            </button>
           )}
         </div>
       )}
@@ -624,6 +644,191 @@ function CreateOrderModal({ onClose, onSave, courierId }) {
   )
 }
 
+/* ── Edit order items modal ──────────────────────────────────────────────────── */
+function EditItemsModal({ order, courierName, onClose, onSave }) {
+  const [items, setItems] = useState({})
+  const [products, setProducts] = useState([])
+  const [returnBottles, setReturnBottles] = useState(order.return_bottles_count || 0)
+  const [lentBottles, setLentBottles] = useState(order.bottles_lent || 0)
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const initial = {}
+    for (const item of order.items || []) {
+      const pid = String(item.product_id ?? item.id)
+      if (pid) initial[pid] = item.quantity
+    }
+    setItems(initial)
+    setProductsLoading(true)
+    getProducts()
+      .then(p => setProducts((p || []).filter(x => x.is_active !== false)))
+      .catch(() => {})
+      .finally(() => setProductsLoading(false))
+  }, [])
+
+  // Include deactivated products that are already in the order
+  const allProducts = useMemo(() => {
+    const activeIds = new Set(products.map(p => String(p.id)))
+    const extras = []
+    for (const item of order.items || []) {
+      const pid = String(item.product_id ?? item.id)
+      if (pid && !activeIds.has(pid)) {
+        extras.push({ id: parseInt(pid), name: item.product_name, is_active: false })
+      }
+    }
+    return [...products, ...extras]
+  }, [products, order.items])
+
+  const setQty = (pid, qty) => {
+    setItems(prev => {
+      const n = { ...prev }
+      if (qty <= 0) delete n[pid]
+      else n[pid] = qty
+      return n
+    })
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const payload = Object.entries(items)
+        .filter(([, qty]) => qty > 0)
+        .map(([pid, qty]) => ({ product_id: parseInt(pid), quantity: qty }))
+      await updateOrderItems(order.id, payload, returnBottles, lentBottles, courierName)
+      onSave()
+      onClose()
+    } catch {
+      alert('Ошибка при сохранении состава')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '88vh', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.25s cubic-bezier(0.4,0,0.2,1)' }}>
+
+        {/* Header */}
+        <div style={{ padding: '14px 20px 0', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 14px' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke={CD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>Изменить состав</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{order.address}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 0' }}>
+
+          {/* Products section */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Товары</div>
+
+          {productsLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', border: `3px solid ${C}30`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {allProducts.map(p => {
+                const pid = String(p.id)
+                const qty = items[pid] || 0
+                const inOrder = qty > 0
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    background: inOrder ? `${C}0D` : '#F8F9FA',
+                    borderRadius: 14, padding: '11px 14px',
+                    border: inOrder ? `1.5px solid ${C}35` : '1.5px solid transparent',
+                    transition: 'all 0.15s',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: inOrder ? 700 : 500, color: inOrder ? TEXT : TEXT2, lineHeight: 1.2 }}>{p.name}</div>
+                      {!p.is_active && <div style={{ fontSize: 11, color: '#E67700', marginTop: 1 }}>недоступен</div>}
+                    </div>
+                    <CStepper
+                      value={qty}
+                      onDec={() => setQty(pid, qty - 1)}
+                      onInc={() => setQty(pid, qty + 1)}
+                      onChange={v => setQty(pid, v)}
+                      min={0}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Bottles section */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, margin: '18px 0 10px' }}>Бутылки</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#E6FCF5', borderRadius: 14, padding: '11px 14px', border: '1.5px solid rgba(18,184,134,0.2)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0A7A5C' }}>♻️ Забрать пустых</div>
+              </div>
+              <CStepper
+                value={returnBottles}
+                onDec={() => setReturnBottles(v => Math.max(0, v - 1))}
+                onInc={() => setReturnBottles(v => v + 1)}
+                onChange={v => setReturnBottles(Math.max(0, v))}
+                min={0}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#FFF8ED', borderRadius: 14, padding: '11px 14px', border: '1.5px solid rgba(230,119,0,0.2)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#E67700' }}>📦 Одолжить</div>
+              </div>
+              <CStepper
+                value={lentBottles}
+                onDec={() => setLentBottles(v => Math.max(0, v - 1))}
+                onInc={() => setLentBottles(v => v + 1)}
+                onChange={v => setLentBottles(Math.max(0, v))}
+                min={0}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Fixed bottom bar */}
+        <div style={{ padding: '12px 20px 40px', borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, background: '#fff' }}>
+          <button
+            disabled={saving}
+            onClick={handleSave}
+            style={{
+              padding: '15px 0', borderRadius: 14, border: 'none',
+              background: saving ? '#C8D6BC' : `linear-gradient(135deg, ${C}, ${CD})`,
+              color: '#fff', fontSize: 16, fontWeight: 800,
+              cursor: saving ? 'default' : 'pointer',
+              boxShadow: saving ? 'none' : '0 4px 14px rgba(141,198,63,0.35)',
+              transition: 'all 0.2s',
+            }}
+          >
+            {saving ? 'Сохранение…' : '✅ Сохранить'}
+          </button>
+          <button
+            onClick={onClose}
+            style={{ padding: '14px 0', borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 /* ── Main page ───────────────────────────────────────────────────────────────── */
 export default function CourierOrders() {
   const [orders, setOrders] = useState([])
@@ -632,6 +837,7 @@ export default function CourierOrders() {
   const [filter, setFilter] = useState('waiting')
   const [showCreate, setShowCreate] = useState(false)
   const [confirmOrder, setConfirmOrder] = useState(null)
+  const [editOrder, setEditOrder] = useState(null)
   const { user } = useAuthStore()
 
   const courierId = tg?.initDataUnsafe?.user?.id || user?.telegram_id
@@ -741,12 +947,27 @@ export default function CourierOrders() {
         />,
         document.body
       )}
+      {editOrder && (
+        <EditItemsModal
+          order={editOrder}
+          courierName={courierName}
+          onClose={() => setEditOrder(null)}
+          onSave={load}
+        />
+      )}
 
-      {/* CSS for urgency pulse animation */}
+      {/* CSS animations */}
       <style>{`
         @keyframes urgencyPulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(224,49,49,0); }
           50% { box-shadow: 0 0 0 6px rgba(224,49,49,0.12); }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
 
@@ -823,7 +1044,7 @@ export default function CourierOrders() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map(order => (
-            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} onDeliverConfirm={doDeliverConfirm} actionLoading={actionLoading} />
+            <OrderCard key={order.id} order={order} onAction={doAction} onDeliverCash={doDeliverCash} onDeliverConfirm={doDeliverConfirm} onEditItems={setEditOrder} actionLoading={actionLoading} />
           ))}
         </div>
       )}
