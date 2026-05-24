@@ -1426,16 +1426,30 @@ async def _start_edit_items(call: CallbackQuery, state: FSMContext, order_id: in
     await call.answer()
 
 
+async def _detect_editor_role(user_id: int) -> str:
+    from handlers.admin import is_admin as _is_admin
+    from handlers.manager import is_manager as _is_manager
+    if _is_admin(user_id):
+        return "admin"
+    if await _is_manager(user_id):
+        return "manager"
+    return "courier"
+
+
 @router.callback_query(F.data.startswith("courier:edit_items:"))
 async def courier_edit_items_notif(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[2])
     await _start_edit_items(call, state, order_id)
+    role = await _detect_editor_role(call.from_user.id)
+    await state.update_data(editor_role=role)
 
 
 @router.callback_query(F.data.startswith("corl:edit_items:"))
 async def courier_edit_items_list(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[2])
     await _start_edit_items(call, state, order_id)
+    role = await _detect_editor_role(call.from_user.id)
+    await state.update_data(editor_role=role)
 
 
 async def _cedit_update_kb(call: CallbackQuery, state: FSMContext):
@@ -1544,12 +1558,16 @@ async def cedit_done(call: CallbackQuery, state: FSMContext):
         pass
 
     try:
+        _ROLE_LABELS_ED = {"admin": "Администратор", "manager": "Менеджер", "courier": "Курьер"}
+        editor_role = data.get("editor_role", "courier")
+        role_prefix = _ROLE_LABELS_ED.get(editor_role, "")
+        editor_display = f"{role_prefix} {call.from_user.full_name}".strip()
         await api.update_order_items(
             order_id=order_id,
             items=items_payload,
             return_bottles_count=return_bottles,
             bottles_lent=lent_bottles,
-            courier_name=call.from_user.full_name,
+            courier_name=editor_display,
         )
 
         # Reload order for updated text and keyboard

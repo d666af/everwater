@@ -1343,7 +1343,7 @@ async def co_confirm(call: CallbackQuery, state: FSMContext):
         order_total = float(order.get("total") or 0)
         bonus_line = f"\n💎 Бонусы: −{fmt(int(order_bonus_used))}" if order_bonus_used > 0 else ""
         notification_text = (
-            f"🆕 Новый заказ!\n"
+            f"🆕 Новый заказ! Создан клиентом\n"
             f"Клиент: {user.get('name', '—')} | {data.get('co_phone', user.get('phone', '—'))}\n"
             f"Адрес: {addr}\n"
             f"Заказ: {cart_info}\n"

@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.admin import (
-    admin_menu_kb, order_confirm_kb, courier_select_kb,
+    admin_menu_kb, order_confirm_kb, courier_select_kb, admin_order_reject_kb,
     stats_period_kb, admin_user_kb, broadcast_target_kb,
     product_list_kb, product_edit_kb, subs_menu_kb, subs_list_kb,
 )
@@ -310,6 +310,38 @@ async def admin_cancel_order_cb(call: CallbackQuery):
     await call.answer("❌ Заказ отменён")
 
 
+@router.callback_query(F.data.startswith("admin:edit_items:"))
+async def admin_edit_items_cb(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    from handlers.courier import _start_edit_items
+    await _start_edit_items(call, state, order_id)
+    await state.update_data(editor_role="admin")
+
+
+@router.callback_query(F.data.startswith("order:delete:"))
+async def order_delete_cb(call: CallbackQuery):
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    role = "admin" if _is_adm else "manager"
+    try:
+        await api.delete_order(order_id, call.from_user.full_name, role)
+    except Exception:
+        await call.answer("❌ Ошибка при удалении. Возможно заказ уже удалён.", show_alert=True)
+        return
+    try:
+        await call.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await call.answer("🗑️ Заказ удалён из системы")
+
+
 @router.callback_query(F.data == "admin:orders:awaiting_confirmation")
 async def admin_pending_orders(call: CallbackQuery):
     if not is_admin(call.from_user.id):
@@ -339,57 +371,148 @@ async def admin_pending_orders(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin:confirm:"))
 async def admin_confirm(call: CallbackQuery):
+    """Legacy handler for old messages that still have ✅ Подтвердить button."""
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
     try:
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
-        msg = str(e)
-        if "409" in msg:
-            await call.answer("Заказ уже обработан другим администратором", show_alert=True)
-        else:
-            await call.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.", show_alert=True)
-        return
+        if "409" not in str(e):
+            await call.answer("❌ Ошибка подтверждения.", show_alert=True)
+            return
     order = await api.get_order(order_id)
     couriers = await api.get_couriers()
     kb = courier_select_kb(couriers, order_id)
     body = _order_detail_lines(order)
-    confirm_text = f"✅ <b>Заказ подтверждён</b>\n\n{body}\n\nВыберите курьера:"
+    text = f"<b>Выберите курьера для заказа #{order_id}</b>\n\n{body}"
     try:
-        await call.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(confirm_text, reply_markup=kb, parse_mode="HTML")
+        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("order:assign:"))
+async def order_assign_courier_prompt(call: CallbackQuery):
+    """Unified 'Назначить курьера' handler for both admin and manager."""
+    from handlers.manager import is_manager as _is_manager
+    from keyboards.manager import mgr_courier_select_kb
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    try:
+        await api.confirm_order(order_id, from_bot=True)
+    except Exception as e:
+        if "409" not in str(e):
+            await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
+            return
+    order = await api.get_order(order_id)
+    couriers = await api.get_couriers()
+    kb = courier_select_kb(couriers, order_id) if _is_adm else mgr_courier_select_kb(couriers, order_id)
+    body = _order_detail_lines(order)
+    text = f"<b>Выберите курьера для заказа #{order_id}</b>\n\n{body}"
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+_REJECT_REASONS = {
+    "stock": "Товар временно закончился",
+    "addr": "Адрес недоступен для доставки",
+    "time": "Выбранное время недоступно",
+}
 
 
 @router.callback_query(F.data.startswith("admin:reject:"))
-async def admin_reject(call: CallbackQuery, state: FSMContext):
+async def admin_reject(call: CallbackQuery):
+    """Legacy handler for old messages with ❌ Отклонить button — now shows reason menu."""
     if not is_admin(call.from_user.id):
         return
     order_id = int(call.data.split(":")[2])
-    await state.update_data(reject_order_id=order_id)
-    await state.set_state(AdminReject.waiting_reason)
-    await call.message.answer(f"Укажите причину отклонения заказа #{order_id}:")
+    await call.message.answer(
+        f"Выберите причину отмены заказа #{order_id}:",
+        reply_markup=admin_order_reject_kb(order_id),
+    )
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("order:reject:"))
+async def order_reject_menu(call: CallbackQuery):
+    """Unified reject handler — shows reason menu for admin and manager."""
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    await call.message.answer(
+        f"Выберите причину отмены заказа #{order_id}:",
+        reply_markup=admin_order_reject_kb(order_id),
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("order:rj_r:"))
+async def order_reject_reason_cb(call: CallbackQuery, state: FSMContext):
+    """Processes reason selection for unified reject menu."""
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    parts = call.data.split(":")
+    order_id, reason_key = int(parts[2]), parts[3]
+    role = "admin" if _is_adm else "manager"
+    if reason_key == "custom":
+        await state.update_data(reject_order_id=order_id, reject_role=role)
+        await state.set_state(AdminReject.waiting_reason)
+        await call.message.answer(f"Введите причину отмены заказа #{order_id}:")
+        await call.answer()
+        return
+    reason = _REJECT_REASONS.get(reason_key, reason_key)
+    try:
+        await api.reject_order(order_id, reason, from_bot=True,
+                               rejected_by_name=call.from_user.full_name, rejected_by_role=role)
+    except Exception as e:
+        if "409" in str(e):
+            await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
+        else:
+            await call.answer("❌ Ошибка при отмене.", show_alert=True)
+        return
+    try:
+        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.\nПричина: {reason}")
+    except Exception:
+        await call.message.answer(f"❌ Заказ #{order_id} отменён.\nПричина: {reason}")
+    await call.answer("❌ Заказ отменён")
 
 
 @router.message(AdminReject.waiting_reason)
 async def admin_reject_reason(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
-        return
+        from handlers.manager import is_manager as _is_manager
+        if not await _is_manager(message.from_user.id):
+            return
     data = await state.get_data()
     order_id = data["reject_order_id"]
+    role = data.get("reject_role", "admin")
     reason = message.text.strip()
     try:
         await api.reject_order(order_id, reason, from_bot=True,
-                               rejected_by_name=message.from_user.full_name, rejected_by_role="admin")
+                               rejected_by_name=message.from_user.full_name, rejected_by_role=role)
     except Exception as e:
         await state.clear()
         if "409" in str(e):
-            await message.answer("Заказ уже обработан другим администратором.")
+            await message.answer("Заказ уже обработан.")
         else:
-            await message.answer("❌ Ошибка при отклонении заказа.")
+            await message.answer("❌ Ошибка при отмене заказа.")
         return
     await state.clear()
     await message.answer(f"❌ Заказ #{order_id} отменён. Причина: {reason}")

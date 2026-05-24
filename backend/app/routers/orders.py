@@ -491,8 +491,9 @@ async def confirm_order(order_id: int, from_bot: bool = False, db: AsyncSession 
 
     await db.commit()
 
-    from app.services.tg_notify import edit_all_notifications
-    await edit_all_notifications(msg_ids_json, f"✅ Заказ #{oid} подтверждён")
+    if not from_bot:
+        from app.services.tg_notify import edit_all_notifications
+        await edit_all_notifications(msg_ids_json, f"✅ Заказ #{oid} подтверждён")
 
     if not from_bot:
         text = f"✅ Заказ подтверждён!\n{items}\nСкоро назначим курьера."
@@ -930,7 +931,10 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     )
 
     from app.services.tg_notify import edit_all_notifications
-    _cancel_kb_ac = {"inline_keyboard": [[{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}]]}
+    _cancel_kb_ac = {"inline_keyboard": [
+        [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+    ]}
     await edit_all_notifications(notification_msg_ids, sync_text, reply_markup=_cancel_kb_ac)
 
     if not from_bot:
@@ -972,16 +976,75 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     order.status = OrderStatus.IN_DELIVERY
 
     client_tg = order.user.telegram_id if order.user else None
+    client_name = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
+    notification_msg_ids = order.notification_msg_ids
     oid = order.id
+    order_address = order.address
+    order_phone = order.recipient_phone
+    order_total = int(order.total)
+    order_payment = order.payment_method or "cash"
+    order_creator_role = order.creator_role
+    order_creator_name = order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None)
+    order_assigner_name = order.assigner_name
+    order_assigner_role = order.assigner_role or ""
+    _ret_cnt_dl = order.return_bottles_count or 0
+    _lent_cnt_dl = order.bottles_lent or 0
+    _surcharge_dl = order.bottle_surcharge or 0.0
+    _items_data_dl = [(i.product, i.quantity) for i in order.items if i.product]
+    _qty19_dl = sum(q for p, q in _items_data_dl if p.has_bottle_deposit)
+    _missing_dl = max(0, _qty19_dl - _ret_cnt_dl)
+    _snum_dl = f"{int(_surcharge_dl):,}".replace(",", " ")
+    _bullet_lines_dl = [f"  • {p.name} {q} шт." for p, q in _items_data_dl]
+    if _surcharge_dl > 0 and _missing_dl > 0:
+        _bullet_lines_dl.append(f"  • Невозвращённые бутылки {_missing_dl} шт. — +{_snum_dl} сум")
+    items_bullets_dl = "\n".join(_bullet_lines_dl) or "—"
 
     courier_name = ""
+    courier_phone = ""
     if order.courier_id:
         c_q = await db.execute(select(Courier).where(Courier.id == order.courier_id))
         c = c_q.scalar_one_or_none()
-        courier_name = c.name if c else ""
+        if c:
+            courier_name = c.name
+            courier_phone = c.phone or ""
 
     await db.commit()
+
+    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+    pay_label_str_dl = _pay_labels.get(order_payment, order_payment)
+    c_phone_part_dl = f"  |  {courier_phone}" if courier_phone else ""
+    _ROLE_LABELS_DL = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    if order_creator_role:
+        _cr_lbl_dl = _ROLE_LABELS_DL.get(order_creator_role, order_creator_role.capitalize())
+        _creator_line_dl = f"\n✍️ Создал заказ: {_cr_lbl_dl} {order_creator_name}" if order_creator_name else f"\n✍️ Создал заказ: {_cr_lbl_dl}"
+    else:
+        _creator_line_dl = f"\n✍️ Создал заказ: Клиент {client_name}"
+    if order_assigner_name:
+        _asgn_role_dl = _ROLE_LABELS_DL.get(order_assigner_role, "") if order_assigner_role else ""
+        _assigner_line_dl = f"\n👤 Назначил курьера: {_asgn_role_dl} {order_assigner_name}".rstrip()
+    else:
+        _assigner_line_dl = ""
+    _ret_line_dl = f"\n♻️ Возврат бутылок: {_ret_cnt_dl} шт." if _ret_cnt_dl else ""
+    _lent_line_dl = f"\n📦 Одолжить: {_lent_cnt_dl} шт." if _lent_cnt_dl else ""
+    _surcharge_line_dl = f"\n💰 Надбавка за невозврат: {int(_surcharge_dl):,} сум" if _surcharge_dl > 0 else ""
+    dl_staff_text = (
+        f"🚴 Курьер {courier_name} в пути\n\n"
+        f"👤 {client_name}  |  {order_phone}\n"
+        f"📍 {order_address}\n\n"
+        f"Товары:\n{items_bullets_dl}\n"
+        f"💰 {order_total:,} сум  |  {pay_label_str_dl}"
+        f"{_ret_line_dl}{_lent_line_dl}{_surcharge_line_dl}"
+        f"{_creator_line_dl}\n"
+        f"🚴 {courier_name}{c_phone_part_dl}"
+        f"{_assigner_line_dl}"
+    )
+    _dl_kb = {"inline_keyboard": [
+        [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+    ]}
+    from app.services.tg_notify import edit_all_notifications
+    await edit_all_notifications(notification_msg_ids, dl_staff_text, reply_markup=_dl_kb)
 
     if not from_bot:
         text = f"🚴 Курьер {courier_name} выехал к вам!" if courier_name else "🚴 Курьер выехал к вам!"
@@ -1003,10 +1066,36 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
     already_delivered = order.status == OrderStatus.DELIVERED
 
     client_tg = order.user.telegram_id if order.user else None
+    client_name_dv = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
+    notification_msg_ids_dv = order.notification_msg_ids
     items = _order_items_text(order.items)
     oid = order.id
     bonus = 0.0
+    order_address_dv = order.address
+    order_phone_dv = order.recipient_phone
+    order_total_dv = int(order.total)
+    order_payment_dv = order.payment_method or "cash"
+    order_creator_role_dv = order.creator_role
+    order_creator_name_dv = order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None)
+    order_assigner_name_dv = order.assigner_name
+    order_assigner_role_dv = order.assigner_role or ""
+    _ret_cnt_dv = order.return_bottles_count or 0
+    _lent_cnt_dv = order.bottles_lent or 0
+    _surcharge_dv = order.bottle_surcharge or 0.0
+    _items_data_dv = [(i.product, i.quantity) for i in order.items if i.product]
+    _qty19_dv = sum(q for p, q in _items_data_dv if p.has_bottle_deposit)
+    _missing_dv = max(0, _qty19_dv - _ret_cnt_dv)
+    _snum_dv = f"{int(_surcharge_dv):,}".replace(",", " ")
+    _bullet_lines_dv = [f"  • {p.name} {q} шт." for p, q in _items_data_dv]
+    if _surcharge_dv > 0 and _missing_dv > 0:
+        _bullet_lines_dv.append(f"  • Невозвращённые бутылки {_missing_dv} шт. — +{_snum_dv} сум")
+    items_bullets_dv = "\n".join(_bullet_lines_dv) or "—"
+    courier_name_dv = ""
+    courier_phone_dv = ""
+    if order.courier:
+        courier_name_dv = order.courier.name
+        courier_phone_dv = order.courier.phone or ""
 
     if not already_delivered:
         order.status = OrderStatus.DELIVERED
@@ -1073,6 +1162,41 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             ))
 
         await db.commit()
+
+    if not already_delivered:
+        _pay_labels_dv = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+        pay_label_str_dv = _pay_labels_dv.get(order_payment_dv, order_payment_dv)
+        c_phone_part_dv = f"  |  {courier_phone_dv}" if courier_phone_dv else ""
+        _ROLE_LABELS_DV = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+        if order_creator_role_dv:
+            _cr_lbl_dv = _ROLE_LABELS_DV.get(order_creator_role_dv, order_creator_role_dv.capitalize())
+            _creator_line_dv = f"\n✍️ Создал заказ: {_cr_lbl_dv} {order_creator_name_dv}" if order_creator_name_dv else f"\n✍️ Создал заказ: {_cr_lbl_dv}"
+        else:
+            _creator_line_dv = f"\n✍️ Создал заказ: Клиент {client_name_dv}"
+        if order_assigner_name_dv:
+            _asgn_role_dv = _ROLE_LABELS_DV.get(order_assigner_role_dv, "") if order_assigner_role_dv else ""
+            _assigner_line_dv = f"\n👤 Назначил курьера: {_asgn_role_dv} {order_assigner_name_dv}".rstrip()
+        else:
+            _assigner_line_dv = ""
+        _ret_line_dv = f"\n♻️ Возврат бутылок: {_ret_cnt_dv} шт." if _ret_cnt_dv else ""
+        _lent_line_dv = f"\n📦 Одолжить: {_lent_cnt_dv} шт." if _lent_cnt_dv else ""
+        _surcharge_line_dv = f"\n💰 Надбавка за невозврат: {int(_surcharge_dv):,} сум" if _surcharge_dv > 0 else ""
+        dv_staff_text = (
+            f"✔️ Доставлено\n\n"
+            f"👤 {client_name_dv}  |  {order_phone_dv}\n"
+            f"📍 {order_address_dv}\n\n"
+            f"Товары:\n{items_bullets_dv}\n"
+            f"💰 {order_total_dv:,} сум  |  {pay_label_str_dv}"
+            f"{_ret_line_dv}{_lent_line_dv}{_surcharge_line_dv}"
+            f"{_creator_line_dv}\n"
+            f"🚴 {courier_name_dv}{c_phone_part_dv}"
+            f"{_assigner_line_dv}"
+        )
+        _dv_kb = {"inline_keyboard": [
+            [{"text": "🗑️ Удалить заказ из сайта", "callback_data": f"order:delete:{oid}"}],
+        ]}
+        from app.services.tg_notify import edit_all_notifications
+        await edit_all_notifications(notification_msg_ids_dv, dv_staff_text, reply_markup=_dv_kb)
 
     if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} сум бонусных баллов!" if bonus > 0 else ""
