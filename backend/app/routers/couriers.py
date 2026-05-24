@@ -1125,32 +1125,34 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             mgr_client_name = (user.name if user and user.name else None) or ""
             mgr_client_phone = (user.phone if user and user.phone else None) or body.phone
             mgr_client_identity = f"{mgr_client_name} | {mgr_client_phone}".strip(" |") if mgr_client_name else mgr_client_phone
-            mgr_items_lines = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
+            mgr_items_lines = "\n".join(f"  • {p.name} {q} шт." for p, q in items_data) if items_data else "  —"
             qty19L_m = sum(q for p, q in items_data if p.has_bottle_deposit)
             missing_m = max(0, qty19L_m - body.return_bottles_count)
-            if missing_m > 0 and bottle_surcharge > 0:
-                mgr_items_lines += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
-            _ret_lines_m = []
+            _pay_labels_m = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+            _pay_label_m = _pay_labels_m.get(body.payment_method or "cash", "💵 Наличные")
+            _inline_ret = []
             if body.return_bottles_count:
-                _ret_lines_m.append(f"  • Бутылки 19л — {body.return_bottles_count} шт.")
+                _inline_ret.append(f"♻️ Возврат бутылок: {body.return_bottles_count} шт.")
             if body.bottles_lent:
-                _ret_lines_m.append(f"  • Одолжить — {body.bottles_lent} шт.")
-            mgr_return_block = ("\n\nВозврат:\n" + "\n".join(_ret_lines_m)) if _ret_lines_m else ""
+                _inline_ret.append(f"📦 Одолжить: {body.bottles_lent} шт.")
+            if missing_m > 0 and bottle_surcharge > 0:
+                _inline_ret.append(f"💸 Надбавка за невозврат: +{_fmt_nm(bottle_surcharge)} сум")
+            _inline_ret_str = ("\n" + "\n".join(_inline_ret)) if _inline_ret else ""
+            # Items with prices for courier text; items without prices for staff text
+            mgr_items_lines_priced = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
     
             if manager_assigned_courier:
                 courier_name_m = manager_assigned_courier.name
                 courier_phone_m = manager_assigned_courier.phone or ""
     
                 items_lines_c = "\n".join(f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум" for p, q in items_data) if items_data else "  —"
-                if missing_m > 0 and bottle_surcharge > 0:
-                    items_lines_c += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
                 courier_text = (
                     f"🚴 <b>Новый заказ назначен вам!</b>\n\n"
-                    f"📍 {body.address}{note_line}\n"
-                    f"👤 {mgr_client_identity}\n\n"
-                    f"Состав:\n{items_lines_c}"
-                    f"{mgr_return_block}\n\n"
-                    f"Итого: {_fmt_nm(total_int)} сум"
+                    f"👤 {mgr_client_identity}\n"
+                    f"📍 {body.address}{note_line}\n\n"
+                    f"Товары:\n{items_lines_c}\n"
+                    f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
+                    f"{_inline_ret_str}"
                 )
                 from urllib.parse import quote as url_quote
                 kb_rows = []
@@ -1167,10 +1169,10 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 if client_tg:
                     await _tg(client_tg, (
                         f"✅ Для вас создан заказ!\n\n"
-                        f"Состав:\n{items_lines_c}"
-                        f"{mgr_return_block}\n\n"
-                        f"Сумма: {_fmt_nm(total_int)} сум\n"
-                        f"Адрес: {body.address}"
+                        f"📍 {body.address}{note_line}\n\n"
+                        f"Товары:\n{items_lines_c}\n"
+                        f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
+                        f"{_inline_ret_str}"
                     ))
                     phone_line = f"\nТелефон курьера: {courier_phone_m}" if courier_phone_m else ""
                     await _tg(client_tg, (
@@ -1186,9 +1188,9 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"✅ Курьер {courier_name_m} назначен\n\n"
                     f"👤 {mgr_client_identity}\n"
                     f"📍 {body.address}{note_line}\n\n"
-                    f"Состав:\n{mgr_items_lines}"
-                    f"{mgr_return_block}\n\n"
-                    f"💰 {_fmt_nm(total_int)} сум\n"
+                    f"Товары:\n{mgr_items_lines}\n"
+                    f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
+                    f"{_inline_ret_str}\n"
                     f"✍️ Создал заказ: {_creator_role_nom}{_creator_label_m}\n"
                     f"🚴 {courier_name_m}{c_phone_part_m}"
                 )
@@ -1225,14 +1227,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                         f"  • {p.name} {q} шт. — {_fmt_nm(p.price * q)} сум"
                         for p, q in items_data
                     ) if items_data else "  —"
-                    if missing_m > 0 and bottle_surcharge > 0:
-                        items_lines_fmt += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_nm(bottle_surcharge)} сум"
                     await _tg(client_tg, (
                         f"✅ Для вас создан заказ!\n\n"
-                        f"Состав:\n{items_lines_fmt}"
-                        f"{mgr_return_block}\n\n"
-                        f"Сумма: {_fmt_nm(total_int)} сум\n"
-                        f"Адрес: {body.address}"
+                        f"📍 {body.address}{note_line}\n\n"
+                        f"Товары:\n{items_lines_fmt}\n"
+                        f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
+                        f"{_inline_ret_str}"
                     ))
                     await _tg(client_tg, (
                         f"✅ Заказ передан на подтверждение.\n"
@@ -1241,13 +1241,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     
                 _creator_label_nm = f" {body.creator_name}" if body.creator_name else ""
                 text = (
-                    f"🆕 Новый заказ! Создан {role_label}{_creator_label_nm}\n"
-                    f"Клиент: {mgr_client_identity}\n"
-                    f"Адрес: {body.address}{note_line}\n\n"
-                    f"Состав:\n{mgr_items_lines}"
-                    f"{mgr_return_block}\n\n"
-                    f"Сумма: {_fmt_nm(total_int)} сум\n\n"
-                    f"Назначьте курьера!"
+                    f"🆕 Новый заказ! Создан {role_label}{_creator_label_nm}\n\n"
+                    f"👤 {mgr_client_identity}\n"
+                    f"📍 {body.address}{note_line}\n\n"
+                    f"Товары:\n{mgr_items_lines}\n"
+                    f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
+                    f"{_inline_ret_str}"
                 )
                 unified_kb = {"inline_keyboard": [
                     [{"text": "📦 Назначить курьера", "callback_data": f"order:assign:{oid}"}],

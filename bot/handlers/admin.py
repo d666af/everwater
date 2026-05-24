@@ -281,7 +281,7 @@ async def order_cancel_unified(call: CallbackQuery):
         await api.reject_order(order_id, reason, from_bot=True,
                                rejected_by_name=db_name or call.from_user.full_name, rejected_by_role=role)
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
@@ -299,7 +299,7 @@ async def admin_cancel_order_cb(call: CallbackQuery):
         await api.reject_order(order_id, "Отменён администратором", from_bot=True,
                                rejected_by_name=db_name_ac or call.from_user.full_name, rejected_by_role="admin")
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
@@ -380,7 +380,7 @@ async def admin_confirm(call: CallbackQuery):
     try:
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
-        if "409" not in str(e):
+        if getattr(e, "status", None) != 409:
             await call.answer("❌ Ошибка подтверждения.", show_alert=True)
             return
     order = await api.get_order(order_id)
@@ -409,7 +409,7 @@ async def order_assign_courier_prompt(call: CallbackQuery):
     try:
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
-        if "409" not in str(e):
+        if getattr(e, "status", None) != 409:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
             return
     order = await api.get_order(order_id)
@@ -485,16 +485,12 @@ async def order_reject_reason_cb(call: CallbackQuery, state: FSMContext):
         await api.reject_order(order_id, reason, from_bot=True,
                                rejected_by_name=db_name_rj or call.from_user.full_name, rejected_by_role=role)
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.answer("⚠️ Заказ уже обработан.", show_alert=True)
         else:
             await call.answer("❌ Ошибка при отмене.", show_alert=True)
         return
-    try:
-        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.\nПричина: {reason}")
-    except Exception:
-        await call.message.answer(f"❌ Заказ #{order_id} отменён.\nПричина: {reason}")
-    await call.answer("❌ Заказ отменён")
+    await call.answer("✅ Заказ отменён")
 
 
 @router.message(AdminReject.waiting_reason)
@@ -513,13 +509,13 @@ async def admin_reject_reason(message: Message, state: FSMContext):
                                rejected_by_name=db_name_msg or message.from_user.full_name, rejected_by_role=role)
     except Exception as e:
         await state.clear()
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await message.answer("Заказ уже обработан.")
         else:
             await message.answer("❌ Ошибка при отмене заказа.")
         return
     await state.clear()
-    await message.answer(f"❌ Заказ #{order_id} отменён. Причина: {reason}")
+    await message.answer("✅ Заказ отменён.")
 
 
 @router.callback_query(F.data.startswith("admin:set_courier:"))
@@ -796,7 +792,7 @@ async def admin_sub_confirm(call: CallbackQuery):
         await api.confirm_subscription(sub_id)
         await call.message.edit_text(f"✅ Подписка #{sub_id} подтверждена!")
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.answer("Подписка уже обработана другим администратором", show_alert=True)
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
@@ -815,7 +811,7 @@ async def admin_sub_reject(call: CallbackQuery):
         await api.reject_subscription(sub_id)
         await call.message.edit_text(f"❌ Подписка #{sub_id} отклонена.")
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.answer("Подписка уже обработана другим администратором", show_alert=True)
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)

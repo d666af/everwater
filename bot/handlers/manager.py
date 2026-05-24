@@ -184,7 +184,7 @@ async def mgr_confirm(call: CallbackQuery):
     try:
         await api.confirm_order(order_id, from_bot=True)
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.message.answer("⚠️ Заказ уже обработан другим администратором.")
         else:
             await call.message.answer("❌ Ошибка подтверждения. Попробуйте ещё раз.")
@@ -244,18 +244,12 @@ async def _do_reject(target, order_id: int, reason: str,
         await api.reject_order(order_id, reason, from_bot=True,
                                rejected_by_name=rejected_by_name, rejected_by_role=rejected_by_role)
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             if isinstance(target, CallbackQuery):
-                await target.message.answer("⚠️ Заказ уже обработан другим администратором.")
+                await target.answer("⚠️ Заказ уже обработан.", show_alert=True)
             return
-    reply_text = f"❌ Заказ #{order_id} отменён.\nПричина: {reason}"
     if isinstance(target, CallbackQuery):
-        try:
-            await target.message.edit_text(reply_text)
-        except Exception:
-            await target.message.answer(reply_text)
-    else:
-        await target.answer(reply_text)
+        await target.answer("✅ Заказ отменён")
 
 
 @router.message(MgrRejectCustom.waiting_reason)
@@ -431,7 +425,7 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
         await api.reject_order(order_id, reason, from_bot=True,
                                rejected_by_name=db_name_mc or call.from_user.full_name, rejected_by_role="manager")
     except Exception as e:
-        if "409" in str(e):
+        if getattr(e, "status", None) == 409:
             await call.message.answer("⚠️ Заказ уже обработан.")
             return
 
