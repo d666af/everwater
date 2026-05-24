@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.manager import (
-    manager_menu_kb, mgr_order_kb, mgr_courier_select_kb,
+    manager_menu_kb, manager_links_kb, mgr_order_kb, mgr_courier_select_kb,
     mgr_client_kb,
     mgr_order_reject_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
@@ -85,6 +85,7 @@ async def manager_panel(message: Message):
         "🧑‍💼 Панель менеджера:",
         reply_markup=manager_menu_kb(subs_enabled=subs_on, support_enabled=sup_on),
     )
+    await message.answer("Разделы:", reply_markup=manager_links_kb())
 
 
 # ─── Orders ───────────────────────────────────────────────────────────────────
