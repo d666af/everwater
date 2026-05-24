@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     ADMIN_IDS: list[int] = []
     WAREHOUSE_IDS: list[int] = []
+    INVOICE_GROUP_ID: int | None = None  # Group where invoice photos are posted
     # Super-admins who can manage secondary admins via CRM.
     # Defaults to ADMIN_IDS at runtime if not separately set.
     MAIN_ADMIN_IDS: list[int] = []

@@ -972,31 +972,10 @@ def _group_id_filter(message: Message) -> bool:
     return bool(settings.INVOICE_GROUP_ID and message.chat.id == settings.INVOICE_GROUP_ID)
 
 
-@router.message(_group_id_filter, F.photo)
-async def handle_group_invoice(message: Message):
-    """Auto-process invoice photos posted in the configured group.
-
-    Does NOT reply in the group. Sends the result privately to all ADMIN_IDS.
-    The warehouse transaction is recorded with performed_by='Группа накладных'.
-    """
-    if message.from_user and message.from_user.is_bot:
-        return
-
-    photo = message.photo[-1]
-    result_text = await process_invoice(
-        message.bot, photo, message, performed_by='Группа накладных'
-    )
-    for admin_id in get_all_admin_ids():
-        try:
-            await message.bot.send_message(admin_id, result_text)
-        except Exception as e:
-            log.error("Failed to notify admin %s about group invoice: %s", admin_id, e)
-
-
 @router.message(_group_id_filter)
 async def handle_group_silence(message: Message):
-    """Silently drop ALL non-photo messages from the invoice group."""
-    pass  # prevents start/client/etc. routers from ever seeing group messages
+    """Silently drop ALL messages from the invoice group (reading disabled)."""
+    pass  # prevents other routers from ever seeing group messages
 
 
 @router.message(Command("testnakl"))
