@@ -912,6 +912,9 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     if order_assigner_name:
         _asgn_role_lbl = _ROLE_LABELS_SYNC.get(order_assigner_role, "") if order_assigner_role else ""
         _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
+    elif order_creator_role in ("manager", "admin") and order_creator_name:
+        _cr_asgn_lbl = _ROLE_LABELS_SYNC.get(order_creator_role, order_creator_role.capitalize())
+        _assigner_line = f"\n👤 Назначил курьера: {_cr_asgn_lbl} {order_creator_name}"
     else:
         _assigner_line = ""
     _ret_line_ac = f"\n♻️ Возврат бутылок: {_ret_cnt} шт." if _ret_cnt else ""
@@ -1024,6 +1027,9 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     if order_assigner_name:
         _asgn_role_dl = _ROLE_LABELS_DL.get(order_assigner_role, "") if order_assigner_role else ""
         _assigner_line_dl = f"\n👤 Назначил курьера: {_asgn_role_dl} {order_assigner_name}".rstrip()
+    elif order_creator_role in ("manager", "admin") and order_creator_name:
+        _cr_asgn_dl = _ROLE_LABELS_DL.get(order_creator_role, order_creator_role.capitalize())
+        _assigner_line_dl = f"\n👤 Назначил курьера: {_cr_asgn_dl} {order_creator_name}"
     else:
         _assigner_line_dl = ""
     _ret_line_dl = f"\n♻️ Возврат бутылок: {_ret_cnt_dl} шт." if _ret_cnt_dl else ""
@@ -1177,6 +1183,9 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
         if order_assigner_name_dv:
             _asgn_role_dv = _ROLE_LABELS_DV.get(order_assigner_role_dv, "") if order_assigner_role_dv else ""
             _assigner_line_dv = f"\n👤 Назначил курьера: {_asgn_role_dv} {order_assigner_name_dv}".rstrip()
+        elif order_creator_role_dv in ("manager", "admin") and order_creator_name_dv:
+            _cr_asgn_dv = _ROLE_LABELS_DV.get(order_creator_role_dv, order_creator_role_dv.capitalize())
+            _assigner_line_dv = f"\n👤 Назначил курьера: {_cr_asgn_dv} {order_creator_name_dv}"
         else:
             _assigner_line_dv = ""
         _ret_line_dv = f"\n♻️ Возврат бутылок: {_ret_cnt_dv} шт." if _ret_cnt_dv else ""
@@ -1825,6 +1834,9 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     elif order_assigner_name:
         _asgn_role_lbl = _ROLE_LABELS.get(order_assigner_role, "") if order_assigner_role else ""
         _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
+    elif order_creator_role in ("manager", "admin") and order_creator_name:
+        _cr_asgn_lbl = _ROLE_LABELS.get(order_creator_role, order_creator_role.capitalize())
+        _assigner_line = f"\n👤 Назначил курьера: {_cr_asgn_lbl} {order_creator_name}"
     else:
         _assigner_line = ""
 
