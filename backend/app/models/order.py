@@ -86,6 +86,7 @@ class Order(Base):
     # Courier item edit tracking
     is_items_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     items_edited_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    items_change_log: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Soft delete
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

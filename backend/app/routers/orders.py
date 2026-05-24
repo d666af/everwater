@@ -1590,6 +1590,14 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     order_delivery_time = order.delivery_time or "—"
     order_manager_phone = order.manager_phone or ""
 
+    # Snapshot old state for diff
+    _old_items_map: dict[int, tuple[str, int]] = {
+        oi.product_id: (oi.product.name if oi.product else f"Товар {oi.product_id}", oi.quantity)
+        for oi in order.items
+    }
+    _old_return = order.return_bottles_count or 0
+    _old_lent = order.bottles_lent or 0
+
     # Rebuild items
     await db.execute(sa_delete(OrderItem).where(OrderItem.order_id == order_id))
     await db.flush()
@@ -1610,12 +1618,27 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     settings_cfg = await get_all_settings(db)
     bottle_surcharge = calc_bottle_surcharge(items_data, body.return_bottles_count, settings_cfg, body.bottles_lent)
 
+    # Compute diff between old and new composition
+    import json as _json_mod
+    _new_items_map: dict[int, tuple[str, int]] = {prod.id: (prod.name, qty) for prod, qty in items_data}
+    _diff_entries: list[dict] = []
+    for _pid in sorted(set(_old_items_map) | set(_new_items_map)):
+        _oname, _oqty = _old_items_map.get(_pid, ("", 0))
+        _nname, _nqty = _new_items_map.get(_pid, ("", 0))
+        if _oqty != _nqty:
+            _diff_entries.append({"name": _nname or _oname, "old": _oqty, "new": _nqty})
+    if _old_return != body.return_bottles_count:
+        _diff_entries.append({"name": "♻️ Возврат бутылок", "old": _old_return, "new": body.return_bottles_count})
+    if _old_lent != body.bottles_lent:
+        _diff_entries.append({"name": "📦 Одолжить бутылок", "old": _old_lent, "new": body.bottles_lent})
+
     order.subtotal = subtotal
     order.bottle_surcharge = bottle_surcharge
     order.total = max(0.0, subtotal + bottle_surcharge + (order.delivery_fee or 0) - (order.bonus_used or 0) - (order.balance_used or 0))
     order.return_bottles_count = body.return_bottles_count
     order.bottles_lent = body.bottles_lent
     order.is_items_edited = True
+    order.items_change_log = _json_mod.dumps(_diff_entries, ensure_ascii=False) if _diff_entries else None
     if body.courier_name:
         order.items_edited_by = body.courier_name
 
@@ -1645,7 +1668,17 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     total_str = _fmtv(order.total)
     ret_line = f"\n♻️ Возврат: {body.return_bottles_count} шт." if body.return_bottles_count else ""
     lent_line = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
-    change_marker = "\n✏️ Изменено курьером"
+    _editor_label = body.courier_name or "курьером"
+    if _diff_entries:
+        _diff_lines = []
+        for _d in _diff_entries:
+            if _d["new"] > _d["old"]:
+                _diff_lines.append(f"  ➕ {_d['name']}: {_d['old']} → {_d['new']} шт.")
+            else:
+                _diff_lines.append(f"  ➖ {_d['name']}: {_d['old']} → {_d['new']} шт.")
+        change_marker = f"\n✏️ Изменено {_editor_label}:\n" + "\n".join(_diff_lines)
+    else:
+        change_marker = f"\n✏️ Изменено {_editor_label}"
 
     _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
     pay_label_str = _pay_labels.get(order_payment, order_payment)
