@@ -52,9 +52,12 @@ def courier_assignment_text(order: dict) -> str:
     bonus_used = float(order.get('bonus_used') or 0)
     bonus_line = f"\n💎 Скидка бонусами: −{_fmt_sum(int(bonus_used))}" if bonus_used > 0 else ""
 
+    client_name = order.get('client_name') or ""
+    phone = order.get('recipient_phone') or '—'
+    client_id = f"{client_name}  |  {phone}" if client_name else phone
     return (
+        f"👤 {client_id}\n"
         f"📍 {order.get('address') or '—'}\n"
-        f"👤 {order.get('recipient_phone') or '—'}\n"
         f"⏰ {time_str}\n\n"
         f"Доставить:\n{items_text}"
         f"{return_line}"
@@ -67,14 +70,8 @@ def courier_assignment_text(order: dict) -> str:
 
 def courier_assignment_kb(order_id: int, order: dict) -> InlineKeyboardMarkup:
     rows = []
-    lat = order.get("latitude")
-    lng = order.get("longitude")
-    address = order.get("address", "")
-
-    if lat and lng:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={lat},{lng}")])
-    elif address:
-        rows.append([InlineKeyboardButton(text="🗺 На карте", url=f"https://maps.google.com/?q={quote(address)}")])
+    _map_url = _site("/courier/map")
+    rows.append([InlineKeyboardButton(text="🗺 Карта заказов", web_app=WebAppInfo(url=_map_url))])
     rows.append([InlineKeyboardButton(text="🚴 В пути", callback_data=f"courier:in_delivery:{order_id}")])
     rows.append([InlineKeyboardButton(text="✏️ Изменить состав", callback_data=f"courier:edit_items:{order_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

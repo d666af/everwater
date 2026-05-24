@@ -1033,14 +1033,13 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
             if body.return_bottles_count > 0:
                 courier_text += f"\n\n♻️ Забрать пустых бутылок: {body.return_bottles_count} шт."
             courier_text += f"\n\nИтого: {_fmt_n(total_int)} сум"
-            from urllib.parse import quote as url_quote
-            kb_rows = []
-            _m = _map_url(body.address, body.latitude, body.longitude)
-            if _m:
-                kb_rows.append([{"text": "🗺 На карте", "url": _m}])
-            kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-            kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
-            kb_rows.append([{"text": "◀️ К списку", "callback_data": "cor:back"}])
+            _site_url_cc = cfg.MINI_APP_URL.rstrip("/") + "/courier/map"
+            kb_rows = [
+                [{"text": "🗺 Карта заказов", "web_app": {"url": _site_url_cc}}],
+                [{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}],
+                [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+                [{"text": "◀️ К списку", "callback_data": "cor:back"}],
+            ]
             courier_kb = {"inline_keyboard": kb_rows}
             _courier_msg_id = await _tg_send(creator_courier.telegram_id, courier_text, courier_kb, parse_mode="HTML")
             if _courier_msg_id:
@@ -1154,13 +1153,12 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                     f"💰 {_fmt_nm(total_int)} сум  |  {_pay_label_m}"
                     f"{_inline_ret_str}"
                 )
-                from urllib.parse import quote as url_quote
-                kb_rows = []
-                _m = _map_url(body.address, body.latitude, body.longitude)
-                if _m:
-                    kb_rows.append([{"text": "🗺 На карте", "url": _m}])
-                kb_rows.append([{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}])
-                kb_rows.append([{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}])
+                _site_url_cr = cfg.MINI_APP_URL.rstrip("/") + "/courier/map"
+                kb_rows = [
+                    [{"text": "🗺 Карта заказов", "web_app": {"url": _site_url_cr}}],
+                    [{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}],
+                    [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+                ]
                 c_sent = await _tg_send(manager_assigned_courier.telegram_id, courier_text, {"inline_keyboard": kb_rows}, parse_mode="HTML")
                 if c_sent:
                     await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_sent))
