@@ -232,12 +232,14 @@ async def mgr_reject_quick(call: CallbackQuery, state: FSMContext):
         await call.message.answer(f"Введите причину отклонения заказа #{order_id}:")
         return
     reason = _REJECT_REASONS.get(reason_key, reason_key)
-    await _do_reject(call, order_id, reason,
-                     rejected_by_name=call.from_user.full_name, rejected_by_role="manager")
+    await _do_reject(call, order_id, reason, tg_id=call.from_user.id, rejected_by_role="manager")
 
 
 async def _do_reject(target, order_id: int, reason: str,
-                     rejected_by_name: str | None = None, rejected_by_role: str | None = None):
+                     tg_id: int | None = None, rejected_by_name: str | None = None,
+                     rejected_by_role: str | None = None):
+    if tg_id and not rejected_by_name:
+        rejected_by_name = await api.get_staff_db_name(tg_id, rejected_by_role == "admin") or None
     try:
         await api.reject_order(order_id, reason, from_bot=True,
                                rejected_by_name=rejected_by_name, rejected_by_role=rejected_by_role)
@@ -264,7 +266,7 @@ async def mgr_reject_custom_reason(message: Message, state: FSMContext):
     order_id = data["reject_order_id"]
     await state.clear()
     await _do_reject(message, order_id, message.text.strip(),
-                     rejected_by_name=message.from_user.full_name, rejected_by_role="manager")
+                     tg_id=message.from_user.id, rejected_by_role="manager")
 
 
 @router.message(MgrReject.waiting_reason)
@@ -275,7 +277,7 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
     order_id = data["reject_order_id"]
     await state.clear()
     await _do_reject(message, order_id, message.text.strip(),
-                     rejected_by_name=message.from_user.full_name, rejected_by_role="manager")
+                     tg_id=message.from_user.id, rejected_by_role="manager")
 
 
 @router.callback_query(F.data.startswith("mgr:edit_items:"))
@@ -424,9 +426,10 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
         return
     order_id = int(call.data.split(":")[2])
     reason = "Отменён менеджером"
+    db_name_mc = await api.get_staff_db_name(call.from_user.id, False)
     try:
         await api.reject_order(order_id, reason, from_bot=True,
-                               rejected_by_name=call.from_user.full_name, rejected_by_role="manager")
+                               rejected_by_name=db_name_mc or call.from_user.full_name, rejected_by_role="manager")
     except Exception as e:
         if "409" in str(e):
             await call.message.answer("⚠️ Заказ уже обработан.")

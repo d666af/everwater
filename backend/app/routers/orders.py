@@ -392,6 +392,10 @@ async def create_order(
     if bonus_used > 0:
         user.bonus_points = max(0.0, user.bonus_points - bonus_used)
 
+    # Pre-claim notification_msg_ids for bot orders so the scheduler doesn't send a duplicate
+    if from_bot:
+        order.notification_msg_ids = "[]"
+
     if x_idempotency_key:
         from sqlalchemy import text as _text
         await db.execute(
@@ -676,12 +680,9 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
                 await _tg(agent_tg, courier_reject_text)
 
     # Client gets simple format without prices or meta
-    client_reject_text = (
-        "❌ Заказ отменён"
-        + (f"\n{items_block_simple}" if items_block_simple else "")
-        + (f"\n{bottle_block}" if bottle_block else "")
-        + (f"\nПричина: {body.reason}" if body.reason else "")
-    )
+    client_reject_text = "❌ Ваш заказ отменён."
+    if body.reason:
+        client_reject_text += f"\nПричина: {body.reason}"
     new_msg_id = await _tg_edit_or_send(client_tg, client_reject_text, old_msg_id)
     if new_msg_id and new_msg_id != old_msg_id:
         await _save_status_msg_id(db, oid, new_msg_id)
@@ -740,23 +741,21 @@ async def payment_confirmed(order_id: int, from_bot: bool = False, db: AsyncSess
     if not from_bot:
         from app.config import settings as cfg
         from app.models.manager import Manager
-        from app.services.tg_notify import notify_all
-        site_url = cfg.MINI_APP_URL.rstrip("/") + "/admin/orders"
+        from app.services.tg_notify import notify_all, get_all_admin_ids
+        _pay_labels_pc = {"cash": "Наличными курьеру", "card": "Картой", "bonus": "Бонусами"}
         text = (
-            f"🆕 Новый заказ!\n"
+            f"🆕 Новый заказ! Создан клиентом\n"
             f"Клиент: {client_name} | {client_phone}\n"
             f"Адрес: {order_addr}\n"
             f"Заказ: {items_text}\n"
-            f"Сумма: {order_total:,} сум\n"
-            f"Оплата: {pay_label}"
+            f"Оплата: {_pay_labels_pc.get(pay_method, pay_method)}\n"
+            f"Итого: {order_total:,} сум"
         )
         kb = {"inline_keyboard": [
-            [{"text": "✅ Подтвердить", "callback_data": f"admin:confirm:{oid}"},
-             {"text": "❌ Отклонить", "callback_data": f"admin:reject:{oid}"}],
-            [{"text": "🌐 Заказ на сайте", "url": site_url}],
+            [{"text": "📦 Назначить курьера", "callback_data": f"order:assign:{oid}"}],
+            [{"text": "❌ Отменить заказ", "callback_data": f"order:reject:{oid}"}],
         ]}
         mgrs = (await db.execute(select(Manager).where(Manager.is_active == True))).scalars().all()
-        from app.services.tg_notify import get_all_admin_ids
         msg_ids_json = await notify_all(list(await get_all_admin_ids(db)), mgrs, text, kb)
         await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
         await db.commit()
