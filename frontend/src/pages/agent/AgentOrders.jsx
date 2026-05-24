@@ -73,8 +73,8 @@ function EditItemsModal({ order, agentName, onClose, onSave }) {
     }
     setItems(initial)
     setProductsLoading(true)
-    getProducts()
-      .then(p => setProducts((p || []).filter(x => x.is_active !== false)))
+    getProducts(true)
+      .then(p => setProducts(p || []))
       .catch(() => {})
       .finally(() => setProductsLoading(false))
   }, [])

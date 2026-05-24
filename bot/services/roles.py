@@ -82,8 +82,9 @@ async def get_user_roles(telegram_id: int) -> list[str]:
     agent = await api.get_agent_by_telegram(telegram_id)
     if agent:
         roles.append("agent")
-    # Pure agents don't get the client role; only admins who are also agents keep it
-    if "agent" in roles and "admin" not in roles:
+    # Staff roles don't grant client access; only admins can also be clients
+    _STAFF_ROLES = {"warehouse", "manager", "courier", "agent"}
+    if any(r in _STAFF_ROLES for r in roles) and "admin" not in roles:
         roles = [r for r in roles if r != "client"]
     return roles
 
