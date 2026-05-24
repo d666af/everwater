@@ -121,6 +121,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
             and_(
                 WaterTransaction.courier_id == courier.id,
                 WaterTransaction.transaction_type == "bottle_return",
+                WaterTransaction.counts_for_debt != False,
             )
         )
     )
