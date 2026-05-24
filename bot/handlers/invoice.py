@@ -230,6 +230,27 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                 if line not in seen:
                     seen.add(line)
                     combined.append(line)
+            # Dedicated "возврат" row extraction with ±80px y-tolerance.
+            # The 30px buckets above may split "возврат" from "63" on the same
+            # physical table row when word tops differ by >30px after upscaling.
+            vozv_idx = None
+            for idx2 in range(len(data['text'])):
+                w2 = data['text'][idx2].strip()
+                if w2 and int(data['conf'][idx2]) >= 0 and re.search(r'возврат|vozvrat', w2, re.IGNORECASE):
+                    vozv_idx = idx2
+                    break
+            if vozv_idx is not None:
+                vozv_top = data['top'][vozv_idx]
+                row_words = []
+                for idx2 in range(len(data['text'])):
+                    w2 = data['text'][idx2].strip()
+                    if w2 and int(data['conf'][idx2]) >= 0 and abs(data['top'][idx2] - vozv_top) <= 80:
+                        row_words.append((data['left'][idx2], w2))
+                if row_words:
+                    row_line = ' '.join(w for _, w in sorted(row_words))
+                    if row_line not in seen and re.search(r'\d', row_line):
+                        seen.add(row_line)
+                        combined.insert(0, row_line)  # insert at front — parsed first
         except Exception as e:
             log.warning("image_to_data pass failed: %s", e)
 
