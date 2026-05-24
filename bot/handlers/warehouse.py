@@ -400,6 +400,16 @@ async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
+    # Add zero-qty water products for display (Вода 10л and Вода 5л always shown)
+    _issued_ids = {it["product_id"] for it in items}
+    for _vol in (10.0, 5.0):
+        _wp = next(
+            (p for p in catalog if abs(float(p.get('volume') or 0) - _vol) < 1.5),
+            None,
+        )
+        if _wp and _wp['id'] not in _issued_ids:
+            items.append({"product_id": _wp['id'], "product_name": _wp['name'], "quantity": 0})
+
     lines = [f"✅ <b>Выдача записана</b>\nКурьер: {courier_name}"]
     if items:
         lines.append("\n📦 Выдано:")

@@ -737,6 +737,17 @@ async def process_invoice(bot: Bot, photo: PhotoSize, reply_to: Message, perform
         created_at_iso = parsed['dt'].astimezone(timezone.utc).isoformat()
 
     api_items = [{"product_id": it["product_id"], "quantity": it["quantity"]} for it in issue_items]
+
+    # Always display Вода 10л and Вода 5л even at qty=0 (display-only, not sent to API)
+    _issued_ids = {it["product_id"] for it in issue_items}
+    for _vol in (10.0, 5.0):
+        _wp = next(
+            (p for p in products if abs(float(p.get('volume') or 0) - _vol) < 1.5),
+            None,
+        )
+        if _wp and _wp['id'] not in _issued_ids:
+            issue_items.append({"product_id": _wp['id'], "quantity": 0, "_name": _wp['name']})
+
     dt_str = parsed['dt'].strftime('%d.%m.%Y %H:%M') if parsed['dt'] else '—'
 
     # ── Factory delivery ──────────────────────────────────────────────────────

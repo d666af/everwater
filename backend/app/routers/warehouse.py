@@ -573,6 +573,24 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
     if bottle_return_qty > 0:
         items.append({"name": "Возврат бутылок", "unit": "Шт", "qty": bottle_return_qty, "is_return": True})
     items.extend(by_product.values())
+
+    # Always show Вода 10л and Вода 5л even when qty = 0
+    for _show_vol in (10.0, 5.0):
+        _wq = await db.execute(
+            select(Product)
+            .where(and_(Product.volume >= _show_vol - 1.5,
+                        Product.volume <= _show_vol + 1.5,
+                        Product.is_active == True))
+            .limit(1)
+        )
+        _wp = _wq.scalar_one_or_none()
+        if _wp and _wp.id not in by_product:
+            items.append({
+                "name": _wp.name, "unit": "Шт",
+                "qty": 0, "bonus": 0,
+                "price": float(_wp.price or 0), "sum": 0,
+            })
+
     when = txs[0].created_at if txs else datetime.now()
     png = generate_invoice_png(
         items=items,
@@ -820,6 +838,24 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         "qty":  bottle_return_qty,
         "is_return": True,
     })
+
+    # Always show Вода 10л and Вода 5л even when qty = 0
+    _issued_ids = {prod.id for prod, _ in resolved}
+    for _show_vol in (10.0, 5.0):
+        _wq = await db.execute(
+            select(Product)
+            .where(and_(Product.volume >= _show_vol - 1.5,
+                        Product.volume <= _show_vol + 1.5,
+                        Product.is_active == True))
+            .limit(1)
+        )
+        _wp = _wq.scalar_one_or_none()
+        if _wp and _wp.id not in _issued_ids:
+            invoice_items.append({
+                "name": _wp.name, "unit": "Шт",
+                "qty": 0, "bonus": 0,
+                "price": float(_wp.price or 0), "sum": 0,
+            })
 
     courier = await _save_courier_vehicle(db, body.courier_id, body.vehicle_type, body.vehicle_plate)
 
