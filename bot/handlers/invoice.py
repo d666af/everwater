@@ -182,6 +182,9 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
 
         img = img.convert('L')
         img = ImageEnhance.Contrast(img).enhance(1.5)
+        # Keep a copy before grid-line removal for a fallback OCR pass —
+        # the removal can accidentally erase numbers in sparse table rows.
+        img_no_clean = img.filter(ImageFilter.SHARPEN)
         # Strip grid lines so numbers in narrow cells become readable
         img = _remove_grid_lines(img)
         img = img.filter(ImageFilter.SHARPEN)
@@ -189,7 +192,7 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
         seen: set[str] = set()
         combined: list[str] = []
 
-        # Pass 1+2: image_to_string with PSM 6 and PSM 11
+        # Pass 1+2: image_to_string with PSM 6 and PSM 11 on cleaned image
         for psm in (6, 11):
             t = pytesseract.image_to_string(img, lang='rus+eng', config=f'--psm {psm} --oem 3')
             for line in t.splitlines():
@@ -197,6 +200,20 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                 if line and line not in seen:
                     seen.add(line)
                     combined.append(line)
+
+        # Pass 2b: PSM 6 on the un-cleaned image.
+        # Grid-line removal can erase digits in sparse rows (e.g. the возврат row
+        # has only qty+bonus, no price/sum, so the column is narrow and the
+        # removal threshold may wipe the number out entirely).
+        try:
+            t_nc = pytesseract.image_to_string(img_no_clean, lang='rus+eng', config='--psm 6 --oem 3')
+            for line in t_nc.splitlines():
+                line = line.strip()
+                if line and line not in seen:
+                    seen.add(line)
+                    combined.append(line)
+        except Exception as e:
+            log.warning("no-clean OCR pass failed: %s", e)
 
         # Pass 3: image_to_data (word-level bounding boxes) — catches words that
         # image_to_string drops due to multi-column table layout confusion.
