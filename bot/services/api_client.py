@@ -899,3 +899,14 @@ async def get_secondary_admins() -> list[dict]:
         return data.get("secondary", [])
     except Exception:
         return []
+
+
+async def delete_order(order_id: int, deleted_by_name: str | None = None, deleted_by_role: str | None = None):
+    async with aiohttp.ClientSession() as s:
+        async with s.delete(
+            f"{BASE}/orders/{order_id}",
+            json={"deleted_by_name": deleted_by_name, "deleted_by_role": deleted_by_role},
+        ) as r:
+            if not r.ok:
+                await _raise_for_body(r, "DELETE", f"/orders/{order_id}")
+            return await r.json()

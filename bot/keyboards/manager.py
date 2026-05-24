@@ -50,11 +50,11 @@ def mgr_order_reject_kb(order_id: int) -> InlineKeyboardMarkup:
 
 
 def mgr_courier_select_kb(couriers: list, order_id: int, tab: str = "", page: int = 0) -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text=c["name"], callback_data=f"mgr:set_courier:{order_id}:{c['id']}:{tab}:{page}")]
-        for c in couriers
-    ]
-    buttons.append([InlineKeyboardButton(text="🌐 Курьеры на сайте", url=_site("/manager/couriers"))])
+    buttons = []
+    for c in couriers:
+        phone = (c.get("phone") or "").replace("+998", "").strip()
+        label = f"{c['name']}  {phone}" if phone else c["name"]
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"mgr:set_courier:{order_id}:{c['id']}:{tab}:{page}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

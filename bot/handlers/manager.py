@@ -278,6 +278,16 @@ async def mgr_reject_reason(message: Message, state: FSMContext):
                      rejected_by_name=message.from_user.full_name, rejected_by_role="manager")
 
 
+@router.callback_query(F.data.startswith("mgr:edit_items:"))
+async def mgr_edit_items_cb(call: CallbackQuery, state: FSMContext):
+    if not await is_manager(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    from handlers.courier import _start_edit_items
+    await _start_edit_items(call, state, order_id)
+    await state.update_data(editor_role="manager")
+
+
 @router.callback_query(F.data.startswith("mgr:assign:"))
 async def mgr_assign(call: CallbackQuery):
     await call.answer()

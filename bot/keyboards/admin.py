@@ -32,21 +32,26 @@ def admin_menu_kb(subs_enabled: bool = True) -> ReplyKeyboardMarkup:
 
 def order_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin:confirm:{order_id}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin:reject:{order_id}"),
-        ],
-        [InlineKeyboardButton(text="💬 Написать клиенту", callback_data=f"admin:contact:{order_id}")],
-        [InlineKeyboardButton(text="🌐 Заказ на сайте", url=_site("/admin/orders"))],
+        [InlineKeyboardButton(text="📦 Назначить курьера", callback_data=f"order:assign:{order_id}")],
+        [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"order:reject:{order_id}")],
+    ])
+
+
+def admin_order_reject_kb(order_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📦 Товар закончился", callback_data=f"order:rj_r:{order_id}:stock")],
+        [InlineKeyboardButton(text="📍 Адрес недоступен", callback_data=f"order:rj_r:{order_id}:addr")],
+        [InlineKeyboardButton(text="⏰ Время недоступно", callback_data=f"order:rj_r:{order_id}:time")],
+        [InlineKeyboardButton(text="✏️ Своя причина", callback_data=f"order:rj_r:{order_id}:custom")],
     ])
 
 
 def courier_select_kb(couriers: list, order_id: int) -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text=c["name"], callback_data=f"admin:set_courier:{order_id}:{c['id']}")]
-        for c in couriers
-    ]
-    buttons.append([InlineKeyboardButton(text="➕ Добавить курьера", callback_data="admin:courier_create")])
+    buttons = []
+    for c in couriers:
+        phone = (c.get("phone") or "").replace("+998", "").strip()
+        label = f"{c['name']}  {phone}" if phone else c["name"]
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"admin:set_courier:{order_id}:{c['id']}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
