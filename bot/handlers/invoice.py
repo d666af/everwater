@@ -447,7 +447,10 @@ def _parse_invoice(text: str) -> dict | None:
                     # Skip date/time lines
                     if re.search(r'\d{1,2}[.:]\d{2}', prev):
                         continue
-                    # Strip volume annotations before extracting qty
+                    # Skip rows with space-grouped prices ("18 000", "972 000") — digit
+                    # scan would split "18 000" into 18 and 000, picking up 18 as qty.
+                    if re.search(r'\b\d{1,4}(?:\s\d{3})+\b', prev):
+                        continue
                     cleaned_prev = re.sub(r'\d+\s*л', '', prev, flags=re.IGNORECASE).strip()
                     if not cleaned_prev:
                         continue
@@ -471,6 +474,9 @@ def _parse_invoice(text: str) -> dict | None:
                         continue
                     # Skip "Итого:" lines but don't stop — qty col may follow
                     if re.search(r'итого', nxt, re.IGNORECASE) and not re.search(r'\d', nxt):
+                        continue
+                    # Skip price rows for the same reason as the backward search above
+                    if re.search(r'\b\d{1,4}(?:\s\d{3})+\b', nxt):
                         continue
                     cleaned_nxt = re.sub(r'\d+\s*л', '', nxt, flags=re.IGNORECASE).strip()
                     if not cleaned_nxt or re.fullmatch(r'[а-яёa-zA-ZА-ЯЁ\s]+', cleaned_nxt):
