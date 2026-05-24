@@ -161,7 +161,7 @@ def _remove_grid_lines(img):
 async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
     try:
         import pytesseract
-        from PIL import Image, ImageFilter, ImageEnhance
+        from PIL import Image, ImageFilter, ImageEnhance, ImageOps
     except ImportError:
         log.error("pytesseract/Pillow not installed")
         return ""
@@ -274,11 +274,8 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                         seen.add(row_line)
                         combined.insert(0, row_line)
 
-            # Pass 4: crop the full возврат row and re-OCR it with PSM 6 and PSM 7.
-            # Uses the full image width so column-position guesses aren't needed
-            # (photos rarely have the invoice filling the exact same fraction of
-            # the frame every time). Runs on both the cleaned and uncleaned image
-            # so grid-removal artifacts and the original pixels are both tried.
+            # Pass 4: crop the возврат row with multiple strategies to recover the
+            # return-qty digit that the full-image passes miss or misread.
             if vozv_idx is not None:
                 try:
                     _vt = data['top'][vozv_idx]
@@ -287,20 +284,72 @@ async def _ocr_photo(bot: Bot, photo: PhotoSize) -> str:
                     _y0 = max(0, _vt - 20)
                     _y1 = min(_ih, _vt + _vh + 20)
                     if _y1 > _y0:
+                        def _ocr_crop(crop_img, scale, contrast, sharpen, psm, oem, binarize=False):
+                            cw, ch = crop_img.size
+                            c = crop_img.resize((cw * scale, ch * scale), Image.LANCZOS)
+                            if contrast != 1.0:
+                                c = ImageEnhance.Contrast(c).enhance(contrast)
+                            if sharpen != 1.0:
+                                c = ImageEnhance.Sharpness(c).enhance(sharpen)
+                            if binarize:
+                                c = c.point(lambda x: 0 if x < 140 else 255)
+                            t = pytesseract.image_to_string(
+                                c, lang='rus+eng',
+                                config=f'--psm {psm} --oem {oem}',
+                            )
+                            return t
+
+                        # 4a: full-row crops at 3× — OEM 3 (combined), PSM 6+7
                         for _src in (img, img_no_clean):
-                            _crop = _src.crop((0, _y0, _iw, _y1))
-                            _cw, _ch = _crop.size
-                            _crop = _crop.resize((_cw * 3, _ch * 3), Image.LANCZOS)
+                            _base = _src.crop((0, _y0, _iw, _y1))
                             for _psm in ('6', '7'):
-                                _t = pytesseract.image_to_string(
-                                    _crop, lang='rus+eng',
-                                    config=f'--psm {_psm} --oem 3',
-                                )
-                                for _ln in _t.splitlines():
+                                for _ln in _ocr_crop(_base, 3, 1.0, 1.0, _psm, '3').splitlines():
                                     _ln = _ln.strip()
                                     if _ln and _ln not in seen:
-                                        seen.add(_ln)
-                                        combined.insert(0, _ln)
+                                        seen.add(_ln); combined.insert(0, _ln)
+
+                        # 4b: full-row crop at 5× with boost — OEM 1 (LSTM), PSM 6+7
+                        # LSTM is generally more accurate on individual digits; high
+                        # magnification + sharpening helps distinguish "3" from "5".
+                        _base_nc = img_no_clean.crop((0, _y0, _iw, _y1))
+                        for _psm in ('6', '7'):
+                            for _ln in _ocr_crop(_base_nc, 5, 2.0, 2.0, _psm, '1').splitlines():
+                                _ln = _ln.strip()
+                                if _ln and _ln not in seen:
+                                    seen.add(_ln); combined.insert(0, _ln)
+
+                        # 4c: binarized full-row at 5× — OEM 1, PSM 7
+                        for _ln in _ocr_crop(_base_nc, 5, 2.0, 1.0, '7', '1', binarize=True).splitlines():
+                            _ln = _ln.strip()
+                            if _ln and _ln not in seen:
+                                seen.add(_ln); combined.insert(0, _ln)
+
+                        # 4d: digit-focused sub-crop anchored to "Шт" label position.
+                        # Qty column is directly right of "Шт"; cropping just that
+                        # region lets us use PSM 8 (single-word) for the number.
+                        _sht_right = None
+                        for _idx2 in range(len(data['text'])):
+                            _w2 = data['text'][_idx2].strip()
+                            if (re.search(r'^шт$', _w2, re.IGNORECASE) and
+                                    int(data['conf'][_idx2]) >= 0 and
+                                    abs(data['top'][_idx2] - _vt) <= 150):
+                                _sht_right = data['left'][_idx2] + data['width'][_idx2]
+                                break
+                        if _sht_right:
+                            _x0d = max(0, _sht_right - 5)
+                            _x1d = min(_iw, _sht_right + int(_iw * 0.20))
+                            if _x1d > _x0d:
+                                _dcrop = img_no_clean.crop((_x0d, _y0, _x1d, _y1))
+                                for _psm_d in ('7', '8', '13'):
+                                    for _ln in _ocr_crop(_dcrop, 5, 2.0, 2.0, _psm_d, '1').splitlines():
+                                        _ln = _ln.strip()
+                                        if _ln and _ln not in seen:
+                                            seen.add(_ln); combined.insert(0, _ln)
+                                # Also try binarized
+                                for _ln in _ocr_crop(_dcrop, 5, 2.0, 1.0, '8', '1', binarize=True).splitlines():
+                                    _ln = _ln.strip()
+                                    if _ln and _ln not in seen:
+                                        seen.add(_ln); combined.insert(0, _ln)
                 except Exception as _ec:
                     log.warning("vozvrat crop OCR: %s", _ec)
         except Exception as e:
