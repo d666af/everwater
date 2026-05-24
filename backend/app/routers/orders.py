@@ -1557,6 +1557,10 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     from sqlalchemy import delete as sa_delete
     from app.services.tg_notify import edit_all_notifications
 
+    effective_items = [it for it in body.items if int(it.get("quantity", 0)) > 0 and it.get("product_id")]
+    if not effective_items:
+        raise HTTPException(status_code=422, detail="items list cannot be empty")
+
     order = await _get_order(order_id, db)
 
     # Capture ALL metadata before commit expires relationships

@@ -690,11 +690,15 @@ function EditItemsModal({ order, courierName, onClose, onSave }) {
   }
 
   const handleSave = async () => {
+    const payload = Object.entries(items)
+      .filter(([, qty]) => qty > 0)
+      .map(([pid, qty]) => ({ product_id: parseInt(pid), quantity: qty }))
+    if (payload.length === 0) {
+      alert('Добавьте хотя бы один товар')
+      return
+    }
     setSaving(true)
     try {
-      const payload = Object.entries(items)
-        .filter(([, qty]) => qty > 0)
-        .map(([pid, qty]) => ({ product_id: parseInt(pid), quantity: qty }))
       await updateOrderItems(order.id, payload, returnBottles, lentBottles, courierName)
       onSave()
       onClose()
