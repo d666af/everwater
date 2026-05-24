@@ -53,8 +53,10 @@ async def _get_courier(telegram_id: int):
     return await api.get_courier_by_telegram(telegram_id)
 
 
-async def _maybe_send_location_prompt(message, order_id: int):
+async def _maybe_send_location_prompt(message, order_id: int, state=None):
     """After payment resolved: prompt courier to add map location if order has none."""
+    if state is not None:
+        await state.clear()
     try:
         order = await api.get_order(order_id)
     except Exception:
@@ -1261,7 +1263,7 @@ async def courier_done(call: CallbackQuery):
 # ─── Payment confirmation ──────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("courier:cash_ok:"))
-async def courier_cash_received(call: CallbackQuery):
+async def courier_cash_received(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[2])
     try:
         await api.update_order_cash_received(order_id)
@@ -1273,11 +1275,11 @@ async def courier_cash_received(call: CallbackQuery):
     except Exception:
         await call.message.answer("✅ Наличные зафиксированы!")
     await call.answer()
-    await _maybe_send_location_prompt(call.message, order_id)
+    await _maybe_send_location_prompt(call.message, order_id, state)
 
 
 @router.callback_query(F.data.startswith("courier:card_ok:"))
-async def courier_card_received(call: CallbackQuery):
+async def courier_card_received(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[2])
     try:
         await api.set_payment_collected(order_id, True)
@@ -1288,7 +1290,7 @@ async def courier_card_received(call: CallbackQuery):
     except Exception:
         await call.message.answer("✅ Оплата по карте подтверждена!")
     await call.answer()
-    await _maybe_send_location_prompt(call.message, order_id)
+    await _maybe_send_location_prompt(call.message, order_id, state)
 
 
 @router.callback_query(F.data.startswith("courier:cash_no:"))
