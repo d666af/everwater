@@ -1538,9 +1538,16 @@ async def get_history(
 
     if type and type != "all":
         q = q.where(WaterTransaction.transaction_type == type)
+        # Never show unbatched auto-issue records regardless of filter
+        if type == "issue":
+            q = q.where(WaterTransaction.batch_id.isnot(None))
     else:
         # delivery_net is internal accounting — hide from default history view
+        # Unbatched issue records are auto-created by order assignment, not real warehouse issuances
         q = q.where(WaterTransaction.transaction_type != "delivery_net")
+        q = q.where(
+            (WaterTransaction.transaction_type != "issue") | WaterTransaction.batch_id.isnot(None)
+        )
 
     if product and product != "all":
         all_prods = (await db.execute(select(Product).where(Product.is_active == True))).scalars().all()
