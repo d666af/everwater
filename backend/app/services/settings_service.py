@@ -24,6 +24,8 @@ DEFAULTS: dict[str, Any] = {
     "min_order": 25000,
     "working_hours": "08:00–22:00",
     # Bonus system
+    "bonus_program_enabled": True,     # кэшбек с заказа включён
+    "bottle_bonus_enabled": True,      # бонус/скидка за возврат бутылки включён
     "bonus_per_bottle": 100,           # сум за каждую доставленную 19л бутылку
     "bonus_expiry_days": 60,           # срок жизни бонусов в днях (0 = бессрочно)
     "bonus_limit_percent": 30,         # максимум бонусов = X% от суммы заказа

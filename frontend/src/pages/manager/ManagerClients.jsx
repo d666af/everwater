@@ -596,7 +596,8 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
 
   const filtered = users.filter(u => {
-    const matchText = !search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.phone?.includes(search)
+    const q = search.toLowerCase()
+    const matchText = !search || u.name?.toLowerCase().includes(q) || u.phone?.includes(search) || (!u.name && u.last_order_address?.toLowerCase().includes(q))
     return matchText && matchesFilter(u)
   })
 
