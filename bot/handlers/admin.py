@@ -1903,6 +1903,7 @@ def _aco_grid_kb(products: list, items: dict) -> InlineKeyboardMarkup:
             text=f"▶ Далее  {total_qty} шт. · {fmt(total_price)}",
             callback_data="aco:done",
         )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="aco:cancel_grid")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -2283,6 +2284,15 @@ async def admin_co_back_catalog(call: CallbackQuery, state: FSMContext):
         reply_markup=_aco_grid_kb(products, items),
         parse_mode="HTML",
     )
+    await call.answer()
+
+
+@router.callback_query(AdminOrderCreate.choosing_product, F.data == "aco:cancel_grid")
+async def admin_co_cancel_grid(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Создание заказа отменено.")
+    subs_on = await api.is_subscriptions_enabled()
+    await call.message.answer("Панель администратора:", reply_markup=admin_menu_kb(subs_enabled=subs_on))
     await call.answer()
 
 

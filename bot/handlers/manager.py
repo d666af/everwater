@@ -838,6 +838,7 @@ def _mco_grid_kb(products: list, items: dict) -> InlineKeyboardMarkup:
             text=f"▶ Далее  {total_qty} шт. · {fmt(total_price)}",
             callback_data="mco:done",
         )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="mco:cancel_grid")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1230,6 +1231,20 @@ async def mgr_co_back_catalog(call: CallbackQuery, state: FSMContext):
         _mco_grid_text(items, products),
         reply_markup=_mco_grid_kb(products, items),
         parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(MgrOrderCreate.choosing_product, F.data == "mco:cancel_grid")
+async def mgr_co_cancel_grid(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_text("Создание заказа отменено.")
+    await call.message.answer(
+        "Панель менеджера:",
+        reply_markup=manager_menu_kb(
+            subs_enabled=await api.is_subscriptions_enabled(),
+            support_enabled=await api.is_support_chat_enabled(),
+        ),
     )
     await call.answer()
 
