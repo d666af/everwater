@@ -1,7 +1,8 @@
 """Warehouse management: stock tracking, production, issue, returns."""
 import uuid
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
+import json as _json
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, and_, func
@@ -10,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from io import BytesIO
 
 from app.database import get_db
-from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff
+from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff, CancelledBatch
 from app.models.factory import Factory
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, OrderItem
@@ -57,6 +58,8 @@ def _tx_out(tx: WaterTransaction) -> dict:
         "quantity": tx.quantity,
         "note": tx.note,
         "batch_id": tx.batch_id,
+        "performed_by": tx.performed_by,
+        "performed_by_role": tx.performed_by_role,
         "created_at": tx.created_at.isoformat() + "Z",
         "price": float(tx.product.price) if tx.product and tx.product.price else None,
         "cost_price": float(tx.product.cost_price) if tx.product and tx.product.cost_price else None,
@@ -680,6 +683,7 @@ class BatchIssueBody(BaseModel):
     items: list[BatchIssueItem] = []
     note: str | None = None
     performed_by: str | None = None
+    performed_by_role: str | None = None
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
     bottle_return: int = 0
@@ -740,6 +744,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
             performed_by=body.performed_by,
+            performed_by_role=body.performed_by_role,
         )
         if _ts:
             tx.created_at = _ts
@@ -788,6 +793,7 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
             note=f"Остаток долга: {debt_after} бут.",
             batch_id=batch_id,
             performed_by=body.performed_by,
+            performed_by_role=body.performed_by_role,
         )
         if _ts:
             ret_tx.created_at = _ts
@@ -900,6 +906,7 @@ class FactoryIssueBatchBody(BaseModel):
     items: list[FactoryIssueItem] = []
     note: str | None = None
     performed_by: str | None = None
+    performed_by_role: str | None = None
     created_at: datetime | None = None
 
 
@@ -953,6 +960,7 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
             note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
             performed_by=body.performed_by,
+            performed_by_role=body.performed_by_role,
         )
         if _ts:
             tx.created_at = _ts
@@ -1747,16 +1755,56 @@ async def list_issue_batches(
 
 
 @router.delete("/issue_batch/{batch_id}")
-async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
+async def cancel_issue_batch(batch_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Reverse an issue batch: restore warehouse stock, update courier water, delete transactions."""
+    # Parse optional body for audit trail
+    cancelled_by: str | None = None
+    cancelled_by_role: str | None = None
+    try:
+        body = await request.json()
+        cancelled_by = body.get("cancelled_by")
+        cancelled_by_role = body.get("cancelled_by_role")
+    except Exception:
+        pass
+
     txs = (await db.execute(
-        select(WaterTransaction).where(WaterTransaction.batch_id == batch_id)
+        select(WaterTransaction)
+        .options(selectinload(WaterTransaction.product), selectinload(WaterTransaction.courier), selectinload(WaterTransaction.factory))
+        .where(WaterTransaction.batch_id == batch_id)
     )).scalars().all()
     if not txs:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    # Retrieve stored invoice message_id before deleting transactions
+    # Snapshot batch for audit trail before deleting
+    issue_txs = [tx for tx in txs if tx.transaction_type in ("issue", "factory_issue")]
+    first = issue_txs[0] if issue_txs else txs[0]
+    items_snapshot = [
+        {
+            "product_name": tx.product.name if tx.product else None,
+            "quantity": tx.quantity,
+            "type": tx.transaction_type,
+        }
+        for tx in txs
+    ]
+    total_qty = sum(tx.quantity for tx in issue_txs) if issue_txs else sum(tx.quantity for tx in txs)
     invoice_msg_id = next((tx.invoice_message_id for tx in txs if tx.invoice_message_id), None)
+
+    cancelled_batch = CancelledBatch(
+        batch_id=batch_id,
+        transaction_type=first.transaction_type,
+        product_name=first.product.name if first.product else None,
+        courier_name=first.courier.name if first.courier else None,
+        factory_name=first.factory.name if first.factory else None,
+        total_quantity=total_qty,
+        items_json=_json.dumps(items_snapshot, ensure_ascii=False),
+        performed_by=first.performed_by,
+        performed_by_role=first.performed_by_role,
+        cancelled_by=cancelled_by,
+        cancelled_by_role=cancelled_by_role,
+        invoice_message_id=invoice_msg_id,
+        original_created_at=first.created_at,
+    )
+    db.add(cancelled_batch)
 
     for tx in txs:
         if tx.transaction_type == "issue" and tx.product_id and tx.courier_id:
@@ -1790,6 +1838,35 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
             pass
 
     return {"ok": True, "batch_id": batch_id}
+
+
+@router.get("/cancelled_batches")
+async def get_cancelled_batches(db: AsyncSession = Depends(get_db)):
+    """List all cancelled issuance batches for audit trail."""
+    result = await db.execute(
+        select(CancelledBatch).order_by(CancelledBatch.cancelled_at.desc())
+    )
+    batches = result.scalars().all()
+    return [
+        {
+            "id": b.id,
+            "batch_id": b.batch_id,
+            "transaction_type": b.transaction_type,
+            "product_name": b.product_name,
+            "courier_name": b.courier_name,
+            "factory_name": b.factory_name,
+            "total_quantity": b.total_quantity,
+            "items_json": b.items_json,
+            "performed_by": b.performed_by,
+            "performed_by_role": b.performed_by_role,
+            "cancelled_by": b.cancelled_by,
+            "cancelled_by_role": b.cancelled_by_role,
+            "invoice_message_id": b.invoice_message_id,
+            "original_created_at": b.original_created_at.isoformat() + "Z" if b.original_created_at else None,
+            "cancelled_at": b.cancelled_at.isoformat() + "Z",
+        }
+        for b in batches
+    ]
 
 
 @router.delete("/clear_order_issues")

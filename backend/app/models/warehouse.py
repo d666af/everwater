@@ -28,7 +28,8 @@ class WaterTransaction(Base):
     quantity: Mapped[int] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    performed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     counts_for_debt: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     invoice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -52,6 +53,27 @@ class CourierWater(Base):
 
     courier: Mapped["Courier"] = relationship("Courier")  # noqa: F821
     product: Mapped["Product"] = relationship("Product")  # noqa: F821
+
+
+class CancelledBatch(Base):
+    """Audit trail of cancelled issuance batches."""
+    __tablename__ = "cancelled_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    transaction_type: Mapped[str] = mapped_column(String(32))
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    courier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    factory_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    total_quantity: Mapped[int] = mapped_column(Integer)
+    items_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cancelled_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cancelled_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    original_created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class WarehouseStaff(Base):

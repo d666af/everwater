@@ -922,6 +922,7 @@ export const issueBatchToCourier = (courierId, items, performedBy, vehicleType, 
       courier_id: courierId,
       items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
       performed_by: performedBy || undefined,
+      performed_by_role: 'warehouse',
       vehicle_type: vehicleType || undefined,
       vehicle_plate: vehiclePlate || undefined,
       note: note || undefined,
@@ -981,6 +982,7 @@ export const factoryIssueBatch = (factoryName, items, performedBy) =>
       factory_name: factoryName,
       items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
       performed_by: performedBy || undefined,
+      performed_by_role: 'warehouse',
     }).then(r => r.data),
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )
@@ -1007,10 +1009,18 @@ export const getIssueBatches = (performedBy, includeFactory = true, limit = 100)
     () => []
   )
 
-export const cancelIssueBatch = (batchId) =>
+export const cancelIssueBatch = (batchId, cancelledBy, cancelledByRole) =>
   safeCall(
-    () => http.delete(`/warehouse/issue_batch/${batchId}`).then(r => r.data),
+    () => http.delete(`/warehouse/issue_batch/${batchId}`, {
+      data: { cancelled_by: cancelledBy, cancelled_by_role: cancelledByRole },
+    }).then(r => r.data),
     () => ({ ok: true })
+  )
+
+export const getCancelledBatches = () =>
+  safeCall(
+    () => http.get('/warehouse/cancelled_batches').then(r => r.data),
+    () => []
   )
 
 export const clearOrderIssues = () =>

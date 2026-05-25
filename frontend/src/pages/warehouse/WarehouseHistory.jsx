@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, clearOrderIssues, syncDeliveryNet } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, clearOrderIssues, syncDeliveryNet, cancelIssueBatch, getCancelledBatches } from '../../api'
+import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -21,6 +22,7 @@ const TYPES = [
 const fmtSum = v => v > 0 ? v.toLocaleString('ru-RU') + ' сум' : null
 
 export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'История' }) {
+  const { user } = useAuthStore()
   const [period, setPeriod] = useState('all')
   const [customDate, setCustomDate] = useState(null)
   const [customDateTo, setCustomDateTo] = useState(null)
@@ -40,6 +42,9 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [history, setHistory] = useState([])
   const [courierStats, setCourierStats] = useState([])
   const [loading, setLoading] = useState(true)
+  const [cancelledBatches, setCancelledBatches] = useState([])
+  const [cancelConfirm, setCancelConfirm] = useState(null) // batch_id being confirmed
+  const [cancelling, setCancelling] = useState(null) // batch_id currently cancelling
 
   useEffect(() => {
     getAdminCouriers()
@@ -60,6 +65,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
       .catch(console.error)
     clearOrderIssues().then(() => syncDeliveryNet()).catch(() => {})
+    getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -169,8 +175,47 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const selectedCourier = couriers.find(c => String(c.id) === courierId)
   const selectedFactory = factories.find(f => String(f.id) === factoryId)
 
+  const handleCancelBatch = async (batchId) => {
+    setCancelling(batchId)
+    try {
+      await cancelIssueBatch(batchId, user?.name || 'Завсклад', user?.role || 'warehouse')
+      setHistory(prev => prev.filter(h => h.batch_id !== batchId))
+      getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(() => {})
+    } catch (e) {
+      alert('Ошибка при отмене: ' + e.message)
+    } finally {
+      setCancelling(null)
+      setCancelConfirm(null)
+    }
+  }
+
+  const roleLabel = (role) => {
+    if (!role) return ''
+    if (role === 'admin') return 'Админ'
+    if (role === 'warehouse' || role === 'warehouse_staff') return 'Завсклад'
+    if (role === 'manager') return 'Менеджер'
+    return role
+  }
+
   return (
     <Layout title={title}>
+      {cancelConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: '24px 20px', maxWidth: 360, width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, marginBottom: 8 }}>Отменить выдачу?</div>
+            <div style={{ fontSize: 13, color: TEXT2, marginBottom: 20 }}>Это действие вернёт товар на склад и запишет отмену в историю. Отменить нельзя.</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setCancelConfirm(null)} style={{ flex: 1, padding: '12px', borderRadius: 12, background: '#F2F2F7', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', color: TEXT }}>Назад</button>
+              <button
+                onClick={() => handleCancelBatch(cancelConfirm)}
+                disabled={!!cancelling}
+                style={{ flex: 1, padding: '12px', borderRadius: 12, background: '#FF3B30', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', color: '#fff', opacity: cancelling ? 0.7 : 1 }}>
+                {cancelling ? '...' : 'Отменить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {pickerOpen && (
         <DateTimePickerModal
           initialDate={customDate}
@@ -426,6 +471,11 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                       ↩ Возврат: {h.return_qty} бут.{h.return_note ? ` · ${h.return_note}` : ''}
                     </div>
                   )}
+                  {h.performed_by && (
+                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>
+                      Создал: {h.performed_by_role ? `${roleLabel(h.performed_by_role)} · ` : ''}{h.performed_by}
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color }}>{sign}{h.quantity}</div>
@@ -449,10 +499,83 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                       Накладная
                     </a>
                   )}
+                  {(isIssue || isFactoryIssue) && h.batch_id && (
+                    <button
+                      onClick={() => setCancelConfirm(h.batch_id)}
+                      disabled={cancelling === h.batch_id}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#C92A2A', background: '#FFE8E8', padding: '3px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', marginTop: 2 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                      Отменить
+                    </button>
+                  )}
                 </div>
               </div>
             )
           })}
+        </div>
+      )}
+      {/* Cancelled batches section */}
+      {cancelledBatches.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0 8px' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#C92A2A', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Отменённые выдачи · {cancelledBatches.length}
+            </span>
+          </div>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '4px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            {cancelledBatches.map((b, i) => {
+              const isFactory = b.transaction_type === 'factory_issue'
+              const recipient = isFactory ? (b.factory_name || '—') : (b.courier_name || '—')
+              const recipientLabel = isFactory ? 'Завод' : 'Курьер'
+              const ts = b.cancelled_at
+              const origTs = b.original_created_at
+              return (
+                <div key={b.id} style={{ padding: '12px 0', borderBottom: i < cancelledBatches.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFE8E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#C92A2A" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {b.product_name || (isFactory ? 'Выдача заводу' : 'Выдача')}
+                      </div>
+                      <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>
+                        {recipientLabel}: {recipient} · {b.total_quantity} шт.
+                      </div>
+                      {b.performed_by && (
+                        <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>
+                          Создал: {b.performed_by_role ? `${roleLabel(b.performed_by_role)} · ` : ''}{b.performed_by}
+                        </div>
+                      )}
+                      {b.cancelled_by && (
+                        <div style={{ fontSize: 10, color: '#C92A2A', marginTop: 2, fontWeight: 600 }}>
+                          Отменил: {b.cancelled_by_role ? `${roleLabel(b.cancelled_by_role)} · ` : ''}{b.cancelled_by}
+                        </div>
+                      )}
+                      {origTs && (
+                        <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>
+                          Выдача: {new Date(origTs).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })} · {new Date(origTs).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#C92A2A' }}>−{b.total_quantity}</div>
+                      <div style={{ fontSize: 10, color: TEXT2 }}>
+                        {new Date(ts).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })} · {new Date(ts).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      {b.batch_id && (
+                        <a href={getInvoiceUrl(b.batch_id)} target="_blank" rel="noreferrer"
+                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#868E96', background: '#F2F2F7', padding: '3px 8px', borderRadius: 999, textDecoration: 'none', marginTop: 2 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          Накладная
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </Layout>

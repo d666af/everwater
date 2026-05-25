@@ -695,6 +695,7 @@ async def issue_batch(courier_id: int, items: list, bottle_return: int = 0, note
         "bottle_return": bottle_return,
         "note": note,
         "performed_by": performed_by,
+        "performed_by_role": "warehouse",
     }
     if vehicle_type:
         body["vehicle_type"] = vehicle_type
@@ -724,6 +725,7 @@ async def factory_issue_batch(factory_name: str, items: list, performed_by: str 
         "factory_name": factory_name,
         "items": items,
         "performed_by": performed_by,
+        "performed_by_role": "warehouse",
     }
     if created_at:
         body["created_at"] = created_at
@@ -797,10 +799,15 @@ async def get_warehouse_batches(performed_by: str | None = None) -> list:
         return []
 
 
-async def cancel_warehouse_batch(batch_id: str) -> dict:
+async def cancel_warehouse_batch(batch_id: str, cancelled_by: str | None = None, cancelled_by_role: str | None = None) -> dict:
     async with aiohttp.ClientSession() as s:
         url = f"{BASE}/warehouse/issue_batch/{batch_id}"
-        async with s.delete(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
+        payload = {}
+        if cancelled_by:
+            payload["cancelled_by"] = cancelled_by
+        if cancelled_by_role:
+            payload["cancelled_by_role"] = cancelled_by_role
+        async with s.delete(url, json=payload or None, timeout=aiohttp.ClientTimeout(total=15)) as r:
             body = await r.text()
             if r.status >= 400:
                 raise ApiError(r.status, _extract_detail(body, r.status))
