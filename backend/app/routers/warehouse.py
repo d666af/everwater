@@ -323,7 +323,7 @@ async def get_overview(
                 continue
             if t == "production":
                 per_product[tx.product_id]["produced_period"] += tx.quantity
-            elif t == "issue":
+            elif t == "issue" and tx.batch_id:
                 per_product[tx.product_id]["issued_period"] += tx.quantity
             elif t == "factory_issue":
                 # Count factory issues in "issued" total and in their own bucket
@@ -1370,20 +1370,42 @@ async def get_couriers_water(
 
         # Bottle debt: warehouse dispatches (batch_id IS NOT NULL) 19L issued − all-time returned
         if product_19l_ids:
-            c_issued_q = await db.execute(
+            c_issued = (await db.execute(
                 select(func.sum(WaterTransaction.quantity))
                 .where(WaterTransaction.courier_id == c.id)
                 .where(WaterTransaction.transaction_type == "issue")
                 .where(WaterTransaction.product_id.in_(product_19l_ids))
                 .where(WaterTransaction.batch_id.isnot(None))
-            )
-            c_returned_q = await db.execute(
+            )).scalar() or 0
+            c_returned = (await db.execute(
                 select(func.sum(WaterTransaction.quantity))
                 .where(WaterTransaction.courier_id == c.id)
                 .where(WaterTransaction.transaction_type == "bottle_return")
                 .where(WaterTransaction.counts_for_debt != False)
-            )
-            bottles_must_return = max(0, (c_issued_q.scalar() or 0) - (c_returned_q.scalar() or 0))
+            )).scalar() or 0
+            from_warehouse = max(0, c_issued - c_returned)
+
+            # Fallback: if no warehouse batch records exist, derive debt from delivered orders.
+            # This covers the case where all warehouse issue records were deleted/cancelled but
+            # the courier still delivered 19L bottles that need to be returned.
+            if c_issued == 0:
+                del_all_q = await db.execute(
+                    select(Order)
+                    .options(selectinload(Order.items).selectinload(OrderItem.product))
+                    .where(Order.courier_id == c.id)
+                    .where(Order.status == OrderStatus.DELIVERED)
+                )
+                orders_19l = 0
+                orders_client_returned = 0
+                for o in del_all_q.scalars().all():
+                    for item in o.items:
+                        if item.product and int(float(item.product.volume)) == 19:
+                            orders_19l += item.quantity
+                    orders_client_returned += (o.return_bottles_count or 0)
+                from_orders = max(0, orders_19l - orders_client_returned - c_returned)
+                bottles_must_return = from_orders
+            else:
+                bottles_must_return = from_warehouse
         else:
             bottles_must_return = 0
 
@@ -1783,6 +1805,17 @@ async def cancel_issue_batch(batch_id: str, request: Request, db: AsyncSession =
     if not txs:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    # Idempotency: if already cancelled, clean up any leftover transactions and return success
+    existing_cancel = (await db.execute(
+        select(CancelledBatch.id).where(CancelledBatch.batch_id == batch_id)
+    )).scalar_one_or_none()
+    if existing_cancel:
+        for tx in txs:
+            await db.delete(tx)
+        if txs:
+            await db.commit()
+        return {"ok": True, "batch_id": batch_id}
+
     # Snapshot batch for audit trail before deleting
     issue_txs = [tx for tx in txs if tx.transaction_type in ("issue", "factory_issue")]
     first = issue_txs[0] if issue_txs else txs[0]
@@ -1815,18 +1848,20 @@ async def cancel_issue_batch(batch_id: str, request: Request, db: AsyncSession =
     db.add(cancelled_batch)
 
     for tx in txs:
-        if tx.transaction_type == "issue" and tx.product_id and tx.courier_id:
-            stock = await _ensure_stock(db, tx.product_id)
-            stock.quantity += tx.quantity
-            cw = (await db.execute(
-                select(CourierWater).where(
-                    CourierWater.courier_id == tx.courier_id,
-                    CourierWater.product_id == tx.product_id,
-                )
-            )).scalar_one_or_none()
-            if cw:
-                cw.quantity = max(0, cw.quantity - tx.quantity)
-                cw.issued_today = max(0, cw.issued_today - tx.quantity)
+        if tx.transaction_type == "issue":
+            if tx.product_id:
+                stock = await _ensure_stock(db, tx.product_id)
+                stock.quantity += tx.quantity
+            if tx.courier_id and tx.product_id:
+                cw = (await db.execute(
+                    select(CourierWater).where(
+                        CourierWater.courier_id == tx.courier_id,
+                        CourierWater.product_id == tx.product_id,
+                    )
+                )).scalar_one_or_none()
+                if cw:
+                    cw.quantity = max(0, cw.quantity - tx.quantity)
+                    cw.issued_today = max(0, cw.issued_today - tx.quantity)
             await db.delete(tx)
         elif tx.transaction_type == "factory_issue" and tx.product_id:
             stock = await _ensure_stock(db, tx.product_id)

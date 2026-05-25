@@ -86,18 +86,27 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .finally(() => setLoading(false))
   }, [period, customDate, customDateTo, type, productName, courierId, factoryId])
 
-  // Group batch transactions: merge bottle_return into their parent issue row
+  // Group batch transactions: merge bottle_return into their parent issue row;
+  // orphaned bottle_return entries (parent issue was deleted) are shown separately.
   const groupedHistory = useMemo(() => {
     const batchReturns = {}
     for (const h of history) {
       if (h.batch_id && (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned')) {
-        if (!batchReturns[h.batch_id]) batchReturns[h.batch_id] = { qty: 0, note: null }
+        if (!batchReturns[h.batch_id]) batchReturns[h.batch_id] = { qty: 0, note: null, _entry: h }
         batchReturns[h.batch_id].qty += h.quantity
         if (h.note) batchReturns[h.batch_id].note = h.note
       }
     }
-    return history
-      .filter(h => !(h.batch_id && (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned')))
+    // Track which batch_ids have a parent issue/factory_issue row
+    const parentBatchIds = new Set()
+    for (const h of history) {
+      if (h.batch_id && (h.type === 'issue' || h.type === 'issued' || h.type === 'factory_issue')) {
+        parentBatchIds.add(h.batch_id)
+      }
+    }
+    // Exclude bottle_returns only if their parent issue exists (they'll be merged in)
+    const rows = history
+      .filter(h => !(h.batch_id && (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned') && parentBatchIds.has(h.batch_id)))
       .map(h => {
         if (h.batch_id && (h.type === 'issue' || h.type === 'issued' || h.type === 'factory_issue')) {
           const ret = batchReturns[h.batch_id]
@@ -105,6 +114,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         }
         return h
       })
+    return rows
   }, [history])
 
   const summary = useMemo(() => {
@@ -498,7 +508,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                       Накладная
                     </a>
                   )}
-                  {(isIssue || isFactoryIssue) && h.batch_id && (
+                  {((isIssue || isFactoryIssue || isRet) && h.batch_id) && (
                     <button
                       onClick={() => setCancelConfirm(h.batch_id)}
                       disabled={cancelling === h.batch_id}

@@ -268,6 +268,7 @@ async def get_stats(
             _tx_time(
                 WaterTransaction.transaction_type.in_(["issue", "factory_issue"]),
                 WaterTransaction.product_id.isnot(None),
+                WaterTransaction.batch_id.isnot(None),
             )
         )
         .group_by(Product.id, Product.name, Product.cost_price, Product.price)
