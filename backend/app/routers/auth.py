@@ -77,7 +77,8 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
     primary_role = next((r for r in _PRIORITY if r in all_roles), "client")
     name = (manager.name if manager else None) or (courier.name if courier else None) or (agent.name if agent else None) or (user.name if user else None) or ""
     phone = (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or (agent.phone if agent else None) or ""
-    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None) or (agent.id if agent else None)
+    # Fall back to telegram_id for admin/warehouse users who have no role-specific DB record
+    uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None) or (agent.id if agent else None) or tid
     bonus = float(user.bonus_points) if user else 0.0
     is_reg = (user.is_registered if user else None) if user else True
     agent_id = agent.id if agent else None
