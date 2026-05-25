@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, clearOrderIssues, syncDeliveryNet, cancelIssueBatch, getCancelledBatches } from '../../api'
+import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -64,7 +64,6 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
     getFactories()
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
       .catch(console.error)
-    clearOrderIssues().then(() => syncDeliveryNet()).catch(() => {})
     getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(console.error)
   }, [])
 
