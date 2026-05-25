@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches } from '../../api'
+import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -45,6 +45,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [cancelledBatches, setCancelledBatches] = useState([])
   const [cancelConfirm, setCancelConfirm] = useState(null) // batch_id being confirmed
   const [cancelling, setCancelling] = useState(null) // batch_id currently cancelling
+  const [debtAdj, setDebtAdj] = useState([])
 
   useEffect(() => {
     getWarehouseCouriers()
@@ -65,6 +66,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
       .catch(console.error)
     getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(console.error)
+    getWarehouseDebtAdjustments({ target_type: 'courier', limit: 100 }).then(data => setDebtAdj(Array.isArray(data) ? data : [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -388,6 +390,28 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                 <SummaryRow key={c.id} label={c.name} value={`${c.bottles_must_return} бут.`} color="#C92A2A" />
               ))}
             </SummarySection>
+          )}
+          {debtAdj.length > 0 && (
+            <div style={{ background: '#E0F4FF', borderRadius: 14, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Изменения долга · {debtAdj.length}</div>
+              {debtAdj.map((a, i) => {
+                const dt = a.created_at ? new Date(a.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+                return (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '5px 0', borderBottom: i < debtAdj.length - 1 ? '1px solid rgba(0,119,182,0.12)' : 'none' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {a.target_name || '—'} · <span style={{ color: TEXT2, fontWeight: 500 }}>{a.performed_by || '—'}</span>
+                      </div>
+                      {a.note && <div style={{ fontSize: 10, color: TEXT2 }}>{a.note}</div>}
+                      <div style={{ fontSize: 10, color: TEXT2 }}>{dt}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: a.delta > 0 ? '#E03131' : '#2B8A3E', flexShrink: 0 }}>
+                      {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage, adjustCourierDebt } from '../../api'
+import { useAuthStore } from '../../store/auth'
 import CourierReportModal from '../../components/CourierReportModal'
 import AgentReportModal from '../../components/AgentReportModal'
 import { formatPhone } from '../../utils/phone'
@@ -78,12 +79,16 @@ function StatChip({ icon, value, label, color = CD, bg = '#F0FFF4', borderColor 
 }
 
 function CourierCard({ courier: c, onDelete }) {
+  const { user: currentUser } = useAuthStore()
   const [details, setDetails] = useState(null)
   const [showReport, setShowReport] = useState(false)
+  const [debtAdjModal, setDebtAdjModal] = useState(false)
+
+  const refreshDetails = () => getCourierDetails(c.id).then(setDetails).catch(() => {})
 
   useEffect(() => {
-    getCourierDetails(c.id).then(setDetails).catch(() => {})
-  }, [c.id])
+    refreshDetails()
+  }, [c.id]) // eslint-disable-line
 
   const rating = details?.avg_rating > 0 ? Number(details.avg_rating).toFixed(1) : '—'
   const totalDeliveries = details?.total_deliveries ?? (c.delivery_count ?? '—')
@@ -121,14 +126,17 @@ function CourierCard({ courier: c, onDelete }) {
         <StatChip icon="📦" value={totalDeliveries} label="Доставок" color={CD} bg="#F0FFF4" borderColor="rgba(141,198,63,0.18)" />
         <StatChip icon="⭐" value={rating} label="Рейтинг" color="#E67700" bg="#FFFBEE" borderColor="rgba(230,119,0,0.18)" />
         {bottleDebt !== null && (
-          <StatChip
-            icon="🫙"
-            value={bottleDebt}
-            label="Долг бут."
-            color={bottleDebt > 0 ? '#E03131' : CD}
-            bg={bottleDebt > 0 ? '#FFF5F5' : '#F0FFF4'}
-            borderColor={bottleDebt > 0 ? 'rgba(224,49,49,0.2)' : 'rgba(141,198,63,0.18)'}
-          />
+          <div onClick={() => setDebtAdjModal(true)} style={{ cursor: 'pointer', position: 'relative' }}>
+            <StatChip
+              icon="🫙"
+              value={bottleDebt}
+              label="Долг бут."
+              color={bottleDebt > 0 ? '#E03131' : CD}
+              bg={bottleDebt > 0 ? '#FFF5F5' : '#F0FFF4'}
+              borderColor={bottleDebt > 0 ? 'rgba(224,49,49,0.2)' : 'rgba(141,198,63,0.18)'}
+            />
+            <div style={{ position: 'absolute', top: 3, right: 5, fontSize: 11, color: '#0077B6', fontWeight: 800 }}>±</div>
+          </div>
         )}
       </div>
 
@@ -146,6 +154,84 @@ function CourierCard({ courier: c, onDelete }) {
       </div>
 
       {showReport && <CourierReportModal courierId={c.id} courierName={c.name} onClose={() => setShowReport(false)} />}
+      {debtAdjModal && (
+        <CourierDebtAdjModal
+          courierName={c.name}
+          currentDebt={bottleDebt || 0}
+          onClose={() => setDebtAdjModal(false)}
+          onSave={async (delta, note) => {
+            await adjustCourierDebt(c.id, delta, note, currentUser?.name || null, currentUser?.role || null)
+            setDebtAdjModal(false)
+            refreshDetails()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CourierDebtAdjModal({ courierName, currentDebt, onClose, onSave }) {
+  const [delta, setDelta] = useState(0)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const preview = currentDebt + delta
+
+  const handle = async () => {
+    if (delta === 0) return
+    setError('')
+    setLoading(true)
+    try { await onSave(delta, note.trim() || null) }
+    catch (err) { setError(err?.response?.data?.detail || err?.message || 'Ошибка'); setLoading(false) }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 36, height: 36, borderRadius: 10, fontSize: 20, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Изменить долг бутылок</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2 }}>
+          Курьер: <b style={{ color: TEXT }}>{courierName}</b> · текущий долг: <b style={{ color: currentDebt > 0 ? '#E03131' : TEXT2 }}>{currentDebt} бут.</b>
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <button onClick={() => setDelta(d => d - 1)} style={stepBtn({ background: '#F0FFF4', border: '1.5px solid rgba(46,184,89,0.3)', color: '#2B8A3E', fontSize: 22 })}>−</button>
+            <div style={{ textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: delta > 0 ? '#E03131' : delta < 0 ? '#2B8A3E' : TEXT2, lineHeight: 1 }}>
+                {delta > 0 ? `+${delta}` : delta}
+              </div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>бут.</div>
+            </div>
+            <button onClick={() => setDelta(d => d + 1)} style={stepBtn({ background: '#FFF5F5', border: '1.5px solid rgba(224,49,49,0.2)', color: '#E03131', fontSize: 22 })}>+</button>
+          </div>
+          {delta !== 0 && (
+            <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: TEXT2 }}>
+              Будет: <b style={{ color: preview > 0 ? '#E03131' : '#2B8A3E' }}>{Math.max(0, preview)} бут.</b>
+            </div>
+          )}
+        </div>
+        <input
+          style={{ border: '1.5px solid rgba(60,60,67,0.12)', borderRadius: 12, padding: '12px 12px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }}
+          value={note} onChange={e => setNote(e.target.value)} placeholder="Причина (необязательно)"
+        />
+        {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+        <button
+          style={{ padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #E03131, #C92A2A)', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(224,49,49,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
+          disabled={delta === 0 || loading} onClick={handle}
+        >
+          {loading ? 'Сохраняю...' : 'Применить изменение'}
+        </button>
+      </div>
     </div>
   )
 }

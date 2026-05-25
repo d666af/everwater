@@ -131,9 +131,21 @@ async def create_tables():
             """UPDATE managers SET phone = '+998' || RIGHT(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), 9)
                WHERE phone IS NOT NULL AND phone != ''
                  AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '', 'g')) >= 9""",
-    ):
-        try:
-            async with engine.begin() as _conn:
-                await _conn.execute(text(stmt))
-        except Exception:
-            pass
+            """CREATE TABLE IF NOT EXISTS bottle_debt_adjustments (
+    id SERIAL PRIMARY KEY,
+    target_type VARCHAR(16) NOT NULL,
+    courier_id INTEGER REFERENCES couriers(id) ON DELETE SET NULL,
+    client_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    delta INTEGER NOT NULL,
+    note TEXT,
+    performed_by VARCHAR(255),
+    performed_by_role VARCHAR(32),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+)""",
+            "CREATE INDEX IF NOT EXISTS ix_bda_courier_id ON bottle_debt_adjustments (courier_id)",
+            "CREATE INDEX IF NOT EXISTS ix_bda_client_id ON bottle_debt_adjustments (client_id)",
+        ):
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass

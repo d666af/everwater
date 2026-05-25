@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder, adjustClientDebt } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
@@ -541,6 +541,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [broadcastText, setBroadcastText] = useState('')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  const [debtAdjModal, setDebtAdjModal] = useState(null) // user object
 
   const setUserTags = (userId, tags) => {
     const next = { ...clientTags, [userId]: tags }
@@ -605,6 +606,18 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
       {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} />}
+      {debtAdjModal && (
+        <ClientDebtAdjustModal
+          user={debtAdjModal}
+          onClose={() => setDebtAdjModal(null)}
+          onSave={async (delta, note) => {
+            await adjustClientDebt(debtAdjModal.id, delta, note, currentUser?.name || null, currentUser?.role || null)
+            setDebtAdjModal(null)
+            // Refresh user list to reflect new debt
+            getAdminUsers().then(setUsers).catch(console.error)
+          }}
+        />
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 18, padding: '11px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={TEXT2} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={TEXT2} strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -751,9 +764,12 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                     <div style={{ fontSize: 15, fontWeight: 800, color: (u.bonus_points || 0) > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{Math.round(u.bonus_points || 0)}</div>
                     <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Бонусы</div>
                   </div>
-                  <div style={{ flex: 1, background: (u.bottles_owed || 0) > 0 ? '#FFF5F5' : '#F8F9FA', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: `1px solid ${(u.bottles_owed || 0) > 0 ? 'rgba(201,42,42,0.2)' : BORDER}` }}>
+                  <div
+                    onClick={e => { e.stopPropagation(); setDebtAdjModal(u) }}
+                    style={{ flex: 1, background: (u.bottles_owed || 0) > 0 ? '#FFF5F5' : '#F8F9FA', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: `1px solid ${(u.bottles_owed || 0) > 0 ? 'rgba(201,42,42,0.2)' : BORDER}`, cursor: 'pointer', position: 'relative' }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: (u.bottles_owed || 0) > 0 ? '#C92A2A' : TEXT2, lineHeight: 1 }}>{u.bottles_owed || 0}</div>
                     <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 2 }}>Долг бут.</div>
+                    <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 11, color: '#0077B6', fontWeight: 800 }}>±</div>
                   </div>
                   <div style={{ flex: 1, background: '#FFF8ED', borderRadius: 10, padding: '6px 8px', textAlign: 'center', border: '1px solid rgba(230,119,0,0.2)' }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#E67700', lineHeight: 1 }}>{u.lent_bottles || 0}</div>
@@ -785,4 +801,75 @@ const st = {
   sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '95vh', overflow: 'hidden', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 0, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
   handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
   primaryBtn: { padding: 16, borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(141,198,63,0.35)', width: '100%' },
+}
+
+function ClientDebtAdjustModal({ user, onClose, onSave }) {
+  const [delta, setDelta] = useState(0)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const currentDebt = user?.bottles_owed || 0
+  const preview = currentDebt + delta
+
+  const handle = async () => {
+    if (delta === 0) return
+    setError('')
+    setLoading(true)
+    try { await onSave(delta, note.trim() || null) }
+    catch (err) { setError(err?.response?.data?.detail || err?.message || 'Ошибка'); setLoading(false) }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 36, height: 36, borderRadius: 10, fontSize: 20, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 12, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Изменить долг бутылок</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2 }}>
+          Клиент: <b style={{ color: TEXT }}>{user?.name || user?.phone || '—'}</b> · текущий долг: <b style={{ color: currentDebt > 0 ? '#E03131' : TEXT2 }}>{currentDebt} бут.</b>
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменение</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <button onClick={() => setDelta(d => d - 1)} style={stepBtn({ background: '#F0FFF4', border: '1.5px solid rgba(46,184,89,0.3)', color: '#2B8A3E', fontSize: 22 })}>−</button>
+            <div style={{ textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: delta > 0 ? '#E03131' : delta < 0 ? '#2B8A3E' : TEXT2, lineHeight: 1 }}>
+                {delta > 0 ? `+${delta}` : delta}
+              </div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>бут.</div>
+            </div>
+            <button onClick={() => setDelta(d => d + 1)} style={stepBtn({ background: '#FFF5F5', border: '1.5px solid rgba(224,49,49,0.2)', color: '#E03131', fontSize: 22 })}>+</button>
+          </div>
+          {delta !== 0 && (
+            <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: TEXT2 }}>
+              Будет: <b style={{ color: preview > 0 ? '#E03131' : '#2B8A3E' }}>{Math.max(0, preview)} бут.</b>
+            </div>
+          )}
+        </div>
+        <input
+          style={{ border: '1.5px solid rgba(60,60,67,0.12)', borderRadius: 12, padding: '12px 12px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Причина (необязательно)"
+        />
+        {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+        <button
+          style={{ padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #E03131, #C92A2A)', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(224,49,49,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
+          disabled={delta === 0 || loading}
+          onClick={handle}
+        >
+          {loading ? 'Сохраняю...' : 'Применить изменение'}
+        </button>
+      </div>
+    </div>
+  )
 }

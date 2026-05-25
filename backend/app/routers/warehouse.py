@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 from io import BytesIO
 
 from app.database import get_db
-from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff, CancelledBatch
+from app.models.warehouse import WaterStock, WaterTransaction, CourierWater, WarehouseStaff, CancelledBatch, BottleDebtAdjustment
+from app.models.user import User
 from app.models.factory import Factory
 from app.models.courier import Courier
 from app.models.order import Order, OrderStatus, OrderItem
@@ -1398,12 +1399,16 @@ async def get_couriers_water(
                 .where(WaterTransaction.transaction_type == "bottle_return")
                 .where(WaterTransaction.counts_for_debt != False)
             )).scalar() or 0
-            from_warehouse = max(0, c_issued - c_returned)
+            c_adj = (await db.execute(
+                select(func.sum(BottleDebtAdjustment.delta))
+                .where(BottleDebtAdjustment.courier_id == c.id)
+            )).scalar() or 0
+            from_warehouse = max(0, c_issued - c_returned + c_adj)
 
             # Fallback: if no warehouse batch records exist, derive debt from delivered orders.
             # This covers the case where all warehouse issue records were deleted/cancelled but
             # the courier still delivered 19L bottles that need to be returned.
-            if c_issued == 0:
+            if c_issued == 0 and c_adj == 0:
                 del_all_q = await db.execute(
                     select(Order)
                     .options(selectinload(Order.items).selectinload(OrderItem.product))
@@ -1418,7 +1423,7 @@ async def get_couriers_water(
                             orders_19l += item.quantity
                     orders_client_returned += (o.return_bottles_count or 0)
                 from_orders = max(0, orders_19l - orders_client_returned - c_returned)
-                bottles_must_return = from_orders
+                bottles_must_return = max(0, from_orders + c_adj)
             else:
                 bottles_must_return = from_warehouse
         else:
@@ -2025,3 +2030,100 @@ async def sync_delivery_net(db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     return {"ok": True, "deleted": len(existing), "created": created}
+
+
+# ─── Bottle debt adjustments ──────────────────────────────────────────────────
+
+class BottleDebtAdjustRequest(BaseModel):
+    delta: int
+    note: str | None = None
+    performed_by: str | None = None
+    performed_by_role: str | None = None
+
+
+@router.post("/couriers/{courier_id}/debt_adjust")
+async def adjust_courier_debt(
+    courier_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    courier = (await db.execute(select(Courier).where(Courier.id == courier_id))).scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    adj = BottleDebtAdjustment(
+        target_type="courier",
+        courier_id=courier_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
+@router.post("/clients/{client_id}/debt_adjust")
+async def adjust_client_debt_wh(
+    client_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.client_data import BottleDebt
+    user = (await db.execute(select(User).where(User.id == client_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Client not found")
+    bd = (await db.execute(select(BottleDebt).where(BottleDebt.user_id == client_id))).scalar_one_or_none()
+    if bd:
+        bd.count = max(0, bd.count + data.delta)
+    else:
+        if data.delta > 0:
+            db.add(BottleDebt(user_id=client_id, count=data.delta))
+    adj = BottleDebtAdjustment(
+        target_type="client",
+        client_id=client_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
+@router.get("/debt_adjustments")
+async def get_debt_adjustments_wh(
+    limit: int = 100,
+    target_type: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return debt adjustment log. For warehouse: couriers only by default."""
+    q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
+    if target_type:
+        q = q.where(BottleDebtAdjustment.target_type == target_type)
+    rows = (await db.execute(q)).scalars().all()
+    result = []
+    for r in rows:
+        target_name = None
+        if r.courier_id:
+            c = (await db.execute(select(Courier).where(Courier.id == r.courier_id))).scalar_one_or_none()
+            target_name = c.name if c else None
+        elif r.client_id:
+            u = (await db.execute(select(User).where(User.id == r.client_id))).scalar_one_or_none()
+            target_name = (u.name or u.phone) if u else None
+        result.append({
+            "id": r.id,
+            "target_type": r.target_type,
+            "courier_id": r.courier_id,
+            "client_id": r.client_id,
+            "target_name": target_name,
+            "delta": r.delta,
+            "note": r.note,
+            "performed_by": r.performed_by,
+            "performed_by_role": r.performed_by_role,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+    return result
