@@ -18,10 +18,11 @@ async def get_db() -> AsyncSession:
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Lightweight column additions for tables that already exist
-        # (Postgres-only; safe to re-run because of IF NOT EXISTS).
-        from sqlalchemy import text
-        for stmt in (
+    # Each migration runs in its own transaction so one failure doesn't
+    # abort the rest (PostgreSQL marks a transaction as aborted on any error,
+    # making all subsequent statements in that transaction silently no-ops).
+    from sqlalchemy import text
+    for stmt in (
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(64)",
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32)",
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS warehouse_only BOOLEAN NOT NULL DEFAULT FALSE",
