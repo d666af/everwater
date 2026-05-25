@@ -181,19 +181,35 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
           <div style={{ width: 30, height: 30, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
         </div>
-      ) : couriers.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: TEXT2 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>Нет активных курьеров</div>
-        </div>
       ) : (
         <>
-          {factories.length > 0 && (
+          {/* "Другое" section: НАХТ, MILK VILL and other category='other' factories */}
+          {factories.filter(f => f.category === 'other').length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
+                Другое · {periodLabel}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                {factories.filter(f => f.category === 'other').map(f => (
+                  <OtherCard
+                    key={f.id}
+                    f={f}
+                    onIssue={() => setFactoryModal({ factory: f, mode: 'issue' })}
+                    onReturn={() => setFactoryModal({ factory: f, mode: 'return' })}
+                    onCancel={() => setCancelModal({ label: f.name })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {/* Regular factories */}
+          {factories.filter(f => !f.category).length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Заводы · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.map(f => (
+                {factories.filter(f => !f.category).map(f => (
                   <FactoryCard
                     key={f.id}
                     f={f}
@@ -205,14 +221,22 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
             </>
           )}
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
-            Курьеры · {periodLabel}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {couriers.map(c => (
-              <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} />
-            ))}
-          </div>
+          {couriers.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: TEXT2 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Нет активных курьеров</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
+                Курьеры · {periodLabel}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {couriers.map(c => (
+                  <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </Layout>
@@ -365,6 +389,79 @@ function FactoryCard({ f, onIssue, onReturn, onCancel }) {
         <button onClick={onReturn} style={{
           flex: 1, padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${PURP}`,
           background: '#fff', color: PURP, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Вернуть
+        </button>
+        <button onClick={onCancel} style={{
+          padding: '9px 10px', borderRadius: 10,
+          border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OtherCard({ f, onIssue, onReturn, onCancel }) {
+  const TEAL = '#0077B6'
+  const TEAL_GRAD = 'linear-gradient(135deg, #0096C7, #0077B6)'
+  const issuedProducts = Object.entries(f.issued || {}).filter(([, q]) => q > 0)
+  const mustBottles = f.bottles_must_return || 0
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', border: '1px solid rgba(0,119,182,0.15)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, background: TEAL_GRAD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+          <div style={{ fontSize: 11, color: TEAL, marginTop: 1, fontWeight: 600 }}>Другое</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1, background: '#FAFAFA', borderRadius: 12, padding: '8px 10px', minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Выдано</div>
+          {issuedProducts.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {issuedProducts.map(([name, qty]) => (
+                <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 4, flex: 1 }}>{name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: TEAL, flexShrink: 0 }}>{qty}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 11, color: TEXT2 }}>—</span>
+          )}
+        </div>
+        <div style={{ flex: 0, flexBasis: 90, background: mustBottles > 0 ? '#E0F4FF' : '#F8F9FA', borderRadius: 12, padding: '8px 10px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: TEAL, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бут. 19л</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
+            <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>должен</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+        <button onClick={onIssue} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 10, border: 'none',
+          background: TEAL_GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Выдать
+        </button>
+        <button onClick={onReturn} style={{
+          flex: 1, padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${TEAL}`,
+          background: '#fff', color: TEAL, fontSize: 12, fontWeight: 700, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
         }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>

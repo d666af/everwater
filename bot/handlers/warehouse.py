@@ -287,7 +287,7 @@ async def _ir_start_flow(target, state: FSMContext):
     else:
         uid = target.from_user.id
 
-    couriers = await api.get_couriers()
+    couriers = await api.get_couriers_warehouse()
     active = [c for c in couriers if c.get("is_active", True)]
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
@@ -330,6 +330,24 @@ async def wh_ir_courier(call: CallbackQuery, state: FSMContext):
         ir_courier_name=courier.get("name", ""),
         ir_courier_phone=courier.get("phone", ""),
         ir_factory_mode=False,
+    )
+    await state.set_state(IssueState.cart)
+    await _show_cart(call, state)
+    await call.answer()
+
+
+@router.callback_query(IssueState.choosing_recipient, F.data.startswith("wh:ir:other:"))
+async def wh_ir_other_factory(call: CallbackQuery, state: FSMContext):
+    """Handle НАХТ / MILK VILL selection — uses factory mode (no courier/vehicle fields)."""
+    factory_name = call.data[len("wh:ir:other:"):]
+    factories = await api.get_factories()
+    factory = next((f for f in factories if f.get("name") == factory_name), None)
+    if not factory:
+        factory = await api.create_factory(factory_name)
+    await state.update_data(
+        ir_factory_id=factory.get("id"),
+        ir_factory_name=factory_name,
+        ir_factory_mode=True, ir_return_qty=0,
     )
     await state.set_state(IssueState.cart)
     await _show_cart(call, state)
@@ -414,7 +432,7 @@ async def wh_ir_nc_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     name = data.get("ir_new_name", "")
     try:
-        courier = await api.create_courier_from_invoice(name, phone)
+        courier = await api.create_courier_from_invoice(name, phone, warehouse_only=True)
     except Exception as e:
         try:
             await message.bot.edit_message_text(

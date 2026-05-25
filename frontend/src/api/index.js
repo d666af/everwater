@@ -443,6 +443,12 @@ export const getAdminCouriers = () =>
     () => MOCK_COURIERS
   )
 
+export const getWarehouseCouriers = () =>
+  safeCall(
+    () => http.get('/warehouse/couriers/list').then(r => r.data),
+    () => MOCK_COURIERS
+  )
+
 export const createCourier = (data) =>
   safeCall(
     () => http.post('/admin/couriers', data).then(r => r.data),

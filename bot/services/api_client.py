@@ -495,6 +495,14 @@ async def get_couriers():
         return []
 
 
+async def get_couriers_warehouse():
+    """All active couriers including warehouse-only — for warehouse bot."""
+    try:
+        return await _get("/warehouse/couriers/list")
+    except Exception:
+        return []
+
+
 async def get_courier_by_telegram(telegram_id: int):
     try:
         return await _get(f"/admin/couriers/by_telegram/{telegram_id}")
@@ -739,10 +747,13 @@ async def get_courier_by_phone(phone: str) -> dict | None:
         return None
 
 
-async def create_courier_from_invoice(name: str, phone: str, vehicle_type: str | None = None, vehicle_plate: str | None = None) -> dict:
+async def create_courier_from_invoice(name: str, phone: str, vehicle_type: str | None = None,
+                                       vehicle_plate: str | None = None,
+                                       warehouse_only: bool = False) -> dict:
     return await _post("/admin/couriers/from_invoice", {
         "name": name, "phone": phone,
         "vehicle_type": vehicle_type, "vehicle_plate": vehicle_plate,
+        "warehouse_only": warehouse_only,
     })
 
 

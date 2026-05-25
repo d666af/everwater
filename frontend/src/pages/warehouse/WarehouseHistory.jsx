@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getAdminCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches } from '../../api'
+import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -47,8 +47,8 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [cancelling, setCancelling] = useState(null) // batch_id currently cancelling
 
   useEffect(() => {
-    getAdminCouriers()
-      .then(cs => setCouriers(cs.filter(c => c.is_active)))
+    getWarehouseCouriers()
+      .then(cs => setCouriers(cs.filter(c => c.is_active !== false)))
       .catch(console.error)
     getProducts()
       .then(prods => {

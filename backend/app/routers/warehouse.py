@@ -858,10 +858,24 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
 
 # ─── Factories CRUD ───────────────────────────────────────────────────────────
 
+@router.get("/couriers/list")
+async def list_all_couriers(db: AsyncSession = Depends(get_db)):
+    """All active couriers including warehouse-only — for warehouse UI dropdowns."""
+    rows = (await db.execute(
+        select(Courier).where(Courier.is_active == True).order_by(Courier.name)
+    )).scalars().all()
+    return [
+        {"id": c.id, "name": c.name, "phone": c.phone,
+         "vehicle_type": c.vehicle_type, "vehicle_plate": c.vehicle_plate,
+         "warehouse_only": c.warehouse_only}
+        for c in rows
+    ]
+
+
 @router.get("/factories")
 async def list_factories(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Factory).order_by(Factory.name))).scalars().all()
-    return [{"id": f.id, "name": f.name, "is_active": f.is_active} for f in rows]
+    return [{"id": f.id, "name": f.name, "is_active": f.is_active, "category": f.category} for f in rows]
 
 
 class FactoryBody(BaseModel):
@@ -1112,6 +1126,7 @@ async def factory_stats(
         result.append({
             "id": f.id,
             "name": f.name,
+            "category": f.category,
             "issued": issued,
             "issued_total": issued_total,
             "issued_sum": round(issued_sum, 2),

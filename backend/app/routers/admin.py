@@ -696,8 +696,15 @@ async def get_manager_by_telegram(telegram_id: int, db: AsyncSession = Depends(g
 
 
 @router.get("/couriers", response_model=list[CourierOut])
-async def get_couriers(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Courier))
+async def get_couriers(
+    include_warehouse: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """List couriers. By default excludes warehouse-only couriers (not shown in admin/manager UI)."""
+    q = select(Courier)
+    if not include_warehouse:
+        q = q.where(Courier.warehouse_only == False)  # noqa: E712
+    result = await db.execute(q)
     return result.scalars().all()
 
 
@@ -734,6 +741,7 @@ class CourierCreateFromInvoice(BaseModel):
     phone: str = ""
     vehicle_type: str | None = None
     vehicle_plate: str | None = None
+    warehouse_only: bool = False
 
 
 def _courier_out(c: Courier) -> dict:
@@ -791,6 +799,7 @@ async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncS
         phone=data.phone or None,
         vehicle_type=data.vehicle_type,
         vehicle_plate=data.vehicle_plate,
+        warehouse_only=data.warehouse_only,
     )
     db.add(courier)
     await db.commit()
@@ -871,6 +880,10 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
 
 @router.delete("/couriers/{courier_id}")
 async def delete_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Courier).where(Courier.id == courier_id))
+    courier_check = result.scalar_one_or_none()
+    if courier_check and courier_check.warehouse_only:
+        raise HTTPException(status_code=403, detail="Warehouse-only couriers can only be deleted by warehouse staff")
     # NULL out nullable FK references to this courier
     await db.execute(update(Order).where(Order.courier_id == courier_id).values(courier_id=None))
     await db.execute(update(Review).where(Review.courier_id == courier_id).values(courier_id=None))
