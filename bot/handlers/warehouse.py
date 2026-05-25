@@ -886,8 +886,9 @@ async def wh_cancel_select(call: CallbackQuery, state: FSMContext):
 async def wh_cancel_confirm(call: CallbackQuery, state: FSMContext):
     batch_id = call.data[len("wh:cncl:ok:"):]
     await call.answer()
+    operator = await _operator_name(call.from_user.id)
     try:
-        await api.cancel_warehouse_batch(batch_id)
+        await api.cancel_warehouse_batch(batch_id, cancelled_by=operator, cancelled_by_role="warehouse")
     except Exception as e:
         await call.message.edit_text(f"❌ Ошибка: {e}")
         await state.clear()
