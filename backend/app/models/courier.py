@@ -12,6 +12,7 @@ class Courier(Base):
     name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(20))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    warehouse_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     total_deliveries: Mapped[int] = mapped_column(default=0)
     total_earnings: Mapped[float] = mapped_column(Float, default=0.0)
     avg_rating: Mapped[float] = mapped_column(Float, default=0.0)

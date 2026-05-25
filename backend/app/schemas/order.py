@@ -115,6 +115,7 @@ class CourierOut(BaseModel):
     name: str
     phone: str | None
     is_active: bool
+    warehouse_only: bool = False
     total_deliveries: int
     avg_rating: float = 0.0
     rating_count: int = 0

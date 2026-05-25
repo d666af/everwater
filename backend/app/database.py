@@ -24,6 +24,11 @@ async def create_tables():
         for stmt in (
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(64)",
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(32)",
+            "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS warehouse_only BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE factories ADD COLUMN IF NOT EXISTS category VARCHAR(32)",
+            # Seed special "other" factory entities (НАХТ, MILK VILL)
+            "INSERT INTO factories (name, category) VALUES ('НАХТ', 'other') ON CONFLICT (name) DO UPDATE SET category = 'other'",
+            "INSERT INTO factories (name, category) VALUES ('MILK VILL', 'other') ON CONFLICT (name) DO UPDATE SET category = 'other'",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS batch_id VARCHAR(36)",
             "CREATE INDEX IF NOT EXISTS ix_water_transactions_batch_id ON water_transactions (batch_id)",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS courier_earning FLOAT",

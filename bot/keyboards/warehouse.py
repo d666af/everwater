@@ -28,6 +28,9 @@ def wh_prod_product_kb(products: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+_OTHER_FACTORIES = ["НАХТ", "MILK VILL"]
+
+
 def wh_courier_select_kb(couriers: list, action: str) -> InlineKeyboardMarkup:
     buttons = []
     for c in couriers:
@@ -37,6 +40,10 @@ def wh_courier_select_kb(couriers: list, action: str) -> InlineKeyboardMarkup:
             text=label,
             callback_data=f"wh:{action}:courier:{c['id']}"
         )])
+    # "Другое" section — НАХТ and MILK VILL (factory mode, no courier fields)
+    buttons.append([InlineKeyboardButton(text="——— Другое ———", callback_data=f"wh:{action}:noop")])
+    other_row = [InlineKeyboardButton(text=f"🏠 {name}", callback_data=f"wh:{action}:other:{name}") for name in _OTHER_FACTORIES]
+    buttons.append(other_row)
     buttons.append([InlineKeyboardButton(text="🏭 Завод", callback_data=f"wh:{action}:factory")])
     if action == "ir":
         buttons.append([InlineKeyboardButton(text="➕ Новый курьер", callback_data="wh:ir:new_courier")])
@@ -76,7 +83,7 @@ def wh_cart_kb(catalog: list, cart: dict, return_qty: int,
             InlineKeyboardButton(text="+", callback_data=f"wh:ir:plus:{p['id']}"),
         ])
 
-    # Return row (courier only)
+    # Return + vehicle rows (courier only)
     if not is_factory:
         center_ret = f"↩ Бутылки × {return_qty}" if return_qty > 0 else "↩ Бутылки 19л"
         rows.append([
@@ -84,12 +91,10 @@ def wh_cart_kb(catalog: list, cart: dict, return_qty: int,
             InlineKeyboardButton(text=center_ret, callback_data="wh:ir:noop"),
             InlineKeyboardButton(text="+", callback_data="wh:ir:rplus"),
         ])
-
-    # Vehicle row
-    rows.append([
-        InlineKeyboardButton(text=vtype or "🚗 Тип авто", callback_data="wh:ir:vtypemenu"),
-        InlineKeyboardButton(text=vplate or "🔢 Номер", callback_data="wh:ir:vplate"),
-    ])
+        rows.append([
+            InlineKeyboardButton(text=vtype or "🚗 Тип авто", callback_data="wh:ir:vtypemenu"),
+            InlineKeyboardButton(text=vplate or "🔢 Номер", callback_data="wh:ir:vplate"),
+        ])
 
     has_items = any(v.get('qty', 0) > 0 for v in cart.values()) or (not is_factory and return_qty > 0)
     if has_items:
