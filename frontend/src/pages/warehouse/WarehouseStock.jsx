@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateCourier } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -550,7 +550,10 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
 }
 
 function IssueToCourierModal({ couriers, onClose, onSave }) {
-  const [courierId, setCourierId] = useState(couriers[0]?.id || null)
+  const NEW_ID = '__new__'
+  const [courierId, setCourierId] = useState(couriers[0]?.id || NEW_ID)
+  const [newName, setNewName] = useState('')
+  const [newPhone, setNewPhone] = useState('')
   const [catalog, setCatalog] = useState([])
   const [quantities, setQuantities] = useState({})
   const [bottleReturn, setBottleReturn] = useState('')
@@ -559,7 +562,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const courier = couriers.find(c => c.id === courierId)
+  const isNew = courierId === NEW_ID
+  const courier = isNew ? null : couriers.find(c => c.id === courierId)
 
   useEffect(() => {
     getProducts().then(ps => {
@@ -569,8 +573,12 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   }, []) // eslint-disable-line
 
   useEffect(() => {
-    setVehicleType(courier?.vehicle_type || '')
-    setVehiclePlate(courier?.vehicle_plate || '')
+    if (!isNew) {
+      setVehicleType(courier?.vehicle_type || '')
+      setVehiclePlate(courier?.vehicle_plate || '')
+      setNewName('')
+      setNewPhone('')
+    }
   }, [courierId]) // eslint-disable-line
 
   const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
@@ -580,16 +588,28 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
 
   const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
-  const dis = batchItems.length === 0 && parsedReturn === 0
+  const canSubmit = (batchItems.length > 0 || parsedReturn > 0) && (!isNew || newName.trim())
 
   const handle = async () => {
-    if (dis) return
+    if (!canSubmit) return
     setError('')
     setLoading(true)
     try {
+      let resolvedId = courierId
+      let resolvedName = courier?.name || ''
+      if (isNew) {
+        const created = await findOrCreateCourier(
+          newName.trim(),
+          newPhone.trim() || '',
+          vehicleType.trim() || undefined,
+          vehiclePlate.trim() || undefined,
+        )
+        resolvedId = created.id
+        resolvedName = created.name
+      }
       await onSave(
-        courierId,
-        courier?.name || '',
+        resolvedId,
+        resolvedName,
         batchItems,
         parsedReturn,
         vehicleType.trim() || null,
@@ -623,27 +643,15 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
             <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          {/* Courier selector — horizontal scroll */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Курьер</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 8 }}>
-            {couriers.map(c => (
-              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
-                padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                background: courierId === c.id ? GRAD : '#F8F9FA',
-                color: courierId === c.id ? '#fff' : TEXT,
-                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
-              }}>{c.name}</button>
-            ))}
-          </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
         </div>
 
-        {/* Scrollable products — bounded height so footer stays close */}
-        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 310px)', flexShrink: 0 }}>
+        {/* Scrollable products */}
+        <div style={{ overflowY: 'auto', padding: '0 16px', flex: 1, minHeight: 0 }}>
           {catalog.length === 0 ? (
             <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingBottom: 8 }}>
               {catalog.map(p => {
                 const q = quantities[p.id] || 0
                 return (
@@ -674,8 +682,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
         </div>
 
         {/* Fixed footer */}
-        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Bottle return section */}
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${BORDER}` }}>
+          {/* Bottle return */}
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -697,13 +705,57 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
               >+</button>
             </div>
           </div>
-          {/* Transport */}
+
+          {/* Courier selector */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Курьер</div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+            {couriers.map(c => (
+              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
+                padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                background: courierId === c.id ? GRAD : '#F8F9FA',
+                color: courierId === c.id ? '#fff' : TEXT,
+                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+              }}>
+                <span>{c.name}</span>
+                {c.phone && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{c.phone}</span>}
+              </button>
+            ))}
+            <button onClick={() => setCourierId(NEW_ID)} style={{
+              padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+              background: isNew ? '#F0FAE8' : '#F8F9FA',
+              color: isNew ? CD : TEXT2,
+              border: `1.5px solid ${isNew ? C : BORDER}`,
+            }}>+ Новый</button>
+          </div>
+
+          {/* Name + phone (only for new courier) */}
+          {isNew && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                style={{ ...st.input, flex: 1 }}
+                value={newName}
+                onChange={e => { setNewName(e.target.value); setError('') }}
+                placeholder="Имя курьера *"
+              />
+              <input
+                style={{ ...st.input, flex: 1 }}
+                type="tel"
+                value={newPhone}
+                onChange={e => { setNewPhone(e.target.value); setError('') }}
+                placeholder="Телефон"
+              />
+            </div>
+          )}
+
+          {/* Vehicle */}
           <div style={{ display: 'flex', gap: 6 }}>
             <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
             <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
           </div>
+
           {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
-          <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
+          <button style={{ ...st.primaryBtn, ...(!canSubmit ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={!canSubmit || loading} onClick={handle}>
             {loading ? 'Выдаю...' : 'Выдать'}
           </button>
         </div>

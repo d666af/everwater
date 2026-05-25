@@ -449,6 +449,14 @@ export const createCourier = (data) =>
     () => ({ id: Date.now(), ...data, is_active: true, delivery_count: 0 })
   )
 
+export const findOrCreateCourier = (name, phone, vehicleType, vehiclePlate) =>
+  safeCall(
+    () => http.post('/admin/couriers/from_invoice', {
+      name, phone: phone || '', vehicle_type: vehicleType || undefined, vehicle_plate: vehiclePlate || undefined,
+    }).then(r => r.data),
+    () => ({ id: Date.now(), name, phone, vehicle_type: vehicleType, vehicle_plate: vehiclePlate })
+  )
+
 export const deleteCourier = (id) =>
   safeCall(
     () => http.delete(`/admin/couriers/${id}`).then(r => r.data),
