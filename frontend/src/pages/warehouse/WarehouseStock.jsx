@@ -100,8 +100,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp) => {
-        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn)
+      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp, createdAt) => {
+        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn, createdAt)
         if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
         load()
       }} />}
@@ -549,11 +549,14 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
   )
 }
 
+const todayISO = () => toISODate(new Date())
+
 function IssueToCourierModal({ couriers, onClose, onSave }) {
   const NEW_ID = '__new__'
   const [courierId, setCourierId] = useState(couriers[0]?.id || NEW_ID)
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
+  const [issueDate, setIssueDate] = useState(todayISO())
   const [catalog, setCatalog] = useState([])
   const [quantities, setQuantities] = useState({})
   const [bottleReturn, setBottleReturn] = useState('')
@@ -589,6 +592,19 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
 
   const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
   const canSubmit = (batchItems.length > 0 || parsedReturn > 0) && (!isNew || newName.trim())
+  const isBackdated = issueDate !== todayISO()
+
+  // Build UTC ISO string: selected Tashkent date + current Tashkent time → convert to UTC
+  const buildCreatedAt = () => {
+    if (!isBackdated) return undefined
+    const now = new Date()
+    const tzStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' }) // "YYYY-MM-DD HH:MM:SS"
+    const timePart = tzStr.split(' ')[1]
+    const [hh, mm, ss] = timePart.split(':').map(Number)
+    const [y, mo, d] = issueDate.split('-').map(Number)
+    const utcMs = Date.UTC(y, mo - 1, d, hh, mm, ss) - 5 * 60 * 60 * 1000
+    return new Date(utcMs).toISOString().slice(0, 19)
+  }
 
   const handle = async () => {
     if (!canSubmit) return
@@ -614,6 +630,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
         parsedReturn,
         vehicleType.trim() || null,
         vehiclePlate.trim() || null,
+        buildCreatedAt(),
       )
       onClose()
     } catch (err) {
@@ -642,6 +659,35 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          {/* Date selector */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <button
+              onClick={() => setIssueDate(todayISO())}
+              style={{
+                padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', flexShrink: 0,
+                background: !isBackdated ? GRAD : '#F2F2F7',
+                color: !isBackdated ? '#fff' : TEXT2,
+              }}
+            >Сегодня</button>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                type="date"
+                max={todayISO()}
+                value={issueDate}
+                onChange={e => e.target.value && setIssueDate(e.target.value)}
+                style={{
+                  width: '100%', padding: '7px 10px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  border: `1.5px solid ${isBackdated ? '#E67700' : BORDER}`,
+                  background: isBackdated ? '#FFF8F0' : '#F8F9FA',
+                  color: isBackdated ? '#E67700' : TEXT2,
+                  outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            {isBackdated && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFF3D9', padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}>Задним числом</span>
+            )}
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
         </div>
