@@ -58,6 +58,7 @@ async def create_tables():
             "ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL",
             "ALTER TABLE users ALTER COLUMN telegram_id DROP NOT NULL",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS factory_id INTEGER REFERENCES factories(id)",
+            "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS invoice_message_id BIGINT",
             """CREATE TABLE IF NOT EXISTS courier_product_earnings (
                 id SERIAL PRIMARY KEY,
                 courier_id INTEGER NOT NULL REFERENCES couriers(id),

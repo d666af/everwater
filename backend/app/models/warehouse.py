@@ -30,6 +30,7 @@ class WaterTransaction(Base):
     batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     performed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     counts_for_debt: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
+    invoice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     product: Mapped["Product | None"] = relationship("Product")  # noqa: F821

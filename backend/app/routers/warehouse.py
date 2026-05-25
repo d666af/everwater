@@ -18,6 +18,7 @@ from app.models.product import Product
 from app.config import settings as app_settings
 from app.services.invoice import generate_invoice_png
 from app.services.settings_service import is_subscriptions_enabled
+from sqlalchemy import update as sa_update
 from app.services.tg_notify import tg_send_photo
 
 router = APIRouter(prefix="/warehouse", tags=["warehouse"])
@@ -472,13 +473,21 @@ async def _send_invoice_to_admins(png: bytes, courier, items_summary: list[dict]
                                     batch_id: str, performed_by: str | None,
                                     db: AsyncSession | None = None,
                                     invoice_phone: str | None = None):
-    """Send invoice PNG (photo only, no caption) to the invoice group."""
+    """Send invoice PNG to the invoice group and persist the message_id for future deletion."""
+    from app.services.tg_notify import tg_send_photo
     group_id = app_settings.INVOICE_GROUP_ID
     if not group_id or not png:
         return
     try:
-        await tg_send_photo(group_id, png, caption=None,
-                            filename=f"nakladnaya_{batch_id[:8]}.png")
+        msg_id = await tg_send_photo(group_id, png, caption=None,
+                                     filename=f"nakladnaya_{batch_id[:8]}.png")
+        if msg_id and db:
+            await db.execute(
+                sa_update(WaterTransaction)
+                .where(WaterTransaction.batch_id == batch_id)
+                .values(invoice_message_id=msg_id)
+            )
+            await db.commit()
     except Exception:
         pass
 
@@ -1746,6 +1755,9 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
     if not txs:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    # Retrieve stored invoice message_id before deleting transactions
+    invoice_msg_id = next((tx.invoice_message_id for tx in txs if tx.invoice_message_id), None)
+
     for tx in txs:
         if tx.transaction_type == "issue" and tx.product_id and tx.courier_id:
             stock = await _ensure_stock(db, tx.product_id)
@@ -1768,6 +1780,15 @@ async def cancel_issue_batch(batch_id: str, db: AsyncSession = Depends(get_db)):
             await db.delete(tx)
 
     await db.commit()
+
+    # Delete the invoice message from the group (best-effort, after DB commit)
+    if invoice_msg_id and app_settings.INVOICE_GROUP_ID:
+        from app.services.tg_notify import tg_delete_message
+        try:
+            await tg_delete_message(app_settings.INVOICE_GROUP_ID, invoice_msg_id)
+        except Exception:
+            pass
+
     return {"ok": True, "batch_id": batch_id}
 
 

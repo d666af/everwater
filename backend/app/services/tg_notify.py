@@ -32,10 +32,10 @@ async def tg_send_capture(chat_id: int, text: str, reply_markup=None) -> dict | 
 
 
 async def tg_send_photo(chat_id: int, photo_bytes: bytes, caption: str | None = None,
-                        filename: str = "invoice.png") -> bool:
-    """Send a photo (PNG bytes) with optional HTML caption. Returns True on success."""
+                        filename: str = "invoice.png") -> int | None:
+    """Send a photo (PNG bytes) with optional HTML caption. Returns message_id on success."""
     if not chat_id or not photo_bytes:
-        return False
+        return None
     url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendPhoto"
     form = aiohttp.FormData()
     form.add_field("chat_id", str(chat_id))
@@ -47,9 +47,24 @@ async def tg_send_photo(chat_id: int, photo_bytes: bytes, caption: str | None = 
         async with aiohttp.ClientSession() as s:
             r = await s.post(url, data=form, timeout=aiohttp.ClientTimeout(total=15))
             data = await r.json()
-            return bool(data.get("ok"))
+            if data.get("ok"):
+                return data["result"]["message_id"]
     except Exception:
-        return False
+        pass
+    return None
+
+
+async def tg_delete_message(chat_id: int, message_id: int) -> None:
+    """Delete a Telegram message. Silently ignores errors (already deleted, no rights, etc.)."""
+    if not chat_id or not message_id:
+        return
+    url = f"https://api.telegram.org/bot{settings.BOT_TOKEN}/deleteMessage"
+    try:
+        async with aiohttp.ClientSession() as s:
+            await s.post(url, json={"chat_id": chat_id, "message_id": message_id},
+                         timeout=aiohttp.ClientTimeout(total=10))
+    except Exception:
+        pass
 
 
 async def tg_edit_msg(chat_id: int, message_id: int, text: str, reply_markup=None) -> None:
