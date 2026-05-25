@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, clearOrderIssues, syncDeliveryNet } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateCourier } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -100,8 +100,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp) => {
-        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn)
+      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp, createdAt) => {
+        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn, createdAt)
         if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
         load()
       }} />}
@@ -369,23 +369,6 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
         <div style={{ fontSize: 13, fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Обслуживание</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
-            style={{ padding: '12px 16px', borderRadius: 12, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#C2410C', fontSize: 14, fontWeight: 700, cursor: maintLoading ? 'not-allowed' : 'pointer', opacity: maintLoading ? 0.6 : 1, textAlign: 'left' }}
-            disabled={!!maintLoading}
-            onClick={async () => {
-              if (!window.confirm('Удалить все фантомные выдачи (без партии)? Это удалит все WaterTransaction типа issue без batch_id.')) return
-              setMaintLoading('clear')
-              setMaintResult(null)
-              try {
-                const res = await clearOrderIssues()
-                setMaintResult({ msg: `Удалено ${res.deleted ?? 0} фантомных транзакций` })
-                load()
-              } catch { setMaintResult({ msg: 'Ошибка' }) }
-              setMaintLoading(null)
-            }}
-          >
-            {maintLoading === 'clear' ? 'Удаляю...' : 'Удалить фантомные выдачи'}
-          </button>
-          <button
             style={{ padding: '12px 16px', borderRadius: 12, border: '1.5px solid #0EA5E9', background: '#F0F9FF', color: '#0369A1', fontSize: 14, fontWeight: 700, cursor: maintLoading ? 'not-allowed' : 'pointer', opacity: maintLoading ? 0.6 : 1, textAlign: 'left' }}
             disabled={!!maintLoading}
             onClick={async () => {
@@ -566,8 +549,14 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
   )
 }
 
+const todayISO = () => toISODate(new Date())
+
 function IssueToCourierModal({ couriers, onClose, onSave }) {
-  const [courierId, setCourierId] = useState(couriers[0]?.id || null)
+  const NEW_ID = '__new__'
+  const [courierId, setCourierId] = useState(couriers[0]?.id || NEW_ID)
+  const [newName, setNewName] = useState('')
+  const [newPhone, setNewPhone] = useState('')
+  const [issueDate, setIssueDate] = useState(todayISO())
   const [catalog, setCatalog] = useState([])
   const [quantities, setQuantities] = useState({})
   const [bottleReturn, setBottleReturn] = useState('')
@@ -576,7 +565,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const courier = couriers.find(c => c.id === courierId)
+  const isNew = courierId === NEW_ID
+  const courier = isNew ? null : couriers.find(c => c.id === courierId)
 
   useEffect(() => {
     getProducts().then(ps => {
@@ -586,8 +576,12 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   }, []) // eslint-disable-line
 
   useEffect(() => {
-    setVehicleType(courier?.vehicle_type || '')
-    setVehiclePlate(courier?.vehicle_plate || '')
+    if (!isNew) {
+      setVehicleType(courier?.vehicle_type || '')
+      setVehiclePlate(courier?.vehicle_plate || '')
+      setNewName('')
+      setNewPhone('')
+    }
   }, [courierId]) // eslint-disable-line
 
   const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
@@ -597,20 +591,46 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
 
   const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
-  const dis = batchItems.length === 0 && parsedReturn === 0
+  const canSubmit = (batchItems.length > 0 || parsedReturn > 0) && (!isNew || newName.trim())
+  const isBackdated = issueDate !== todayISO()
+
+  // Build UTC ISO string: selected Tashkent date + current Tashkent time → convert to UTC
+  const buildCreatedAt = () => {
+    if (!isBackdated) return undefined
+    const now = new Date()
+    const tzStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' }) // "YYYY-MM-DD HH:MM:SS"
+    const timePart = tzStr.split(' ')[1]
+    const [hh, mm, ss] = timePart.split(':').map(Number)
+    const [y, mo, d] = issueDate.split('-').map(Number)
+    const utcMs = Date.UTC(y, mo - 1, d, hh, mm, ss) - 5 * 60 * 60 * 1000
+    return new Date(utcMs).toISOString().slice(0, 19)
+  }
 
   const handle = async () => {
-    if (dis) return
+    if (!canSubmit) return
     setError('')
     setLoading(true)
     try {
+      let resolvedId = courierId
+      let resolvedName = courier?.name || ''
+      if (isNew) {
+        const created = await findOrCreateCourier(
+          newName.trim(),
+          newPhone.trim() || '',
+          vehicleType.trim() || undefined,
+          vehiclePlate.trim() || undefined,
+        )
+        resolvedId = created.id
+        resolvedName = created.name
+      }
       await onSave(
-        courierId,
-        courier?.name || '',
+        resolvedId,
+        resolvedName,
         batchItems,
         parsedReturn,
         vehicleType.trim() || null,
         vehiclePlate.trim() || null,
+        buildCreatedAt(),
       )
       onClose()
     } catch (err) {
@@ -640,27 +660,44 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
             <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          {/* Courier selector — horizontal scroll */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Курьер</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 8 }}>
-            {couriers.map(c => (
-              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
-                padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                background: courierId === c.id ? GRAD : '#F8F9FA',
-                color: courierId === c.id ? '#fff' : TEXT,
-                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
-              }}>{c.name}</button>
-            ))}
+          {/* Date selector */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <button
+              onClick={() => setIssueDate(todayISO())}
+              style={{
+                padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', flexShrink: 0,
+                background: !isBackdated ? GRAD : '#F2F2F7',
+                color: !isBackdated ? '#fff' : TEXT2,
+              }}
+            >Сегодня</button>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                type="date"
+                max={todayISO()}
+                value={issueDate}
+                onChange={e => e.target.value && setIssueDate(e.target.value)}
+                style={{
+                  width: '100%', padding: '7px 10px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  border: `1.5px solid ${isBackdated ? '#E67700' : BORDER}`,
+                  background: isBackdated ? '#FFF8F0' : '#F8F9FA',
+                  color: isBackdated ? '#E67700' : TEXT2,
+                  outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            {isBackdated && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFF3D9', padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}>Задним числом</span>
+            )}
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
         </div>
 
-        {/* Scrollable products — bounded height so footer stays close */}
-        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 310px)', flexShrink: 0 }}>
+        {/* Scrollable products */}
+        <div style={{ overflowY: 'auto', padding: '0 16px', flex: 1, minHeight: 0 }}>
           {catalog.length === 0 ? (
             <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingBottom: 8 }}>
               {catalog.map(p => {
                 const q = quantities[p.id] || 0
                 return (
@@ -691,8 +728,8 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
         </div>
 
         {/* Fixed footer */}
-        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Bottle return section */}
+        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${BORDER}` }}>
+          {/* Bottle return */}
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -714,13 +751,57 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
               >+</button>
             </div>
           </div>
-          {/* Transport */}
+
+          {/* Courier selector */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Курьер</div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+            {couriers.map(c => (
+              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
+                padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                background: courierId === c.id ? GRAD : '#F8F9FA',
+                color: courierId === c.id ? '#fff' : TEXT,
+                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
+              }}>
+                <span>{c.name}</span>
+                {c.phone && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{c.phone}</span>}
+              </button>
+            ))}
+            <button onClick={() => setCourierId(NEW_ID)} style={{
+              padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+              background: isNew ? '#F0FAE8' : '#F8F9FA',
+              color: isNew ? CD : TEXT2,
+              border: `1.5px solid ${isNew ? C : BORDER}`,
+            }}>+ Новый</button>
+          </div>
+
+          {/* Name + phone (only for new courier) */}
+          {isNew && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                style={{ ...st.input, flex: 1 }}
+                value={newName}
+                onChange={e => { setNewName(e.target.value); setError('') }}
+                placeholder="Имя курьера *"
+              />
+              <input
+                style={{ ...st.input, flex: 1 }}
+                type="tel"
+                value={newPhone}
+                onChange={e => { setNewPhone(e.target.value); setError('') }}
+                placeholder="Телефон"
+              />
+            </div>
+          )}
+
+          {/* Vehicle */}
           <div style={{ display: 'flex', gap: 6 }}>
             <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
             <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
           </div>
+
           {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
-          <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
+          <button style={{ ...st.primaryBtn, ...(!canSubmit ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={!canSubmit || loading} onClick={handle}>
             {loading ? 'Выдаю...' : 'Выдать'}
           </button>
         </div>

@@ -198,9 +198,8 @@ async def _notify_low_stock_if_needed(
 
 
 async def _reserve_inventory(order, db: AsyncSession):
-    """Move order items from courier's available quantity → reserved.
-    For manager-created orders, create the CourierWater row and WaterTransaction if they don't exist."""
-    from app.models.warehouse import CourierWater, WaterTransaction
+    """Move order items from courier's available quantity → reserved."""
+    from app.models.warehouse import CourierWater
     if not order.courier_id or not order.items:
         return
     is_manager_order = getattr(order, 'creator_role', None) == 'manager'
@@ -226,14 +225,6 @@ async def _reserve_inventory(order, db: AsyncSession):
             else:
                 row.issued_today = (row.issued_today or 0) + item.quantity
             row.reserved = (row.reserved or 0) + item.quantity
-            db.add(WaterTransaction(
-                product_id=item.product_id,
-                courier_id=order.courier_id,
-                order_id=order.id,
-                transaction_type="issue",
-                quantity=item.quantity,
-                note="Заказ создан менеджером",
-            ))
         elif row:
             qty = min(item.quantity, max(0, row.quantity))
             row.quantity = max(0, row.quantity - qty)
@@ -242,7 +233,7 @@ async def _reserve_inventory(order, db: AsyncSession):
 
 async def _release_inventory(order, db: AsyncSession, consume: bool = False):
     """Move reserved items back to available (cancel) or simply remove them (deliver)."""
-    from app.models.warehouse import CourierWater, WaterTransaction
+    from app.models.warehouse import CourierWater
     if not order.courier_id or not order.items:
         return
     is_manager_order = getattr(order, 'creator_role', None) == 'manager'
@@ -264,18 +255,6 @@ async def _release_inventory(order, db: AsyncSession, consume: bool = False):
             row.reserved = max(0, (row.reserved or 0) - qty)
             if not consume:
                 row.quantity = (row.quantity or 0) + qty
-
-    if is_manager_order:
-        # Delete the unbatched "issue" transactions created for manager orders
-        # so they don't inflate courier bottle debt
-        issue_txs = (await db.execute(
-            select(WaterTransaction).where(
-                WaterTransaction.order_id == order.id,
-                WaterTransaction.transaction_type == "issue",
-            )
-        )).scalars().all()
-        for tx in issue_txs:
-            await db.delete(tx)
 
 
 def calc_bottle_discount(count: int, subtotal: float, cfg: dict) -> float:

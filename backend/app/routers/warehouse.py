@@ -1407,6 +1407,7 @@ async def get_couriers_water(
                 select(WaterTransaction.order_id).distinct()
                 .where(WaterTransaction.order_id.in_(oid_list))
                 .where(WaterTransaction.transaction_type == "issue")
+                .where(WaterTransaction.batch_id.isnot(None))
             )
             issued_order_ids = {row[0] for row in tx_q.all()}
 
@@ -1468,7 +1469,7 @@ async def get_couriers_water(
         bottles_returned_period = 0
         issued_products_period: dict[str, int] = {}
         for tx, prod in tx_q.all():
-            if tx.transaction_type == "issue":
+            if tx.transaction_type == "issue" and tx.batch_id:
                 issued_today_count += tx.quantity
                 if prod:
                     short = _short_name(prod.volume, prod.type)
@@ -1538,9 +1539,16 @@ async def get_history(
 
     if type and type != "all":
         q = q.where(WaterTransaction.transaction_type == type)
+        # Never show unbatched auto-issue records regardless of filter
+        if type == "issue":
+            q = q.where(WaterTransaction.batch_id.isnot(None))
     else:
         # delivery_net is internal accounting — hide from default history view
+        # Unbatched issue records are auto-created by order assignment, not real warehouse issuances
         q = q.where(WaterTransaction.transaction_type != "delivery_net")
+        q = q.where(
+            (WaterTransaction.transaction_type != "issue") | WaterTransaction.batch_id.isnot(None)
+        )
 
     if product and product != "all":
         all_prods = (await db.execute(select(Product).where(Product.is_active == True))).scalars().all()

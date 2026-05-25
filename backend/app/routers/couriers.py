@@ -337,6 +337,7 @@ async def _courier_report_data(courier_id: int, date_from: date, date_to: date, 
             and_(
                 WaterTransaction.courier_id == courier_id,
                 WaterTransaction.transaction_type == "issue",
+                WaterTransaction.batch_id.isnot(None),
                 WaterTransaction.created_at >= dt_from,
                 WaterTransaction.created_at <= dt_to,
             )
