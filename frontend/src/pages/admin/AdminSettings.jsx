@@ -78,9 +78,9 @@ export default function AdminSettings() {
     subscriptions_enabled: true,
     support_chat_enabled: true,
     support_contacts_text: '',
-    permanent_customer_min_orders: 2,
-    permanent_customer_period_days: 7,
-    inactive_customer_days: 30,
+    permanent_customer_min_orders: 5,
+    permanent_customer_period_days: 90,
+    inactive_customer_days: 60,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -714,6 +714,45 @@ export default function AdminSettings() {
             {form.delivery_reminder_enabled
               ? <>Напоминания включены: 1-е при просрочке, 2-е через <b>{form.delivery_reminder_2_delay} мин</b>.</>
               : <span style={{ color: TEXT2 }}>Напоминания отключены.</span>}
+          </div>
+        </Section>
+
+        {/* Customer classification */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="9" cy="7" r="4" stroke="#8DC63F" strokeWidth="1.8"/>
+              <path d="M2 21c0-3.3 3.1-6 7-6" stroke="#8DC63F" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M17 13l2 2 4-4" stroke="#8DC63F" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Классификация клиентов"
+          hint="Пороги для тегов «Постоянный» и «Неактивный» в CRM"
+        >
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Постоянный — мин. заказов</div>
+              <input style={{ ...s.input, maxWidth: 180 }} type="number" min="1" {...f('permanent_customer_min_orders')} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Постоянный — период (дней, 0 = за всё время)</div>
+              <input style={{ ...s.input, maxWidth: 180 }} type="number" min="0" {...f('permanent_customer_period_days')} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Неактивный — дней без заказа</div>
+              <input style={{ ...s.input, maxWidth: 180 }} type="number" min="1" {...f('inactive_customer_days')} />
+            </div>
+          </div>
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <b>Постоянный</b>:{' '}
+            {Number(form.permanent_customer_period_days) > 0
+              ? <>{form.permanent_customer_min_orders}+ доставленных заказов за последние <b>{form.permanent_customer_period_days} дн.</b></>
+              : <>{form.permanent_customer_min_orders}+ доставленных заказов за всё время.</>}
+            {' '}<b>Неактивный</b>: нет заказов более <b>{form.inactive_customer_days} дн.</b>
           </div>
         </Section>
 
