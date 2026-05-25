@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
@@ -627,7 +627,7 @@ async def wh_ir_vplate_input(message: Message, state: FSMContext):
 # ── Back to cart from input states ────────────────────────────────────────────
 
 @router.callback_query(
-    IssueState.vehicle_plate | IssueState.date_input,
+    StateFilter(IssueState.vehicle_plate, IssueState.date_input),
     F.data == "wh:ir:back_input",
 )
 async def wh_ir_back_input(call: CallbackQuery, state: FSMContext):
