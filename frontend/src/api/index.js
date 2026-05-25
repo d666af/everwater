@@ -1598,3 +1598,49 @@ export const getStatsLentBottles = (params) =>
     () => http.get('/admin/stats/lent-bottles', { params }).then(r => r.data),
     () => ({ total: 0, by_role: {}, by_agent: [], by_manager: [], by_courier_creator: [], by_admin: [], delivery_by_courier: [] })
   )
+
+// ─── Bottle debt adjustments ────────────────────────────────────────────────
+
+export const adjustCourierDebt = (courierId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/admin/couriers/${courierId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const adjustClientDebt = (clientId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/admin/clients/${clientId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getDebtAdjustments = (params = {}) =>
+  safeCall(
+    () => http.get('/admin/debt_adjustments', { params }).then(r => r.data),
+    () => []
+  )
+
+export const adjustWarehouseCourierDebt = (courierId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/warehouse/couriers/${courierId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const adjustWarehouseClientDebt = (clientId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/warehouse/clients/${clientId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const getWarehouseDebtAdjustments = (params = {}) =>
+  safeCall(
+    () => http.get('/warehouse/debt_adjustments', { params }).then(r => r.data),
+    () => []
+  )
