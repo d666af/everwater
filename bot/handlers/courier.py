@@ -431,7 +431,10 @@ async def list_courier_done(call: CallbackQuery):
         except Exception:
             pass
 
-    await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
 
     if order.get("payment_collected") is not None:
         await call.answer()
@@ -440,12 +443,14 @@ async def list_courier_done(call: CallbackQuery):
     total_fmt = fmt(order.get("total", 0))
     pay = order.get("payment_method", "cash")
     if pay == "cash":
-        sent = await call.message.answer(
+        sent = await call.bot.send_message(
+            call.from_user.id,
             f"💵 Вы получили наличные?\nСумма: {total_fmt}",
             reply_markup=courier_cash_confirm_kb(order_id),
         )
     else:
-        sent = await call.message.answer(
+        sent = await call.bot.send_message(
+            call.from_user.id,
             f"💳 Вы проверили чек оплаты по карте?\nСумма: {total_fmt}",
             reply_markup=courier_card_confirm_kb(order_id),
         )
@@ -1223,7 +1228,10 @@ async def courier_done(call: CallbackQuery):
         except Exception:
             pass
 
-    await call.message.edit_text(f"✔️ Доставлено: {brief}", reply_markup=None)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
 
     if order.get("payment_collected") is not None:
         await call.answer()
@@ -1232,12 +1240,14 @@ async def courier_done(call: CallbackQuery):
     total_fmt = fmt(order.get("total", 0))
     pay = order.get("payment_method", "cash")
     if pay == "cash":
-        sent = await call.message.answer(
+        sent = await call.bot.send_message(
+            call.from_user.id,
             f"💵 Вы получили наличные?\nСумма: {total_fmt}",
             reply_markup=courier_cash_confirm_kb(order_id),
         )
     else:
-        sent = await call.message.answer(
+        sent = await call.bot.send_message(
+            call.from_user.id,
             f"💳 Вы проверили чек оплаты по карте?\nСумма: {total_fmt}",
             reply_markup=courier_card_confirm_kb(order_id),
         )
