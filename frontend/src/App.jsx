@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTelegramAuth } from './hooks/useTelegramAuth'
 import { useRoleRefresh } from './hooks/useRoleRefresh'
 import { useSubscriptionsEnabled } from './hooks/useSubscriptionsEnabled'
+import { useVersionCheck } from './hooks/useVersionCheck'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRolePicker from './components/AdminRolePicker'
 import Header from './components/Header'
@@ -71,8 +72,9 @@ function SubscriptionsGuard({ children, redirectTo }) {
 }
 
 export default function App() {
-  useTelegramAuth()  // Auto-login from Telegram WebApp context on every load
-  useRoleRefresh()   // Silently refresh roles for non-Telegram website users
+  useTelegramAuth()   // Auto-login from Telegram WebApp context on every load
+  useRoleRefresh()    // Silently refresh roles for non-Telegram website users
+  useVersionCheck()   // Auto-reload when a new frontend build is deployed
   return (
     <>
       <AdminRolePicker />

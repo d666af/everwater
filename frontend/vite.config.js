@@ -1,5 +1,17 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { writeFileSync } from 'fs'
+import { resolve } from 'path'
+
+const versionPlugin = {
+  name: 'write-version-json',
+  buildStart() {
+    writeFileSync(
+      resolve(__dirname, 'public/version.json'),
+      JSON.stringify({ v: Date.now() }),
+    )
+  },
+}
 
 export default defineConfig(({ mode }) => {
   // Load .env, .env.local etc. so VITE_MOCK is available here
@@ -7,7 +19,7 @@ export default defineConfig(({ mode }) => {
   const isMock = env.VITE_MOCK === 'true'
 
   return {
-    plugins: [react()],
+    plugins: [react(), versionPlugin],
     server: {
       port: 5173,
       // When VITE_MOCK=true — skip proxy entirely, no ECONNREFUSED logs
