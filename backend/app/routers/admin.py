@@ -101,10 +101,17 @@ async def get_stats(
 
     cancelled_q = await db.execute(
         select(func.count(Order.id)).where(
-            _order_time(Order.status == OrderStatus.REJECTED)
+            _order_time(Order.status == OrderStatus.REJECTED, Order.is_deleted != True)
         )
     )
     cancelled = cancelled_q.scalar()
+
+    deleted_q = await db.execute(
+        select(func.count(Order.id)).where(
+            _order_time(Order.is_deleted == True)
+        )
+    )
+    deleted = deleted_q.scalar()
 
     repeat_q = await db.execute(
         select(Order.user_id, func.count(Order.id).label("cnt"))
@@ -349,6 +356,7 @@ async def get_stats(
         "avg_check": round(avg_check, 2),
         "bottles_returned": bottles_returned,
         "cancelled": cancelled,
+        "deleted": deleted,
         "repeat_customers": repeat_customers,
         "by_status": by_status,
         "delivery_revenue": round(delivery_revenue, 2),

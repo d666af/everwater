@@ -497,11 +497,13 @@ async def _send_invoice_to_admins(png: bytes, courier, items_summary: list[dict]
 
 
 async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[bytes, Courier, list[dict]]:
-    """Reconstruct the invoice PNG from stored transactions sharing batch_id."""
+    """Reconstruct the invoice PNG from stored transactions sharing batch_id.
+    Supports both courier (issue/bottle_return) and factory (factory_issue) batches."""
     tx_q = await db.execute(
         select(WaterTransaction)
         .options(selectinload(WaterTransaction.product),
-                 selectinload(WaterTransaction.courier))
+                 selectinload(WaterTransaction.courier),
+                 selectinload(WaterTransaction.factory))
         .where(WaterTransaction.batch_id == batch_id)
         .order_by(WaterTransaction.id)
     )
@@ -509,7 +511,9 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
     if not txs:
         raise HTTPException(404, "Накладная не найдена")
     courier = next((t.courier for t in txs if t.courier), None)
-    if not courier:
+    factory = next((t.factory for t in txs if t.factory), None)
+    is_factory_batch = any(t.transaction_type == "factory_issue" for t in txs)
+    if not courier and not factory and not is_factory_batch:
         raise HTTPException(404, "Курьер не найден для накладной")
 
     # Aggregate same-product transactions defensively
@@ -519,7 +523,7 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
         if t.transaction_type == "bottle_return":
             bottle_return_qty += int(t.quantity or 0)
             continue
-        if t.transaction_type != "issue" or not t.product:
+        if t.transaction_type not in ("issue", "factory_issue") or not t.product:
             continue
         key = t.product_id
         price = float(t.product.price or 0)
@@ -540,30 +544,36 @@ async def _build_invoice_for_batch(db: AsyncSession, batch_id: str) -> tuple[byt
         items.append({"name": "Возврат бутылок", "unit": "Шт", "qty": bottle_return_qty, "is_return": True})
     items.extend(by_product.values())
 
-    # Always show Вода 10л and Вода 5л even when qty = 0
-    for _show_vol in (10.0, 5.0):
-        _wq = await db.execute(
-            select(Product)
-            .where(and_(Product.volume >= _show_vol - 1.5,
-                        Product.volume <= _show_vol + 1.5,
-                        Product.is_active == True))
-            .limit(1)
-        )
-        _wp = _wq.scalar_one_or_none()
-        if _wp and _wp.id not in by_product:
-            items.append({
-                "name": _wp.name, "unit": "Шт",
-                "qty": 0, "bonus": 0,
-                "price": float(_wp.price or 0), "sum": 0,
-            })
+    # For courier batches: always show Вода 10л and Вода 5л even when qty = 0
+    if not is_factory_batch:
+        for _show_vol in (10.0, 5.0):
+            _wq = await db.execute(
+                select(Product)
+                .where(and_(Product.volume >= _show_vol - 1.5,
+                            Product.volume <= _show_vol + 1.5,
+                            Product.is_active == True))
+                .limit(1)
+            )
+            _wp = _wq.scalar_one_or_none()
+            if _wp and _wp.id not in by_product:
+                items.append({
+                    "name": _wp.name, "unit": "Шт",
+                    "qty": 0, "bonus": 0,
+                    "price": float(_wp.price or 0), "sum": 0,
+                })
+
+    recipient_name = (courier.name if courier else None) or (factory.name if factory else "Завод")
+    recipient_phone = courier.phone if courier else None
+    recipient_vt = courier.vehicle_type if courier else None
+    recipient_vp = courier.vehicle_plate if courier else None
 
     when = txs[0].created_at if txs else datetime.now()
     png = generate_invoice_png(
         items=items,
-        courier_name=courier.name,
-        courier_phone=courier.phone,
-        vehicle_type=courier.vehicle_type,
-        vehicle_plate=courier.vehicle_plate,
+        courier_name=recipient_name,
+        courier_phone=recipient_phone,
+        vehicle_type=recipient_vt,
+        vehicle_plate=recipient_vp,
         when=when,
     )
     return png, courier, items
