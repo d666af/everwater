@@ -881,6 +881,7 @@ async def list_factories(db: AsyncSession = Depends(get_db)):
 class FactoryBody(BaseModel):
     name: str
     is_active: bool = True
+    category: str | None = None
 
 
 @router.post("/factories")
@@ -889,12 +890,12 @@ async def create_factory(body: FactoryBody, db: AsyncSession = Depends(get_db)):
         select(Factory).where(Factory.name == body.name)
     )).scalar_one_or_none()
     if existing:
-        return {"id": existing.id, "name": existing.name, "is_active": existing.is_active}
-    f = Factory(name=body.name, is_active=body.is_active)
+        return {"id": existing.id, "name": existing.name, "is_active": existing.is_active, "category": existing.category}
+    f = Factory(name=body.name, is_active=body.is_active, category=body.category)
     db.add(f)
     await db.commit()
     await db.refresh(f)
-    return {"id": f.id, "name": f.name, "is_active": f.is_active}
+    return {"id": f.id, "name": f.name, "is_active": f.is_active, "category": f.category}
 
 
 @router.delete("/factories/{factory_id}")
