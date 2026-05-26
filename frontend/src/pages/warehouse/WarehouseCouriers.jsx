@@ -3,10 +3,9 @@ import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
-  issueBatchToCourier, getInvoiceUrl,
+  getInvoiceUrl,
   getFactoryStats, factoryIssueBatch, factoryReturnBatch,
   getIssueBatches, cancelIssueBatch,
-  findOrCreateCourier, createFactory,
   adjustWarehouseCourierDebt,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
@@ -32,13 +31,11 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
-  const [issueModal, setIssueModal] = useState(null) // courier object
   const [factoryModal, setFactoryModal] = useState(null) // { factory, mode }
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
   const [debtAdjModal, setDebtAdjModal] = useState(null) // courier object for debt adjustment
-  const [newEntityModal, setNewEntityModal] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -80,12 +77,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         : 'Дата')
     : 'Сегодня'
 
-  const issueBatch = async (courierId, courierName, items, bottleReturn, vehicleType, vehiclePlate) => {
-    const res = await issueBatchToCourier(courierId, items, actor, vehicleType, vehiclePlate, null, bottleReturn)
-    if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
-    load()
-  }
-
   const submitDebtAdj = async (courierId, delta, note) => {
     await adjustWarehouseCourierDebt(courierId, delta, note, actor, 'warehouse')
     load()
@@ -101,28 +92,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     load()
   }
 
-  // Special recipients for the courier issue modal (НАХТ, MILK VILL, Склад офис)
-  const specialRecipients = factories.filter(f => f.category === 'other' || f.name === 'Склад офис')
-
   return (
     <Layout title={title}>
-      {issueModal && (
-        <CourierIssueModal
-          courier={issueModal}
-          couriers={couriers}
-          specialRecipients={specialRecipients}
-          catalog={catalog}
-          onClose={() => setIssueModal(null)}
-          onSave={async (items, bottleReturn, vt, vp, recipient) => {
-            if (recipient.type === 'courier') {
-              await issueBatch(recipient.id, recipient.name, items, bottleReturn, vt, vp)
-            } else {
-              await submitFactory(recipient.name, items, 'issue')
-            }
-            setIssueModal(null)
-          }}
-        />
-      )}
       {invoiceModal && (
         <InvoiceSuccessModal
           batchId={invoiceModal.batchId}
@@ -174,14 +145,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onClose={() => setPickerOpen(false)}
         />
       )}
-      {newEntityModal && (
-        <NewEntityModal
-          onClose={() => setNewEntityModal(false)}
-          onCreated={() => { setNewEntityModal(false); load() }}
-        />
-      )}
 
-      {/* Date filter + New button */}
+      {/* Date filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <button
           onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }}
@@ -210,16 +175,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           </svg>
           {period === 'custom' ? periodLabel : 'Дата'}
         </button>
-        <button
-          onClick={() => setNewEntityModal(true)}
-          style={{
-            flexShrink: 0, padding: '9px 14px', borderRadius: 12, cursor: 'pointer',
-            background: '#fff', color: TEXT, border: `1.5px solid ${BORDER}`,
-            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
-          }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Новый
-        </button>
       </div>
 
       {loading ? (
@@ -228,14 +183,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         </div>
       ) : (
         <>
-          {/* "Другое" section: MILK VILL and other category='other' factories (НАХТ hidden here) */}
-          {factories.filter(f => f.category === 'other' && f.name !== 'НАХТ').length > 0 && (
+          {/* "Другое" section */}
+          {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Другое · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => f.category === 'other' && f.name !== 'НАХТ').map(f => (
+                {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').map(f => (
                   <OtherCard
                     key={f.id}
                     f={f}
@@ -247,14 +202,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
             </>
           )}
-          {/* Regular factories (Заводы) — includes Склад офис */}
-          {factories.filter(f => !f.category).length > 0 && (
+          {/* Regular factories (Заводы) */}
+          {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Заводы · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => !f.category).map(f => (
+                {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').map(f => (
                   <FactoryCard
                     key={f.id}
                     f={f}
@@ -277,7 +232,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {couriers.map(c => (
-                  <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
+                  <CourierCard key={c.id} c={c} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
                 ))}
               </div>
             </>
@@ -288,14 +243,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function CourierCard({ c, onIssue, onReport, onCancel, onDebtAdj }) {
+function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
   const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      {/* Header: avatar + name + issue button */}
+      {/* Header: avatar + name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(c.name || 'К')[0]}
@@ -308,14 +263,6 @@ function CourierCard({ c, onIssue, onReport, onCancel, onDebtAdj }) {
             </div>
           )}
         </div>
-        <button onClick={onIssue} style={{
-          flexShrink: 0, padding: '7px 10px', borderRadius: 10, border: 'none',
-          background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-        }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать / Вернуть
-        </button>
       </div>
 
       {/* Issued products + Bottles: side by side */}
