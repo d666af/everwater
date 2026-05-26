@@ -16,7 +16,7 @@ from app.models.manager import Manager
 from app.models.support import SupportChat, SupportMessage
 from app.models.client_data import SavedAddress, Subscription, BottleDebt, TopupRequest
 from app.models.cash_debt import CashDebt
-from app.models.warehouse import WaterTransaction, CourierWater
+from app.models.warehouse import WaterTransaction, CourierWater, BottleDebtAdjustment
 from app.models.cooler import Cooler, CoolerPayment
 from app.schemas.order import CourierCreate, CourierOut
 from app.services.settings_service import is_subscriptions_enabled
@@ -188,6 +188,10 @@ async def get_stats(
         - (courier_returned_q.scalar() or 0)
         - (courier_delivery_net_q.scalar() or 0)
     )
+    total_courier_adj_q = await db.execute(
+        select(func.sum(BottleDebtAdjustment.delta)).where(BottleDebtAdjustment.target_type == "courier")
+    )
+    courier_debt_count = max(0, courier_debt_count + (total_courier_adj_q.scalar() or 0))
 
     # Factory debt: 19L factory_issue − factory_return (all-time)
     if prod_19l_ids:
@@ -863,7 +867,12 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
     total_issued = (issued_q.scalar() if issued_q else None) or 0
     total_returned = returned_q.scalar() or 0
     total_delivery_net = delivery_net_q.scalar() or 0
-    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net)
+    from app.models.warehouse import BottleDebtAdjustment as _BDA
+    courier_adj_q = await db.execute(
+        select(func.sum(_BDA.delta)).where(_BDA.courier_id == courier_id)
+    )
+    courier_adj = courier_adj_q.scalar() or 0
+    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net + courier_adj)
 
     return {
         "courier_id": courier.id,
@@ -2039,3 +2048,99 @@ async def add_cooler_payment(cooler_id: int, body: CoolerPaymentBody, db: AsyncS
     await db.refresh(p)
     c.payments.append(p)
     return _cooler_out(c)
+
+
+# ─── Bottle debt adjustments ──────────────────────────────────────────────────
+
+class BottleDebtAdjustRequest(BaseModel):
+    delta: int
+    note: str | None = None
+    performed_by: str | None = None
+    performed_by_role: str | None = None
+
+
+@router.post("/couriers/{courier_id}/debt_adjust")
+async def adjust_courier_debt_admin(
+    courier_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    courier = (await db.execute(select(Courier).where(Courier.id == courier_id))).scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    adj = BottleDebtAdjustment(
+        target_type="courier",
+        courier_id=courier_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
+@router.post("/clients/{client_id}/debt_adjust")
+async def adjust_client_debt_admin(
+    client_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.client_data import BottleDebt
+    user = (await db.execute(select(User).where(User.id == client_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Client not found")
+    bd = (await db.execute(select(BottleDebt).where(BottleDebt.user_id == client_id))).scalar_one_or_none()
+    if bd:
+        bd.count = max(0, bd.count + data.delta)
+    else:
+        if data.delta > 0:
+            db.add(BottleDebt(user_id=client_id, count=data.delta))
+    adj = BottleDebtAdjustment(
+        target_type="client",
+        client_id=client_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
+@router.get("/debt_adjustments")
+async def get_debt_adjustments_admin(
+    limit: int = 200,
+    target_type: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
+    if target_type:
+        q = q.where(BottleDebtAdjustment.target_type == target_type)
+    rows = (await db.execute(q)).scalars().all()
+    result = []
+    for r in rows:
+        target_name = None
+        if r.courier_id:
+            c = (await db.execute(select(Courier).where(Courier.id == r.courier_id))).scalar_one_or_none()
+            target_name = c.name if c else None
+        elif r.client_id:
+            u = (await db.execute(select(User).where(User.id == r.client_id))).scalar_one_or_none()
+            target_name = (u.name or u.phone) if u else None
+        result.append({
+            "id": r.id,
+            "target_type": r.target_type,
+            "courier_id": r.courier_id,
+            "client_id": r.client_id,
+            "target_name": target_name,
+            "delta": r.delta,
+            "note": r.note,
+            "performed_by": r.performed_by,
+            "performed_by_role": r.performed_by_role,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+    return result

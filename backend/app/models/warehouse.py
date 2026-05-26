@@ -85,3 +85,18 @@ class WarehouseStaff(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BottleDebtAdjustment(Base):
+    """Manual adjustment to a courier's or client's bottle debt."""
+    __tablename__ = "bottle_debt_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    target_type: Mapped[str] = mapped_column(String(16))  # "courier" | "client"
+    courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    delta: Mapped[int] = mapped_column(Integer)  # signed: +N more debt, -N less debt
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
