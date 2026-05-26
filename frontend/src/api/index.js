@@ -973,10 +973,10 @@ export const getFactories = () =>
     () => []
   )
 
-export const createFactory = (name) =>
+export const createFactory = (name, category) =>
   safeCall(
-    () => http.post('/warehouse/factories', { name }).then(r => r.data),
-    () => ({ id: Date.now(), name, is_active: true })
+    () => http.post('/warehouse/factories', { name, ...(category ? { category } : {}) }).then(r => r.data),
+    () => ({ id: Date.now(), name, category, is_active: true })
   )
 
 export const deleteFactory = (id) =>

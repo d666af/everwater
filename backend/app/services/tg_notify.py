@@ -91,6 +91,17 @@ async def edit_all_notifications(msg_ids_json: str | None, text: str, reply_mark
         pass
 
 
+async def delete_all_notifications(msg_ids_json: str | None) -> None:
+    """Delete every stored notification message (admin/manager order cards)."""
+    if not msg_ids_json:
+        return
+    try:
+        for m in json.loads(msg_ids_json):
+            await tg_delete_message(m["chat_id"], m["message_id"])
+    except Exception:
+        pass
+
+
 async def notify_all(admin_ids: list[int], managers, text: str, reply_markup=None) -> str:
     """Send to all admins + active managers (deduplicated), return JSON list of {chat_id, message_id}."""
     msg_ids = []

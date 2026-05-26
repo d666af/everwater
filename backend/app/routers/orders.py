@@ -1181,11 +1181,8 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             f"🚴 {courier_name_dv}{c_phone_part_dv}"
             f"{_assigner_line_dv}"
         )
-        _dv_kb = {"inline_keyboard": [
-            [{"text": "🗑️ Удалить заказ из сайта", "callback_data": f"order:delete:{oid}"}],
-        ]}
-        from app.services.tg_notify import edit_all_notifications
-        await edit_all_notifications(notification_msg_ids_dv, dv_staff_text, reply_markup=_dv_kb)
+        from app.services.tg_notify import delete_all_notifications
+        await delete_all_notifications(notification_msg_ids_dv)
 
     if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} сум бонусных баллов!" if bonus > 0 else ""
