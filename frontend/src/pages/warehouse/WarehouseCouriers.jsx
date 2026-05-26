@@ -7,6 +7,7 @@ import {
   getFactoryStats, factoryIssueBatch, factoryReturnBatch,
   getIssueBatches, cancelIssueBatch,
   findOrCreateCourier, createFactory,
+  adjustWarehouseCourierDebt,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
@@ -36,6 +37,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Ð
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
+  const [debtAdjModal, setDebtAdjModal] = useState(null) // courier object for debt adjustment
   const [newEntityModal, setNewEntityModal] = useState(false)
 
   const load = () => {
