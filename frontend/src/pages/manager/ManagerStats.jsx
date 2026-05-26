@@ -112,15 +112,15 @@ function CancelledCard({ count, dateParams }) {
             <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: 12 }}>Нет данных</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {orders.map((o) => (
-                <div key={o.id} style={{ background: o.is_deleted ? '#FFF8F0' : '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: `3px solid ${o.is_deleted ? '#E67700' : '#E03131'}` }}>
+              {orders.filter(o => !o.is_deleted).map((o) => (
+                <div key={o.id} style={{ background: '#FFF5F5', borderRadius: 14, padding: '12px 14px', borderLeft: `3px solid #E03131` }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{o.client_name || o.client_phone || o.address || '—'}</span>
                       {o.client_name && o.client_phone && <span style={{ fontSize: 11, color: TEXT2 }}>{o.client_phone}</span>}
                       {!o.client_name && !o.client_phone && o.address && <span style={{ fontSize: 11, color: TEXT2 }}>{o.address}</span>}
                     </div>
-                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: o.is_deleted ? '#E67700' : '#E03131' }}>
+                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#E03131' }}>
                       {Math.round(o.total).toLocaleString('ru-RU')} сум
                     </span>
                   </div>
@@ -151,21 +151,142 @@ function CancelledCard({ count, dateParams }) {
                     {o.courier_name && <div style={{ fontSize: 11, color: TEXT2 }}>🚴 Курьер: <span style={{ color: TEXT, fontWeight: 600 }}>{o.courier_name}</span></div>}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                    {o.is_deleted ? (
-                      <span style={{ fontSize: 11, background: '#FFF0E0', borderRadius: 8, padding: '3px 8px', color: '#E67700', fontWeight: 600 }}>
-                        🗑 {o.cancelled_by}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
-                        Отменил: {o.cancelled_by}
-                      </span>
-                    )}
+                    <span style={{ fontSize: 11, background: '#FFE3E3', borderRadius: 8, padding: '3px 8px', color: '#C92A2A', fontWeight: 600 }}>
+                      Отменил: {o.cancelled_by}
+                    </span>
                     <span style={{ fontSize: 11, background: 'rgba(60,60,67,0.06)', borderRadius: 8, padding: '3px 8px', color: TEXT2, fontWeight: 500 }}>
                       {fmt(o.created_at)}
                     </span>
                   </div>
                   {o.reason && (
                     <div style={{ marginTop: 6, fontSize: 12, color: '#C92A2A', fontStyle: 'italic' }}>
+                      Причина: {o.reason}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DeletedCard({ count, dateParams }) {
+  const [expanded, setExpanded] = useState(false)
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const handleToggle = async () => {
+    if (!expanded && orders.length === 0) {
+      setLoading(true)
+      try {
+        const data = await getCancelledOrders(dateParams)
+        setOrders(data.filter(o => o.is_deleted))
+      } catch {}
+      setLoading(false)
+    }
+    setExpanded(prev => !prev)
+  }
+
+  const fmt = (iso) => {
+    const d = new Date(iso)
+    return d.toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 13, background: '#E677001F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <polyline points="3 6 5 6 21 6" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 11v6M14 11v6" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="#E67700" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>Удалено</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#E67700', lineHeight: 1 }}>{count}</div>
+        </div>
+        {count > 0 && (
+          <button
+            onClick={handleToggle}
+            style={{
+              background: expanded ? '#FFF8F0' : '#F2F2F7',
+              border: 'none',
+              borderRadius: 12,
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: expanded ? '#E67700' : TEXT2,
+              cursor: 'pointer',
+              flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            {expanded ? 'Свернуть' : 'Подробнее'}
+          </button>
+        )}
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 14, borderTop: '1px solid rgba(60,60,67,0.08)', paddingTop: 12 }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: '2.5px solid rgba(230,119,0,0.2)', borderTopColor: '#E67700', animation: 'evSpin 0.8s linear infinite' }} />
+            </div>
+          ) : orders.length === 0 ? (
+            <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: 12 }}>Нет данных</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {orders.map((o) => (
+                <div key={o.id} style={{ background: '#FFF8F0', borderRadius: 14, padding: '12px 14px', borderLeft: '3px solid #E67700' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{o.client_name || o.client_phone || o.address || '—'}</span>
+                      {o.client_name && o.client_phone && <span style={{ fontSize: 11, color: TEXT2 }}>{o.client_phone}</span>}
+                      {!o.client_name && !o.client_phone && o.address && <span style={{ fontSize: 11, color: TEXT2 }}>{o.address}</span>}
+                    </div>
+                    <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#E67700' }}>
+                      {Math.round(o.total).toLocaleString('ru-RU')} сум
+                    </span>
+                  </div>
+                  {(o.items || []).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 4 }}>
+                      {o.items.map((it, j) => (
+                        <div key={j} style={{ fontSize: 12, color: TEXT }}>
+                          <span style={{ fontWeight: 700, color: '#C05A00' }}>{it.quantity} шт.</span>{' '}
+                          <span>{it.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {o.return_bottles_count > 0 && (
+                    <div style={{ fontSize: 11, color: '#12B886', marginBottom: 2 }}>↩ Возврат: {o.return_bottles_count} бут.</div>
+                  )}
+                  {o.bottles_lent > 0 && (
+                    <div style={{ fontSize: 11, color: '#E67700', marginBottom: 2 }}>📦 Одолжить: {o.bottles_lent} бут.</div>
+                  )}
+                  {o.bottle_surcharge > 0 && (
+                    <div style={{ fontSize: 11, color: '#E67700', marginBottom: 2 }}>💰 Надбавка: +{Math.round(o.bottle_surcharge).toLocaleString('ru-RU')} сум</div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, marginBottom: 4 }}>
+                    {o.creator && <div style={{ fontSize: 11, color: TEXT2 }}>✍️ Создал: <span style={{ color: TEXT, fontWeight: 600 }}>{o.creator}</span></div>}
+                    {o.assigner && <div style={{ fontSize: 11, color: TEXT2 }}>👤 Назначил курьера: <span style={{ color: TEXT, fontWeight: 600 }}>{o.assigner}</span></div>}
+                    {o.courier_name && <div style={{ fontSize: 11, color: TEXT2 }}>🚴 Курьер: <span style={{ color: TEXT, fontWeight: 600 }}>{o.courier_name}</span></div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, background: '#FFF0E0', borderRadius: 8, padding: '3px 8px', color: '#C05A00', fontWeight: 600 }}>
+                      🗑 {o.cancelled_by}
+                    </span>
+                    <span style={{ fontSize: 11, background: 'rgba(60,60,67,0.06)', borderRadius: 8, padding: '3px 8px', color: TEXT2, fontWeight: 500 }}>
+                      {fmt(o.created_at)}
+                    </span>
+                  </div>
+                  {o.reason && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#C05A00', fontStyle: 'italic' }}>
                       Причина: {o.reason}
                     </div>
                   )}
@@ -693,6 +814,9 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
 
           {/* Cancelled card with expandable order list */}
           <CancelledCard count={stats.cancelled} dateParams={dateParams} />
+
+          {/* Deleted orders card */}
+          <DeletedCard count={stats.deleted || 0} dateParams={dateParams} />
 
           {/* Customer classification cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
