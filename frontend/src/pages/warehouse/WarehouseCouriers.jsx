@@ -3,10 +3,9 @@ import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
-  issueBatchToCourier, getInvoiceUrl,
+  getInvoiceUrl,
   getFactoryStats, factoryIssueBatch, factoryReturnBatch,
   getIssueBatches, cancelIssueBatch,
-  findOrCreateCourier, createFactory,
   adjustWarehouseCourierDebt,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
@@ -32,13 +31,11 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
-  const [issueModal, setIssueModal] = useState(null) // courier object
   const [factoryModal, setFactoryModal] = useState(null) // { factory, mode }
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
   const [debtAdjModal, setDebtAdjModal] = useState(null) // courier object for debt adjustment
-  const [newEntityModal, setNewEntityModal] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -80,12 +77,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         : 'Дата')
     : 'Сегодня'
 
-  const issueBatch = async (courierId, courierName, items, bottleReturn, vehicleType, vehiclePlate) => {
-    const res = await issueBatchToCourier(courierId, items, actor, vehicleType, vehiclePlate, null, bottleReturn)
-    if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
-    load()
-  }
-
   const submitDebtAdj = async (courierId, delta, note) => {
     await adjustWarehouseCourierDebt(courierId, delta, note, actor, 'warehouse')
     load()
@@ -101,28 +92,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     load()
   }
 
-  // Special recipients for the courier issue modal (НАХТ, MILK VILL, Склад офис)
-  const specialRecipients = factories.filter(f => f.category === 'other' || f.name === 'Склад офис')
-
   return (
     <Layout title={title}>
-      {issueModal && (
-        <CourierIssueModal
-          courier={issueModal}
-          couriers={couriers}
-          specialRecipients={specialRecipients}
-          catalog={catalog}
-          onClose={() => setIssueModal(null)}
-          onSave={async (items, bottleReturn, vt, vp, recipient) => {
-            if (recipient.type === 'courier') {
-              await issueBatch(recipient.id, recipient.name, items, bottleReturn, vt, vp)
-            } else {
-              await submitFactory(recipient.name, items, 'issue')
-            }
-            setIssueModal(null)
-          }}
-        />
-      )}
       {invoiceModal && (
         <InvoiceSuccessModal
           batchId={invoiceModal.batchId}
@@ -174,14 +145,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onClose={() => setPickerOpen(false)}
         />
       )}
-      {newEntityModal && (
-        <NewEntityModal
-          onClose={() => setNewEntityModal(false)}
-          onCreated={() => { setNewEntityModal(false); load() }}
-        />
-      )}
 
-      {/* Date filter + New button */}
+      {/* Date filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <button
           onClick={() => { setPeriod('today'); setCustomDate(null); setCustomDateTo(null) }}
@@ -210,16 +175,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           </svg>
           {period === 'custom' ? periodLabel : 'Дата'}
         </button>
-        <button
-          onClick={() => setNewEntityModal(true)}
-          style={{
-            flexShrink: 0, padding: '9px 14px', borderRadius: 12, cursor: 'pointer',
-            background: '#fff', color: TEXT, border: `1.5px solid ${BORDER}`,
-            fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
-          }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Новый
-        </button>
       </div>
 
       {loading ? (
@@ -228,14 +183,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         </div>
       ) : (
         <>
-          {/* "Другое" section: MILK VILL and other category='other' factories (НАХТ hidden here) */}
-          {factories.filter(f => f.category === 'other' && f.name !== 'НАХТ').length > 0 && (
+          {/* "Другое" section */}
+          {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Другое · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => f.category === 'other' && f.name !== 'НАХТ').map(f => (
+                {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').map(f => (
                   <OtherCard
                     key={f.id}
                     f={f}
@@ -247,14 +202,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
             </>
           )}
-          {/* Regular factories (Заводы) — includes Склад офис */}
-          {factories.filter(f => !f.category).length > 0 && (
+          {/* Regular factories (Заводы) */}
+          {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Заводы · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => !f.category).map(f => (
+                {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').map(f => (
                   <FactoryCard
                     key={f.id}
                     f={f}
@@ -277,7 +232,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {couriers.map(c => (
-                  <CourierCard key={c.id} c={c} onIssue={() => setIssueModal(c)} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
+                  <CourierCard key={c.id} c={c} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
                 ))}
               </div>
             </>
@@ -288,14 +243,14 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function CourierCard({ c, onIssue, onReport, onCancel, onDebtAdj }) {
+function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
   const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      {/* Header: avatar + name + issue button */}
+      {/* Header: avatar + name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {(c.name || 'К')[0]}
@@ -308,14 +263,6 @@ function CourierCard({ c, onIssue, onReport, onCancel, onDebtAdj }) {
             </div>
           )}
         </div>
-        <button onClick={onIssue} style={{
-          flexShrink: 0, padding: '7px 10px', borderRadius: 10, border: 'none',
-          background: GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-        }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать / Вернуть
-        </button>
       </div>
 
       {/* Issued products + Bottles: side by side */}
@@ -631,284 +578,6 @@ function FactoryIssueModal({ factory, mode: initialMode, catalog, onClose, onSav
             {loading ? 'Сохраняю...' : (mode === 'return' ? 'Вернуть' : 'Выдать')}
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function CourierIssueModal({ courier, couriers, specialRecipients, catalog, onClose, onSave }) {
-  const [selectedRecipient, setSelectedRecipient] = useState({ ...courier, type: 'courier' })
-  const [quantities, setQuantities] = useState({})
-  const [bottleReturn, setBottleReturn] = useState('')
-  const [vehicleType, setVehicleType] = useState(courier?.vehicle_type || '')
-  const [vehiclePlate, setVehiclePlate] = useState(courier?.vehicle_plate || '')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const isCourier = selectedRecipient.type === 'courier'
-
-  const selectCourier = (c) => {
-    setSelectedRecipient({ ...c, type: 'courier' })
-    setVehicleType(c.vehicle_type || '')
-    setVehiclePlate(c.vehicle_plate || '')
-  }
-
-  const selectSpecial = (f) => {
-    setSelectedRecipient({ ...f, type: f.category === 'other' ? 'other' : 'factory' })
-  }
-
-  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
-
-  const batchItems = catalog
-    .filter(p => (quantities[p.id] || 0) > 0)
-    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
-
-  const parsedReturn = isCourier ? Math.max(0, Number(bottleReturn) || 0) : 0
-  const dis = batchItems.length === 0 && parsedReturn === 0
-
-  const handle = async () => {
-    if (dis) return
-    setError('')
-    setLoading(true)
-    try {
-      await onSave(
-        batchItems,
-        parsedReturn,
-        isCourier ? vehicleType.trim() || null : null,
-        isCourier ? vehiclePlate.trim() || null : null,
-        selectedRecipient,
-      )
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || 'Ошибка при выдаче')
-      setLoading(false)
-    }
-  }
-
-  const stepBtn = (base = {}) => ({
-    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
-    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
-    ...base,
-  })
-
-  const chipStyle = (active, color = C) => ({
-    flexShrink: 0, padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
-    background: active ? (color === C ? GRAD : color) : '#F2F2F7',
-    color: active ? '#fff' : TEXT,
-    fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-  })
-
-  // Header height approx: handle(20) + title row(42) + "Кому" label(24) + chips row(40) + products label(28) + gap(20) = ~174px
-  // Footer height: returns(70) + transport(52) + button(52) + gap(30) = ~204px (courier) or button(52)+gap(20) = ~72px
-  const footerH = isCourier ? 240 : 80
-  const scrollH = `calc(min(96dvh, 96vh) - 174px - ${footerH}px)`
-
-  return (
-    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        ...st.sheet, padding: 0, gap: 0,
-        maxHeight: 'min(96dvh, 96vh)',
-        display: 'flex', flexDirection: 'column',
-      }}>
-        {/* Fixed header */}
-        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
-          <div style={st.handle} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать / Вернуть</div>
-            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-          </div>
-
-          {/* Recipient selector */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Кому</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 4, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
-            {(couriers || []).map(c => (
-              <button
-                key={`c-${c.id}`}
-                onClick={() => selectCourier(c)}
-                style={chipStyle(selectedRecipient.type === 'courier' && selectedRecipient.id === c.id)}
-              >{c.name}</button>
-            ))}
-            {(specialRecipients || []).map(f => (
-              <button
-                key={`f-${f.id}`}
-                onClick={() => selectSpecial(f)}
-                style={chipStyle(selectedRecipient.type !== 'courier' && selectedRecipient.id === f.id, '#9C36B5')}
-              >{f.name}</button>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
-        </div>
-
-        {/* Scrollable products */}
-        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: scrollH, flexShrink: 0 }}>
-          {catalog.length === 0 ? (
-            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {catalog.map(p => {
-                const q = quantities[p.id] || 0
-                return (
-                  <div key={p.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '8px 10px', borderRadius: 12,
-                    background: q > 0 ? '#F0FAE8' : '#F8F9FA',
-                    border: `1.5px solid ${q > 0 ? C : BORDER}`,
-                  }}>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <button onClick={() => setQty(p.id, q - 1)}
-                        style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
-                      >−</button>
-                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
-                        onChange={e => setQty(p.id, e.target.value)}
-                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? C : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? CD : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
-                      />
-                      <button onClick={() => setQty(p.id, q + 1)}
-                        style={stepBtn({ background: q > 0 ? GRAD : '#fff', border: `1.5px solid ${C}`, color: q > 0 ? '#fff' : CD })}
-                      >+</button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Fixed footer */}
-        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {isCourier && (
-            <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 10px', borderRadius: 12,
-                background: parsedReturn > 0 ? '#EBF4FF' : '#F8F9FA',
-                border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`,
-              }}>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: parsedReturn > 0 ? '#1971C2' : TEXT2 }}>Бутылки 19л</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                  <button onClick={() => setBottleReturn(String(Math.max(0, parsedReturn - 1)))}
-                    style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}
-                  >−</button>
-                  <input type="number" inputMode="numeric" min="0" value={parsedReturn || ''} placeholder="0"
-                    onChange={e => setBottleReturn(String(Math.max(0, Number(e.target.value) || 0)))}
-                    style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${parsedReturn > 0 ? '#4DA6FF' : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: parsedReturn > 0 ? '#1971C2' : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
-                  />
-                  <button onClick={() => setBottleReturn(String(parsedReturn + 1))}
-                    style={stepBtn({ background: parsedReturn > 0 ? '#4DA6FF' : '#fff', border: '1.5px solid #4DA6FF', color: parsedReturn > 0 ? '#fff' : '#4DA6FF' })}
-                  >+</button>
-                </div>
-              </div>
-              {/* Transport */}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => { setVehicleType(e.target.value); setError('') }} placeholder="Тип машины" />
-                <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => { setVehiclePlate(e.target.value.toUpperCase()); setError('') }} placeholder="Госномер" />
-              </div>
-            </>
-          )}
-          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
-          <button style={{ ...st.primaryBtn, ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
-            {loading ? 'Выдаю...' : 'Выдать'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function NewEntityModal({ onClose, onCreated }) {
-  const [type, setType] = useState(null) // 'courier' | 'factory' | 'other'
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [vehicleType, setVehicleType] = useState('')
-  const [vehiclePlate, setVehiclePlate] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const selectType = (t) => { setType(t); setName(''); setPhone(''); setVehicleType(''); setVehiclePlate(''); setError('') }
-
-  const handleCreate = async () => {
-    if (!name.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      if (type === 'courier') {
-        await findOrCreateCourier(name.trim(), phone.trim() || undefined, vehicleType.trim() || undefined, vehiclePlate.trim() || undefined)
-      } else {
-        await createFactory(name.trim(), type === 'other' ? 'other' : undefined)
-      }
-      onCreated()
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
-      setLoading(false)
-    }
-  }
-
-  const typeLabels = [['courier', 'Курьер'], ['factory', 'Завод'], ['other', 'Другое']]
-
-  return (
-    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div style={st.handle} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Новый</div>
-          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-        </div>
-
-        {/* Type selector */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Тип</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {typeLabels.map(([t, label]) => (
-              <button key={t} onClick={() => selectType(t)} style={{
-                flex: 1, padding: '10px 8px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                background: type === t ? GRAD : '#F2F2F7',
-                color: type === t ? '#fff' : TEXT2,
-                fontSize: 13, fontWeight: 700,
-              }}>{label}</button>
-            ))}
-          </div>
-        </div>
-
-        {type && (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                {type === 'courier' ? 'Имя курьера' : 'Название'}
-              </div>
-              <input
-                style={st.input}
-                value={name}
-                onChange={e => { setName(e.target.value); setError('') }}
-                placeholder={type === 'courier' ? 'Имя' : 'Название'}
-                autoFocus
-              />
-              {type === 'courier' && (
-                <>
-                  <input
-                    style={st.input}
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder="Телефон"
-                    type="tel"
-                  />
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Тип машины" />
-                    <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="Госномер" />
-                  </div>
-                </>
-              )}
-            </div>
-            {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
-            <button
-              style={{ ...st.primaryBtn, ...(!name.trim() || loading ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }}
-              disabled={!name.trim() || loading}
-              onClick={handleCreate}
-            >
-              {loading ? 'Создаю...' : 'Создать'}
-            </button>
-          </>
-        )}
       </div>
     </div>
   )

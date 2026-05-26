@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateCourier } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateCourier, createFactory } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -100,11 +100,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
   return (
     <Layout title={title}>
       {showAdd && <AddProductionModal onClose={() => setShowAdd(false)} products={products.length ? products : undefined} onSave={async (productId, qty, note, nameHint) => { await addProduction(productId, qty, note, nameHint, actor); load() }} />}
-      {showIssue && <IssueToCourierModal couriers={couriers} onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp, createdAt) => {
-        const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn, createdAt)
-        if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName })
-        load()
-      }} />}
+      {showIssue && <IssueToCourierModal onClose={() => setShowIssue(false)} onSave={async (courierId, courierName, items, bottleReturn, vt, vp, createdAt) => { const res = await issueBatchToCourier(courierId, items, actor, vt, vp, null, bottleReturn, createdAt); if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName }); load() }} onRefresh={load} />}
       {factoryModal && <FactoryIssueModal factory={factoryModal.factory} mode={factoryModal.mode} onClose={() => setFactoryModal(null)} onSave={async (factoryName, items, mode) => {
         if (mode === 'return') await factoryReturnBatch(factoryName, items, actor)
         else await factoryIssueBatch(factoryName, items, actor)
@@ -551,11 +547,9 @@ function AddProductionModal({ onClose, onSave, products: propProducts }) {
 
 const todayISO = () => toISODate(new Date())
 
-function IssueToCourierModal({ couriers, onClose, onSave }) {
-  const NEW_ID = '__new__'
-  const [courierId, setCourierId] = useState(couriers[0]?.id || NEW_ID)
-  const [newName, setNewName] = useState('')
-  const [newPhone, setNewPhone] = useState('')
+function IssueToCourierModal({ onClose, onSave, onRefresh }) {
+  const [couriers, setCouriers] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
   const [issueDate, setIssueDate] = useState(todayISO())
   const [catalog, setCatalog] = useState([])
   const [quantities, setQuantities] = useState({})
@@ -564,25 +558,31 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   const [vehiclePlate, setVehiclePlate] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showNew, setShowNew] = useState(false)
 
-  const isNew = courierId === NEW_ID
-  const courier = isNew ? null : couriers.find(c => c.id === courierId)
+  const loadCouriers = async () => {
+    try {
+      const cs = await getAdminCouriers()
+      const active = (cs || []).filter(c => c.is_active !== false)
+      setCouriers(active)
+      setSelectedId(prev => prev ?? active[0]?.id ?? null)
+    } catch {}
+  }
 
   useEffect(() => {
+    loadCouriers()
     getProducts().then(ps => {
-      const list = (ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name }))
-      setCatalog(list)
+      setCatalog((ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
     }).catch(console.error)
   }, []) // eslint-disable-line
 
-  useEffect(() => {
-    if (!isNew) {
-      setVehicleType(courier?.vehicle_type || '')
-      setVehiclePlate(courier?.vehicle_plate || '')
-      setNewName('')
-      setNewPhone('')
-    }
-  }, [courierId]) // eslint-disable-line
+  const selectCourier = (c) => {
+    setSelectedId(c.id)
+    setVehicleType(c.vehicle_type || '')
+    setVehiclePlate(c.vehicle_plate || '')
+  }
+
+  const courier = couriers.find(c => c.id === selectedId) || null
 
   const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
 
@@ -591,14 +591,13 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
     .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
 
   const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
-  const canSubmit = (batchItems.length > 0 || parsedReturn > 0) && (!isNew || newName.trim())
+  const canSubmit = (batchItems.length > 0 || parsedReturn > 0) && !!courier
   const isBackdated = issueDate !== todayISO()
 
-  // Build UTC ISO string: selected Tashkent date + current Tashkent time → convert to UTC
   const buildCreatedAt = () => {
     if (!isBackdated) return undefined
     const now = new Date()
-    const tzStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' }) // "YYYY-MM-DD HH:MM:SS"
+    const tzStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' })
     const timePart = tzStr.split(' ')[1]
     const [hh, mm, ss] = timePart.split(':').map(Number)
     const [y, mo, d] = issueDate.split('-').map(Number)
@@ -607,25 +606,13 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
   }
 
   const handle = async () => {
-    if (!canSubmit) return
+    if (!canSubmit || !courier) return
     setError('')
     setLoading(true)
     try {
-      let resolvedId = courierId
-      let resolvedName = courier?.name || ''
-      if (isNew) {
-        const created = await findOrCreateCourier(
-          newName.trim(),
-          newPhone.trim() || '',
-          vehicleType.trim() || undefined,
-          vehiclePlate.trim() || undefined,
-        )
-        resolvedId = created.id
-        resolvedName = created.name
-      }
       await onSave(
-        resolvedId,
-        resolvedName,
+        courier.id,
+        courier.name,
         batchItems,
         parsedReturn,
         vehicleType.trim() || null,
@@ -648,6 +635,24 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
 
   return (
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      {showNew && (
+        <NewEntityModal
+          onClose={() => setShowNew(false)}
+          onCreated={async (type, entity) => {
+            setShowNew(false)
+            if (type === 'courier') {
+              await loadCouriers()
+              if (entity?.id) {
+                setSelectedId(entity.id)
+                setVehicleType(entity.vehicle_type || '')
+                setVehiclePlate(entity.vehicle_plate || '')
+              }
+            } else {
+              if (onRefresh) onRefresh()
+            }
+          }}
+        />
+      )}
       <div style={{
         ...st.sheet, padding: 0, gap: 0,
         maxHeight: 'min(96dvh, 96vh)',
@@ -657,7 +662,7 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
         <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
           <div style={st.handle} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать курьеру</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Выдать / Вернуть</div>
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
           {/* Date selector */}
@@ -753,46 +758,24 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
           </div>
 
           {/* Courier selector */}
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Курьер</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Кому</div>
+            <button onClick={() => setShowNew(true)} style={{ fontSize: 12, fontWeight: 700, color: CD, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}>+ Новый</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {couriers.map(c => (
-              <button key={c.id} onClick={() => setCourierId(c.id)} style={{
+              <button key={c.id} onClick={() => selectCourier(c)} style={{
                 padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                background: courierId === c.id ? GRAD : '#F8F9FA',
-                color: courierId === c.id ? '#fff' : TEXT,
-                border: courierId === c.id ? 'none' : `1px solid ${BORDER}`,
+                background: selectedId === c.id ? GRAD : '#F8F9FA',
+                color: selectedId === c.id ? '#fff' : TEXT,
+                border: selectedId === c.id ? 'none' : `1px solid ${BORDER}`,
                 display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1,
               }}>
                 <span>{c.name}</span>
                 {c.phone && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{c.phone}</span>}
               </button>
             ))}
-            <button onClick={() => setCourierId(NEW_ID)} style={{
-              padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
-              background: isNew ? '#F0FAE8' : '#F8F9FA',
-              color: isNew ? CD : TEXT2,
-              border: `1.5px solid ${isNew ? C : BORDER}`,
-            }}>+ Новый</button>
           </div>
-
-          {/* Name + phone (only for new courier) */}
-          {isNew && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                style={{ ...st.input, flex: 1 }}
-                value={newName}
-                onChange={e => { setNewName(e.target.value); setError('') }}
-                placeholder="Имя курьера *"
-              />
-              <input
-                style={{ ...st.input, flex: 1 }}
-                type="tel"
-                value={newPhone}
-                onChange={e => { setNewPhone(e.target.value); setError('') }}
-                placeholder="Телефон"
-              />
-            </div>
-          )}
 
           {/* Vehicle */}
           <div style={{ display: 'flex', gap: 6 }}>
@@ -805,6 +788,98 @@ function IssueToCourierModal({ couriers, onClose, onSave }) {
             {loading ? 'Выдаю...' : 'Выдать'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function NewEntityModal({ onClose, onCreated }) {
+  const [type, setType] = useState(null)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [vehicleType, setVehicleType] = useState('')
+  const [vehiclePlate, setVehiclePlate] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const selectType = (t) => { setType(t); setName(''); setPhone(''); setVehicleType(''); setVehiclePlate(''); setError('') }
+
+  const handleCreate = async () => {
+    if (!name.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      let entity
+      if (type === 'courier') {
+        entity = await findOrCreateCourier(name.trim(), phone.trim() || undefined, vehicleType.trim() || undefined, vehiclePlate.trim() || undefined)
+      } else {
+        entity = await createFactory(name.trim(), type === 'other' ? 'other' : undefined)
+      }
+      onCreated(type, entity)
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
+      setLoading(false)
+    }
+  }
+
+  const typeLabels = [['courier', 'Курьер'], ['factory', 'Завод'], ['other', 'Другое']]
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto', zIndex: 9100 }}>
+        <div style={st.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>Новый</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Тип</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {typeLabels.map(([t, label]) => (
+              <button key={t} onClick={() => selectType(t)} style={{
+                flex: 1, padding: '10px 8px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: type === t ? GRAD : '#F2F2F7',
+                color: type === t ? '#fff' : TEXT2,
+                fontSize: 13, fontWeight: 700,
+              }}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {type && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                {type === 'courier' ? 'Имя курьера' : 'Название'}
+              </div>
+              <input
+                style={st.input}
+                value={name}
+                onChange={e => { setName(e.target.value); setError('') }}
+                placeholder={type === 'courier' ? 'Имя' : 'Название'}
+                autoFocus
+              />
+              {type === 'courier' && (
+                <>
+                  <input style={st.input} value={phone} onChange={e => setPhone(e.target.value)} placeholder="Телефон" type="tel" />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input style={{ ...st.input, flex: 1 }} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Тип машины" />
+                    <input style={{ ...st.input, flex: 1 }} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="Госномер" />
+                  </div>
+                </>
+              )}
+            </div>
+            {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+            <button
+              style={{ ...st.primaryBtn, ...(!name.trim() || loading ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }}
+              disabled={!name.trim() || loading}
+              onClick={handleCreate}
+            >
+              {loading ? 'Создаю...' : 'Создать'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
