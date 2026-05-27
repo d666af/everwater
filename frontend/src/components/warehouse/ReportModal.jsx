@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import DateTimePickerModal from './DateTimePickerModal'
-import { getWarehouseHistory, getWarehouseCourierStats } from '../../api'
+import { getWarehouseHistory, getWarehouseCourierStats, getCancelledBatches, getWarehouseDebtAdjustments, getFactoryStats } from '../../api'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -29,6 +29,9 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
   const [pickerOpen, setPickerOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [couriers, setCouriers] = useState([])
+  const [cancelledBatches, setCancelledBatches] = useState([])
+  const [debtAdj, setDebtAdj] = useState([])
+  const [factoryStatsList, setFactoryStatsList] = useState([])
   const [loading, setLoading] = useState(true)
 
   const load = () => {
@@ -37,11 +40,25 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
     const cdTo = period === 'custom' ? customDateTo : null
     const filters = { period, customDate: cd, customDateTo: cdTo }
     if (courierId) filters.courier_id = courierId
-    Promise.all([
+    const calls = [
       getWarehouseHistory(filters),
       getWarehouseCourierStats('today', null, null),
-    ])
-      .then(([hist, cs]) => { setHistory(hist); setCouriers(cs) })
+    ]
+    if (!courierId) {
+      calls.push(getCancelledBatches())
+      calls.push(getWarehouseDebtAdjustments({ limit: 200 }))
+      calls.push(getFactoryStats('all'))
+    }
+    Promise.all(calls)
+      .then(([hist, cs, cb, da, fs]) => {
+        setHistory(hist)
+        setCouriers(cs)
+        if (!courierId) {
+          setCancelledBatches(Array.isArray(cb) ? cb : [])
+          setDebtAdj(Array.isArray(da) ? da : [])
+          setFactoryStatsList(Array.isArray(fs) ? fs : [])
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }
@@ -61,10 +78,37 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
     ? (customDate ? (customDateTo && customDateTo !== customDate ? `${fmtDate(customDate)} – ${fmtDate(customDateTo)}` : fmtDate(customDate)) : 'Дата')
     : PERIODS.find(p => p.key === period)?.label || ''
 
+  // Helper: check if ISO timestamp falls in selected period (Tashkent UTC+5)
+  const inPeriod = (isoStr) => {
+    if (!isoStr) return false
+    const tzNow = new Date(Date.now() + 5 * 60 * 60 * 1000)
+    const todayStr = tzNow.toISOString().slice(0, 10)
+    const itemDate = new Date(isoStr + (isoStr.endsWith('Z') || isoStr.includes('+') ? '' : 'Z'))
+    const itemDateTZ = new Date(itemDate.getTime() + 5 * 60 * 60 * 1000)
+    const itemStr = itemDateTZ.toISOString().slice(0, 10)
+    if (period === 'custom') {
+      if (!customDate) return true
+      const to = customDateTo || customDate
+      return itemStr >= customDate && itemStr <= to
+    }
+    if (period === 'today') return itemStr === todayStr
+    if (period === 'week') {
+      const weekAgoStr = new Date(tzNow.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      return itemStr >= weekAgoStr
+    }
+    if (period === 'month') {
+      const monthAgoStr = new Date(tzNow.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      return itemStr >= monthAgoStr
+    }
+    return true
+  }
+
   // Derive sections from history
   const production = history.filter(h => h.type === 'production')
   const issues = history.filter(h => h.type === 'issue' || h.type === 'issued')
   const returns = history.filter(h => h.type === 'bottle_return')
+  const factoryIssues = history.filter(h => h.type === 'factory_issue')
+  const factoryReturns = history.filter(h => h.type === 'factory_return')
 
   // Aggregate production by product
   const prodByProduct = {}
@@ -90,13 +134,41 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
   })
   const totalReturns = Object.values(returnsByCourier).reduce((s, v) => s + v, 0)
 
+  // Factory issues grouped: factoryName → { productName → qty }
+  const factoryIssuesByFactory = {}
+  factoryIssues.forEach(h => {
+    const fn = h.factory_name || '—'
+    if (!factoryIssuesByFactory[fn]) factoryIssuesByFactory[fn] = {}
+    const pn = h.product_name || h.product_short || '—'
+    factoryIssuesByFactory[fn][pn] = (factoryIssuesByFactory[fn][pn] || 0) + h.quantity
+  })
+
+  // Factory returns: factoryName → qty
+  const factoryReturnsByFactory = {}
+  factoryReturns.forEach(h => {
+    const fn = h.factory_name || '—'
+    factoryReturnsByFactory[fn] = (factoryReturnsByFactory[fn] || 0) + h.quantity
+  })
+  const totalFactoryReturns = Object.values(factoryReturnsByFactory).reduce((s, v) => s + v, 0)
+
+  // Cancelled batches filtered by period
+  const filteredCancelled = cancelledBatches.filter(b => inPeriod(b.cancelled_at))
+
+  // Debt adjustments filtered by period
+  const filteredDebtAdj = debtAdj.filter(a => inPeriod(a.created_at))
+
   // Debt from couriers data (current state, not period-filtered)
   const debtCouriers = courierId
     ? couriers.filter(c => c.id === courierId)
     : couriers.filter(c => (c.bottles_must_return || 0) > 0)
+  const debtFactories = factoryStatsList.filter(f => (f.bottles_must_return || 0) > 0)
   const totalDebt = debtCouriers.reduce((s, c) => s + (c.bottles_must_return || 0), 0)
+    + debtFactories.reduce((s, f) => s + (f.bottles_must_return || 0), 0)
+  const hasDebt = totalDebt > 0 || debtCouriers.length > 0 || debtFactories.length > 0
 
   const isEmpty = production.length === 0 && issues.length === 0 && returns.length === 0
+    && factoryIssues.length === 0 && factoryReturns.length === 0
+    && filteredCancelled.length === 0 && filteredDebtAdj.length === 0
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -151,7 +223,7 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
           <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}>
             <div style={{ width: 24, height: 24, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
           </div>
-        ) : isEmpty && totalDebt === 0 ? (
+        ) : isEmpty && !hasDebt ? (
           <div style={{ textAlign: 'center', padding: '20px 0', color: TEXT2, fontSize: 13 }}>Нет данных за период</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -179,7 +251,22 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
               </Section>
             )}
 
-            {/* Bottle returns received */}
+            {/* Factory issues */}
+            {!courierId && Object.keys(factoryIssuesByFactory).length > 0 && (
+              <Section title="Выдача заводам / другим" color="#9C36B5" bg="#F8EBFC">
+                {Object.entries(factoryIssuesByFactory).map(([fn, prods], fi) => (
+                  <div key={fn}>
+                    {fi > 0 && <div style={{ height: 1, background: BORDER, margin: '6px 0' }} />}
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', marginBottom: 4 }}>{fn}</div>
+                    {Object.entries(prods).map(([pn, qty]) => (
+                      <Row key={pn} label={pn} value={`${qty} шт.`} indent />
+                    ))}
+                  </div>
+                ))}
+              </Section>
+            )}
+
+            {/* Bottle returns received (couriers) */}
             {Object.keys(returnsByCourier).length > 0 && (
               <Section title="Возврат бутылок 19л" color="#1971C2" bg="#E8F4FD">
                 {Object.entries(returnsByCourier).map(([cn, qty]) => (
@@ -191,15 +278,86 @@ export default function ReportModal({ onClose, courierId = null, courierName = n
               </Section>
             )}
 
-            {/* Bottle debt */}
-            {(totalDebt > 0 || debtCouriers.length > 0) && (
-              <Section title="Долг по бутылкам 19л" color="#C92A2A" bg="#FFE8E8">
-                {debtCouriers.length === 0 ? (
-                  <Row label="Долгов нет" value="" />
-                ) : debtCouriers.map(c => (
-                  <Row key={c.id} label={c.name} value={`${c.bottles_must_return || 0} бут.`} valueColor={c.bottles_must_return > 0 ? '#C92A2A' : TEXT2} />
+            {/* Factory returns */}
+            {!courierId && Object.keys(factoryReturnsByFactory).length > 0 && (
+              <Section title="Возврат от заводов / других" color="#1971C2" bg="#E8F4FD">
+                {Object.entries(factoryReturnsByFactory).map(([fn, qty]) => (
+                  <Row key={fn} label={fn} value={`${qty} бут.`} valueColor="#1971C2" />
                 ))}
-                {!courierId && debtCouriers.length > 1 && (
+                {Object.keys(factoryReturnsByFactory).length > 1 && (
+                  <Row label="Итого" value={`${totalFactoryReturns} бут.`} valueColor="#1971C2" bold />
+                )}
+              </Section>
+            )}
+
+            {/* Cancelled issue batches */}
+            {!courierId && filteredCancelled.length > 0 && (
+              <Section title="Отменённые выдачи" color="#C92A2A" bg="#FFE8E8">
+                {filteredCancelled.map((b, i) => {
+                  const recipient = b.courier_name || b.factory_name || '—'
+                  const dt = b.cancelled_at
+                    ? new Date(b.cancelled_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '—'
+                  return (
+                    <div key={b.batch_id || i} style={{ padding: '6px 0', borderBottom: i < filteredCancelled.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{recipient}</div>
+                          {b.product_name && <div style={{ fontSize: 11, color: TEXT2 }}>{b.product_name}</div>}
+                          <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{dt} · {b.cancelled_by || '—'}</div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#C92A2A', flexShrink: 0 }}>−{b.total_quantity} шт.</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </Section>
+            )}
+
+            {/* Debt adjustments */}
+            {!courierId && filteredDebtAdj.length > 0 && (
+              <Section title="Изменения долга бутылок" color="#0077B6" bg="#E8F4FD">
+                {filteredDebtAdj.map((a, i) => {
+                  const typeLabel = a.target_type === 'courier' ? 'Курьер' : a.target_type === 'factory' ? 'Завод' : 'Клиент'
+                  const dt = a.created_at
+                    ? new Date(a.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '—'
+                  return (
+                    <div key={a.id} style={{ padding: '6px 0', borderBottom: i < filteredDebtAdj.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: TEXT2, fontSize: 11 }}>{typeLabel}: </span>{a.target_name || '—'}
+                          </div>
+                          {a.note && <div style={{ fontSize: 11, color: TEXT2 }}>{a.note}</div>}
+                          <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>{dt} · {a.performed_by || '—'}</div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 900, color: a.delta > 0 ? '#C92A2A' : '#2B8A3E', flexShrink: 0 }}>
+                          {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </Section>
+            )}
+
+            {/* Bottle debt */}
+            {hasDebt && (
+              <Section title="Долг по бутылкам 19л" color="#C92A2A" bg="#FFE8E8">
+                {debtCouriers.length === 0 && debtFactories.length === 0 ? (
+                  <Row label="Долгов нет" value="" />
+                ) : (
+                  <>
+                    {debtCouriers.map(c => (
+                      <Row key={`c_${c.id}`} label={c.name} value={`${c.bottles_must_return || 0} бут.`} valueColor={c.bottles_must_return > 0 ? '#C92A2A' : TEXT2} />
+                    ))}
+                    {debtFactories.map(f => (
+                      <Row key={`f_${f.id}`} label={f.name} value={`${f.bottles_must_return || 0} бут.`} valueColor="#9C36B5" />
+                    ))}
+                  </>
+                )}
+                {!courierId && (debtCouriers.length + debtFactories.length) > 1 && (
                   <Row label="Итого" value={`${totalDebt} бут.`} valueColor="#C92A2A" bold />
                 )}
               </Section>
