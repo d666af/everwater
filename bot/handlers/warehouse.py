@@ -1,14 +1,12 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.warehouse import (
-    warehouse_menu_kb, wh_prod_product_kb, wh_courier_select_kb,
-    wh_factory_select_kb, wh_cart_kb, wh_date_menu_kb, wh_vtype_kb,
+    warehouse_menu_kb, wh_prod_product_kb,
     wh_report_period_kb, wh_history_filter_kb, wh_period_kb,
-    wh_stock_actions_kb, wh_low_stock_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
 from handlers.admin import _subs_summary_text, _sub_card_text
@@ -61,12 +59,13 @@ class ProductionState(StatesGroup):
 
 
 class IssueState(StatesGroup):
-    choosing_recipient = State()
-    new_courier_name = State()
-    new_courier_phone = State()
-    cart = State()
-    vehicle_plate = State()
-    date_input = State()
+    date_select = State()
+    date_custom = State()
+    entity_select = State()
+    qty_19l = State()
+    qty_bottles = State()
+    confirm = State()
+    qty_extra = State()
 
 
 # ─── Entry ────────────────────────────────────────────────────────────────────
@@ -172,7 +171,7 @@ async def wh_prod_note(message: Message, state: FSMContext):
             pass
 
 
-# ─── Issue / Return (new inline ± flow) ──────────────────────────────────────
+# ─── Issue flow ───────────────────────────────────────────────────────────────
 
 from datetime import datetime, timezone, timedelta, date as _date_cls
 
@@ -184,7 +183,6 @@ def _today_uz() -> str:
 
 
 def _fmt_date_label(iso: str) -> str:
-    """YYYY-MM-DD → DD.MM"""
     try:
         y, m, d = iso.split("-")
         return f"{d}.{m}"
@@ -204,583 +202,447 @@ def _build_created_at(issue_date: str):
     return backdated_uz.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def _cart_text(data: dict) -> str:
-    factory_mode = data.get("ir_factory_mode", False)
-    cart = data.get("ir_cart", {})
-    return_qty = data.get("ir_return_qty", 0)
-    issue_date = data.get("ir_issue_date", _today_uz())
-    is_backdated = issue_date != _today_uz()
-
-    if factory_mode:
-        title = f"🏭 <b>Выдача заводу</b> · {data.get('ir_factory_name', '')}"
-    else:
-        cn = data.get("ir_courier_name", "")
-        cp = data.get("ir_courier_phone", "")
-        title = f"🔄 <b>Выдать/Возврат</b> · {cn}" + (f" ({cp})" if cp else "")
-
-    date_str = _fmt_date_label(issue_date)
-    date_line = ("⏮ " if is_backdated else "") + f"📅 {date_str}" + (" — задним числом" if is_backdated else "")
-
-    lines = [title, date_line, ""]
-    cart_items = [(v["name"], v["qty"]) for v in cart.values() if v["qty"] > 0]
-    if cart_items:
-        lines.append("📦 Выдача:")
-        for name, qty in cart_items:
-            lines.append(f"  • {name} — {qty} шт.")
-    if not factory_mode and return_qty > 0:
-        lines.append(f"↩ Возврат бутылок: {return_qty} шт.")
-    if not cart_items and (factory_mode or return_qty == 0):
-        lines.append("<i>Нажмите [+] чтобы добавить товар</i>")
-
-    vtype = data.get("ir_vehicle_type", "")
-    vplate = data.get("ir_vehicle_plate", "")
-    if vtype or vplate:
-        lines.append("")
-        lines.append("🚗 " + " · ".join(filter(None, [vtype, vplate])))
-    return "\n".join(lines)
-
-
-async def _show_cart(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    kb = wh_cart_kb(
-        data.get("ir_catalog", []), data.get("ir_cart", {}),
-        data.get("ir_return_qty", 0),
-        data.get("ir_vehicle_type", ""), data.get("ir_vehicle_plate", ""),
-        _fmt_date_label(data.get("ir_issue_date", _today_uz())),
-        is_factory=data.get("ir_factory_mode", False),
-    )
-    try:
-        await call.message.edit_text(_cart_text(data), parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        pass
-
-
-async def _edit_cart_msg(bot, chat_id: int, msg_id: int, state: FSMContext):
-    data = await state.get_data()
-    kb = wh_cart_kb(
-        data.get("ir_catalog", []), data.get("ir_cart", {}),
-        data.get("ir_return_qty", 0),
-        data.get("ir_vehicle_type", ""), data.get("ir_vehicle_plate", ""),
-        _fmt_date_label(data.get("ir_issue_date", _today_uz())),
-        is_factory=data.get("ir_factory_mode", False),
-    )
-    try:
-        await bot.edit_message_text(
-            chat_id=chat_id, message_id=msg_id,
-            text=_cart_text(data), parse_mode="HTML", reply_markup=kb,
-        )
-    except Exception:
-        pass
+def _find_product_liters(catalog, liters):
+    target = f"{liters}л"
+    for p in catalog:
+        if target in p.get("name", "").lower().replace(" ", ""):
+            return p
+    return None
 
 
 def _simple_kb(*btns) -> InlineKeyboardMarkup:
-    """Build a simple 1-column keyboard from (text, callback_data) pairs."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t, callback_data=c)] for t, c in btns
     ])
 
 
-async def _ir_start_flow(target, state: FSMContext):
-    """Shared logic for wh_ir_start (Message) and wh_quick_ir (CallbackQuery)."""
-    if isinstance(target, Message):
-        uid = target.from_user.id
+def _confirm_text(data: dict) -> str:
+    entity_type = data.get("ir_entity_type", "courier")
+    entity_name = data.get("ir_entity_name", "")
+    entity_phone = data.get("ir_entity_phone", "")
+    entity_cat = data.get("ir_entity_cat", "")
+    issue_date = data.get("ir_issue_date", _today_uz())
+    qty_19l = data.get("ir_qty_19l", 0)
+    qty_bottles = data.get("ir_qty_bottles", 0)
+    extra = data.get("ir_extra", {})
+    is_backdated = issue_date != _today_uz()
+    now_str = datetime.now(tz=_TZ_UZ).strftime("%d.%m %H:%M")
+    date_label = _fmt_date_label(issue_date)
+    date_line = f"⏮ <b>{date_label} {now_str[-5:]}</b>  (задним числом)" if is_backdated else f"📅 <b>{now_str}</b>"
+    lines = [date_line, ""]
+    if entity_type == "courier":
+        lines.append(f"👤 {entity_name}" + (f"  {entity_phone}" if entity_phone else ""))
     else:
-        uid = target.from_user.id
+        tl = "Другое" if (entity_cat == "other" or entity_name == "НАХТ") else "Завод"
+        lines.append(f"🏭 {entity_name}  ({tl})")
+    lines += ["", f"🚰 Вода 19л — <b>{qty_19l}</b> шт."]
+    if entity_type == "courier" and qty_bottles > 0:
+        lines.append(f"↩ Бутылки 19л — <b>{qty_bottles}</b> шт.")
+    for pdata in extra.values():
+        if pdata.get("qty", 0) > 0:
+            lines.append(f"📦 {pdata['name']} — <b>{pdata['qty']}</b> шт.")
+    return "\n".join(lines)
 
+
+def _confirm_kb(catalog, is_courier) -> InlineKeyboardMarkup:
+    p10 = _find_product_liters(catalog, "10")
+    p5 = _find_product_liters(catalog, "5")
+    rows = []
+    if p10:
+        rows.append([InlineKeyboardButton(text=f"➕ {p10['name']}", callback_data="wh:ir:add:10")])
+    if p5:
+        rows.append([InlineKeyboardButton(text=f"➕ {p5['name']}", callback_data="wh:ir:add:5")])
+    rows.append([InlineKeyboardButton(text="✅ Подтвердить", callback_data="wh:ir:submit")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="wh:ir:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _entity_kb(couriers, factories) -> InlineKeyboardMarkup:
+    buttons = []
+    if couriers:
+        buttons.append([InlineKeyboardButton(text="── Курьеры ──", callback_data="wh:ir:noop")])
+        for c in couriers:
+            phone = c.get("phone", "")
+            buttons.append([InlineKeyboardButton(
+                text=c["name"] + (f"  {phone}" if phone else ""),
+                callback_data=f"wh:ir:ent:c:{c['id']}",
+            )])
+    if factories:
+        buttons.append([InlineKeyboardButton(text="── Заводы / Другое ──", callback_data="wh:ir:noop")])
+        for f in factories:
+            cat = f.get("category", "")
+            tl = "Другое" if (cat == "other" or f.get("name") == "НАХТ") else "Завод"
+            buttons.append([InlineKeyboardButton(
+                text=f"{f['name']}  ({tl})",
+                callback_data=f"wh:ir:ent:f:{f['id']}",
+            )])
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="wh:ir:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _edit_main(bot, chat_id, msg_id, text, reply_markup=None, parse_mode="HTML"):
+    try:
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=msg_id,
+            text=text, parse_mode=parse_mode, reply_markup=reply_markup,
+        )
+    except Exception:
+        pass
+
+
+async def _delete_msg(bot, chat_id, msg_id):
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+    except Exception:
+        pass
+
+
+async def _show_confirm(bot, chat_id, msg_id, state: FSMContext):
+    data = await state.get_data()
+    await state.set_state(IssueState.confirm)
+    await _edit_main(
+        bot, chat_id, msg_id, _confirm_text(data),
+        reply_markup=_confirm_kb(data.get("ir_catalog", []), data.get("ir_entity_type") == "courier"),
+    )
+
+
+async def _ir_start(target, state: FSMContext):
+    is_cb = isinstance(target, CallbackQuery)
+    uid = target.from_user.id
+    chat_id = (target.message if is_cb else target).chat.id
+    operator = await _operator_name(uid)
     couriers = await api.get_couriers_warehouse()
-    active = [c for c in couriers if c.get("is_active", True)]
+    active = [c for c in (couriers or []) if c.get("is_active", True)]
+    factories = await api.get_factories()
+    active_factories = [f for f in (factories or []) if f.get("is_active", True)]
     products = await api.get_products()
     catalog = [p for p in (products or []) if p.get("is_active", True)]
-    operator = await _operator_name(uid)
-
     await state.update_data(
-        ir_couriers=active, ir_catalog=catalog, ir_cart={}, ir_return_qty=0,
-        ir_operator=operator, ir_factory_mode=False,
-        ir_vehicle_type="", ir_vehicle_plate="",
-        ir_issue_date=_today_uz(),
+        ir_operator=operator, ir_couriers=active, ir_factories=active_factories,
+        ir_catalog=catalog, ir_issue_date=_today_uz(),
+        ir_qty_19l=0, ir_qty_bottles=0, ir_extra={}, ir_entity_type=None,
     )
-    await state.set_state(IssueState.choosing_recipient)
-
-    text = "👤 Выберите получателя:"
-    kb = wh_courier_select_kb(active, "ir")
-    if isinstance(target, Message):
-        sent = await target.answer(text, reply_markup=kb)
-        await state.update_data(ir_msg_id=sent.message_id, ir_chat_id=target.chat.id)
+    await state.set_state(IssueState.date_select)
+    now_uz = datetime.now(tz=_TZ_UZ)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data=f"wh:ir:dt:{_today_uz()}"),
+            InlineKeyboardButton(text="📅 Вчера", callback_data=f"wh:ir:dt:{(now_uz - timedelta(days=1)).strftime('%Y-%m-%d')}"),
+        ],
+        [
+            InlineKeyboardButton(text="✏️ Другая дата", callback_data="wh:ir:dt:custom"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="wh:ir:cancel"),
+        ],
+    ])
+    if is_cb:
+        try:
+            await target.message.edit_text("Выберите дату:", reply_markup=kb)
+            await state.update_data(ir_msg_id=target.message.message_id, ir_chat_id=chat_id)
+        except Exception:
+            sent = await target.message.answer("Выберите дату:", reply_markup=kb)
+            await state.update_data(ir_msg_id=sent.message_id, ir_chat_id=chat_id)
     else:
-        await target.message.edit_text(text, reply_markup=kb)
-        await state.update_data(ir_msg_id=target.message.message_id, ir_chat_id=target.message.chat.id)
+        try:
+            await target.delete()
+        except Exception:
+            pass
+        sent = await target.answer("Выберите дату:", reply_markup=kb)
+        await state.update_data(ir_msg_id=sent.message_id, ir_chat_id=chat_id)
 
 
 @router.message(F.text == "🔄 Выдать/Возврат")
 async def wh_ir_start(message: Message, state: FSMContext):
     if not await is_warehouse(message.from_user.id):
         return
-    await _ir_start_flow(message, state)
+    await _ir_start(message, state)
 
 
-# ── Recipient selection ───────────────────────────────────────────────────────
+# ── Step 1: Date ──────────────────────────────────────────────────────────────
 
-@router.callback_query(IssueState.choosing_recipient, F.data.startswith("wh:ir:courier:"))
-async def wh_ir_courier(call: CallbackQuery, state: FSMContext):
-    courier_id = int(call.data.split(":")[3])
+@router.callback_query(IssueState.date_select, F.data.startswith("wh:ir:dt:"))
+async def wh_ir_date(call: CallbackQuery, state: FSMContext):
+    key = call.data[len("wh:ir:dt:"):]
     data = await state.get_data()
-    courier = next((c for c in data.get("ir_couriers", []) if c["id"] == courier_id), {})
-    await state.update_data(
-        ir_courier_id=courier_id,
-        ir_courier_name=courier.get("name", ""),
-        ir_courier_phone=courier.get("phone", ""),
-        ir_factory_mode=False,
-    )
-    await state.set_state(IssueState.cart)
-    await _show_cart(call, state)
     await call.answer()
-
-
-@router.callback_query(IssueState.choosing_recipient, F.data.startswith("wh:ir:other:"))
-async def wh_ir_other_factory(call: CallbackQuery, state: FSMContext):
-    """Handle НАХТ / MILK VILL selection — uses factory mode (no courier/vehicle fields)."""
-    factory_name = call.data[len("wh:ir:other:"):]
-    factories = await api.get_factories()
-    factory = next((f for f in factories if f.get("name") == factory_name), None)
-    if not factory:
-        factory = await api.create_factory(factory_name)
-    await state.update_data(
-        ir_factory_id=factory.get("id"),
-        ir_factory_name=factory_name,
-        ir_factory_mode=True, ir_return_qty=0,
-    )
-    await state.set_state(IssueState.cart)
-    await _show_cart(call, state)
-    await call.answer()
-
-
-@router.callback_query(IssueState.choosing_recipient, F.data == "wh:ir:factory")
-async def wh_ir_factory_list(call: CallbackQuery, state: FSMContext):
-    factories = await api.get_factories()
-    if not factories:
-        await call.answer("Нет заводов. Добавьте завод через сайт.", show_alert=True)
-        return
-    await state.update_data(ir_factories=factories)
-    await call.message.edit_text("🏭 Выберите завод:", reply_markup=wh_factory_select_kb(factories, "ir"))
-    await call.answer()
-
-
-@router.callback_query(IssueState.choosing_recipient, F.data.startswith("wh:ir:factpick:"))
-async def wh_ir_factory_pick(call: CallbackQuery, state: FSMContext):
-    factory_id = int(call.data.split(":")[3])
-    data = await state.get_data()
-    factory = next((f for f in data.get("ir_factories", []) if f["id"] == factory_id), {})
-    await state.update_data(
-        ir_factory_id=factory_id,
-        ir_factory_name=factory.get("name", ""),
-        ir_factory_mode=True, ir_return_qty=0,
-    )
-    await state.set_state(IssueState.cart)
-    await _show_cart(call, state)
-    await call.answer()
-
-
-@router.callback_query(IssueState.choosing_recipient, F.data == "wh:ir:fback")
-async def wh_ir_factory_back(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    await call.message.edit_text("👤 Выберите получателя:",
-                                 reply_markup=wh_courier_select_kb(data.get("ir_couriers", []), "ir"))
-    await call.answer()
-
-
-@router.callback_query(IssueState.choosing_recipient, F.data == "wh:ir:new_courier")
-async def wh_ir_new_courier(call: CallbackQuery, state: FSMContext):
-    await state.set_state(IssueState.new_courier_name)
-    await call.message.edit_text(
-        "➕ <b>Новый курьер</b>\n\nВведите имя:",
-        parse_mode="HTML",
-        reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")),
-    )
-    await call.answer()
-
-
-# ── New courier text inputs ───────────────────────────────────────────────────
-
-@router.message(IssueState.new_courier_name)
-async def wh_ir_nc_name(message: Message, state: FSMContext):
-    name = (message.text or "").strip()
-    if not name:
-        return
-    data = await state.get_data()
-    await state.update_data(ir_new_name=name)
-    await state.set_state(IssueState.new_courier_phone)
-    try:
-        await message.bot.edit_message_text(
-            chat_id=data["ir_chat_id"], message_id=data["ir_msg_id"],
-            text=f"➕ <b>Новый курьер</b>\nИмя: {name}\n\nВведите телефон (+998XXXXXXXXX):",
-            parse_mode="HTML",
-            reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")),
-        )
-    except Exception:
-        pass
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-
-@router.message(IssueState.new_courier_phone)
-async def wh_ir_nc_phone(message: Message, state: FSMContext):
-    phone = (message.text or "").strip()
-    if not phone:
-        return
-    data = await state.get_data()
-    name = data.get("ir_new_name", "")
-    try:
-        courier = await api.create_courier_from_invoice(name, phone, warehouse_only=True)
-    except Exception as e:
-        try:
-            await message.bot.edit_message_text(
-                chat_id=data["ir_chat_id"], message_id=data["ir_msg_id"],
-                text=f"❌ Не удалось создать курьера: {e}\n\nВведите телефон ещё раз:",
-                reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")),
-            )
-        except Exception:
-            pass
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        return
-    await state.update_data(
-        ir_courier_id=courier.get("id"),
-        ir_courier_name=courier.get("name", name),
-        ir_courier_phone=courier.get("phone", phone),
-        ir_factory_mode=False,
-    )
-    await state.set_state(IssueState.cart)
-    await _edit_cart_msg(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-
-# ── Cart ± callbacks ──────────────────────────────────────────────────────────
-
-@router.callback_query(IssueState.cart, F.data.startswith("wh:ir:plus:"))
-async def wh_ir_plus(call: CallbackQuery, state: FSMContext):
-    pid = int(call.data.split(":")[3])
-    data = await state.get_data()
-    cart = dict(data.get("ir_cart", {}))
-    key = str(pid)
-    prod = next((p for p in data.get("ir_catalog", []) if p["id"] == pid), {})
-    entry = cart.get(key, {"name": prod.get("name", ""), "qty": 0})
-    entry["qty"] = min(999, entry["qty"] + 1)
-    cart[key] = entry
-    await state.update_data(ir_cart=cart)
-    await _show_cart(call, state)
-    await call.answer()
-
-
-@router.callback_query(IssueState.cart, F.data.startswith("wh:ir:minus:"))
-async def wh_ir_minus(call: CallbackQuery, state: FSMContext):
-    pid = int(call.data.split(":")[3])
-    data = await state.get_data()
-    cart = dict(data.get("ir_cart", {}))
-    key = str(pid)
-    if key in cart:
-        cart[key]["qty"] = max(0, cart[key]["qty"] - 1)
-        if cart[key]["qty"] == 0:
-            del cart[key]
-    await state.update_data(ir_cart=cart)
-    await _show_cart(call, state)
-    await call.answer()
-
-
-@router.callback_query(IssueState.cart, F.data == "wh:ir:rplus")
-async def wh_ir_rplus(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    await state.update_data(ir_return_qty=min(999, data.get("ir_return_qty", 0) + 1))
-    await _show_cart(call, state)
-    await call.answer()
-
-
-@router.callback_query(IssueState.cart, F.data == "wh:ir:rminus")
-async def wh_ir_rminus(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    await state.update_data(ir_return_qty=max(0, data.get("ir_return_qty", 0) - 1))
-    await _show_cart(call, state)
-    await call.answer()
-
-
-# ── Date selection ────────────────────────────────────────────────────────────
-
-@router.callback_query(IssueState.cart, F.data == "wh:ir:datemenu")
-async def wh_ir_date_menu(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    current = data.get("ir_issue_date", _today_uz())
-    now_uz = datetime.now(tz=_TZ_UZ)
-    options = []
-    for i, label in enumerate(["Сегодня", "Вчера", "Позавчера"]):
-        iso = (now_uz - timedelta(days=i)).strftime("%Y-%m-%d")
-        options.append((label, iso))
-    try:
-        await call.message.edit_reply_markup(reply_markup=wh_date_menu_kb(options, current))
-    except Exception:
-        pass
-    await call.answer()
-
-
-@router.callback_query(IssueState.cart, F.data.startswith("wh:ir:date:"))
-async def wh_ir_date_cb(call: CallbackQuery, state: FSMContext):
-    key = call.data[len("wh:ir:date:"):]
-    if key == "back":
-        await _show_cart(call, state)
-    elif key == "custom":
-        await state.set_state(IssueState.date_input)
-        await call.message.edit_text(
-            "✏️ Введите дату задним числом (ДД.ММ.ГГГГ):",
-            reply_markup=_simple_kb(
-                ("◀ Назад", "wh:ir:back_input"),
-                ("❌ Отмена", "wh:ir:cancel"),
-            ),
-        )
+    if key == "custom":
+        await state.set_state(IssueState.date_custom)
+        await _edit_main(call.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         "✏️ Введите дату (ДД.ММ или ДД.ММ.ГГГГ):",
+                         reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")))
     else:
         await state.update_data(ir_issue_date=key)
-        await _show_cart(call, state)
-    await call.answer()
+        data = await state.get_data()
+        await state.set_state(IssueState.entity_select)
+        date_line = f"⏮ {_fmt_date_label(key)} — задним числом\n\n" if key != _today_uz() else ""
+        await _edit_main(call.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         f"{date_line}👤 Выберите получателя:",
+                         reply_markup=_entity_kb(data.get("ir_couriers", []), data.get("ir_factories", [])))
 
 
-@router.message(IssueState.date_input)
-async def wh_ir_date_input(message: Message, state: FSMContext):
+@router.message(IssueState.date_custom)
+async def wh_ir_date_custom(message: Message, state: FSMContext):
     text = (message.text or "").strip()
+    data = await state.get_data()
+    await _delete_msg(message.bot, data["ir_chat_id"], message.message_id)
     try:
         parts = text.split(".")
         d, m = int(parts[0]), int(parts[1])
         y = int(parts[2]) if len(parts) >= 3 else datetime.now(tz=_TZ_UZ).year
         parsed = _date_cls(y, m, d)
-        today = datetime.now(tz=_TZ_UZ).date()
-        if parsed > today:
-            raise ValueError("future date")
+        if parsed > datetime.now(tz=_TZ_UZ).date():
+            raise ValueError("future")
         iso = parsed.isoformat()
     except Exception:
-        try:
-            await message.delete()
-        except Exception:
-            pass
-        data = await state.get_data()
-        try:
-            await message.bot.edit_message_text(
-                chat_id=data["ir_chat_id"], message_id=data["ir_msg_id"],
-                text="✏️ Неверный формат. Введите дату (ДД.ММ.ГГГГ), например 23.05.2026:",
-                reply_markup=_simple_kb(
-                    ("◀ Назад", "wh:ir:back_input"),
-                    ("❌ Отмена", "wh:ir:cancel"),
-                ),
-            )
-        except Exception:
-            pass
+        await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         "✏️ Неверный формат. Введите дату (ДД.ММ или ДД.ММ.ГГГГ):",
+                         reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")))
         return
     await state.update_data(ir_issue_date=iso)
-    await state.set_state(IssueState.cart)
     data = await state.get_data()
-    await _edit_cart_msg(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await state.set_state(IssueState.entity_select)
+    await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                     f"⏮ {_fmt_date_label(iso)} — задним числом\n\n👤 Выберите получателя:",
+                     reply_markup=_entity_kb(data.get("ir_couriers", []), data.get("ir_factories", [])))
 
 
-# ── Vehicle type / plate ──────────────────────────────────────────────────────
+# ── Step 2: Entity ────────────────────────────────────────────────────────────
 
-@router.callback_query(IssueState.cart, F.data == "wh:ir:vtypemenu")
-async def wh_ir_vtype_menu(call: CallbackQuery, state: FSMContext):
+@router.callback_query(IssueState.entity_select, F.data.startswith("wh:ir:ent:c:"))
+async def wh_ir_ent_courier(call: CallbackQuery, state: FSMContext):
+    cid = int(call.data.split(":")[4])
     data = await state.get_data()
-    try:
-        await call.message.edit_reply_markup(reply_markup=wh_vtype_kb(data.get("ir_vehicle_type", "")))
-    except Exception:
-        pass
+    courier = next((c for c in data.get("ir_couriers", []) if c["id"] == cid), {})
+    await state.update_data(ir_entity_type="courier", ir_entity_id=cid,
+                             ir_entity_name=courier.get("name", ""),
+                             ir_entity_phone=courier.get("phone", ""), ir_entity_cat="")
+    await state.set_state(IssueState.qty_19l)
     await call.answer()
+    await _edit_main(call.bot, data["ir_chat_id"], data["ir_msg_id"],
+                     f"👤 {courier.get('name', '')}\n\n🚰 Введите количество воды 19л:",
+                     reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")))
 
 
-@router.callback_query(IssueState.cart, F.data.startswith("wh:ir:vtype:"))
-async def wh_ir_vtype_cb(call: CallbackQuery, state: FSMContext):
-    vtype = call.data[len("wh:ir:vtype:"):]
-    if vtype == "__back":
-        await _show_cart(call, state)
+@router.callback_query(IssueState.entity_select, F.data.startswith("wh:ir:ent:f:"))
+async def wh_ir_ent_factory(call: CallbackQuery, state: FSMContext):
+    fid = int(call.data.split(":")[4])
+    data = await state.get_data()
+    factory = next((f for f in data.get("ir_factories", []) if f["id"] == fid), {})
+    cat = factory.get("category", "")
+    fname = factory.get("name", "")
+    tl = "Другое" if (cat == "other" or fname == "НАХТ") else "Завод"
+    await state.update_data(ir_entity_type="factory", ir_entity_id=fid,
+                             ir_entity_name=fname, ir_entity_phone="",
+                             ir_entity_cat=cat or ("other" if fname == "НАХТ" else "factory"))
+    await state.set_state(IssueState.qty_19l)
+    await call.answer()
+    await _edit_main(call.bot, data["ir_chat_id"], data["ir_msg_id"],
+                     f"🏭 {fname}  ({tl})\n\n🚰 Введите количество воды 19л:",
+                     reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")))
+
+
+# ── Step 3: 19L qty ───────────────────────────────────────────────────────────
+
+@router.message(IssueState.qty_19l)
+async def wh_ir_qty19(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    await _delete_msg(message.bot, data["ir_chat_id"], message.message_id)
+    try:
+        qty = max(0, int(text))
+    except Exception:
+        await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         "🚰 Введите количество воды 19л (целое число):",
+                         reply_markup=_simple_kb(("❌ Отмена", "wh:ir:cancel")))
+        return
+    await state.update_data(ir_qty_19l=qty)
+    data = await state.get_data()
+    entity_name = data.get("ir_entity_name", "")
+    if data.get("ir_entity_type") == "courier":
+        await state.set_state(IssueState.qty_bottles)
+        await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         f"👤 {entity_name}\n🚰 Вода 19л: {qty} шт.\n\n↩ Введите количество пустых бутылок на возврат:",
+                         reply_markup=_simple_kb(
+                             ("⏭ Пропустить (нет возврата)", "wh:ir:skip_bottles"),
+                             ("❌ Отмена", "wh:ir:cancel"),
+                         ))
     else:
-        await state.update_data(ir_vehicle_type=vtype)
-        await _show_cart(call, state)
+        await state.update_data(ir_qty_bottles=0)
+        await _show_confirm(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
+
+
+# ── Step 4: Bottle return qty (couriers only) ─────────────────────────────────
+
+@router.callback_query(IssueState.qty_bottles, F.data == "wh:ir:skip_bottles")
+async def wh_ir_skip_bottles(call: CallbackQuery, state: FSMContext):
+    await state.update_data(ir_qty_bottles=0)
+    data = await state.get_data()
+    await _show_confirm(call.bot, data["ir_chat_id"], data["ir_msg_id"], state)
     await call.answer()
 
 
-@router.callback_query(IssueState.cart, F.data == "wh:ir:vplate")
-async def wh_ir_vplate(call: CallbackQuery, state: FSMContext):
+@router.message(IssueState.qty_bottles)
+async def wh_ir_qty_bottles(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
     data = await state.get_data()
-    current = data.get("ir_vehicle_plate", "")
-    await state.set_state(IssueState.vehicle_plate)
-    prompt = "🔢 Введите номер авто" + (f" (сейчас: {current})" if current else "") + ":"
+    await _delete_msg(message.bot, data["ir_chat_id"], message.message_id)
     try:
-        await call.message.edit_text(
-            prompt,
-            reply_markup=_simple_kb(
-                ("◀ Назад", "wh:ir:back_input"),
-                ("❌ Отмена", "wh:ir:cancel"),
-            ),
-        )
+        qty = max(0, int(text))
     except Exception:
-        pass
+        entity_name = data.get("ir_entity_name", "")
+        await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         f"👤 {entity_name}\n\n↩ Введите количество пустых бутылок (целое число):",
+                         reply_markup=_simple_kb(
+                             ("⏭ Пропустить (нет возврата)", "wh:ir:skip_bottles"),
+                             ("❌ Отмена", "wh:ir:cancel"),
+                         ))
+        return
+    await state.update_data(ir_qty_bottles=qty)
+    data = await state.get_data()
+    await _show_confirm(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
+
+
+# ── Step 5: Confirmation ──────────────────────────────────────────────────────
+
+@router.callback_query(IssueState.confirm, F.data.startswith("wh:ir:add:"))
+async def wh_ir_add_extra(call: CallbackQuery, state: FSMContext):
+    liters = call.data[len("wh:ir:add:"):]
+    data = await state.get_data()
+    prod = _find_product_liters(data.get("ir_catalog", []), liters)
+    if not prod:
+        await call.answer("Продукт не найден в каталоге", show_alert=True)
+        return
+    await state.update_data(ir_pending_extra=liters)
+    await state.set_state(IssueState.qty_extra)
+    await call.answer()
+    await _edit_main(call.bot, data["ir_chat_id"], data["ir_msg_id"],
+                     f"📦 Введите количество {prod['name']}:",
+                     reply_markup=_simple_kb(
+                         ("◀ Назад", "wh:ir:extra_back"),
+                         ("❌ Отмена", "wh:ir:cancel"),
+                     ))
+
+
+@router.callback_query(IssueState.qty_extra, F.data == "wh:ir:extra_back")
+async def wh_ir_extra_back(call: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await _show_confirm(call.bot, data["ir_chat_id"], data["ir_msg_id"], state)
     await call.answer()
 
 
-@router.message(IssueState.vehicle_plate)
-async def wh_ir_vplate_input(message: Message, state: FSMContext):
-    plate = (message.text or "").strip().upper()
-    await state.update_data(ir_vehicle_plate=plate)
-    await state.set_state(IssueState.cart)
+@router.message(IssueState.qty_extra)
+async def wh_ir_qty_extra(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
     data = await state.get_data()
-    await _edit_cart_msg(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
+    await _delete_msg(message.bot, data["ir_chat_id"], message.message_id)
+    liters = data.get("ir_pending_extra", "")
+    prod = _find_product_liters(data.get("ir_catalog", []), liters)
+    if not prod:
+        await _show_confirm(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
+        return
     try:
-        await message.delete()
+        qty = max(0, int(text))
     except Exception:
-        pass
-
-
-# ── Back to cart from input states ────────────────────────────────────────────
-
-@router.callback_query(
-    StateFilter(IssueState.vehicle_plate, IssueState.date_input),
-    F.data == "wh:ir:back_input",
-)
-async def wh_ir_back_input(call: CallbackQuery, state: FSMContext):
-    await state.set_state(IssueState.cart)
-    await _show_cart(call, state)
-    await call.answer()
-
-
-# ── Back to courier list from cart ────────────────────────────────────────────
-
-@router.callback_query(IssueState.cart, F.data == "wh:ir:back")
-async def wh_ir_back_to_recipients(call: CallbackQuery, state: FSMContext):
+        await _edit_main(message.bot, data["ir_chat_id"], data["ir_msg_id"],
+                         f"📦 Введите количество {prod['name']} (целое число):",
+                         reply_markup=_simple_kb(
+                             ("◀ Назад", "wh:ir:extra_back"),
+                             ("❌ Отмена", "wh:ir:cancel"),
+                         ))
+        return
+    extra = dict(data.get("ir_extra", {}))
+    if qty > 0:
+        extra[str(prod["id"])] = {"name": prod["name"], "qty": qty}
+    else:
+        extra.pop(str(prod["id"]), None)
+    await state.update_data(ir_extra=extra, ir_pending_extra=None)
     data = await state.get_data()
-    await state.set_state(IssueState.choosing_recipient)
-    await call.message.edit_text(
-        "👤 Выберите получателя:",
-        reply_markup=wh_courier_select_kb(data.get("ir_couriers", []), "ir"),
-    )
-    await call.answer()
-
-
-# ── Noop ─────────────────────────────────────────────────────────────────────
-
-@router.callback_query(F.data == "wh:ir:noop")
-async def wh_ir_noop(call: CallbackQuery):
-    await call.answer()
+    await _show_confirm(message.bot, data["ir_chat_id"], data["ir_msg_id"], state)
 
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 
-@router.callback_query(IssueState.cart, F.data == "wh:ir:submit")
+@router.callback_query(IssueState.confirm, F.data == "wh:ir:submit")
 async def wh_ir_submit(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    factory_mode = data.get("ir_factory_mode", False)
-    cart = data.get("ir_cart", {})
-    return_qty = data.get("ir_return_qty", 0)
+    entity_type = data.get("ir_entity_type")
+    entity_name = data.get("ir_entity_name", "")
+    entity_id = data.get("ir_entity_id")
+    entity_cat = data.get("ir_entity_cat", "")
+    entity_phone = data.get("ir_entity_phone", "")
     operator = data.get("ir_operator", "")
     catalog = data.get("ir_catalog", [])
-    vtype = data.get("ir_vehicle_type") or None
-    vplate = data.get("ir_vehicle_plate") or None
     issue_date = data.get("ir_issue_date", _today_uz())
+    qty_19l = data.get("ir_qty_19l", 0)
+    qty_bottles = data.get("ir_qty_bottles", 0)
+    extra = data.get("ir_extra", {})
     created_at = _build_created_at(issue_date)
 
-    price_map = {str(p["id"]): float(p.get("effective_price") or p.get("price") or 0) for p in catalog}
-    items = [
-        {"product_id": int(k), "product_name": v["name"], "quantity": v["qty"]}
-        for k, v in cart.items() if v["qty"] > 0
-    ]
-    total_sum = sum(v["qty"] * price_map.get(k, 0) for k, v in cart.items() if v["qty"] > 0)
+    items = []
+    prod_19l = _find_product_liters(catalog, "19")
+    if prod_19l and qty_19l > 0:
+        items.append({"product_id": prod_19l["id"], "product_name": prod_19l["name"], "quantity": qty_19l})
+    for pid, pdata in extra.items():
+        if pdata.get("qty", 0) > 0:
+            items.append({"product_id": int(pid), "product_name": pdata["name"], "quantity": pdata["qty"]})
 
-    now_uz = datetime.now(tz=_TZ_UZ)
-    now_str = now_uz.strftime("%d.%m.%Y %H:%M")
-    date_label = _fmt_date_label(issue_date)
-
-    if factory_mode:
-        factory_name = data.get("ir_factory_name", "")
-        if not items:
-            await call.answer("Добавьте хотя бы один товар", show_alert=True)
-            return
-        try:
-            await api.factory_issue_batch(factory_name, items, performed_by=operator, created_at=created_at)
-        except Exception as e:
-            await call.answer(f"Ошибка: {e}", show_alert=True)
-            return
-        await state.clear()
-        lines = [f"✅ <b>Выдача записана</b>", f"🏭 Завод: {factory_name}", f"📅 {date_label}", "", "📦 Выдано:"]
-        lines += [f"  • {it['product_name']} — {it['quantity']} шт." for it in items]
-        if total_sum > 0:
-            lines.append(f"💰 {int(total_sum):,} сум".replace(",", " "))
-        try:
-            await call.message.edit_text("\n".join(lines), parse_mode="HTML")
-        except Exception:
-            await call.message.answer("\n".join(lines), parse_mode="HTML")
-        await call.answer()
-        return
-
-    # ── Courier issue ──────────────────────────────────────────────────────
-    courier_id = data.get("ir_courier_id")
-    courier_name = data.get("ir_courier_name", "")
-
-    if not items and return_qty <= 0:
-        await call.answer("Добавьте товар или укажите возврат бутылок", show_alert=True)
+    if not items and (entity_type != "courier" or qty_bottles <= 0):
+        await call.answer("Нечего выдавать — добавьте хотя бы один товар", show_alert=True)
         return
 
     try:
-        await api.issue_batch(
-            courier_id, items, return_qty,
-            performed_by=operator,
-            vehicle_type=vtype, vehicle_plate=vplate,
-            created_at=created_at,
-        )
+        if entity_type == "factory":
+            await api.factory_issue_batch(entity_name, items, performed_by=operator, created_at=created_at)
+        else:
+            await api.issue_batch(entity_id, items, qty_bottles,
+                                  performed_by=operator, vehicle_type=None, vehicle_plate=None,
+                                  created_at=created_at)
     except Exception as e:
         await call.answer(f"Ошибка: {e}", show_alert=True)
         return
 
     await state.clear()
-
-    lines = [f"✅ <b>Выдача записана</b>", f"👤 Курьер: {courier_name}", f"📅 {date_label}"]
-    if vtype or vplate:
-        lines.append("🚗 " + " · ".join(filter(None, [vtype, vplate])))
+    date_label = _fmt_date_label(issue_date)
+    lines = ["✅ <b>Записано!</b>", ""]
+    if entity_type == "courier":
+        lines.append(f"👤 {entity_name}" + (f"  {entity_phone}" if entity_phone else ""))
+    else:
+        tl = "Другое" if (entity_cat == "other" or entity_name == "НАХТ") else "Завод"
+        lines.append(f"🏭 {entity_name}  ({tl})")
+    lines.append(f"📅 {date_label}")
     if items:
-        lines.append("\n📦 Выдано:")
-        lines += [f"  • {it['product_name']} — {it['quantity']} шт." for it in items]
-    if return_qty > 0:
-        lines.append(f"↩ Возврат бутылок: {return_qty} шт.")
-    if total_sum > 0:
-        lines.append(f"💰 {int(total_sum):,} сум".replace(",", " "))
+        lines += ["", "📦 Выдано:"] + [f"  • {it['product_name']} — {it['quantity']} шт." for it in items]
+    if entity_type == "courier" and qty_bottles > 0:
+        lines.append(f"↩ Возврат бутылок: {qty_bottles} шт.")
     try:
         await call.message.edit_text("\n".join(lines), parse_mode="HTML")
     except Exception:
         await call.message.answer("\n".join(lines), parse_mode="HTML")
 
-    # Notify the courier
-    couriers_list = data.get("ir_couriers", [])
-    courier = next((c for c in couriers_list if c.get("id") == courier_id), {})
-    if courier.get("telegram_id") and (items or return_qty > 0):
-        n = ["📦 <b>Накладная со склада</b>", ""]
-        if items:
-            n.append("Получено:")
+    if entity_type == "courier":
+        couriers_list = data.get("ir_couriers", [])
+        courier = next((c for c in couriers_list if c.get("id") == entity_id), {})
+        if courier.get("telegram_id") and (items or qty_bottles > 0):
+            now_str = datetime.now(tz=_TZ_UZ).strftime("%d.%m.%Y %H:%M")
+            n = ["📦 <b>Накладная со склада</b>", ""]
             n += [f"  • {it['product_name']} — {it['quantity']} шт." for it in items]
-        if total_sum > 0:
-            n.append(f"\nИтого: {int(total_sum):,} сум".replace(",", " "))
-        if return_qty > 0:
-            n.append(f"↩ Возврат бутылок: {return_qty} шт.")
-        n += ["", f"Время: {now_str}"]
-        if created_at:
-            n.append(f"(задним числом: {date_label})")
-        try:
-            await call.bot.send_message(courier["telegram_id"], "\n".join(n), parse_mode="HTML")
-        except Exception:
-            pass
+            if qty_bottles > 0:
+                n.append(f"↩ Возврат бутылок: {qty_bottles} шт.")
+            n += ["", f"Время: {now_str}"]
+            if created_at:
+                n.append(f"(задним числом: {date_label})")
+            try:
+                await call.bot.send_message(courier["telegram_id"], "\n".join(n), parse_mode="HTML")
+            except Exception:
+                pass
     await call.answer()
 
 
-# ── Cancel (all IR states) ────────────────────────────────────────────────────
+# ── Noop & Cancel ─────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "wh:ir:noop")
+async def wh_ir_noop(call: CallbackQuery):
+    await call.answer()
+
 
 @router.callback_query(F.data == "wh:ir:cancel")
 async def wh_ir_cancel(call: CallbackQuery, state: FSMContext):
@@ -997,7 +859,7 @@ async def wh_quick_ir(call: CallbackQuery, state: FSMContext):
     await call.answer()
     if not await is_warehouse(call.from_user.id):
         return
-    await _ir_start_flow(call, state)
+    await _ir_start(call, state)
 
 
 # ─── Period/overview ──────────────────────────────────────────────────────────

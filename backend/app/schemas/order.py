@@ -78,6 +78,9 @@ class OrderOut(BaseModel):
     creator_name: str | None = None
     assigner_name: str | None = None
     assigner_role: str | None = None
+    previous_courier_name: str | None = None
+    courier_changed_by: str | None = None
+    courier_changed_by_role: str | None = None
     rejected_by_name: str | None = None
     rejected_by_role: str | None = None
     review_id: int | None = None

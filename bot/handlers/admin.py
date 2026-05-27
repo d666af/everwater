@@ -9,6 +9,7 @@ from keyboards.admin import (
     admin_menu_kb, order_confirm_kb, courier_select_kb, admin_order_reject_kb,
     stats_period_kb, admin_user_kb, broadcast_target_kb,
     product_list_kb, product_edit_kb, subs_menu_kb, subs_list_kb,
+    reassign_courier_select_kb,
 )
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -427,6 +428,54 @@ async def order_assign_courier_prompt(call: CallbackQuery):
         await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("order:reassign:"))
+async def order_reassign_prompt(call: CallbackQuery):
+    """Unified 'Изменить курьера' handler for both admin and manager."""
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    order_id = int(call.data.split(":")[2])
+    order = await api.get_order(order_id)
+    couriers = await api.get_couriers()
+    kb = reassign_courier_select_kb(couriers, order_id, current_courier_id=order.get("courier_id"))
+    await call.message.answer(f"🔁 Выберите нового курьера для заказа #{order_id}:", reply_markup=kb)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("order:reassign_set:"))
+async def order_reassign_set(call: CallbackQuery):
+    from handlers.manager import is_manager as _is_manager
+    _is_adm = is_admin(call.from_user.id)
+    _is_mgr = (await _is_manager(call.from_user.id)) if not _is_adm else False
+    if not _is_adm and not _is_mgr:
+        await call.answer("Нет прав.", show_alert=True)
+        return
+    parts = call.data.split(":")
+    order_id, courier_id = int(parts[2]), int(parts[3])
+    try:
+        await api.change_courier(order_id, courier_id, manager_telegram_id=call.from_user.id)
+    except Exception:
+        await call.answer("❌ Не удалось изменить курьера.", show_alert=True)
+        return
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.answer("✅ Курьер изменён")
+
+
+@router.callback_query(F.data.startswith("order:reassign_cancel:"))
+async def order_reassign_cancel(call: CallbackQuery):
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
     await call.answer()
 
 

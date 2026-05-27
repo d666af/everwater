@@ -55,6 +55,20 @@ def courier_select_kb(couriers: list, order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def reassign_courier_select_kb(couriers: list, order_id: int, current_courier_id: int | None = None) -> InlineKeyboardMarkup:
+    """Courier picker for the 'Изменить курьера' flow (admin + manager).
+    Skips the courier currently assigned to the order."""
+    buttons = []
+    for c in couriers:
+        if current_courier_id and c.get("id") == current_courier_id:
+            continue
+        phone = (c.get("phone") or "").replace("+998", "").strip()
+        label = f"{c['name']}  {phone}" if phone else c["name"]
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"order:reassign_set:{order_id}:{c['id']}")])
+    buttons.append([InlineKeyboardButton(text="◀ Отмена", callback_data=f"order:reassign_cancel:{order_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def stats_period_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [

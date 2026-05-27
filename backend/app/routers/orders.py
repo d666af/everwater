@@ -913,6 +913,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
 
     from app.services.tg_notify import edit_all_notifications
     _cancel_kb_ac = {"inline_keyboard": [
+        [{"text": "🔁 Изменить курьера", "callback_data": f"order:reassign:{oid}"}],
         [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
         [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
     ]}
@@ -947,6 +948,187 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         new_msg_id = await _tg_edit_or_send(client_tg, text, old_msg_id)
         if new_msg_id and new_msg_id != old_msg_id:
             await _save_status_msg_id(db, oid, new_msg_id)
+
+    return {"ok": True}
+
+
+class ChangeCourierBody(BaseModel):
+    courier_id: int
+    changer_name: str | None = None
+    changer_role: str | None = None
+    manager_telegram_id: int | None = None
+
+
+async def _resolve_staff_identity(db: AsyncSession, telegram_id: int) -> tuple[str | None, str | None]:
+    """Return (name, role) for a manager or admin telegram id."""
+    from app.models.manager import Manager
+    mgr = (await db.execute(
+        select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True)
+    )).scalar_one_or_none()
+    if mgr:
+        return mgr.name, "manager"
+    from app.services.tg_notify import get_all_admin_ids as _gaa
+    if telegram_id in await _gaa(db):
+        admin_user = (await db.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )).scalar_one_or_none()
+        return (admin_user.name if admin_user else None), "admin"
+    return None, None
+
+
+@router.patch("/{order_id}/change_courier")
+async def change_courier(order_id: int, body: ChangeCourierBody,
+                         db: AsyncSession = Depends(get_db)):
+    """Reassign an already-assigned order to a different courier (admin/manager only).
+    Removes the order from the old courier, notifies the new courier + client, and
+    records who changed the courier for the staff order card."""
+    order = await _get_order(order_id, db)
+    if order.courier_id is None:
+        raise HTTPException(status_code=400, detail="Order has no courier to change")
+    if order.status not in (OrderStatus.ASSIGNED_TO_COURIER, OrderStatus.IN_DELIVERY):
+        raise HTTPException(status_code=400, detail="Courier can only be changed before delivery")
+    new_courier = (await db.execute(
+        select(Courier).where(Courier.id == body.courier_id)
+    )).scalar_one_or_none()
+    if not new_courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    if new_courier.id == order.courier_id:
+        raise HTTPException(status_code=400, detail="Same courier already assigned")
+
+    # Capture everything BEFORE commit (attributes expire after commit)
+    old_courier_name = order.courier.name if order.courier else (order.previous_courier_name or "—")
+    old_courier_tg = order.courier.telegram_id if order.courier else None
+    old_courier_msg_id = order.courier_status_msg_id
+
+    client_tg = order.user.telegram_id if order.user else None
+    client_name = (order.user.name if order.user else None) or "—"
+    old_client_msg_id = order.client_status_msg_id
+    notification_msg_ids = order.notification_msg_ids
+    _items_data = [(i.product, i.quantity) for i in order.items if i.product]
+    _ret_cnt = order.return_bottles_count or 0
+    _lent_cnt = order.bottles_lent or 0
+    _surcharge = order.bottle_surcharge or 0.0
+    _qty19 = sum(q for p, q in _items_data if p.has_bottle_deposit)
+    _missing = max(0, _qty19 - _ret_cnt)
+    _snum = f"{int(_surcharge):,}".replace(",", " ")
+    _bullet_lines = [f"  • {p.name} {q} шт." for p, q in _items_data]
+    if _surcharge > 0 and _missing > 0:
+        _bullet_lines.append(f"  • Невозвращённые бутылки {_missing} шт. — +{_snum} сум")
+    items_bullets = "\n".join(_bullet_lines) or "—"
+    order_address = order.address
+    order_phone = order.recipient_phone
+    order_total = int(order.total)
+    order_payment = order.payment_method or "cash"
+    order_creator_role = order.creator_role
+    order_creator_name = order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None)
+    order_assigner_name = order.assigner_name
+    order_assigner_role = order.assigner_role or ""
+    new_courier_name = new_courier.name
+    new_courier_phone = new_courier.phone or ""
+    new_courier_tg = new_courier.telegram_id
+    oid = order.id
+
+    # Resolve who is making the change
+    changer_name = body.changer_name
+    changer_role = body.changer_role
+    if body.manager_telegram_id and not changer_name:
+        changer_name, changer_role = await _resolve_staff_identity(db, body.manager_telegram_id)
+
+    cfg = await get_all_settings(db)
+    eta_hours = float(cfg.get("delivery_eta_hours") or 2)
+
+    order.previous_courier_name = old_courier_name
+    order.courier_changed_by = changer_name
+    order.courier_changed_by_role = changer_role
+    order.courier_id = new_courier.id
+    order.status = OrderStatus.ASSIGNED_TO_COURIER
+    order.delivery_expected_at = datetime.utcnow() + timedelta(hours=eta_hours)
+    order.delivery_reminder_sent = False
+    order.delivery_reminder_2_sent = False
+    await db.commit()
+
+    # ── Old courier: delete their order card + short note ──────────────────────
+    if old_courier_tg:
+        if old_courier_msg_id:
+            await _tg_delete_message(old_courier_tg, old_courier_msg_id)
+        await _tg(old_courier_tg,
+                  f"🔄 Заказ {order_address} на {order_total:,} сум переназначен другому курьеру.")
+
+    # ── New courier: assignment notification ───────────────────────────────────
+    from app.config import settings as _cfg_cc
+    _site_url_cc = _cfg_cc.MINI_APP_URL.rstrip("/") + "/courier/map"
+    _client_id_cc = f"{client_name}  |  {order_phone}" if client_name and client_name != "—" else order_phone
+    _ret_line_c = f"\n♻️ Возврат бутылок: {_ret_cnt} шт." if _ret_cnt else ""
+    _lent_line_c = f"\n📦 Одолжить: {_lent_cnt} шт." if _lent_cnt else ""
+    _pay_labels = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
+    pay_label_str = _pay_labels.get(order_payment, order_payment)
+    courier_text = (
+        f"🚴 <b>Вам назначен заказ!</b>\n\n"
+        f"👤 {_client_id_cc}\n"
+        f"📍 {order_address}\n\n"
+        f"Товары:\n{items_bullets}\n"
+        f"💰 {order_total:,} сум  |  {pay_label_str}"
+        f"{_ret_line_c}{_lent_line_c}"
+    )
+    _kb_rows = [
+        [{"text": "🗺 Карта заказов", "web_app": {"url": _site_url_cc}}],
+        [{"text": "🚴 В пути", "callback_data": f"courier:in_delivery:{oid}"}],
+        [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+    ]
+    c_msg_id = await _tg_send(new_courier_tg, courier_text, {"inline_keyboard": _kb_rows}, parse_mode="HTML")
+    if c_msg_id:
+        await db.execute(sa_update(Order).where(Order.id == oid).values(courier_status_msg_id=c_msg_id))
+        await db.commit()
+
+    # ── Client: delete old courier notice + send new one ───────────────────────
+    if client_tg:
+        if old_client_msg_id:
+            await _tg_delete_message(client_tg, old_client_msg_id)
+        _phone_line = f"\nТелефон курьера: {new_courier_phone}" if new_courier_phone else ""
+        text = f"🚴 Вам назначен новый курьер {new_courier_name}!\nОжидайте доставку.{_phone_line}"
+        new_msg_id = await _tg_send(client_tg, text)
+        if new_msg_id:
+            await _save_status_msg_id(db, oid, new_msg_id)
+
+    # ── Staff cards: old → new + who changed ───────────────────────────────────
+    _ROLE_LABELS_SYNC = {"manager": "Менеджер", "admin": "Администратор", "courier": "Курьер", "agent": "Агент"}
+    c_phone_part = f"  |  {new_courier_phone}" if new_courier_phone else ""
+    if order_creator_role:
+        _cr_label = _ROLE_LABELS_SYNC.get(order_creator_role, order_creator_role.capitalize())
+        _creator_line = f"\n✍️ Создал заказ: {_cr_label} {order_creator_name}" if order_creator_name else f"\n✍️ Создал заказ: {_cr_label}"
+    else:
+        _client_label = client_name if client_name and client_name != "—" else "Клиент"
+        _creator_line = f"\n✍️ Создал заказ: Клиент {_client_label}"
+    if order_assigner_name:
+        _asgn_role_lbl = _ROLE_LABELS_SYNC.get(order_assigner_role, "") if order_assigner_role else ""
+        _assigner_line = f"\n👤 Назначил курьера: {_asgn_role_lbl} {order_assigner_name}".rstrip()
+    else:
+        _assigner_line = ""
+    _chg_role_lbl = _ROLE_LABELS_SYNC.get(changer_role or "", "") if changer_role else ""
+    _change_line = f"\n🔁 Курьер изменён: {old_courier_name} → {new_courier_name}"
+    if changer_name:
+        _change_line += f"\n✏️ Изменил курьера: {_chg_role_lbl} {changer_name}".rstrip()
+    _ret_line = f"\n♻️ Возврат бутылок: {_ret_cnt} шт." if _ret_cnt else ""
+    _lent_line = f"\n📦 Одолжить: {_lent_cnt} шт." if _lent_cnt else ""
+    _surcharge_line = f"\n💰 Надбавка за невозврат: {int(_surcharge):,} сум" if _surcharge > 0 else ""
+    sync_text = (
+        f"✅ Курьер {new_courier_name} назначен\n\n"
+        f"👤 {client_name}  |  {order_phone}\n"
+        f"📍 {order_address}\n\n"
+        f"Товары:\n{items_bullets}\n"
+        f"💰 {order_total:,} сум  |  {pay_label_str}"
+        f"{_ret_line}{_lent_line}{_surcharge_line}"
+        f"{_creator_line}\n"
+        f"🚴 {new_courier_name}{c_phone_part}"
+        f"{_assigner_line}{_change_line}"
+    )
+    from app.services.tg_notify import edit_all_notifications
+    _staff_kb = {"inline_keyboard": [
+        [{"text": "🔁 Изменить курьера", "callback_data": f"order:reassign:{oid}"}],
+        [{"text": "✏️ Изменить состав", "callback_data": f"courier:edit_items:{oid}"}],
+        [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
+    ]}
+    await edit_all_notifications(notification_msg_ids, sync_text, reply_markup=_staff_kb)
 
     return {"ok": True}
 
@@ -2037,6 +2219,9 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         creator_name=order.creator_name or (order.agent.name if order.creator_role == "agent" and order.agent else None),
         assigner_name=order.assigner_name,
         assigner_role=order.assigner_role,
+        previous_courier_name=order.previous_courier_name,
+        courier_changed_by=order.courier_changed_by,
+        courier_changed_by_role=order.courier_changed_by_role,
         rejected_by_name=order.rejected_by_name,
         rejected_by_role=order.rejected_by_role,
         review_id=order.review.id if order.review else None,

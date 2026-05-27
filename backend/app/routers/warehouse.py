@@ -1008,7 +1008,7 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
         _when_utc = _ts or datetime.utcnow()
         _when = _when_utc + timedelta(hours=5)
         png = generate_invoice_png(
-            items=[{"name": "Возврат бутылок", "unit": "Шт", "qty": 0, "is_return": True}] + invoice_items,
+            items=invoice_items,
             courier_name=factory.name,
             courier_phone=None,
             vehicle_type=None,

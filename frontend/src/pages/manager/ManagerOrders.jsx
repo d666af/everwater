@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getOrders, confirmOrder, rejectOrder, assignCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts, deleteOrder, updateOrderItems } from '../../api'
+import { getOrders, confirmOrder, rejectOrder, assignCourier, changeCourier, getAdminCouriers, markInDelivery, markDelivered, confirmSubscription, rejectSubscription, courierCreateOrder, lookupClientByPhone, getProducts, deleteOrder, updateOrderItems } from '../../api'
 import PhonePopup from '../../components/PhonePopup'
 import { useAuthStore } from '../../store/auth'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
@@ -299,6 +299,8 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
 /* ─── Order card ─────────────────────────────────────────────────────────────── */
 
 const EDIT_STATUSES = new Set(['confirmed', 'assigned_to_courier', 'in_delivery'])
+const REASSIGN_STATUSES = new Set(['assigned_to_courier', 'in_delivery'])
+const ROLE_LABELS = { manager: 'Менеджер', admin: 'Администратор', agent: 'Агент', courier: 'Курьер' }
 
 function OrderCard({
   order, expanded, onToggle, couriers,
@@ -310,6 +312,8 @@ function OrderCard({
   const orderStage = getStage(order)
   const [showMore, setShowMore] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
+  const [reassignOpen, setReassignOpen] = useState(false)
+  const [reassignSel, setReassignSel] = useState('')
 
   const stageLabel = {
     new: order.type === 'subscription' && !order.payment_confirmed
@@ -458,6 +462,8 @@ function OrderCard({
               <Section title="Курьер">
                 <Row k="Имя" v={order.courier_name || `ID: ${order.courier_id}`} />
                 {order.courier_phone && <Row k="Телефон" v={order.courier_phone} />}
+                {order.previous_courier_name && <Row k="Был курьер" v={order.previous_courier_name} />}
+                {order.courier_changed_by && <Row k="Изменил курьера" v={`${ROLE_LABELS[order.courier_changed_by_role] || ''} ${order.courier_changed_by}`.trim()} />}
               </Section>
             )}
             <BottlesBlock order={order} />
@@ -502,6 +508,8 @@ function OrderCard({
               <Section title="Курьер">
                 <Row k="Имя" v={order.courier_name || `ID: ${order.courier_id}`} />
                 {order.courier_phone && <Row k="Телефон" v={order.courier_phone} />}
+                {order.previous_courier_name && <Row k="Был курьер" v={order.previous_courier_name} />}
+                {order.courier_changed_by && <Row k="Изменил курьера" v={`${ROLE_LABELS[order.courier_changed_by_role] || ''} ${order.courier_changed_by}`.trim()} />}
               </Section>
             )}
           </>)}
@@ -538,6 +546,11 @@ function OrderCard({
                 ✏️ Изменить состав
               </button>
             )}
+            {REASSIGN_STATUSES.has(order.status) && order.courier_id && (
+              <button onClick={() => { setReassignOpen(v => !v); setReassignSel('') }} style={{ ...st.btnOutline, color: '#1971C2', borderColor: 'rgba(25,113,194,0.4)' }}>
+                🔁 Изменить курьера
+              </button>
+            )}
             {order.recipient_phone && (
               <button onClick={() => setPhoneModal({ number: order.recipient_phone, label: 'Телефон клиента' })} style={st.btnOutline}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8C7.8 13.2 9.8 15.2 12.2 16.4L14 14.6C14.2 14.4 14.6 14.3 14.9 14.5C16 14.9 17.2 15.1 18.5 15.1C19 15.1 19.4 15.5 19.4 16V18.5C19.4 19 19 19.4 18.5 19.4C10.3 19.4 3.6 12.7 3.6 4.5C3.6 4 4 3.6 4.5 3.6H7C7.5 3.6 7.9 4 7.9 4.5C7.9 5.8 8.1 7 8.5 8.1C8.7 8.4 8.6 8.8 8.4 9L6.6 10.8Z" fill="currentColor"/></svg>
@@ -562,6 +575,25 @@ function OrderCard({
               </button>
             )}
           </div>
+
+          {/* Reassign courier panel */}
+          {reassignOpen && REASSIGN_STATUSES.has(order.status) && (
+            <div style={{ background: '#F0F7FF', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid rgba(25,113,194,0.2)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Назначить другого курьера</div>
+              <select style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '11px 13px', fontSize: 15, outline: 'none', background: '#fff', color: TEXT }} value={reassignSel} onChange={e => setReassignSel(e.target.value)}>
+                <option value="">-- Выберите курьера --</option>
+                {couriers.filter(c => c.is_active !== false && c.id !== order.courier_id).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button style={{ padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', color: TEXT2, fontSize: 14, cursor: 'pointer' }} onClick={() => setReassignOpen(false)}>Отмена</button>
+                <button style={{ ...st.btnPrimary, opacity: !reassignSel ? 0.5 : 1 }} disabled={actionLoading || !reassignSel} onClick={() => act(() => changeCourier(order.id, reassignSel, currentUser?.name, currentUser?.role).then(() => setReassignOpen(false)))}>
+                  Изменить курьера
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -99,12 +99,8 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           const res = await issueBatchToCourier(entity.id, items, actor, vt, vp, null, bottleReturn, createdAt)
           if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
         } else {
-          if (mode === 'return') {
-            await factoryReturnBatch(entity.name, items, actor, createdAt)
-          } else {
-            const res = await factoryIssueBatch(entity.name, items, actor, createdAt)
-            if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
-          }
+          const res = await factoryIssueBatch(entity.name, items, actor, createdAt)
+          if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
         }
         load()
       }} onRefresh={load} />}
@@ -513,7 +509,6 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
   const [bottleReturn, setBottleReturn] = useState('')
   const [vehicleType, setVehicleType] = useState('')
   const [vehiclePlate, setVehiclePlate] = useState('')
-  const [factoryMode, setFactoryMode] = useState('issue')
   const [issueTime, setIssueTime] = useState(() => {
     const tzStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' })
     return tzStr.split(' ')[1].slice(0, 5)
@@ -588,7 +583,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
         isCourier ? parsedReturn : 0,
         isCourier ? (vehicleType.trim() || null) : null,
         isCourier ? (vehiclePlate.trim() || null) : null,
-        isCourier ? 'issue' : factoryMode,
+        'issue',
         buildCreatedAt(),
       )
       onClose()
@@ -667,16 +662,27 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
           {isBackdated && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', flexShrink: 0 }}>Время:</span>
-              <input
-                type="time"
-                value={issueTime}
-                onChange={e => e.target.value && setIssueTime(e.target.value)}
-                style={{
-                  flex: 1, padding: '7px 10px', borderRadius: 10, fontSize: 16, fontWeight: 600,
-                  border: '1.5px solid #E67700', background: '#FFF8F0', color: '#E67700',
-                  outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
-                }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, background: '#FFF8F0', border: '1.5px solid #E67700', borderRadius: 10, padding: '6px 10px' }}>
+                <input
+                  type="number" inputMode="numeric" min="0" max="23"
+                  value={parseInt(issueTime.split(':')[0])}
+                  onChange={e => {
+                    const h = Math.min(23, Math.max(0, Number(e.target.value) || 0))
+                    setIssueTime(`${String(h).padStart(2,'0')}:${issueTime.split(':')[1]}`)
+                  }}
+                  style={{ width: 36, fontSize: 16, fontWeight: 700, color: '#E67700', background: 'none', border: 'none', outline: 'none', textAlign: 'center', padding: 0 }}
+                />
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#E67700', lineHeight: 1 }}>:</span>
+                <input
+                  type="number" inputMode="numeric" min="0" max="59"
+                  value={parseInt(issueTime.split(':')[1])}
+                  onChange={e => {
+                    const m = Math.min(59, Math.max(0, Number(e.target.value) || 0))
+                    setIssueTime(`${issueTime.split(':')[0]}:${String(m).padStart(2,'0')}`)
+                  }}
+                  style={{ width: 36, fontSize: 16, fontWeight: 700, color: '#E67700', background: 'none', border: 'none', outline: 'none', textAlign: 'center', padding: 0 }}
+                />
+              </div>
             </div>
           )}
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
@@ -744,22 +750,6 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
             </div>
           </>}
 
-          {/* Factory mode toggle — factories only */}
-          {!isCourier && selectedEntity && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => setFactoryMode('issue')} style={{
-                flex: 1, padding: '9px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                background: factoryMode === 'issue' ? 'linear-gradient(135deg, #B14CD0, #9C36B5)' : '#F2F2F7',
-                color: factoryMode === 'issue' ? '#fff' : TEXT2, border: 'none',
-              }}>Выдать</button>
-              <button onClick={() => setFactoryMode('return')} style={{
-                flex: 1, padding: '9px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                background: factoryMode === 'return' ? 'linear-gradient(135deg, #B14CD0, #9C36B5)' : '#F2F2F7',
-                color: factoryMode === 'return' ? '#fff' : TEXT2, border: 'none',
-              }}>Вернуть</button>
-            </div>
-          )}
-
           {/* Кому selector */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Кому</div>
@@ -809,8 +799,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
           {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
           <button style={{ ...st.primaryBtn, ...(!canSubmit ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={!canSubmit || loading} onClick={handle}>
-            {loading ? (isCourier ? 'Выдаю...' : (factoryMode === 'return' ? 'Возвращаю...' : 'Выдаю...'))
-              : (isCourier ? 'Выдать' : (factoryMode === 'return' ? 'Вернуть' : 'Выдать'))}
+            {loading ? 'Выдаю...' : 'Выдать'}
           </button>
         </div>
       </div>

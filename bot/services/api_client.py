@@ -242,6 +242,13 @@ async def assign_courier(order_id: int, courier_id: int, from_bot: bool = True, 
                         params={"from_bot": str(from_bot).lower()})
 
 
+async def change_courier(order_id: int, courier_id: int, manager_telegram_id: int | None = None):
+    body = {"courier_id": courier_id}
+    if manager_telegram_id:
+        body["manager_telegram_id"] = manager_telegram_id
+    return await _patch(f"/orders/{order_id}/change_courier", body)
+
+
 async def courier_accept_order(order_id: int):
     return await _patch(f"/orders/{order_id}/courier_accept")
 
