@@ -1075,6 +1075,27 @@ async def factory_return_batch(body: FactoryIssueBatchBody, db: AsyncSession = D
             await _recalculate_stock(db, prod.id)
 
     await db.commit()
+
+    # Generate and send invoice PNG to admins
+    try:
+        _when_utc = _ts or datetime.utcnow()
+        _when = _when_utc + timedelta(hours=5)
+        invoice_items = [
+            {"name": prod.name, "unit": "Шт", "qty": qty, "is_return": True, "bonus": 0, "price": 0, "sum": 0}
+            for prod, qty in resolved
+        ]
+        png = generate_invoice_png(
+            items=invoice_items,
+            courier_name=factory.name,
+            courier_phone=None,
+            vehicle_type=None,
+            vehicle_plate=None,
+            when=_when,
+        )
+        await _send_invoice_to_admins(png, factory, invoice_items, batch_id, body.performed_by, db)
+    except Exception:
+        pass
+
     return {"ok": True, "batch_id": batch_id, "factory_id": factory.id}
 
 
@@ -1744,7 +1765,7 @@ async def list_issue_batches(
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
 ):
-    """List distinct issue batches (courier + factory), optionally filtered by performed_by."""
+    """List distinct issue AND return batches (courier + factory), optionally filtered by performed_by."""
     tx_types = ["issue", "factory_issue"] if include_factory else ["issue"]
     q = (
         select(
@@ -1767,11 +1788,8 @@ async def list_issue_batches(
 
     seen: set[str] = set()
     result = []
-    for row in rows:
-        if row.batch_id in seen:
-            continue
-        seen.add(row.batch_id)
-        tx_type = row.transaction_type
+
+    async def _append_batch(row, tx_type: str):
         items_rows = (await db.execute(
             select(WaterTransaction, Product)
             .join(Product, WaterTransaction.product_id == Product.id, isouter=True)
@@ -1784,9 +1802,8 @@ async def list_issue_batches(
             (tx.quantity * float(p.price or 0)) if p else 0
             for tx, p in items_rows
         )
-        recipient_name = "—"
         courier = None
-        if tx_type == "issue" and row.courier_id:
+        if row.courier_id:
             courier = (await db.execute(
                 select(Courier).where(Courier.id == row.courier_id)
             )).scalar_one_or_none()
@@ -1795,24 +1812,69 @@ async def list_issue_batches(
             factory = (await db.execute(
                 select(Factory).where(Factory.id == row.factory_id)
             )).scalar_one_or_none()
+        batch_type_map = {
+            "issue": "courier", "factory_issue": "factory",
+            "bottle_return": "bottle_return", "factory_return": "factory_return",
+        }
+        if tx_type == "bottle_return":
+            total_qty = sum(tx.quantity for tx, _ in items_rows)
+            items = [{"product_name": "Возврат бутылок", "quantity": total_qty}]
+        else:
+            items = [{"product_name": p.name if p else "—", "quantity": tx.quantity} for tx, p in items_rows]
+        recipient = courier.name if courier else (factory.name if factory else "—")
         result.append({
             "batch_id": row.batch_id,
-            "batch_type": "factory" if tx_type == "factory_issue" else "courier",
+            "batch_type": batch_type_map.get(tx_type, "courier"),
             "courier_id": row.courier_id,
-            "courier_name": courier.name if courier else (factory.name if factory else "—"),
+            "courier_name": recipient,
             "factory_id": row.factory_id,
             "factory_name": factory.name if factory else None,
             "performed_by": row.performed_by,
             "created_at": row.created_at,
             "total_sum": round(total_sum),
-            "items": [
-                {"product_name": p.name if p else "—", "quantity": tx.quantity}
-                for tx, p in items_rows
-            ],
+            "items": items,
         })
+
+    for row in rows:
+        if row.batch_id in seen:
+            continue
+        seen.add(row.batch_id)
+        await _append_batch(row, row.transaction_type)
         if len(result) >= limit:
             break
-    return result
+
+    # Also include standalone return batches (those not part of an issue batch)
+    if len(result) < limit:
+        for ret_type in ["bottle_return", "factory_return"]:
+            ret_q = (
+                select(
+                    WaterTransaction.batch_id,
+                    WaterTransaction.courier_id,
+                    WaterTransaction.factory_id,
+                    WaterTransaction.created_at,
+                    WaterTransaction.performed_by,
+                    WaterTransaction.transaction_type,
+                )
+                .where(
+                    WaterTransaction.transaction_type == ret_type,
+                    WaterTransaction.batch_id.isnot(None),
+                )
+                .order_by(WaterTransaction.created_at.desc())
+            )
+            if performed_by:
+                ret_q = ret_q.where(WaterTransaction.performed_by == performed_by)
+            if seen:
+                ret_q = ret_q.where(WaterTransaction.batch_id.notin_(list(seen)))
+            for row in (await db.execute(ret_q)).all():
+                if row.batch_id in seen:
+                    continue
+                seen.add(row.batch_id)
+                await _append_batch(row, ret_type)
+                if len(result) >= limit:
+                    break
+
+    result.sort(key=lambda x: x["created_at"] or datetime.min, reverse=True)
+    return result[:limit]
 
 
 @router.delete("/issue_batch/{batch_id}")
@@ -1899,6 +1961,12 @@ async def cancel_issue_batch(batch_id: str, request: Request, db: AsyncSession =
             stock.quantity += tx.quantity
             await db.delete(tx)
         elif tx.transaction_type == "bottle_return":
+            await db.delete(tx)
+        elif tx.transaction_type == "factory_return":
+            # Reverse factory return: subtract the qty that was added back to warehouse stock
+            if tx.product_id:
+                stock = await _ensure_stock(db, tx.product_id)
+                stock.quantity -= tx.quantity
             await db.delete(tx)
 
     await db.commit()

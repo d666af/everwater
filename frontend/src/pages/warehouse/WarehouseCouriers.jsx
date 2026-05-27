@@ -537,42 +537,47 @@ function CancelBatchModal({ label, onClose }) {
     <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ ...st.sheet, maxHeight: '85vh', overflowY: 'auto' }}>
         <div style={st.handle} />
-        <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Отменить выдачу</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Отменить операцию</div>
         {label && <div style={{ fontSize: 13, color: TEXT2, marginTop: -8 }}>{label}</div>}
         {batches === null ? (
           <div style={{ textAlign: 'center', padding: 30, color: TEXT2 }}>Загрузка...</div>
         ) : batches.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Нет выдач для отмены</div>
+          <div style={{ textAlign: 'center', padding: 30, color: TEXT2, fontSize: 14 }}>Нет операций для отмены</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {batches.map(b => (
-              <div key={b.batch_id} style={{ background: '#FAFAFA', borderRadius: 14, padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{b.courier_name}</div>
-                    {b.batch_type === 'factory' && (
-                      <div style={{ fontSize: 11, color: '#9C36B5', fontWeight: 600 }}>Завод</div>
-                    )}
-                    <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{fmtDate(b.created_at)}</div>
-                    <div style={{ marginTop: 6 }}>
-                      {(b.items || []).map((it, i) => (
-                        <div key={i} style={{ fontSize: 12, color: TEXT }}>{it.product_name}: <b>{it.quantity}</b> шт.</div>
-                      ))}
+            {batches.map(b => {
+              const isReturn = b.batch_type === 'bottle_return' || b.batch_type === 'factory_return'
+              const typeLabel = b.batch_type === 'factory' ? 'Завод' : b.batch_type === 'factory_return' ? 'Возврат · Завод' : b.batch_type === 'bottle_return' ? 'Возврат бутылок' : null
+              const typeColor = b.batch_type === 'factory' ? '#9C36B5' : b.batch_type === 'factory_return' ? '#0077B6' : b.batch_type === 'bottle_return' ? '#1971C2' : null
+              return (
+                <div key={b.batch_id} style={{ background: isReturn ? '#EEF6FF' : '#FAFAFA', borderRadius: 14, padding: '12px 14px', border: isReturn ? '1px solid rgba(25,113,194,0.15)' : 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{b.courier_name}</div>
+                      {typeLabel && (
+                        <div style={{ fontSize: 11, color: typeColor, fontWeight: 600 }}>{typeLabel}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{fmtDate(b.created_at)}</div>
+                      <div style={{ marginTop: 6 }}>
+                        {(b.items || []).map((it, i) => (
+                          <div key={i} style={{ fontSize: 12, color: TEXT }}>{it.product_name}: <b>{it.quantity}</b> шт.</div>
+                        ))}
+                      </div>
+                      {b.total_sum > 0 && (
+                        <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{b.total_sum.toLocaleString()} сум</div>
+                      )}
                     </div>
-                    {b.total_sum > 0 && (
-                      <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{b.total_sum.toLocaleString()} сум</div>
-                    )}
+                    <button
+                      disabled={cancelling === b.batch_id}
+                      onClick={() => doCancel(b.batch_id)}
+                      style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, opacity: cancelling === b.batch_id ? 0.6 : 1 }}
+                    >
+                      {cancelling === b.batch_id ? '...' : 'Отменить'}
+                    </button>
                   </div>
-                  <button
-                    disabled={cancelling === b.batch_id}
-                    onClick={() => doCancel(b.batch_id)}
-                    style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, opacity: cancelling === b.batch_id ? 0.6 : 1 }}
-                  >
-                    {cancelling === b.batch_id ? '...' : 'Отменить'}
-                  </button>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
         <button style={{ padding: 14, borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
