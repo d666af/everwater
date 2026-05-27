@@ -4,7 +4,7 @@ import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 import {
   getWarehouseCourierStats, getProducts,
   getInvoiceUrl,
-  getFactoryStats, factoryIssueBatch, factoryReturnBatch,
+  getFactoryStats,
   getIssueBatches, cancelIssueBatch,
   adjustWarehouseCourierDebt,
 } from '../../api'
@@ -31,7 +31,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
-  const [factoryModal, setFactoryModal] = useState(null) // { factory, mode }
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
@@ -82,16 +81,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     load()
   }
 
-  const submitFactory = async (factoryName, items, mode) => {
-    if (mode === 'return') {
-      await factoryReturnBatch(factoryName, items, actor)
-    } else {
-      const res = await factoryIssueBatch(factoryName, items, actor)
-      if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: factoryName })
-    }
-    load()
-  }
-
   return (
     <Layout title={title}>
       {invoiceModal && (
@@ -122,18 +111,6 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onSave={async (delta, note) => {
             await submitDebtAdj(debtAdjModal.id, delta, note)
             setDebtAdjModal(null)
-          }}
-        />
-      )}
-      {factoryModal && (
-        <FactoryIssueModal
-          factory={factoryModal.factory}
-          mode={factoryModal.mode}
-          catalog={catalog}
-          onClose={() => setFactoryModal(null)}
-          onSave={async (items, mode) => {
-            await submitFactory(factoryModal.factory.name, items, mode)
-            setFactoryModal(null)
           }}
         />
       )}
@@ -184,18 +161,18 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
       ) : (
         <>
           {/* "Другое" section */}
-          {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').length > 0 && (
+          {factories.filter(f => f.category === 'other' || f.name === 'НАХТ').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Другое · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => f.category === 'other' || f.name === 'НАХТ' || f.name === 'MILK VILL').map(f => (
+                {factories.filter(f => f.category === 'other' || f.name === 'НАХТ').map(f => (
                   <OtherCard
                     key={f.id}
                     f={f}
-                    onIssue={() => setFactoryModal({ factory: f, mode: 'issue' })}
-                    onReturn={() => setFactoryModal({ factory: f, mode: 'return' })}
+                    onReport={() => setReportModal(f)}
+                    onDebtAdj={() => setDebtAdjModal(f)}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
                 ))}
@@ -203,18 +180,18 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
             </>
           )}
           {/* Regular factories (Заводы) */}
-          {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').length > 0 && (
+          {factories.filter(f => !f.category && f.name !== 'НАХТ').length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Заводы · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => !f.category && f.name !== 'НАХТ' && f.name !== 'MILK VILL').map(f => (
+                {factories.filter(f => !f.category && f.name !== 'НАХТ').map(f => (
                   <FactoryCard
                     key={f.id}
                     f={f}
-                    onIssue={() => setFactoryModal({ factory: f, mode: 'issue' })}
-                    onReturn={() => setFactoryModal({ factory: f, mode: 'return' })}
+                    onReport={() => setReportModal(f)}
+                    onDebtAdj={() => setDebtAdjModal(f)}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
                 ))}
@@ -336,7 +313,7 @@ function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
   )
 }
 
-function FactoryCard({ f, onIssue, onReturn, onCancel }) {
+function FactoryCard({ f, onReport, onDebtAdj, onCancel }) {
   const PURP = '#9C36B5'
   const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
   const issuedProducts = Object.entries(f.issued || {}).filter(([, q]) => q > 0)
@@ -380,36 +357,40 @@ function FactoryCard({ f, onIssue, onReturn, onCancel }) {
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-        <button onClick={onIssue} style={{
-          flex: 1, padding: '9px 12px', borderRadius: 10, border: 'none',
-          background: PURP_GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        <button onClick={onReport} style={{
+          flex: 1, padding: '8px 12px', borderRadius: 10,
+          border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          Отчёт
         </button>
-        <button onClick={onReturn} style={{
-          flex: 1, padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${PURP}`,
-          background: '#fff', color: PURP, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        <button onClick={onDebtAdj} style={{
+          padding: '8px 10px', borderRadius: 10,
+          border: `1px solid rgba(156,54,181,0.25)`, background: '#F8EBFC', color: PURP,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          whiteSpace: 'nowrap',
         }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Вернуть
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+          Долг
         </button>
         <button onClick={onCancel} style={{
-          padding: '9px 10px', borderRadius: 10,
+          flex: 1, padding: '8px 12px', borderRadius: 10,
           border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
           fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          Отменить выдачу
         </button>
       </div>
     </div>
   )
 }
 
-function OtherCard({ f, onIssue, onReturn, onCancel }) {
+function OtherCard({ f, onReport, onDebtAdj, onCancel }) {
   const TEAL = '#0077B6'
   const TEAL_GRAD = 'linear-gradient(135deg, #0096C7, #0077B6)'
   const issuedProducts = Object.entries(f.issued || {}).filter(([, q]) => q > 0)
@@ -453,131 +434,34 @@ function OtherCard({ f, onIssue, onReturn, onCancel }) {
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-        <button onClick={onIssue} style={{
-          flex: 1, padding: '9px 12px', borderRadius: 10, border: 'none',
-          background: TEAL_GRAD, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+        <button onClick={onReport} style={{
+          flex: 1, padding: '8px 12px', borderRadius: 10,
+          border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M14 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Выдать
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          Отчёт
         </button>
-        <button onClick={onReturn} style={{
-          flex: 1, padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${TEAL}`,
-          background: '#fff', color: TEAL, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        <button onClick={onDebtAdj} style={{
+          padding: '8px 10px', borderRadius: 10,
+          border: `1px solid rgba(0,119,182,0.25)`, background: '#E0F4FF', color: TEAL,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          whiteSpace: 'nowrap',
         }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M10 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          Вернуть
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+          Долг
         </button>
         <button onClick={onCancel} style={{
-          padding: '9px 10px', borderRadius: 10,
+          flex: 1, padding: '8px 12px', borderRadius: 10,
           border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
           fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          Отменить выдачу
         </button>
-      </div>
-    </div>
-  )
-}
-
-function FactoryIssueModal({ factory, mode: initialMode, catalog, onClose, onSave }) {
-  const [mode, setMode] = useState(initialMode || 'issue')
-  const [quantities, setQuantities] = useState({})
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const PURP = '#9C36B5'
-  const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
-
-  const setQty = (id, val) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Number(val) || 0) }))
-
-  const batchItems = catalog
-    .filter(p => (quantities[p.id] || 0) > 0)
-    .map(p => ({ product_name: p.name, quantity: quantities[p.id] }))
-  const dis = batchItems.length === 0
-
-  const handle = async () => {
-    if (dis) return
-    setError('')
-    setLoading(true)
-    try {
-      await onSave(batchItems, mode)
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
-      setLoading(false)
-    }
-  }
-
-  const stepBtn = (base = {}) => ({
-    width: 34, height: 34, borderRadius: 9, fontSize: 18, fontWeight: 700,
-    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
-    ...base,
-  })
-
-  return (
-    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...st.sheet, padding: 0, gap: 0, maxHeight: 'min(96dvh, 96vh)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
-          <div style={st.handle} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{mode === 'return' ? 'Возврат с завода' : 'Выдача заводу'}</div>
-            <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-          </div>
-          <div style={{ fontSize: 13, color: TEXT2, marginBottom: 10 }}>
-            Завод: <b style={{ color: TEXT }}>{factory.name}</b>
-          </div>
-          {/* Mode toggle */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            <button onClick={() => setMode('issue')} style={{
-              flex: 1, padding: '8px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              background: mode === 'issue' ? PURP_GRAD : '#F2F2F7', color: mode === 'issue' ? '#fff' : TEXT2,
-              border: 'none',
-            }}>Выдать</button>
-            <button onClick={() => setMode('return')} style={{
-              flex: 1, padding: '8px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              background: mode === 'return' ? PURP_GRAD : '#F2F2F7', color: mode === 'return' ? '#fff' : TEXT2,
-              border: 'none',
-            }}>Вернуть</button>
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
-        </div>
-
-        <div style={{ overflowY: 'auto', padding: '0 16px', maxHeight: 'calc(min(96dvh, 96vh) - 280px)', flexShrink: 0 }}>
-          {catalog.length === 0 ? (
-            <div style={{ fontSize: 12, color: TEXT2, padding: '8px 0' }}>Загрузка…</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {catalog.map(p => {
-                const q = quantities[p.id] || 0
-                return (
-                  <div key={p.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 12,
-                    background: q > 0 ? '#F8EBFC' : '#F8F9FA',
-                    border: `1.5px solid ${q > 0 ? PURP : BORDER}`,
-                  }}>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>{p.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <button onClick={() => setQty(p.id, q - 1)} style={stepBtn({ background: '#fff', border: `1.5px solid ${BORDER}`, color: TEXT2 })}>−</button>
-                      <input type="number" inputMode="numeric" min="0" value={q || ''} placeholder="0"
-                        onChange={e => setQty(p.id, e.target.value)}
-                        style={{ width: 52, height: 34, borderRadius: 9, border: `1.5px solid ${q > 0 ? PURP : BORDER}`, background: '#fff', fontSize: 16, fontWeight: 700, color: q > 0 ? PURP : TEXT2, textAlign: 'center', outline: 'none', padding: 0 }}
-                      />
-                      <button onClick={() => setQty(p.id, q + 1)} style={stepBtn({ background: q > 0 ? PURP_GRAD : '#fff', border: `1.5px solid ${PURP}`, color: q > 0 ? '#fff' : PURP })}>+</button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
-          <button style={{ ...st.primaryBtn, background: PURP_GRAD, boxShadow: '0 4px 16px rgba(156,54,181,0.35)', ...(dis ? { opacity: 0.45, cursor: 'not-allowed' } : {}), padding: 14 }} disabled={dis || loading} onClick={handle}>
-            {loading ? 'Сохраняю...' : (mode === 'return' ? 'Вернуть' : 'Выдать')}
-          </button>
-        </div>
       </div>
     </div>
   )
