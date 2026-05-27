@@ -269,6 +269,27 @@ export const assignCourier = (orderId, courierId, assignerName, assignerRole) =>
     }
   )
 
+export const changeCourier = (orderId, courierId, changerName, changerRole) =>
+  safeCall(
+    () => http.patch(`/orders/${orderId}/change_courier`, { courier_id: courierId, changer_name: changerName || undefined, changer_role: changerRole || undefined }).then(r => r.data),
+    () => {
+      const order = mockOrdersStore.find(o => o.id === orderId)
+      if (order) {
+        order.previous_courier_name = order.courier_name
+        order.courier_changed_by = changerName
+        order.courier_changed_by_role = changerRole
+        order.courier_id = Number(courierId)
+        const courier = MOCK_COURIERS.find(c => c.id === Number(courierId))
+        if (courier) {
+          order.courier_name = courier.name
+          order.courier_phone = courier.phone
+        }
+        order.status = 'assigned_to_courier'
+      }
+      return { ok: true }
+    }
+  )
+
 export const markInDelivery = (orderId) =>
   safeCall(
     () => http.patch(`/orders/${orderId}/in_delivery`).then(r => r.data),
