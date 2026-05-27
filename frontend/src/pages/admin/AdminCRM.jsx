@@ -750,7 +750,7 @@ export default function AdminCRM() {
       {/* Tab content */}
       <div style={{ marginTop: 16 }}>
         {tab === 'clients' && <ManagerClients Layout={FragmentLayout} title="Клиенты" />}
-        {tab === 'couriers' && <ManagerCouriers Layout={FragmentLayout} title="Курьеры" />}
+        {tab === 'couriers' && <ManagerCouriers Layout={FragmentLayout} title="Курьеры" secondTab="warehouse" canBroadcast={false} />}
         {tab === 'managers' && <ManagersTab />}
         {tab === 'agents' && <AgentsTab />}
         {tab === 'warehouse' && <WarehouseTab />}

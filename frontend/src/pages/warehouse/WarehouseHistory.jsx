@@ -472,7 +472,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
             const debtNote = isRet && h.note ? h.note : null
 
             const ts = h.created_at || h.date
-            const showInvoice = h.batch_id && (isIssue || isFactoryIssue)
+            const showInvoice = h.batch_id && (isIssue || isFactoryIssue || isFactoryReturn)
 
             return (
               <div key={h.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: i < groupedHistory.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
@@ -526,7 +526,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                       Накладная
                     </a>
                   )}
-                  {((isIssue || isFactoryIssue || isRet) && h.batch_id) && (
+                  {((isIssue || isFactoryIssue || isRet || isFactoryReturn) && h.batch_id) && (
                     <button
                       onClick={() => setCancelConfirm(h.batch_id)}
                       disabled={cancelling === h.batch_id}
