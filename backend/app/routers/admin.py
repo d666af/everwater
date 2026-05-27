@@ -766,12 +766,21 @@ def _courier_out(c: Courier) -> dict:
 
 @router.post("/couriers/from_invoice")
 async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncSession = Depends(get_db)):
-    """Find-or-create courier from an invoice. Deduplicates by phone (fuzzy) then by name."""
+    """Find-or-create courier from an invoice. Deduplicates by phone (fuzzy) then by name.
+    When warehouse_only=True, only matches existing warehouse_only couriers to avoid
+    mixing warehouse entities with regular admin/manager couriers."""
+    # Scope lookups: warehouse-only requests only match warehouse_only couriers
+    base_filter = (
+        (Courier.warehouse_only == True)  # noqa: E712
+        if data.warehouse_only
+        else (Courier.is_active == True)   # noqa: E712
+    )
+
     # 1. Match by phone (last-9 fuzzy)
     if data.phone:
         digits = ''.join(c for c in data.phone if c.isdigit())
         suffix = digits[-9:] if len(digits) >= 9 else digits
-        all_q = await db.execute(select(Courier).where(Courier.is_active == True))
+        all_q = await db.execute(select(Courier).where(base_filter))
         for c in all_q.scalars().all():
             if c.phone:
                 c_digits = ''.join(d for d in c.phone if d.isdigit())
@@ -788,7 +797,7 @@ async def create_courier_from_invoice(data: CourierCreateFromInvoice, db: AsyncS
     if data.name:
         name_q = await db.execute(
             select(Courier).where(
-                Courier.is_active == True,
+                base_filter,
                 func.lower(Courier.name) == data.name.strip().lower(),
             )
         )

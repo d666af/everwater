@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage, adjustCourierDebt, getWarehouseOnlyCouriers, getFactories } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage, adjustCourierDebt } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import CourierReportModal from '../../components/CourierReportModal'
 import AgentReportModal from '../../components/AgentReportModal'
 import { formatPhone } from '../../utils/phone'
+import WarehouseCouriers from '../warehouse/WarehouseCouriers'
 
 const C = '#8DC63F'
 const CD = '#6CA32F'
@@ -384,117 +385,7 @@ function AgentsList() {
   )
 }
 
-function WarehouseStaffList() {
-  const [whCouriers, setWhCouriers] = useState([])
-  const [factories, setFactories] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    Promise.all([getWarehouseOnlyCouriers(), getFactories()])
-      .then(([cs, fs]) => {
-        setWhCouriers(cs || [])
-        setFactories((fs || []).filter(f => f.is_active !== false))
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  const otherFactories = factories.filter(f => f.category === 'other' || f.name === 'НАХТ')
-  const regularFactories = factories.filter(f => !f.category && f.name !== 'НАХТ')
-  const activeCouriers = whCouriers.filter(c => c.is_active !== false)
-
-  if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-      <div style={{ width: 30, height: 30, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
-    </div>
-  )
-
-  if (activeCouriers.length === 0 && factories.length === 0) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: 14 }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: TEXT2 }}>Нет данных склада</div>
-    </div>
-  )
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {otherFactories.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 4px' }}>Другое</div>
-          {otherFactories.map(f => <WarehouseOtherInfoCard key={f.id} f={f} />)}
-        </>
-      )}
-      {regularFactories.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 4px', marginTop: otherFactories.length > 0 ? 6 : 0 }}>Заводы</div>
-          {regularFactories.map(f => <WarehouseFactoryInfoCard key={f.id} f={f} />)}
-        </>
-      )}
-      {activeCouriers.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 4px', marginTop: factories.length > 0 ? 6 : 0 }}>Курьеры склада</div>
-          {activeCouriers.map(c => <WarehouseCourierInfoCard key={c.id} c={c} />)}
-        </>
-      )}
-    </div>
-  )
-}
-
-function WarehouseCourierInfoCard({ c }) {
-  return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: c.is_active ? 1 : 0.6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-        <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {(c.name || 'К')[0]}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{c.name}</div>
-          {c.phone && <div style={{ fontSize: 13, color: TEXT2, marginTop: 2 }}>{formatPhone(c.phone)}</div>}
-          {(c.vehicle_type || c.vehicle_plate) && (
-            <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
-              {[c.vehicle_type, c.vehicle_plate].filter(Boolean).join(' · ')}
-            </div>
-          )}
-        </div>
-        <div style={{ fontSize: 11, padding: '4px 10px', borderRadius: 999, background: '#F0FFF4', color: CD, fontWeight: 700, flexShrink: 0, border: `1px solid rgba(141,198,63,0.3)` }}>Склад</div>
-      </div>
-    </div>
-  )
-}
-
-function WarehouseFactoryInfoCard({ f }) {
-  const PURP = '#9C36B5'
-  const PURP_GRAD = 'linear-gradient(135deg, #B14CD0, #9C36B5)'
-  return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: '1px solid rgba(156,54,181,0.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, background: PURP_GRAD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V9l5 3V9l5 3V9l4 2v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{f.name}</div>
-          <div style={{ fontSize: 11, color: PURP, marginTop: 2, fontWeight: 600 }}>Завод</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function WarehouseOtherInfoCard({ f }) {
-  const TEAL = '#0077B6'
-  const TEAL_GRAD = 'linear-gradient(135deg, #0096C7, #0077B6)'
-  return (
-    <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: '1px solid rgba(0,119,182,0.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0, background: TEAL_GRAD, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: TEXT }}>{f.name}</div>
-          <div style={{ fontSize: 11, color: TEAL, marginTop: 2, fontWeight: 600 }}>Другое</div>
-        </div>
-      </div>
-    </div>
-  )
-}
+const FragmentLayout = ({ children }) => <>{children}</>
 
 export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры', secondTab = 'agents', canBroadcast = true }) {
   const [tab, setTab] = useState('couriers')
@@ -619,7 +510,7 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
       </div>
 
       {tab === 'agents' && <AgentsList />}
-      {tab === 'warehouse' && <WarehouseStaffList />}
+      {tab === 'warehouse' && <WarehouseCouriers Layout={FragmentLayout} />}
 
       {tab === 'couriers' && <>
       <button style={{
