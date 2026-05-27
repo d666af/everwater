@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments } from '../../api'
+import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getFactoryStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -41,6 +41,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [catalog, setCatalog] = useState([])
   const [history, setHistory] = useState([])
   const [courierStats, setCourierStats] = useState([])
+  const [factoryStatsAll, setFactoryStatsAll] = useState([])
   const [loading, setLoading] = useState(true)
   const [cancelledBatches, setCancelledBatches] = useState([])
   const [cancelConfirm, setCancelConfirm] = useState(null) // batch_id being confirmed
@@ -61,6 +62,9 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .catch(console.error)
     getWarehouseCourierStats('all')
       .then(cs => setCourierStats(cs || []))
+      .catch(console.error)
+    getFactoryStats('all')
+      .then(fs => setFactoryStatsAll(Array.isArray(fs) ? fs : []))
       .catch(console.error)
     getFactories()
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
@@ -122,8 +126,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const summary = useMemo(() => {
     const prodByProduct = {}   // { name: { qty, cost } }
     const issueByProduct = {}  // { name: { qty, cost } }
-    const returnByCourier = {} // { name: qty }
-    const factoryByFactory = {} // { name: qty }
+    const returnByEntity = {}  // { name: qty } — couriers + factories
     history.forEach(h => {
       if (h.type === 'production') {
         const name = h.product_name || h.product_short || '—'
@@ -137,32 +140,30 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         issueByProduct[name].qty += h.quantity
         if (h.cost_price) issueByProduct[name].cost += h.quantity * h.cost_price
       }
-      if (h.type === 'factory_issue') {
-        const fn = h.factory_name || '—'
-        factoryByFactory[fn] = (factoryByFactory[fn] || 0) + h.quantity
-      }
-      if (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned') {
-        const cn = h.courier_name || '—'
-        returnByCourier[cn] = (returnByCourier[cn] || 0) + h.quantity
+      if (h.type === 'bottle_return' || h.type === 'return' || h.type === 'returned' || h.type === 'factory_return') {
+        const cn = h.factory_name || h.courier_name || '—'
+        returnByEntity[cn] = (returnByEntity[cn] || 0) + h.quantity
       }
     })
-    const totalReturned = Object.values(returnByCourier).reduce((s, v) => s + v, 0)
-    const totalFactory = Object.values(factoryByFactory).reduce((s, v) => s + v, 0)
-    return { prodByProduct, issueByProduct, returnByCourier, factoryByFactory, totalReturned, totalFactory }
+    const totalReturned = Object.values(returnByEntity).reduce((s, v) => s + v, 0)
+    return { prodByProduct, issueByProduct, returnByEntity, totalReturned }
   }, [history])
 
-  const debtCouriers = courierId === 'all'
-    ? courierStats.filter(c => (c.bottles_must_return || 0) > 0)
-    : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0)
-
-  const totalDebt = debtCouriers.reduce((s, c) => s + (c.bottles_must_return || 0), 0)
+  const debtEntities = [
+    ...(courierId === 'all'
+      ? courierStats.filter(c => (c.bottles_must_return || 0) > 0)
+      : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0)),
+    ...(factoryId === 'all'
+      ? factoryStatsAll.filter(f => (f.bottles_must_return || 0) > 0)
+      : factoryStatsAll.filter(f => String(f.id) === factoryId && (f.bottles_must_return || 0) > 0)),
+  ]
+  const totalDebt = debtEntities.reduce((s, e) => s + (e.bottles_must_return || 0), 0)
 
   const hasSummary = !loading && (
     Object.keys(summary.prodByProduct).length > 0 ||
     Object.keys(summary.issueByProduct).length > 0 ||
-    Object.keys(summary.returnByCourier).length > 0 ||
-    Object.keys(summary.factoryByFactory).length > 0 ||
-    debtCouriers.length > 0
+    Object.keys(summary.returnByEntity).length > 0 ||
+    debtEntities.length > 0
   )
 
   const fmtDateStr = s => {
@@ -370,24 +371,17 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
               ))}
             </SummarySection>
           )}
-          {Object.keys(summary.factoryByFactory).length > 0 && (
-            <SummarySection title={`Выдано заводу · ${summary.totalFactory} шт.`} color="#9C36B5" bg="#F8EBFC">
-              {Object.entries(summary.factoryByFactory).map(([name, qty]) => (
-                <SummaryRow key={name} label={name} value={`${qty} шт.`} color="#9C36B5" />
-              ))}
-            </SummarySection>
-          )}
-          {Object.keys(summary.returnByCourier).length > 0 && (
+          {Object.keys(summary.returnByEntity).length > 0 && (
             <SummarySection title={`Возвращено тары · ${summary.totalReturned} бут.`} color="#1971C2" bg="#E8F4FD">
-              {Object.entries(summary.returnByCourier).map(([name, qty]) => (
+              {Object.entries(summary.returnByEntity).map(([name, qty]) => (
                 <SummaryRow key={name} label={name} value={`${qty} бут.`} color="#1971C2" />
               ))}
             </SummarySection>
           )}
-          {debtCouriers.length > 0 && (
+          {debtEntities.length > 0 && (
             <SummarySection title={`Должны вернуть · ${totalDebt} бут.`} color="#C92A2A" bg="#FFE8E8">
-              {debtCouriers.map(c => (
-                <SummaryRow key={c.id} label={c.name} value={`${c.bottles_must_return} бут.`} color="#C92A2A" />
+              {debtEntities.map(e => (
+                <SummaryRow key={`${e.type ?? 'c'}_${e.id}`} label={e.name} value={`${e.bottles_must_return} бут.`} color="#C92A2A" />
               ))}
             </SummarySection>
           )}

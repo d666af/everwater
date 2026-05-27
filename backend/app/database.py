@@ -29,7 +29,7 @@ async def create_tables():
             "ALTER TABLE factories ADD COLUMN IF NOT EXISTS category VARCHAR(32)",
             # Seed special "other" factory entities (НАХТ, MILK VILL)
             "INSERT INTO factories (name, category) VALUES ('НАХТ', 'other') ON CONFLICT (name) DO UPDATE SET category = 'other'",
-            "INSERT INTO factories (name, category) VALUES ('MILK VILL', 'other') ON CONFLICT (name) DO UPDATE SET category = 'other'",
+            "INSERT INTO factories (name) VALUES ('MILK VILL') ON CONFLICT (name) DO UPDATE SET category = NULL",
             "INSERT INTO factories (name) VALUES ('Склад офис') ON CONFLICT (name) DO NOTHING",
             "ALTER TABLE water_transactions ADD COLUMN IF NOT EXISTS batch_id VARCHAR(36)",
             "CREATE INDEX IF NOT EXISTS ix_water_transactions_batch_id ON water_transactions (batch_id)",
