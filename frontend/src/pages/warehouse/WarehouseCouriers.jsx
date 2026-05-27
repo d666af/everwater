@@ -31,6 +31,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [factories, setFactories] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
+  const [searchQ, setSearchQ] = useState('')
   const [invoiceModal, setInvoiceModal] = useState(null) // { batchId, courierName }
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
@@ -80,6 +81,11 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     await adjustWarehouseCourierDebt(courierId, delta, note, actor, 'warehouse')
     load()
   }
+
+  const _q = searchQ.trim().toLowerCase()
+  const visOther = factories.filter(f => f.category === 'other' && (!_q || (f.name || '').toLowerCase().includes(_q)))
+  const visFactories = factories.filter(f => f.category !== 'other' && (!_q || (f.name || '').toLowerCase().includes(_q)))
+  const visCouriers = couriers.filter(c => !_q || [c.name, c.phone, c.vehicle_type, c.vehicle_plate].some(v => v && String(v).toLowerCase().includes(_q)))
 
   return (
     <Layout title={title}>
@@ -155,6 +161,22 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         </button>
       </div>
 
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: TEXT2, pointerEvents: 'none' }}>
+          <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+        <input
+          value={searchQ} onChange={e => setSearchQ(e.target.value)}
+          placeholder="Имя, телефон, авто, завод..."
+          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px 9px 33px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 13, color: TEXT, outline: 'none', fontFamily: 'inherit' }}
+        />
+        {searchQ && (
+          <button onClick={() => setSearchQ('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 16, lineHeight: 1, padding: 2 }}>✕</button>
+        )}
+      </div>
+
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
           <div style={{ width: 30, height: 30, borderRadius: '50%', border: `3px solid rgba(141,198,63,0.2)`, borderTop: `3px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
@@ -162,13 +184,13 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
       ) : (
         <>
           {/* "Другое" section */}
-          {factories.filter(f => f.category === 'other' || f.name === 'НАХТ').length > 0 && (
+          {visOther.length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Другое · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => f.category === 'other' || f.name === 'НАХТ').map(f => (
+                {visOther.map(f => (
                   <OtherCard
                     key={f.id}
                     f={f}
@@ -181,13 +203,13 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
             </>
           )}
           {/* Regular factories (Заводы) */}
-          {factories.filter(f => !f.category && f.name !== 'НАХТ').length > 0 && (
+          {visFactories.length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#9C36B5', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Заводы · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                {factories.filter(f => !f.category && f.name !== 'НАХТ').map(f => (
+                {visFactories.map(f => (
                   <FactoryCard
                     key={f.id}
                     f={f}
@@ -199,17 +221,17 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
             </>
           )}
-          {couriers.length === 0 ? (
+          {visCouriers.length === 0 && visOther.length === 0 && visFactories.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: TEXT2 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Нет активных курьеров</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{searchQ ? 'Ничего не найдено' : 'Нет активных курьеров'}</div>
             </div>
-          ) : (
+          ) : visCouriers.length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 0 8px' }}>
                 Курьеры · {periodLabel}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {couriers.map(c => (
+                {visCouriers.map(c => (
                   <CourierCard key={c.id} c={c} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
                 ))}
               </div>
