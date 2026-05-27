@@ -713,7 +713,7 @@ async def get_couriers(
     db: AsyncSession = Depends(get_db),
 ):
     """List couriers. By default excludes warehouse-only couriers (not shown in admin/manager UI)."""
-    q = select(Courier)
+    q = select(Courier).where(Courier.is_active == True)  # noqa: E712
     if not include_warehouse:
         q = q.where(Courier.warehouse_only == False)  # noqa: E712
     result = await db.execute(q)
@@ -908,21 +908,31 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
 async def delete_courier(courier_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Courier).where(Courier.id == courier_id))
     courier_check = result.scalar_one_or_none()
-    if courier_check and courier_check.warehouse_only:
+    if not courier_check:
+        return {"ok": True}
+    if courier_check.warehouse_only:
         raise HTTPException(status_code=403, detail="Warehouse-only couriers can only be deleted by warehouse staff")
-    # NULL out nullable FK references to this courier
+    # Check for warehouse water transactions — if any exist, preserve courier record
+    # for warehouse history (bottle debt tracking) by soft-deleting instead of hard-deleting
+    has_wh_tx = (await db.execute(
+        select(func.count(WaterTransaction.id))
+        .where(WaterTransaction.courier_id == courier_id)
+    )).scalar() or 0
+    # Always null out order/review FK references so courier can't be re-assigned
     await db.execute(update(Order).where(Order.courier_id == courier_id).values(courier_id=None))
     await db.execute(update(Review).where(Review.courier_id == courier_id).values(courier_id=None))
-    await db.execute(update(WaterTransaction).where(WaterTransaction.courier_id == courier_id).values(courier_id=None))
-    # Delete non-nullable FK rows
-    await db.execute(delete(CashDebt).where(CashDebt.courier_id == courier_id))
-    await db.execute(delete(_CPE).where(_CPE.courier_id == courier_id))
-    await db.execute(delete(CourierWater).where(CourierWater.courier_id == courier_id))
-    result = await db.execute(select(Courier).where(Courier.id == courier_id))
-    courier = result.scalar_one_or_none()
-    if courier:
-        await db.delete(courier)
-    await db.commit()
+    if has_wh_tx > 0:
+        # Soft delete: keep warehouse history intact
+        courier_check.is_active = False
+        await db.commit()
+    else:
+        # Hard delete: no warehouse history, safe to remove entirely
+        await db.execute(delete(CashDebt).where(CashDebt.courier_id == courier_id))
+        await db.execute(delete(_CPE).where(_CPE.courier_id == courier_id))
+        await db.execute(delete(CourierWater).where(CourierWater.courier_id == courier_id))
+        await db.execute(update(WaterTransaction).where(WaterTransaction.courier_id == courier_id).values(courier_id=None))
+        await db.delete(courier_check)
+        await db.commit()
     return {"ok": True}
 
 

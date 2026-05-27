@@ -5,7 +5,7 @@ import json as _json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from io import BytesIO
@@ -1391,7 +1391,13 @@ async def get_couriers_water(
     date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    couriers_q = await db.execute(select(Courier).where(Courier.is_active == True))
+    # Show active couriers + inactive ones that still have CourierWater inventory
+    # (soft-deleted by admin/manager but warehouse still needs to track their bottle debt)
+    active_or_has_inventory = or_(
+        Courier.is_active == True,  # noqa: E712
+        exists(select(CourierWater.courier_id).where(CourierWater.courier_id == Courier.id)),
+    )
+    couriers_q = await db.execute(select(Courier).where(active_or_has_inventory))
     couriers = couriers_q.scalars().all()
 
     period_start, period_end = _period_range(period, date, None, None, date_to)
