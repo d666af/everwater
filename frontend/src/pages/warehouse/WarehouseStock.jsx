@@ -517,6 +517,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [entitySearch, setEntitySearch] = useState('')
 
   const buildEntities = (couriers, factories) => {
     const cs = (couriers || []).filter(c => c.is_active !== false).map(c => ({ ...c, type: 'courier', _key: `c_${c.id}` }))
@@ -750,8 +751,22 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Кому</div>
             <button onClick={() => setShowNew(true)} style={{ fontSize: 12, fontWeight: 700, color: CD, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}>+ Новый</button>
           </div>
+          <div style={{ position: 'relative' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: TEXT2, pointerEvents: 'none' }}>
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
+              <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <input
+              value={entitySearch} onChange={e => setEntitySearch(e.target.value)}
+              placeholder="Поиск..."
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 28px 8px 28px', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#F8F9FA', fontSize: 12, color: TEXT, outline: 'none', fontFamily: 'inherit' }}
+            />
+            {entitySearch && (
+              <button onClick={() => setEntitySearch('')} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 14, lineHeight: 1, padding: 2 }}>✕</button>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-            {entities.map(e => {
+            {entities.filter(e => !entitySearch.trim() || [e.name, e.phone].some(v => v && String(v).toLowerCase().includes(entitySearch.trim().toLowerCase()))).map(e => {
               const isSelected = selectedKey === e._key
               const isFac = e.type === 'factory'
               return (

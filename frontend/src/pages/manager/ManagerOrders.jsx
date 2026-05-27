@@ -81,6 +81,7 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
   const [pickerOpen, setPickerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
+  const [searchQ, setSearchQ] = useState('')
   const [couriers, setCouriers] = useState([])
   const [rejectReason, setRejectReason] = useState('')
   const [rejectingId, setRejectingId] = useState(null)
@@ -123,7 +124,16 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
     .filter(o => matchesTime(o, timeFilter, customDate, customDateTo))
     .filter(o => getStage(o) !== 'cancelled')
   const counts = stageCounts(timeFiltered)
-  const displayed = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
+  const stageFiltered = stage === 'all' ? timeFiltered : timeFiltered.filter(o => getStage(o) === stage)
+  const displayed = searchQ.trim()
+    ? stageFiltered.filter(o => {
+        const q = searchQ.toLowerCase()
+        return [
+          o.client_name, o.courier_name, o.creator_name, o.assigner_name,
+          o.items_edited_by, o.recipient_phone, o.courier_phone, o.address,
+        ].some(v => v && String(v).toLowerCase().includes(q))
+      })
+    : stageFiltered
 
   const handleCreateOrder = async (data) => {
     await courierCreateOrder({
@@ -229,6 +239,22 @@ export default function ManagerOrders({ Layout = ManagerLayout, title = 'Пан�
         <button style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: TEXT2, flexShrink: 0 }} onClick={load} disabled={loading}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
+      </div>
+
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 14 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: TEXT2, pointerEvents: 'none' }}>
+          <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+        <input
+          value={searchQ} onChange={e => setSearchQ(e.target.value)}
+          placeholder="Поиск по имени, адресу, телефону..."
+          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px 9px 33px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: '#fff', fontSize: 13, color: TEXT, outline: 'none', fontFamily: 'inherit' }}
+        />
+        {searchQ && (
+          <button onClick={() => setSearchQ('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 16, lineHeight: 1, padding: 2 }}>✕</button>
+        )}
       </div>
 
       {/* Orders list */}
