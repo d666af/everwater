@@ -443,6 +443,13 @@ export const getAdminCouriers = () =>
     () => MOCK_COURIERS
   )
 
+export const getWarehouseOnlyCouriers = () =>
+  safeCall(
+    () => http.get('/admin/couriers', { params: { include_warehouse: true } })
+           .then(r => (r.data || []).filter(c => c.warehouse_only)),
+    () => []
+  )
+
 export const getWarehouseCouriers = () =>
   safeCall(
     () => http.get('/warehouse/couriers/list').then(r => r.data),
