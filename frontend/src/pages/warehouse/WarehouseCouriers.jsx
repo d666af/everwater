@@ -92,7 +92,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Ð
       )}
       {reportModal && (
         <ReportModal
-          courierId={reportModal.id}
+          courierId={reportModal._entityType === 'factory' ? null : reportModal.id}
+          factoryId={reportModal._entityType === 'factory' ? reportModal.id : null}
           courierName={reportModal.name}
           onClose={() => setReportModal(null)}
         />
@@ -171,7 +172,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Ð
                   <OtherCard
                     key={f.id}
                     f={f}
-                    onReport={() => setReportModal(f)}
+                    onReport={() => setReportModal({ ...f, _entityType: 'factory' })}
                     onDebtAdj={() => setDebtAdjModal(f)}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
@@ -190,7 +191,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = 'Ð
                   <FactoryCard
                     key={f.id}
                     f={f}
-                    onReport={() => setReportModal(f)}
+                    onReport={() => setReportModal({ ...f, _entityType: 'factory' })}
                     onDebtAdj={() => setDebtAdjModal(f)}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
