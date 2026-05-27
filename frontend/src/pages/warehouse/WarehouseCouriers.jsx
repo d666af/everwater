@@ -83,8 +83,8 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   }
 
   const _q = searchQ.trim().toLowerCase()
-  const visOther = factories.filter(f => f.category === 'other' && (!_q || (f.name || '').toLowerCase().includes(_q)))
-  const visFactories = factories.filter(f => f.category !== 'other' && (!_q || (f.name || '').toLowerCase().includes(_q)))
+  const visOther = factories.filter(f => (f.category === 'other' || f.name === 'НАХТ') && (!_q || (f.name || '').toLowerCase().includes(_q)))
+  const visFactories = factories.filter(f => f.category !== 'other' && f.name !== 'НАХТ' && (!_q || (f.name || '').toLowerCase().includes(_q)))
   const visCouriers = couriers.filter(c => !_q || [c.name, c.phone, c.vehicle_type, c.vehicle_plate].some(v => v && String(v).toLowerCase().includes(_q)))
 
   return (

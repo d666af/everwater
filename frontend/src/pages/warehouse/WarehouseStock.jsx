@@ -100,9 +100,9 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
         } else {
           if (mode === 'return') {
-            await factoryReturnBatch(entity.name, items, actor)
+            await factoryReturnBatch(entity.name, items, actor, createdAt)
           } else {
-            const res = await factoryIssueBatch(entity.name, items, actor)
+            const res = await factoryIssueBatch(entity.name, items, actor, createdAt)
             if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
           }
         }
@@ -514,6 +514,10 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
   const [vehicleType, setVehicleType] = useState('')
   const [vehiclePlate, setVehiclePlate] = useState('')
   const [factoryMode, setFactoryMode] = useState('issue')
+  const [issueTime, setIssueTime] = useState(() => {
+    const tzStr = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' })
+    return tzStr.split(' ')[1].slice(0, 5)
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showNew, setShowNew] = useState(false)
@@ -562,16 +566,13 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
   const canSubmit = selectedEntity && (
     isCourier ? (batchItems.length > 0 || parsedReturn > 0) : batchItems.length > 0
   )
-  const isBackdated = isCourier && issueDate !== todayISO()
+  const isBackdated = issueDate !== todayISO()
 
   const buildCreatedAt = () => {
     if (!isBackdated) return undefined
-    const now = new Date()
-    const tzStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Tashkent' })
-    const timePart = tzStr.split(' ')[1]
-    const [hh, mm, ss] = timePart.split(':').map(Number)
+    const [hh, mm] = issueTime.split(':').map(Number)
     const [y, mo, d] = issueDate.split('-').map(Number)
-    const utcMs = Date.UTC(y, mo - 1, d, hh, mm, ss) - 5 * 60 * 60 * 1000
+    const utcMs = Date.UTC(y, mo - 1, d, hh, mm, 0) - 5 * 60 * 60 * 1000
     return new Date(utcMs).toISOString().slice(0, 19)
   }
 
@@ -588,7 +589,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
         isCourier ? (vehicleType.trim() || null) : null,
         isCourier ? (vehiclePlate.trim() || null) : null,
         isCourier ? 'issue' : factoryMode,
-        isCourier ? buildCreatedAt() : null,
+        buildCreatedAt(),
       )
       onClose()
     } catch (err) {
@@ -637,7 +638,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
             <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
           {/* Date selector */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: isBackdated ? 6 : 10 }}>
             <button
               onClick={() => setIssueDate(todayISO())}
               style={{
@@ -646,25 +647,38 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
                 color: !isBackdated ? '#fff' : TEXT2,
               }}
             >Сегодня</button>
-            <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              type="date"
+              max={todayISO()}
+              value={issueDate}
+              onChange={e => e.target.value && setIssueDate(e.target.value)}
+              style={{
+                flex: 1, padding: '7px 10px', borderRadius: 10, fontSize: 16, fontWeight: 600,
+                border: `1.5px solid ${isBackdated ? '#E67700' : BORDER}`,
+                background: isBackdated ? '#FFF8F0' : '#F8F9FA',
+                color: isBackdated ? '#E67700' : TEXT2,
+                outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
+              }}
+            />
+            {isBackdated && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFF3D9', padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}>Задним</span>
+            )}
+          </div>
+          {isBackdated && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', flexShrink: 0 }}>Время:</span>
               <input
-                type="date"
-                max={todayISO()}
-                value={issueDate}
-                onChange={e => e.target.value && setIssueDate(e.target.value)}
+                type="time"
+                value={issueTime}
+                onChange={e => e.target.value && setIssueTime(e.target.value)}
                 style={{
-                  width: '100%', padding: '7px 10px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                  border: `1.5px solid ${isBackdated ? '#E67700' : BORDER}`,
-                  background: isBackdated ? '#FFF8F0' : '#F8F9FA',
-                  color: isBackdated ? '#E67700' : TEXT2,
+                  flex: 1, padding: '7px 10px', borderRadius: 10, fontSize: 16, fontWeight: 600,
+                  border: '1.5px solid #E67700', background: '#FFF8F0', color: '#E67700',
                   outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
                 }}
               />
             </div>
-            {isBackdated && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFF3D9', padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}>Задним числом</span>
-            )}
-          </div>
+          )}
           <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Продукты</div>
         </div>
 

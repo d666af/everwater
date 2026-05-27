@@ -1007,23 +1007,25 @@ export const getFactoryStats = (period = 'today', date = null, dateTo = null) =>
     () => []
   )
 
-export const factoryIssueBatch = (factoryName, items, performedBy) =>
+export const factoryIssueBatch = (factoryName, items, performedBy, createdAt) =>
   safeCall(
     () => http.post('/warehouse/factory_issue_batch', {
       factory_name: factoryName,
       items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
       performed_by: performedBy || undefined,
       performed_by_role: 'warehouse',
+      created_at: createdAt || undefined,
     }).then(r => r.data),
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )
 
-export const factoryReturnBatch = (factoryName, items, performedBy) =>
+export const factoryReturnBatch = (factoryName, items, performedBy, createdAt) =>
   safeCall(
     () => http.post('/warehouse/factory_return_batch', {
       factory_name: factoryName,
       items: items.map(it => ({ product_name: it.product_name, quantity: it.quantity })),
       performed_by: performedBy || undefined,
+      created_at: createdAt || undefined,
     }).then(r => r.data),
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )
