@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateCourier, createFactory } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, syncDeliveryNet, findOrCreateWarehouseCourier, createFactory } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -807,7 +807,7 @@ function NewEntityModal({ onClose, onCreated }) {
     try {
       let entity
       if (type === 'courier') {
-        entity = await findOrCreateCourier(name.trim(), phone.trim() || undefined, vehicleType.trim() || undefined, vehiclePlate.trim() || undefined)
+        entity = await findOrCreateWarehouseCourier(name.trim(), phone.trim() || undefined, vehicleType.trim() || undefined, vehiclePlate.trim() || undefined)
       } else {
         entity = await createFactory(name.trim(), type === 'other' ? 'other' : undefined)
       }

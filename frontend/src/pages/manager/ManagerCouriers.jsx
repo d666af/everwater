@@ -496,7 +496,7 @@ function WarehouseOtherInfoCard({ f }) {
   )
 }
 
-export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры', secondTab = 'agents' }) {
+export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Курьеры', secondTab = 'agents', canBroadcast = true }) {
   const [tab, setTab] = useState('couriers')
   const [couriers, setCouriers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -543,8 +543,8 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
       {showAdd && <AddCourierModal onClose={() => setShowAdd(false)} onSave={handleCreate} />}
 
-      {/* Broadcast panel */}
-      <button
+      {/* Broadcast panel (manager only) */}
+      {canBroadcast && <button
         style={{
           display: 'flex', alignItems: 'center', gap: 8, width: '100%',
           padding: '10px 14px', borderRadius: 12, marginBottom: showBroadcast ? 0 : 12,
@@ -564,8 +564,8 @@ export default function ManagerCouriers({ Layout = ManagerLayout, title = 'Ку�
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: showBroadcast ? 'rotate(180deg)' : 'none' }}>
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
-      </button>
-      {showBroadcast && (
+      </button>}
+      {canBroadcast && showBroadcast && (
         <div style={{ background: '#fff', borderRadius: '0 0 14px 14px', padding: 14, marginBottom: 12, border: '1.5px solid rgba(60,60,67,0.08)', borderTop: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 6 }}>
             {BROADCAST_TARGETS.map(t => (

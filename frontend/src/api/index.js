@@ -470,6 +470,15 @@ export const findOrCreateCourier = (name, phone, vehicleType, vehiclePlate) =>
     () => ({ id: Date.now(), name, phone, vehicle_type: vehicleType, vehicle_plate: vehiclePlate })
   )
 
+export const findOrCreateWarehouseCourier = (name, phone, vehicleType, vehiclePlate) =>
+  safeCall(
+    () => http.post('/admin/couriers/from_invoice', {
+      name, phone: phone || '', vehicle_type: vehicleType || undefined, vehicle_plate: vehiclePlate || undefined,
+      warehouse_only: true,
+    }).then(r => r.data),
+    () => ({ id: Date.now(), name, phone, vehicle_type: vehicleType, vehicle_plate: vehiclePlate, warehouse_only: true })
+  )
+
 export const deleteCourier = (id) =>
   safeCall(
     () => http.delete(`/admin/couriers/${id}`).then(r => r.data),
