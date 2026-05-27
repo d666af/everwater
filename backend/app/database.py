@@ -18,9 +18,8 @@ async def get_db() -> AsyncSession:
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Each migration runs in its own transaction so one failure doesn't
-    # abort the rest (PostgreSQL marks a transaction as aborted on any error,
-    # making all subsequent statements in that transaction silently no-ops).
+    # Each migration runs in its own connection+transaction so one failure
+    # doesn't abort the rest.
     from sqlalchemy import text
     for stmt in (
             "ALTER TABLE couriers ADD COLUMN IF NOT EXISTS vehicle_type VARCHAR(64)",
@@ -150,6 +149,7 @@ async def create_tables():
             "CREATE INDEX IF NOT EXISTS ix_bda_client_id ON bottle_debt_adjustments (client_id)",
         ):
             try:
-                await conn.execute(text(stmt))
+                async with engine.begin() as _conn:
+                    await _conn.execute(text(stmt))
             except Exception:
                 pass
