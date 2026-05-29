@@ -265,11 +265,16 @@ async def get_overview(
             .where(WaterTransaction.transaction_type == "delivery_net")
             .where(WaterTransaction.courier_id.isnot(None))
         )
+        q19_courier_adj = await db.execute(
+            select(func.sum(BottleDebtAdjustment.delta))
+            .where(BottleDebtAdjustment.courier_id.isnot(None))
+        )
         bottles_on_couriers = max(
             0,
             (q19_issued.scalar() or 0)
             - (q19_returned.scalar() or 0)
             - (q19_delivery_net.scalar() or 0)
+            + (q19_courier_adj.scalar() or 0)
         )
         # Factory bottle debt = all-time 19L factory_issue − factory_return
         f19_issued = await db.execute(
@@ -1437,11 +1442,16 @@ async def get_couriers_water(
                 .where(WaterTransaction.transaction_type == "bottle_return")
                 .where(WaterTransaction.counts_for_debt != False)
             )).scalar() or 0
+            c_delivery_net = (await db.execute(
+                select(func.sum(WaterTransaction.quantity))
+                .where(WaterTransaction.courier_id == c.id)
+                .where(WaterTransaction.transaction_type == "delivery_net")
+            )).scalar() or 0
             c_adj = (await db.execute(
                 select(func.sum(BottleDebtAdjustment.delta))
                 .where(BottleDebtAdjustment.courier_id == c.id)
             )).scalar() or 0
-            from_warehouse = max(0, c_issued - c_returned + c_adj)
+            from_warehouse = max(0, c_issued - c_returned - c_delivery_net + c_adj)
 
             # Fallback: if no warehouse batch records exist, derive debt from delivered orders.
             # This covers the case where all warehouse issue records were deleted/cancelled but
