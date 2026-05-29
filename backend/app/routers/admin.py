@@ -20,6 +20,7 @@ from app.models.warehouse import WaterTransaction, CourierWater, BottleDebtAdjus
 from app.models.cooler import Cooler, CoolerPayment
 from app.schemas.order import CourierCreate, CourierOut
 from app.services.settings_service import is_subscriptions_enabled
+from app.services import bottle_debt
 import aiohttp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -145,10 +146,8 @@ async def get_stats(
     else:
         bottles_surcharge_count = 0
 
-    # "Долг": current outstanding bottle debt — clients + couriers (global)
-    bottle_debt_count_q = await db.execute(select(func.sum(BottleDebt.count)))
-    client_debt_count = int(bottle_debt_count_q.scalar() or 0)
-
+    # "Долг": current outstanding bottle debt — clients + couriers + factories.
+    # Single source of truth: totals == sum of per-entity debts (== sum of cards).
     bottle_surcharge_price_q = await db.execute(
         select(Product.bottle_surcharge).where(
             and_(Product.volume >= 18.9, Product.bottle_surcharge.isnot(None))
@@ -156,70 +155,20 @@ async def get_stats(
     )
     bottle_surcharge_price = float(bottle_surcharge_price_q.scalar() or 0)
 
-    # Courier debt: 19L issued via WaterTransaction - returned via bottle_return
-    prod_19l_q = await db.execute(select(Product.id).where(Product.volume >= 18.9))
-    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
-    if prod_19l_ids:
-        courier_issued_q = await db.execute(
-            select(func.sum(WaterTransaction.quantity)).where(
-                and_(WaterTransaction.transaction_type == "issue",
-                     WaterTransaction.product_id.in_(prod_19l_ids),
-                     WaterTransaction.courier_id.isnot(None),
-                     WaterTransaction.batch_id.isnot(None))
-            )
-        )
-    else:
-        courier_issued_q = None
-    courier_returned_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(WaterTransaction.transaction_type == "bottle_return",
-                 WaterTransaction.courier_id.isnot(None),
-                 WaterTransaction.counts_for_debt != False)
-        )
-    )
+    _debt = await bottle_debt.debt_totals(db)
+    client_debt_count = _debt["clients"]
+    courier_debt_count = _debt["couriers"]
+    factory_debt_count = _debt["factories"]
+    bottle_debt_count = _debt["total"]
+    bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
+
+    # Period stat: bottles returned to warehouse within the selected period
     bottles_returned_to_warehouse_q = await db.execute(
         select(func.sum(WaterTransaction.quantity)).where(
             _tx_time(WaterTransaction.transaction_type == "bottle_return")
         )
     )
     bottles_returned_to_warehouse = int(bottles_returned_to_warehouse_q.scalar() or 0)
-    courier_delivery_net_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            WaterTransaction.transaction_type == "delivery_net",
-            WaterTransaction.courier_id.isnot(None),
-        )
-    )
-    courier_debt_count = max(
-        0,
-        ((courier_issued_q.scalar() if courier_issued_q else None) or 0)
-        - (courier_returned_q.scalar() or 0)
-        - (courier_delivery_net_q.scalar() or 0)
-    )
-    total_courier_adj_q = await db.execute(
-        select(func.sum(BottleDebtAdjustment.delta)).where(BottleDebtAdjustment.target_type == "courier")
-    )
-    courier_debt_count = max(0, courier_debt_count + (total_courier_adj_q.scalar() or 0))
-
-    # Factory debt: 19L factory_issue − factory_return (all-time)
-    if prod_19l_ids:
-        factory_issued_q = await db.execute(
-            select(func.sum(WaterTransaction.quantity)).where(
-                and_(WaterTransaction.transaction_type == "factory_issue",
-                     WaterTransaction.product_id.in_(prod_19l_ids))
-            )
-        )
-        factory_returned_q = await db.execute(
-            select(func.sum(WaterTransaction.quantity)).where(
-                and_(WaterTransaction.transaction_type == "factory_return",
-                     WaterTransaction.product_id.in_(prod_19l_ids))
-            )
-        )
-        factory_debt_count = max(0, (factory_issued_q.scalar() or 0) - (factory_returned_q.scalar() or 0))
-    else:
-        factory_debt_count = 0
-
-    bottle_debt_count = client_debt_count + courier_debt_count + factory_debt_count
-    bottle_debt_value = round(bottle_debt_count * bottle_surcharge_price, 2)
 
     bottles_lent_total = (await db.execute(
         select(func.sum(Order.bottles_lent)).where(
@@ -844,52 +793,8 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
     )
     today_deliveries = today_q.scalar() or 0
 
-    # Bottle debt: 19L issued minus returned via bottle_return transactions
-    prod_19l_q = await db.execute(
-        select(Product.id).where(Product.volume >= 18.9)
-    )
-    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
-
-    if prod_19l_ids:
-        issued_q = await db.execute(
-            select(func.sum(WaterTransaction.quantity)).where(
-                and_(
-                    WaterTransaction.courier_id == courier_id,
-                    WaterTransaction.transaction_type == "issue",
-                    WaterTransaction.product_id.in_(prod_19l_ids),
-                    WaterTransaction.batch_id.isnot(None),
-                )
-            )
-        )
-    else:
-        issued_q = None
-
-    returned_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.courier_id == courier_id,
-                WaterTransaction.transaction_type == "bottle_return",
-                WaterTransaction.counts_for_debt != False,
-            )
-        )
-    )
-    delivery_net_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.courier_id == courier_id,
-                WaterTransaction.transaction_type == "delivery_net",
-            )
-        )
-    )
-    total_issued = (issued_q.scalar() if issued_q else None) or 0
-    total_returned = returned_q.scalar() or 0
-    total_delivery_net = delivery_net_q.scalar() or 0
-    from app.models.warehouse import BottleDebtAdjustment as _BDA
-    courier_adj_q = await db.execute(
-        select(func.sum(_BDA.delta)).where(_BDA.courier_id == courier_id)
-    )
-    courier_adj = courier_adj_q.scalar() or 0
-    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net + courier_adj)
+    # Bottle debt — single source of truth (app.services.bottle_debt)
+    bottles_must_return = await bottle_debt.courier_debt(db, courier_id)
 
     return {
         "courier_id": courier.id,
@@ -2139,6 +2044,30 @@ async def adjust_client_debt_admin(
     return {"ok": True, "id": adj.id}
 
 
+@router.post("/factories/{factory_id}/debt_adjust")
+async def adjust_factory_debt_admin(
+    factory_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.factory import Factory
+    factory = (await db.execute(select(Factory).where(Factory.id == factory_id))).scalar_one_or_none()
+    if not factory:
+        raise HTTPException(status_code=404, detail="Factory not found")
+    adj = BottleDebtAdjustment(
+        target_type="factory",
+        factory_id=factory_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
 @router.get("/debt_adjustments")
 async def get_debt_adjustments_admin(
     limit: int = 200,
@@ -2158,11 +2087,16 @@ async def get_debt_adjustments_admin(
         elif r.client_id:
             u = (await db.execute(select(User).where(User.id == r.client_id))).scalar_one_or_none()
             target_name = (u.name or u.phone) if u else None
+        elif r.factory_id:
+            from app.models.factory import Factory
+            fa = (await db.execute(select(Factory).where(Factory.id == r.factory_id))).scalar_one_or_none()
+            target_name = fa.name if fa else None
         result.append({
             "id": r.id,
             "target_type": r.target_type,
             "courier_id": r.courier_id,
             "client_id": r.client_id,
+            "factory_id": r.factory_id,
             "target_name": target_name,
             "delta": r.delta,
             "note": r.note,

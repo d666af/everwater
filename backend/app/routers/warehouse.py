@@ -20,6 +20,7 @@ from app.models.product import Product
 from app.config import settings as app_settings
 from app.services.invoice import generate_invoice_png
 from app.services.settings_service import is_subscriptions_enabled
+from app.services import bottle_debt
 from sqlalchemy import update as sa_update
 from app.services.tg_notify import tg_send_photo
 
@@ -241,56 +242,14 @@ async def get_overview(
             per_product[s.product_id]["stock"] = s.quantity
 
     # On-hand with couriers
-    product_19l_ids = [p.id for p in products if int(float(p.volume)) == 19]
     for cw in (await db.execute(select(CourierWater))).scalars().all():
         if cw.product_id in per_product:
             per_product[cw.product_id]["on_couriers"] += cw.quantity
 
-    # Bottle debt = all-time 19L warehouse dispatches − all-time bottle returns
-    if product_19l_ids:
-        q19_issued = await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.transaction_type == "issue")
-            .where(WaterTransaction.product_id.in_(product_19l_ids))
-            .where(WaterTransaction.courier_id.isnot(None))
-            .where(WaterTransaction.batch_id.isnot(None))
-        )
-        q19_returned = await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.transaction_type == "bottle_return")
-            .where(WaterTransaction.counts_for_debt != False)
-        )
-        q19_delivery_net = await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.transaction_type == "delivery_net")
-            .where(WaterTransaction.courier_id.isnot(None))
-        )
-        q19_courier_adj = await db.execute(
-            select(func.sum(BottleDebtAdjustment.delta))
-            .where(BottleDebtAdjustment.courier_id.isnot(None))
-        )
-        bottles_on_couriers = max(
-            0,
-            (q19_issued.scalar() or 0)
-            - (q19_returned.scalar() or 0)
-            - (q19_delivery_net.scalar() or 0)
-            + (q19_courier_adj.scalar() or 0)
-        )
-        # Factory bottle debt = all-time 19L factory_issue − factory_return
-        f19_issued = await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.transaction_type == "factory_issue")
-            .where(WaterTransaction.product_id.in_(product_19l_ids))
-        )
-        f19_returned = await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.transaction_type == "factory_return")
-            .where(WaterTransaction.product_id.in_(product_19l_ids))
-        )
-        bottles_on_factories = max(0, (f19_issued.scalar() or 0) - (f19_returned.scalar() or 0))
-    else:
-        bottles_on_couriers = 0
-        bottles_on_factories = 0
+    # Bottle debt — single source of truth (totals == sum of per-entity cards)
+    _debt = await bottle_debt.debt_totals(db)
+    bottles_on_couriers = _debt["couriers"]
+    bottles_on_factories = _debt["factories"]
 
     # Factory name lookup for the period breakdown
     factories_all = (await db.execute(select(Factory))).scalars().all()
@@ -1118,10 +1077,8 @@ async def factory_stats(
     if not factories:
         return []
 
-    product_19l_ids = [
-        p.id for p in (await db.execute(select(Product))).scalars().all()
-        if int(float(p.volume)) == 19
-    ]
+    # Bottle debt — single source of truth (includes factory adjustments)
+    factory_debt = await bottle_debt.factory_debt_map(db)
 
     result = []
     for f in factories:
@@ -1146,20 +1103,8 @@ async def factory_stats(
             elif tx.transaction_type == "factory_return":
                 returned_total += tx.quantity
 
-        # All-time 19L bottle debt for the factory
-        f_issued = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.factory_id == f.id)
-            .where(WaterTransaction.transaction_type == "factory_issue")
-            .where(WaterTransaction.product_id.in_(product_19l_ids) if product_19l_ids else False)
-        )).scalar() or 0
-        f_returned = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.factory_id == f.id)
-            .where(WaterTransaction.transaction_type == "factory_return")
-            .where(WaterTransaction.product_id.in_(product_19l_ids) if product_19l_ids else False)
-        )).scalar() or 0
-        bottles_must_return = max(0, f_issued - f_returned)
+        # All-time 19L bottle debt for the factory (single source of truth)
+        bottles_must_return = factory_debt.get(f.id, 0)
 
         result.append({
             "id": f.id,
@@ -1407,9 +1352,8 @@ async def get_couriers_water(
 
     period_start, period_end = _period_range(period, date, None, None, date_to)
 
-    # 19L product IDs (for bottle debt calculation)
-    all_prods_q = await db.execute(select(Product))
-    product_19l_ids = [p.id for p in all_prods_q.scalars().all() if int(float(p.volume)) == 19]
+    # Bottle debt — single source of truth (computed once for all couriers)
+    debt_map = await bottle_debt.courier_debt_map(db)
 
     result = []
 
@@ -1427,55 +1371,8 @@ async def get_couriers_water(
             water_dict[short] = water_dict.get(short, 0) + cw.quantity
             on_hand_total += cw.quantity
 
-        # Bottle debt: warehouse dispatches (batch_id IS NOT NULL) 19L issued − all-time returned
-        if product_19l_ids:
-            c_issued = (await db.execute(
-                select(func.sum(WaterTransaction.quantity))
-                .where(WaterTransaction.courier_id == c.id)
-                .where(WaterTransaction.transaction_type == "issue")
-                .where(WaterTransaction.product_id.in_(product_19l_ids))
-                .where(WaterTransaction.batch_id.isnot(None))
-            )).scalar() or 0
-            c_returned = (await db.execute(
-                select(func.sum(WaterTransaction.quantity))
-                .where(WaterTransaction.courier_id == c.id)
-                .where(WaterTransaction.transaction_type == "bottle_return")
-                .where(WaterTransaction.counts_for_debt != False)
-            )).scalar() or 0
-            c_delivery_net = (await db.execute(
-                select(func.sum(WaterTransaction.quantity))
-                .where(WaterTransaction.courier_id == c.id)
-                .where(WaterTransaction.transaction_type == "delivery_net")
-            )).scalar() or 0
-            c_adj = (await db.execute(
-                select(func.sum(BottleDebtAdjustment.delta))
-                .where(BottleDebtAdjustment.courier_id == c.id)
-            )).scalar() or 0
-            from_warehouse = max(0, c_issued - c_returned - c_delivery_net + c_adj)
-
-            # Fallback: if no warehouse batch records exist, derive debt from delivered orders.
-            # This covers the case where all warehouse issue records were deleted/cancelled but
-            # the courier still delivered 19L bottles that need to be returned.
-            if c_issued == 0 and c_adj == 0:
-                del_all_q = await db.execute(
-                    select(Order)
-                    .options(selectinload(Order.items).selectinload(OrderItem.product))
-                    .where(Order.courier_id == c.id)
-                    .where(Order.status == OrderStatus.DELIVERED)
-                )
-                orders_19l = 0
-                orders_client_returned = 0
-                for o in del_all_q.scalars().all():
-                    for item in o.items:
-                        if item.product and int(float(item.product.volume)) == 19:
-                            orders_19l += item.quantity
-                    orders_client_returned += (o.return_bottles_count or 0)
-                from_orders = max(0, orders_19l - orders_client_returned - c_returned)
-                bottles_must_return = max(0, from_orders + c_adj)
-            else:
-                bottles_must_return = from_warehouse
-        else:
-            bottles_must_return = 0
+        # Bottle debt — single source of truth (app.services.bottle_debt)
+        bottles_must_return = debt_map.get(c.id, 0)
 
         # Active orders with items
         act_q = await db.execute(
@@ -2189,6 +2086,29 @@ async def adjust_client_debt_wh(
     return {"ok": True, "id": adj.id}
 
 
+@router.post("/factories/{factory_id}/debt_adjust")
+async def adjust_factory_debt_wh(
+    factory_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    factory = (await db.execute(select(Factory).where(Factory.id == factory_id))).scalar_one_or_none()
+    if not factory:
+        raise HTTPException(status_code=404, detail="Factory not found")
+    adj = BottleDebtAdjustment(
+        target_type="factory",
+        factory_id=factory_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
 @router.get("/debt_adjustments")
 async def get_debt_adjustments_wh(
     limit: int = 100,
@@ -2209,11 +2129,15 @@ async def get_debt_adjustments_wh(
         elif r.client_id:
             u = (await db.execute(select(User).where(User.id == r.client_id))).scalar_one_or_none()
             target_name = (u.name or u.phone) if u else None
+        elif r.factory_id:
+            fa = (await db.execute(select(Factory).where(Factory.id == r.factory_id))).scalar_one_or_none()
+            target_name = fa.name if fa else None
         result.append({
             "id": r.id,
             "target_type": r.target_type,
             "courier_id": r.courier_id,
             "client_id": r.client_id,
+            "factory_id": r.factory_id,
             "target_name": target_name,
             "delta": r.delta,
             "note": r.note,

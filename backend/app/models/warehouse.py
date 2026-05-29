@@ -88,13 +88,14 @@ class WarehouseStaff(Base):
 
 
 class BottleDebtAdjustment(Base):
-    """Manual adjustment to a courier's or client's bottle debt."""
+    """Manual adjustment to a courier's, client's or factory's bottle debt."""
     __tablename__ = "bottle_debt_adjustments"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    target_type: Mapped[str] = mapped_column(String(16))  # "courier" | "client"
+    target_type: Mapped[str] = mapped_column(String(16))  # "courier" | "client" | "factory"
     courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id", ondelete="SET NULL"), nullable=True, index=True)
     client_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    factory_id: Mapped[int | None] = mapped_column(ForeignKey("factories.id", ondelete="SET NULL"), nullable=True, index=True)
     delta: Mapped[int] = mapped_column(Integer)  # signed: +N more debt, -N less debt
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     performed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

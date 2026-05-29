@@ -19,6 +19,7 @@ from app.models.order import Order, OrderItem, OrderStatus, Review
 from app.models.warehouse import CourierWater, WaterTransaction, BottleDebtAdjustment
 from app.models.product import Product
 from app.models.user import User
+from app.services import bottle_debt
 from app.routers.orders import _order_opts, _order_to_out
 
 router = APIRouter(prefix="/couriers", tags=["couriers"])
@@ -96,51 +97,8 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
     )
     total_delivery_revenue = float(delivery_rev_q.scalar() or 0)
 
-    # Bottle debt: only count 19L products (match warehouse logic)
-    prod_19l_q = await db.execute(
-        select(Product.id).where(Product.volume >= 18.9)
-    )
-    prod_19l_ids = [r[0] for r in prod_19l_q.all()]
-
-    if prod_19l_ids:
-        issued_q = await db.execute(
-            select(func.sum(WaterTransaction.quantity)).where(
-                and_(
-                    WaterTransaction.courier_id == courier.id,
-                    WaterTransaction.transaction_type == "issue",
-                    WaterTransaction.product_id.in_(prod_19l_ids),
-                    WaterTransaction.batch_id.isnot(None),
-                )
-            )
-        )
-    else:
-        issued_q = None
-
-    returned_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.courier_id == courier.id,
-                WaterTransaction.transaction_type == "bottle_return",
-                WaterTransaction.counts_for_debt != False,
-            )
-        )
-    )
-    delivery_net_q = await db.execute(
-        select(func.sum(WaterTransaction.quantity)).where(
-            and_(
-                WaterTransaction.courier_id == courier.id,
-                WaterTransaction.transaction_type == "delivery_net",
-            )
-        )
-    )
-    total_issued = (issued_q.scalar() if issued_q else None) or 0
-    total_returned = returned_q.scalar() or 0
-    total_delivery_net = delivery_net_q.scalar() or 0
-    courier_adj_q = await db.execute(
-        select(func.sum(BottleDebtAdjustment.delta)).where(BottleDebtAdjustment.courier_id == courier.id)
-    )
-    courier_adj = courier_adj_q.scalar() or 0
-    bottles_must_return = max(0, total_issued - total_returned - total_delivery_net + courier_adj)
+    # Bottle debt — single source of truth (app.services.bottle_debt)
+    bottles_must_return = await bottle_debt.courier_debt(db, courier.id)
 
     # Bottle debt value: bottles_must_return × bottle_surcharge of the 19L product
     surcharge_q = await db.execute(

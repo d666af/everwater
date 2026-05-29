@@ -6,7 +6,7 @@ import {
   getInvoiceUrl,
   getFactoryStats,
   getIssueBatches, cancelIssueBatch,
-  adjustWarehouseCourierDebt,
+  adjustWarehouseCourierDebt, adjustWarehouseFactoryDebt,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
@@ -77,8 +77,12 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         : 'Дата')
     : 'Сегодня'
 
-  const submitDebtAdj = async (courierId, delta, note) => {
-    await adjustWarehouseCourierDebt(courierId, delta, note, actor, 'warehouse')
+  const submitDebtAdj = async (entity, delta, note) => {
+    if (entity._entityType === 'factory') {
+      await adjustWarehouseFactoryDebt(entity.id, delta, note, actor, 'warehouse')
+    } else {
+      await adjustWarehouseCourierDebt(entity.id, delta, note, actor, 'warehouse')
+    }
     load()
   }
 
@@ -114,9 +118,10 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
         <DebtAdjustModal
           name={debtAdjModal.name}
           currentDebt={debtAdjModal.bottles_must_return || 0}
+          entityLabel={debtAdjModal._entityType === 'factory' ? 'Завод' : 'Курьер'}
           onClose={() => setDebtAdjModal(null)}
           onSave={async (delta, note) => {
-            await submitDebtAdj(debtAdjModal.id, delta, note)
+            await submitDebtAdj(debtAdjModal, delta, note)
             setDebtAdjModal(null)
           }}
         />
@@ -195,7 +200,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
                     key={f.id}
                     f={f}
                     onReport={() => setReportModal({ ...f, _entityType: 'factory' })}
-                    onDebtAdj={() => setDebtAdjModal(f)}
+                    onDebtAdj={() => setDebtAdjModal({ ...f, _entityType: 'factory' })}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
                 ))}
@@ -214,7 +219,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
                     key={f.id}
                     f={f}
                     onReport={() => setReportModal({ ...f, _entityType: 'factory' })}
-                    onDebtAdj={() => setDebtAdjModal(f)}
+                    onDebtAdj={() => setDebtAdjModal({ ...f, _entityType: 'factory' })}
                     onCancel={() => setCancelModal({ label: f.name })}
                   />
                 ))}
@@ -611,7 +616,7 @@ function CancelBatchModal({ label, onClose }) {
   )
 }
 
-function DebtAdjustModal({ name, currentDebt, onClose, onSave }) {
+function DebtAdjustModal({ name, currentDebt, entityLabel = 'Курьер', onClose, onSave }) {
   const [delta, setDelta] = useState(0)
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
@@ -646,7 +651,7 @@ function DebtAdjustModal({ name, currentDebt, onClose, onSave }) {
           <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
         <div style={{ fontSize: 13, color: TEXT2 }}>
-          Курьер: <b style={{ color: TEXT }}>{name}</b> · текущий долг: <b style={{ color: currentDebt > 0 ? '#E03131' : TEXT }}>{currentDebt} бут.</b>
+          {entityLabel}: <b style={{ color: TEXT }}>{name}</b> · текущий долг: <b style={{ color: currentDebt > 0 ? '#E03131' : TEXT }}>{currentDebt} бут.</b>
         </div>
 
         <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
