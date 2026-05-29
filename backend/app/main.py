@@ -176,6 +176,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejected_by_role VARCHAR(32)"
         ))
         await conn.execute(text(
+            "ALTER TABLE bottle_debt_adjustments ADD COLUMN IF NOT EXISTS factory_id INTEGER REFERENCES factories(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text(
             "CREATE TABLE IF NOT EXISTS agent_product_earnings ("
             "id SERIAL PRIMARY KEY, "
             "agent_id INTEGER NOT NULL REFERENCES agents(id), "

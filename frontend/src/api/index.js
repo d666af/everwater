@@ -1678,6 +1678,22 @@ export const adjustWarehouseClientDebt = (clientId, delta, note, performedBy, pe
     () => ({ ok: true })
   )
 
+export const adjustFactoryDebt = (factoryId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/admin/factories/${factoryId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const adjustWarehouseFactoryDebt = (factoryId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/warehouse/factories/${factoryId}/debt_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
 export const getWarehouseDebtAdjustments = (params = {}) =>
   safeCall(
     () => http.get('/warehouse/debt_adjustments', { params }).then(r => r.data),
