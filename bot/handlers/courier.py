@@ -1269,9 +1269,9 @@ async def courier_cash_received(call: CallbackQuery, state: FSMContext):
     except Exception:
         pass
     try:
-        await call.message.edit_text("✅ Наличные зафиксированы!")
+        await call.message.delete()
     except Exception:
-        await call.message.answer("✅ Наличные зафиксированы!")
+        pass
     await call.answer()
     await _maybe_send_location_prompt(call.message, order_id, state)
 
@@ -1284,9 +1284,9 @@ async def courier_card_received(call: CallbackQuery, state: FSMContext):
     except Exception:
         pass
     try:
-        await call.message.edit_text("✅ Оплата по карте подтверждена!")
+        await call.message.delete()
     except Exception:
-        await call.message.answer("✅ Оплата по карте подтверждена!")
+        pass
     await call.answer()
     await _maybe_send_location_prompt(call.message, order_id, state)
 
@@ -1333,19 +1333,21 @@ async def payment_issue_reason_received(message: Message, state: FSMContext):
 async def courier_addloc_yes(call: CallbackQuery, state: FSMContext):
     order_id = int(call.data.split(":")[3])
     await state.set_state(LocationAddState.waiting_location)
-    await state.update_data(order_id=order_id)
+    # remove the "Хотите добавить локацию?" prompt
     try:
-        await call.message.edit_reply_markup(reply_markup=None)
+        await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("📍 Отправьте геолокацию для этого адреса:")
+    sent = await call.message.answer("📍 Отправьте геолокацию для этого адреса:")
+    await state.update_data(order_id=order_id, geo_prompt_msg_id=sent.message_id)
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("courier:addloc:no:"))
 async def courier_addloc_no(call: CallbackQuery):
+    # remove the "Хотите добавить локацию?" prompt entirely
     try:
-        await call.message.edit_reply_markup(reply_markup=None)
+        await call.message.delete()
     except Exception:
         pass
     await call.answer()
@@ -1355,13 +1357,28 @@ async def courier_addloc_no(call: CallbackQuery):
 async def courier_location_received(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("order_id")
+    geo_prompt_msg_id = data.get("geo_prompt_msg_id")
     await state.clear()
     lat = message.location.latitude
     lng = message.location.longitude
+    ok = False
     try:
         await api.update_order_location(order_id, lat, lng)
-        await message.answer("✅ Локация сохранена! Теперь этот адрес будет с картой.")
+        ok = True
     except Exception:
+        pass
+    # remove the "📍 Отправьте геолокацию..." prompt
+    if geo_prompt_msg_id:
+        try:
+            await message.bot.delete_message(message.chat.id, geo_prompt_msg_id)
+        except Exception:
+            pass
+    # remove the courier's own location message
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    if not ok:
         await message.answer("❌ Не удалось сохранить локацию.")
 
 
