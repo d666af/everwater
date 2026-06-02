@@ -198,6 +198,7 @@ function EditItemsModal({ order, agentName, onClose, onSave }) {
 }
 
 const EDIT_STATUSES = new Set(['confirmed', 'assigned_to_courier', 'in_delivery'])
+const ROLE_LABELS = { manager: 'Менеджер', admin: 'Администратор', agent: 'Агент', courier: 'Курьер' }
 
 function OrderCard({ order, onEditItems }) {
   const [open, setOpen] = useState(false)
@@ -265,6 +266,22 @@ function OrderCard({ order, onEditItems }) {
           )}
           {order.client_name && (
             <div style={{ marginTop: 4, fontSize: 12, color: TEXT2 }}>Клиент: <strong>{order.client_name}</strong></div>
+          )}
+          {order.courier_name && (
+            <div style={{ fontSize: 12, color: TEXT2 }}>
+              🚴 Курьер: <strong>{order.courier_name}</strong>
+              {order.courier_phone && <span style={{ color: TEXT2 }}> | {order.courier_phone}</span>}
+            </div>
+          )}
+          {order.assigner_name && (
+            <div style={{ fontSize: 12, color: TEXT2 }}>
+              👤 Назначил курьера: <strong>{[ROLE_LABELS[order.assigner_role], order.assigner_name].filter(Boolean).join(' ')}</strong>
+            </div>
+          )}
+          {order.creator_role && order.creator_role !== 'agent' && order.creator_name && (
+            <div style={{ fontSize: 12, color: TEXT2 }}>
+              ✍️ Создал: <strong>{ROLE_LABELS[order.creator_role] || order.creator_role} {order.creator_name}</strong>
+            </div>
           )}
           {EDIT_STATUSES.has(order.status) && onEditItems && (
             <button
