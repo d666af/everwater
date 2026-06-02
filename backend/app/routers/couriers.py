@@ -1239,7 +1239,7 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 await db.execute(sa_update(Order).where(Order.id == oid).values(notification_msg_ids=msg_ids_json))
                 await db.commit()
     
-            # Notify the agent who created the order
+            # Notify the agent who created the order (editable tracking message)
             if body.creator_role == "agent" and body.agent_id:
                 from app.models.agent import Agent
                 agent_row = (await db.execute(
@@ -1248,29 +1248,36 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
                 if agent_row and agent_row.telegram_id:
                     _pay_labels_a = {"cash": "💵 Наличные", "card": "💳 Карта", "bonus": "🎁 Бонусы"}
                     _pay_label_a = _pay_labels_a.get(body.payment_method or "cash", "💵 Наличные")
-                    _fmt_na = _fmt_nm  # reuse formatter
+                    _fmt_na = _fmt_nm
                     _items_a = "\n".join(
-                        f"  • {p.name} {q} шт. — {_fmt_na(p.price * q)} сум"
+                        f"  • {p.name} {q} шт."
                         for p, q in items_data
                     ) if items_data else "  —"
                     if missing_m > 0 and bottle_surcharge > 0:
                         _items_a += f"\n  • Невозвращённые бутылки {missing_m} шт. — +{_fmt_na(bottle_surcharge)} сум"
-                    _inline_ret_a = []
-                    if body.return_bottles_count:
-                        _inline_ret_a.append(f"♻️ Возврат бутылок: {body.return_bottles_count} шт.")
-                    if body.bottles_lent:
-                        _inline_ret_a.append(f"📦 Одолжить: {body.bottles_lent} шт.")
-                    if missing_m > 0 and bottle_surcharge > 0:
-                        _inline_ret_a.append(f"💸 Надбавка за невозврат: +{_fmt_na(bottle_surcharge)} сум")
-                    _inline_ret_str_a = ("\n" + "\n".join(_inline_ret_a)) if _inline_ret_a else ""
-                    await _tg(agent_row.telegram_id, (
-                        f"✅ Заказ #{oid} создан!\n\n"
+                    _ret_line_a = f"\n♻️ Возврат бутылок: {body.return_bottles_count} шт." if body.return_bottles_count else ""
+                    _lent_line_a = f"\n📦 Одолжить: {body.bottles_lent} шт." if body.bottles_lent else ""
+                    _surcharge_line_a = f"\n💰 Надбавка за невозврат: {_fmt_na(bottle_surcharge)} сум" if bottle_surcharge > 0 and missing_m > 0 else ""
+                    _creator_name_a = body.creator_name or ""
+                    _agent_order_text = (
+                        f"🆕 Заказ #{oid} создан\n\n"
                         f"👤 {mgr_client_identity}\n"
                         f"📍 {body.address}{note_line}\n\n"
                         f"Товары:\n{_items_a}\n"
                         f"💰 {_fmt_na(total_int)} сум  |  {_pay_label_a}"
-                        f"{_inline_ret_str_a}"
-                    ))
+                        f"{_ret_line_a}{_lent_line_a}{_surcharge_line_a}\n"
+                        f"✍️ Создал заказ: Агент {_creator_name_a}"
+                    )
+                    import json as _json_a
+                    from app.services.tg_notify import tg_send_capture as _tsc_a
+                    _agent_msg = await _tsc_a(int(agent_row.telegram_id), _agent_order_text)
+                    if _agent_msg:
+                        await db.execute(
+                            sa_update(Order).where(Order.id == oid).values(
+                                agent_notification_msg_ids=_json_a.dumps([_agent_msg])
+                            )
+                        )
+                        await db.commit()
     
     except Exception:
         pass

@@ -501,6 +501,7 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
         raise HTTPException(status_code=409, detail="Order already rejected")
 
     msg_ids_json = order.notification_msg_ids
+    agent_notification_msg_ids_rj = order.agent_notification_msg_ids
     was_assigned = order.courier_id is not None
     was_delivered = order.status == OrderStatus.DELIVERED
     _bd_user_id = order.user_id
@@ -649,8 +650,10 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(), from_bot:
             # Only send new message if courier isn't already in staff notification set
             await _tg(courier_tg, courier_reject_text)
 
-    # Notify agent if order was created by one (skip if already in staff notifications)
-    if agent_id_for_notify:
+    # Notify agent — edit their tracking message if available, else send new
+    if agent_notification_msg_ids_rj:
+        await edit_all_notifications(agent_notification_msg_ids_rj, courier_reject_text)
+    elif agent_id_for_notify:
         from app.models.agent import Agent
         agent_row = (await db.execute(select(Agent).where(Agent.id == agent_id_for_notify))).scalar_one_or_none()
         if agent_row and agent_row.telegram_id:
@@ -780,6 +783,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
     client_name = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
+    agent_notification_msg_ids_ac = order.agent_notification_msg_ids
     _items_data_ac = [(i.product, i.quantity) for i in order.items if i.product]
     _ret_cnt = order.return_bottles_count or 0
     _lent_cnt = order.bottles_lent or 0
@@ -918,6 +922,7 @@ async def assign_courier(order_id: int, body: AssignBody, from_bot: bool = False
         [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
     ]}
     await edit_all_notifications(notification_msg_ids, sync_text, reply_markup=_cancel_kb_ac)
+    await edit_all_notifications(agent_notification_msg_ids_ac, sync_text)
 
     if not from_bot:
 
@@ -1004,6 +1009,7 @@ async def change_courier(order_id: int, body: ChangeCourierBody,
     client_name = (order.user.name if order.user else None) or "—"
     old_client_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
+    agent_notification_msg_ids_cc = order.agent_notification_msg_ids
     _items_data = [(i.product, i.quantity) for i in order.items if i.product]
     _ret_cnt = order.return_bottles_count or 0
     _lent_cnt = order.bottles_lent or 0
@@ -1129,6 +1135,7 @@ async def change_courier(order_id: int, body: ChangeCourierBody,
         [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
     ]}
     await edit_all_notifications(notification_msg_ids, sync_text, reply_markup=_staff_kb)
+    await edit_all_notifications(agent_notification_msg_ids_cc, sync_text)
 
     return {"ok": True}
 
@@ -1144,6 +1151,7 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     client_name = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
     notification_msg_ids = order.notification_msg_ids
+    agent_notification_msg_ids_dl = order.agent_notification_msg_ids
     oid = order.id
     order_address = order.address
     order_phone = order.recipient_phone
@@ -1213,6 +1221,7 @@ async def start_delivery(order_id: int, from_bot: bool = False, db: AsyncSession
     ]}
     from app.services.tg_notify import edit_all_notifications
     await edit_all_notifications(notification_msg_ids, dl_staff_text, reply_markup=_dl_kb)
+    await edit_all_notifications(agent_notification_msg_ids_dl, dl_staff_text)
 
     if not from_bot:
         text = f"🚴 Курьер {courier_name} выехал к вам!" if courier_name else "🚴 Курьер выехал к вам!"
@@ -1237,6 +1246,7 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
     client_name_dv = (order.user.name if order.user else None) or "—"
     old_msg_id = order.client_status_msg_id
     notification_msg_ids_dv = order.notification_msg_ids
+    agent_notification_msg_ids_dv = order.agent_notification_msg_ids
     items = _order_items_text(order.items)
     oid = order.id
     bonus = 0.0
@@ -1363,8 +1373,9 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
             f"🚴 {courier_name_dv}{c_phone_part_dv}"
             f"{_assigner_line_dv}"
         )
-        from app.services.tg_notify import delete_all_notifications
+        from app.services.tg_notify import delete_all_notifications, edit_all_notifications as _ean_dv
         await delete_all_notifications(notification_msg_ids_dv)
+        await _ean_dv(agent_notification_msg_ids_dv, dv_staff_text)
 
     if not from_bot and not already_delivered:
         bonus_txt = f"\n🎁 Начислено {int(bonus):,} сум бонусных баллов!" if bonus > 0 else ""
@@ -1861,6 +1872,7 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
     old_client_msg_id = order.client_status_msg_id
     order_status = order.status
     notification_msg_ids = order.notification_msg_ids
+    agent_notification_msg_ids_ui = order.agent_notification_msg_ids
     oid = order.id
     order_address = order.address or "—"
     order_phone = order.recipient_phone or "—"
@@ -2026,6 +2038,7 @@ async def update_order_items(order_id: int, body: UpdateItemsBody, db: AsyncSess
         [{"text": "❌ Отменить заказ", "callback_data": f"order:cancel:{oid}"}],
     ]}
     await edit_all_notifications(notification_msg_ids, staff_text, reply_markup=_cancel_kb)
+    await edit_all_notifications(agent_notification_msg_ids_ui, staff_text)
 
     surcharge_line = f"\n💰 Надбавка за невозврат: {_fmtv(bottle_surcharge)}" if bottle_surcharge else ""
     client_text = (
@@ -2226,6 +2239,7 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         rejected_by_role=order.rejected_by_role,
         review_id=order.review.id if order.review else None,
         notification_msg_ids=order.notification_msg_ids,
+        agent_notification_msg_ids=order.agent_notification_msg_ids,
         client_bottles_owed=client_bottles_owed,
         client_bottles_pending=client_bottles_pending,
         eta_human=_eta_human(order.delivery_expected_at),

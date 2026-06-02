@@ -86,6 +86,7 @@ class OrderOut(BaseModel):
     review_id: int | None = None
     queue_position: int | None = None
     notification_msg_ids: str | None = None
+    agent_notification_msg_ids: str | None = None
     client_bottles_owed: int = 0
     client_bottles_pending: int = 0
     eta_human: str | None = None
