@@ -177,7 +177,7 @@ export default function MapPicker({ lat, lng, onChange, onClose }) {
 
 const s = {
   overlay: {
-    position: 'fixed', inset: 0, zIndex: 1000,
+    position: 'fixed', inset: 0, zIndex: 10000,
     background: 'rgba(0,0,0,0.4)',
     display: 'flex', alignItems: 'flex-end',
   },
