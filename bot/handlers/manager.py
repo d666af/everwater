@@ -11,6 +11,7 @@ from keyboards.manager import (
     mgr_order_reject_kb, mgr_support_chat_kb, mgr_support_quick_kb,
 )
 from keyboards.admin import subs_menu_kb, subs_list_kb
+from keyboards.cancel_confirm import to_confirm_markup, to_cancel_markup
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.admin import _format_subs, _subs_summary_text, _sub_card_text, _order_detail_lines, _notify_order_staff
@@ -411,14 +412,25 @@ async def mgr_cancel_order_confirm(call: CallbackQuery):
     await call.answer()
     if not await is_manager(call.from_user.id):
         return
-    order_id = int(call.data.split(":")[2])
-    await call.message.answer(
-        f"⚠️ Точно отменить заказ #{order_id}?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"mgr:cxlyes:{order_id}"),
-            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
-        ]]),
-    )
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_confirm_markup(
+            call.message.reply_markup, call.data,
+            f"mgr:cxlyes:{order_id}", f"mgr:cxlno:{order_id}"))
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("mgr:cxlno:"))
+async def mgr_cancel_order_no(call: CallbackQuery):
+    await call.answer()
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_cancel_markup(
+            call.message.reply_markup, f"mgr:cxlyes:{order_id}", call.data,
+            "❌ Отменить заказ", f"mgr:cancel_order:{order_id}"))
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("mgr:cxlyes:"))
@@ -436,10 +448,11 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
         if getattr(e, "status", None) == 409:
             await call.message.edit_text("⚠️ Заказ уже обработан.")
             return
+    order = await api.get_order(order_id)
     try:
-        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
+        await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
     except Exception:
-        pass
+        await call.message.answer(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
 
 
 

@@ -12,6 +12,7 @@ from keyboards.admin import (
     reassign_courier_select_kb,
 )
 from keyboards.courier import courier_assignment_text, courier_assignment_kb, _is_phone
+from keyboards.cancel_confirm import to_confirm_markup, to_cancel_markup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import settings
 from services.roles import get_all_admin_ids, add_secondary_admin, remove_secondary_admin
@@ -273,16 +274,27 @@ async def admin_mark_delivered(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("order:cancel:"))
 async def order_cancel_confirm(call: CallbackQuery):
-    """Ask for confirmation before cancelling (unified admin/manager order card)."""
-    order_id = int(call.data.split(":")[2])
+    """Swap the cancel button into a confirm/no pair in place (admin/manager card)."""
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_confirm_markup(
+            call.message.reply_markup, call.data,
+            f"order:cxlyes:{order_id}", f"order:cxlno:{order_id}"))
+    except Exception:
+        pass
     await call.answer()
-    await call.message.answer(
-        f"⚠️ Точно отменить заказ #{order_id}?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"order:cxlyes:{order_id}"),
-            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
-        ]]),
-    )
+
+
+@router.callback_query(F.data.startswith("order:cxlno:"))
+async def order_cancel_no(call: CallbackQuery):
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_cancel_markup(
+            call.message.reply_markup, f"order:cxlyes:{order_id}", call.data,
+            "❌ Отменить заказ", f"order:cancel:{order_id}"))
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("order:cxlyes:"))
@@ -307,10 +319,7 @@ async def order_cancel_unified(call: CallbackQuery):
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
         return
-    try:
-        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
-    except Exception:
-        pass
+    # The backend rewrites the staff card (text + keyboard) via edit_all_notifications.
     await call.answer("❌ Заказ отменён")
 
 
@@ -318,15 +327,26 @@ async def order_cancel_unified(call: CallbackQuery):
 async def admin_cancel_order_confirm(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
-    order_id = int(call.data.split(":")[2])
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_confirm_markup(
+            call.message.reply_markup, call.data,
+            f"admin:cxlyes:{order_id}", f"admin:cxlno:{order_id}"))
+    except Exception:
+        pass
     await call.answer()
-    await call.message.answer(
-        f"⚠️ Точно отменить заказ #{order_id}?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"admin:cxlyes:{order_id}"),
-            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
-        ]]),
-    )
+
+
+@router.callback_query(F.data.startswith("admin:cxlno:"))
+async def admin_cancel_order_no(call: CallbackQuery):
+    order_id = call.data.split(":")[2]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_cancel_markup(
+            call.message.reply_markup, f"admin:cxlyes:{order_id}", call.data,
+            "❌ Отменить заказ", f"admin:cancel_order:{order_id}"))
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("admin:cxlyes:"))
@@ -344,8 +364,9 @@ async def admin_cancel_order_cb(call: CallbackQuery):
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
         return
+    order = await api.get_order(order_id)
     try:
-        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
+        await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
     except Exception:
         pass
     await call.answer("❌ Заказ отменён")

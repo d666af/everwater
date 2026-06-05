@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from services.roles import get_user_roles, get_primary_role, ROLE_LABELS
 from keyboards.user import main_menu_kb, miniapp_inline_kb, request_phone_kb, review_kb, orders_list_kb, orders_repeat_kb, orders_repeat_pool, REPEAT_PAGE_SIZE, REPEAT_EMOJI, review_order_select_kb, _site
+from keyboards.cancel_confirm import to_confirm_markup, to_cancel_markup
 from config import settings
 
 router = Router()
@@ -744,15 +745,26 @@ async def cancel_reason_cb(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cancel_order:"))
 async def cancel_order_cb(call: CallbackQuery):
-    order_id = int(call.data.split(":")[1])
+    order_id = call.data.split(":")[1]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_confirm_markup(
+            call.message.reply_markup, call.data,
+            f"cxl_order_yes:{order_id}", f"cxl_order_no:{order_id}"))
+    except Exception:
+        pass
     await call.answer()
-    await call.message.answer(
-        f"⚠️ Точно отменить заказ #{order_id}?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"cxl_order_yes:{order_id}"),
-            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
-        ]]),
-    )
+
+
+@router.callback_query(F.data.startswith("cxl_order_no:"))
+async def cancel_order_no_cb(call: CallbackQuery):
+    order_id = call.data.split(":")[1]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_cancel_markup(
+            call.message.reply_markup, f"cxl_order_yes:{order_id}", call.data,
+            "❌ Отменить заказ", f"cancel_order:{order_id}"))
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("cxl_order_yes:"))
@@ -763,16 +775,6 @@ async def cancel_order_yes_cb(call: CallbackQuery):
         await call.message.edit_text("🚫 Заказ отменён.")
     else:
         await call.answer("Не удалось отменить заказ. Обратитесь в поддержку.", show_alert=True)
-    await call.answer()
-
-
-@router.callback_query(F.data == "cxl:no")
-async def cxl_dismiss_cb(call: CallbackQuery):
-    """Shared 'Нет' handler for cancel confirmations — just removes the prompt."""
-    try:
-        await call.message.delete()
-    except Exception:
-        pass
     await call.answer()
 
 

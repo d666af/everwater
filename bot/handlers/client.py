@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import services.api_client as api
 from keyboards.user import main_menu_kb, order_actions_kb, _site
+from keyboards.cancel_confirm import to_confirm_markup, to_cancel_markup
 from config import settings
 from services.roles import get_all_admin_ids
 
@@ -1546,15 +1547,26 @@ async def sub_cancel_confirm(call: CallbackQuery):
     if not await api.is_subscriptions_enabled():
         await call.answer("Подписки отключены", show_alert=True)
         return
-    sub_id = int(call.data.split(":")[1])
+    sub_id = call.data.split(":")[1]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_confirm_markup(
+            call.message.reply_markup, call.data,
+            f"sub_delyes:{sub_id}", f"sub_delno:{sub_id}"))
+    except Exception:
+        pass
     await call.answer()
-    await call.message.answer(
-        f"⚠️ Точно отменить подписку #{sub_id}?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"sub_delyes:{sub_id}"),
-            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
-        ]]),
-    )
+
+
+@router.callback_query(F.data.startswith("sub_delno:"))
+async def sub_cancel_no(call: CallbackQuery):
+    sub_id = call.data.split(":")[1]
+    try:
+        await call.message.edit_reply_markup(reply_markup=to_cancel_markup(
+            call.message.reply_markup, f"sub_delyes:{sub_id}", call.data,
+            f"❌ Отменить #{sub_id}", f"sub_del:{sub_id}"))
+    except Exception:
+        pass
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("sub_delyes:"))
