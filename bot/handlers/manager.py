@@ -1,6 +1,6 @@
 import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.filters import Command, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -70,6 +70,7 @@ class MgrOrderCreate(StatesGroup):
     waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address = State()
+    waiting_location = State()
     confirming = State()
 
 
@@ -798,6 +799,18 @@ def _mco_bottles_step_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def _mco_addr_coords(client: dict | None, address: str):
+    """Return (lat, lng) of a saved address for this client, or (None, None)."""
+    if not client or not address:
+        return None, None
+    for a in (client.get("order_addresses") or []):
+        if isinstance(a, dict) and (a.get("address") or "").strip() == address.strip():
+            lat, lng = a.get("lat"), a.get("lng")
+            if lat is not None and lng is not None:
+                return lat, lng
+    return None, None
+
+
 def _mco_client_addrs(client: dict | None) -> list:
     if not client:
         return []
@@ -918,6 +931,8 @@ def _mco_confirm_text(data: dict, products: list) -> str:
     else:
         lines.append(f"👤 {phone}")
     lines.append(f"📍 {address}")
+    if data.get("mco_lat") is not None and data.get("mco_lng") is not None:
+        lines.append("🗺 Локация прикреплена ✓")
     lines.append("\nТовары:")
 
     total = 0
@@ -943,16 +958,19 @@ def _mco_confirm_text(data: dict, products: list) -> str:
     return "\n".join(lines)
 
 
-def _mco_confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def _mco_confirm_kb(has_location: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton(text="✏️ Состав", callback_data="mco:edit:items"),
             InlineKeyboardButton(text="♻️ Возврат", callback_data="mco:edit:bottles"),
             InlineKeyboardButton(text="📍 Адрес", callback_data="mco:edit:address"),
         ],
-        [InlineKeyboardButton(text="✅ Создать заказ", callback_data="mco:confirm")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="mco:cancel")],
-    ])
+    ]
+    if not has_location:
+        rows.append([InlineKeyboardButton(text="📍 Добавить локацию", callback_data="mco:add_location")])
+    rows.append([InlineKeyboardButton(text="✅ Создать заказ", callback_data="mco:confirm")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="mco:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _mco_addr_kb(options: list) -> InlineKeyboardMarkup:
@@ -987,7 +1005,8 @@ async def _mco_show_confirm(target, state: FSMContext):
     data = await state.get_data()
     products = data.get("mco_products", [])
     text = _mco_confirm_text(data, products)
-    kb = _mco_confirm_kb()
+    has_loc = data.get("mco_lat") is not None and data.get("mco_lng") is not None
+    kb = _mco_confirm_kb(has_loc)
     await state.set_state(MgrOrderCreate.confirming)
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1339,7 +1358,8 @@ async def mgr_co_select_addr(call: CallbackQuery, state: FSMContext):
         await call.answer("Ошибка выбора")
         return
 
-    await state.update_data(mco_address=addr)
+    lat, lng = _mco_addr_coords(data.get("mco_client"), addr)
+    await state.update_data(mco_address=addr, mco_lat=lat, mco_lng=lng)
     await call.answer()
     await _mco_show_confirm(call, state)
 
@@ -1348,7 +1368,43 @@ async def mgr_co_select_addr(call: CallbackQuery, state: FSMContext):
 async def mgr_co_address(message: Message, state: FSMContext):
     if not await is_manager(message.from_user.id):
         return
-    await state.update_data(mco_address=message.text.strip())
+    # Newly typed address has no saved map point yet.
+    await state.update_data(mco_address=message.text.strip(), mco_lat=None, mco_lng=None)
+    await _mco_show_confirm(message, state)
+
+
+# ─── Add location (geolocation) ───────────────────────────────────────────────
+
+@router.callback_query(MgrOrderCreate.confirming, F.data == "mco:add_location")
+async def mgr_co_add_location(call: CallbackQuery, state: FSMContext):
+    await state.set_state(MgrOrderCreate.waiting_location)
+    await call.answer()
+    await call.message.answer(
+        "📍 Отправьте геолокацию точки доставки кнопкой ниже — она будет прикреплена к адресу заказа.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+                [KeyboardButton(text="↩️ Без локации")],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(MgrOrderCreate.waiting_location, F.location)
+async def mgr_co_location_received(message: Message, state: FSMContext):
+    await state.update_data(
+        mco_lat=message.location.latitude,
+        mco_lng=message.location.longitude,
+    )
+    await message.answer("✅ Локация прикреплена к адресу.", reply_markup=ReplyKeyboardRemove())
+    await _mco_show_confirm(message, state)
+
+
+@router.message(MgrOrderCreate.waiting_location)
+async def mgr_co_location_skip(message: Message, state: FSMContext):
+    await message.answer("Продолжаем без локации.", reply_markup=ReplyKeyboardRemove())
     await _mco_show_confirm(message, state)
 
 
@@ -1410,6 +1466,8 @@ async def mgr_co_confirm(call: CallbackQuery, state: FSMContext):
             "return_bottles_count": return_bottles,
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
+            "latitude": data.get("mco_lat"),
+            "longitude": data.get("mco_lng"),
             "creator_role": "manager",
             "creator_name": (mgr or {}).get("name"),
             "manager_name": (mgr or {}).get("name"),

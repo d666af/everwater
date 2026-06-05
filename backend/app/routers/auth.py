@@ -80,7 +80,13 @@ def _build_response(user, courier, manager, tg_id: int = None, is_warehouse: boo
     # Fall back to telegram_id for admin/warehouse users who have no role-specific DB record
     uid = (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None) or (agent.id if agent else None) or tid
     bonus = float(user.bonus_points) if user else 0.0
-    is_reg = (user.is_registered if user else None) if user else True
+    # Staff/admin always count as registered for app access — their access does not
+    # depend on a (possibly incomplete) client User record. Only a pure client's
+    # registration flag gates entry.
+    if any(r != "client" for r in all_roles):
+        is_reg = True
+    else:
+        is_reg = user.is_registered if user else True
     agent_id = agent.id if agent else None
 
     return {

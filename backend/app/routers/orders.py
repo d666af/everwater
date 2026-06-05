@@ -2245,4 +2245,5 @@ def _order_to_out(order: Order, client_bottles_owed: int = 0, client_bottles_pen
         eta_human=_eta_human(order.delivery_expected_at),
         is_items_edited=order.is_items_edited or False,
         items_edited_by=order.items_edited_by,
+        items_change_log=order.items_change_log,
     )
