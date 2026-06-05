@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getFactoryStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments } from '../../api'
+import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getFactoryStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments, adjustWarehouseCourierDebt, adjustWarehouseFactoryDebt } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -48,6 +48,30 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [cancelling, setCancelling] = useState(null) // batch_id currently cancelling
   const [debtAdj, setDebtAdj] = useState([])
   const [soldAdj, setSoldAdj] = useState([])
+  const [debtAdjEntity, setDebtAdjEntity] = useState(null) // entity whose bottle debt is being edited
+
+  const actor = user?.name || null
+
+  // Reload the debt-related figures + adjustment logs (after a manual change)
+  const reloadDebtData = () => {
+    getWarehouseCourierStats('all')
+      .then(cs => setCourierStats(cs || []))
+      .catch(console.error)
+    getFactoryStats('all')
+      .then(fs => setFactoryStatsAll(Array.isArray(fs) ? fs : []))
+      .catch(console.error)
+    getWarehouseDebtAdjustments({ target_type: 'courier', limit: 100 }).then(data => setDebtAdj(Array.isArray(data) ? data : [])).catch(() => {})
+    getWarehouseDebtAdjustments({ target_type: 'courier_sold', limit: 100 }).then(data => setSoldAdj(Array.isArray(data) ? data : [])).catch(() => {})
+  }
+
+  const submitDebtAdj = async (entity, delta, note) => {
+    if (entity._kind === 'factory') {
+      await adjustWarehouseFactoryDebt(entity.id, delta, note, actor, 'warehouse')
+    } else {
+      await adjustWarehouseCourierDebt(entity.id, delta, note, actor, 'warehouse')
+    }
+    reloadDebtData()
+  }
 
   useEffect(() => {
     getWarehouseCouriers()
@@ -61,18 +85,11 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
         setCatalog(list)
       })
       .catch(console.error)
-    getWarehouseCourierStats('all')
-      .then(cs => setCourierStats(cs || []))
-      .catch(console.error)
-    getFactoryStats('all')
-      .then(fs => setFactoryStatsAll(Array.isArray(fs) ? fs : []))
-      .catch(console.error)
     getFactories()
       .then(fs => setFactories(Array.isArray(fs) ? fs : []))
       .catch(console.error)
     getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(console.error)
-    getWarehouseDebtAdjustments({ target_type: 'courier', limit: 100 }).then(data => setDebtAdj(Array.isArray(data) ? data : [])).catch(() => {})
-    getWarehouseDebtAdjustments({ target_type: 'courier_sold', limit: 100 }).then(data => setSoldAdj(Array.isArray(data) ? data : [])).catch(() => {})
+    reloadDebtData()
   }, [])
 
   useEffect(() => {
@@ -154,10 +171,12 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const debtEntities = [
     ...(courierId === 'all'
       ? courierStats.filter(c => (c.bottles_must_return || 0) > 0)
-      : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0)),
+      : courierStats.filter(c => String(c.id) === courierId && (c.bottles_must_return || 0) > 0))
+      .map(c => ({ ...c, _kind: 'courier' })),
     ...(factoryId === 'all'
       ? factoryStatsAll.filter(f => (f.bottles_must_return || 0) > 0)
-      : factoryStatsAll.filter(f => String(f.id) === factoryId && (f.bottles_must_return || 0) > 0)),
+      : factoryStatsAll.filter(f => String(f.id) === factoryId && (f.bottles_must_return || 0) > 0))
+      .map(f => ({ ...f, _kind: 'factory' })),
   ]
   const totalDebt = debtEntities.reduce((s, e) => s + (e.bottles_must_return || 0), 0)
 
@@ -236,6 +255,18 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           initialDateTo={customDateTo}
           onApply={applyCustom}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+      {debtAdjEntity && (
+        <DebtAdjustModal
+          name={debtAdjEntity.name}
+          currentDebt={debtAdjEntity.bottles_must_return || 0}
+          entityLabel={debtAdjEntity._kind === 'factory' ? 'Завод' : 'Курьер'}
+          onClose={() => setDebtAdjEntity(null)}
+          onSave={async (delta, note) => {
+            await submitDebtAdj(debtAdjEntity, delta, note)
+            setDebtAdjEntity(null)
+          }}
         />
       )}
       {productPickerOpen && (
@@ -383,7 +414,27 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
           {debtEntities.length > 0 && (
             <SummarySection title={`Должны вернуть · ${totalDebt} бут.`} color="#C92A2A" bg="#FFE8E8">
               {debtEntities.map(e => (
-                <SummaryRow key={`${e.type ?? 'c'}_${e.id}`} label={e.name} value={`${e.bottles_must_return} бут.`} color="#C92A2A" />
+                <SummaryRow
+                  key={`${e._kind}_${e.id}`}
+                  label={e.name}
+                  value={`${e.bottles_must_return} бут.`}
+                  color="#C92A2A"
+                  action={
+                    <button
+                      onClick={() => setDebtAdjEntity(e)}
+                      title="Изменить долг бутылок"
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                        padding: '4px 8px', borderRadius: 8, cursor: 'pointer', flexShrink: 0,
+                        border: '1px solid rgba(0,119,182,0.25)', background: '#E0F4FF', color: '#0077B6',
+                        fontSize: 11, fontWeight: 700,
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                      Долг
+                    </button>
+                  }
+                />
               ))}
             </SummarySection>
           )}
@@ -678,14 +729,99 @@ function SummarySection({ title, color, bg, children }) {
   )
 }
 
-function SummaryRow({ label, value, sub, color }) {
+function SummaryRow({ label, value, sub, color, action }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${BORDER}` }}>
-      <span style={{ fontSize: 13, color: TEXT, fontWeight: 500, flex: 1 }}>{label}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: `1px solid ${BORDER}` }}>
+      <span style={{ fontSize: 13, color: TEXT, fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: color || TEXT }}>{value}</span>
         {sub && <span style={{ fontSize: 11, color: TEXT2 }}>{sub}</span>}
       </div>
+      {action}
     </div>
   )
+}
+
+function DebtAdjustModal({ name, currentDebt, entityLabel = 'Курьер', onClose, onSave }) {
+  const [delta, setDelta] = useState(0)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handle = async () => {
+    if (delta === 0) return
+    setError('')
+    setLoading(true)
+    try {
+      await onSave(delta, note.trim() || null)
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
+      setLoading(false)
+    }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 36, height: 36, borderRadius: 10, fontSize: 22, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  const preview = currentDebt + delta
+
+  return (
+    <div style={dm.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={dm.sheet}>
+        <div style={dm.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Изменить долг бутылок</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2 }}>
+          {entityLabel}: <b style={{ color: TEXT }}>{name}</b> · текущий долг: <b style={{ color: currentDebt > 0 ? '#E03131' : TEXT }}>{currentDebt} бут.</b>
+        </div>
+
+        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменение</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <button onClick={() => setDelta(d => d - 1)} style={stepBtn({ background: '#F0FFF4', border: '1.5px solid rgba(46,184,89,0.3)', color: '#2B8A3E' })}>−</button>
+            <div style={{ textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: delta > 0 ? '#E03131' : delta < 0 ? '#2B8A3E' : TEXT2, lineHeight: 1 }}>
+                {delta > 0 ? `+${delta}` : delta}
+              </div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>бут.</div>
+            </div>
+            <button onClick={() => setDelta(d => d + 1)} style={stepBtn({ background: '#FFF5F5', border: '1.5px solid rgba(224,49,49,0.2)', color: '#E03131' })}>+</button>
+          </div>
+          {delta !== 0 && (
+            <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: TEXT2 }}>
+              Будет: <b style={{ color: preview > 0 ? '#E03131' : '#2B8A3E' }}>{Math.max(0, preview)} бут.</b>
+            </div>
+          )}
+        </div>
+
+        <input
+          style={{ border: `1.5px solid ${BORDER}`, borderRadius: 12, padding: '13px 12px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Причина (необязательно)"
+        />
+
+        {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+
+        <button
+          style={{ padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #E03131, #C92A2A)', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(224,49,49,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
+          disabled={delta === 0 || loading}
+          onClick={handle}
+        >
+          {loading ? 'Сохраняю...' : 'Применить изменение'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const dm = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9000, display: 'flex', alignItems: 'flex-end' },
+  sheet: { background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 12, animation: 'slideUp 0.3s cubic-bezier(0.4,0,0.2,1)' },
+  handle: { width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' },
 }
