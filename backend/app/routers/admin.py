@@ -21,6 +21,7 @@ from app.models.cooler import Cooler, CoolerPayment
 from app.schemas.order import CourierCreate, CourierOut
 from app.services.settings_service import is_subscriptions_enabled
 from app.services import bottle_debt
+from app.services import sold_bottles
 import aiohttp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -795,6 +796,8 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
 
     # Bottle debt — single source of truth (app.services.bottle_debt)
     bottles_must_return = await bottle_debt.courier_debt(db, courier_id)
+    # Sold bottles (проданные бутылки) — single source of truth (app.services.sold_bottles)
+    bottles_sold = await sold_bottles.courier_sold(db, courier_id)
 
     return {
         "courier_id": courier.id,
@@ -806,6 +809,7 @@ async def get_courier_details(courier_id: int, db: AsyncSession = Depends(get_db
         "avg_rating": courier.avg_rating if courier.avg_rating else None,
         "rating_count": courier.rating_count,
         "bottles_must_return": bottles_must_return,
+        "bottles_sold": bottles_sold,
     }
 
 
@@ -2068,6 +2072,30 @@ async def adjust_factory_debt_admin(
     return {"ok": True, "id": adj.id}
 
 
+@router.post("/couriers/{courier_id}/sold_adjust")
+async def adjust_courier_sold_admin(
+    courier_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually adjust a courier's sold-bottle (проданные бутылки) count."""
+    courier = (await db.execute(select(Courier).where(Courier.id == courier_id))).scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    adj = BottleDebtAdjustment(
+        target_type="courier_sold",
+        courier_id=courier_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
 @router.get("/debt_adjustments")
 async def get_debt_adjustments_admin(
     limit: int = 200,
@@ -2077,6 +2105,9 @@ async def get_debt_adjustments_admin(
     q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
     if target_type:
         q = q.where(BottleDebtAdjustment.target_type == target_type)
+    else:
+        # Sold-bottle adjustments have their own log; keep them out of the debt log.
+        q = q.where(BottleDebtAdjustment.target_type != "courier_sold")
     rows = (await db.execute(q)).scalars().all()
     result = []
     for r in rows:

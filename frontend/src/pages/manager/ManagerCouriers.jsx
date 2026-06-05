@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage, adjustCourierDebt } from '../../api'
+import { getAdminCouriers, createCourier, deleteCourier, getCourierDetails, getAgents, createAgent, deleteAgent, getAgentOrders, broadcastMessage, adjustCourierDebt, adjustCourierSold } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import CourierReportModal from '../../components/CourierReportModal'
 import AgentReportModal from '../../components/AgentReportModal'
@@ -84,6 +84,7 @@ function CourierCard({ courier: c, onDelete }) {
   const [details, setDetails] = useState(null)
   const [showReport, setShowReport] = useState(false)
   const [debtAdjModal, setDebtAdjModal] = useState(false)
+  const [soldAdjModal, setSoldAdjModal] = useState(false)
 
   const refreshDetails = () => getCourierDetails(c.id).then(setDetails).catch(() => {})
 
@@ -94,6 +95,7 @@ function CourierCard({ courier: c, onDelete }) {
   const rating = details?.avg_rating > 0 ? Number(details.avg_rating).toFixed(1) : '—'
   const totalDeliveries = details?.total_deliveries ?? (c.delivery_count ?? '—')
   const bottleDebt = details ? (details.bottles_must_return ?? 0) : null
+  const bottlesSold = details ? (details.bottles_sold ?? 0) : null
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: c.is_active ? 1 : 0.6 }}>
@@ -139,6 +141,19 @@ function CourierCard({ courier: c, onDelete }) {
             <div style={{ position: 'absolute', top: 3, right: 5, fontSize: 11, color: '#0077B6', fontWeight: 800 }}>±</div>
           </div>
         )}
+        {bottlesSold !== null && (
+          <div onClick={() => setSoldAdjModal(true)} style={{ cursor: 'pointer', position: 'relative' }}>
+            <StatChip
+              icon="💰"
+              value={bottlesSold}
+              label="Продано"
+              color={bottlesSold > 0 ? '#0077B6' : CD}
+              bg={bottlesSold > 0 ? '#E7F5FF' : '#F0FFF4'}
+              borderColor={bottlesSold > 0 ? 'rgba(0,119,182,0.2)' : 'rgba(141,198,63,0.18)'}
+            />
+            <div style={{ position: 'absolute', top: 3, right: 5, fontSize: 11, color: '#0077B6', fontWeight: 800 }}>±</div>
+          </div>
+        )}
       </div>
 
       <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'flex-end' }}>
@@ -167,6 +182,84 @@ function CourierCard({ courier: c, onDelete }) {
           }}
         />
       )}
+      {soldAdjModal && (
+        <CourierSoldAdjModal
+          courierName={c.name}
+          currentSold={bottlesSold || 0}
+          onClose={() => setSoldAdjModal(false)}
+          onSave={async (delta, note) => {
+            await adjustCourierSold(c.id, delta, note, currentUser?.name || null, currentUser?.role || null)
+            setSoldAdjModal(false)
+            refreshDetails()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CourierSoldAdjModal({ courierName, currentSold, onClose, onSave }) {
+  const [delta, setDelta] = useState(0)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const preview = Math.max(0, currentSold + delta)
+
+  const handle = async () => {
+    if (delta === 0) return
+    setError('')
+    setLoading(true)
+    try { await onSave(delta, note.trim() || null) }
+    catch (err) { setError(err?.response?.data?.detail || err?.message || 'Ошибка'); setLoading(false) }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 36, height: 36, borderRadius: 10, fontSize: 20, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 9100, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', padding: '12px 20px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 4px', display: 'block' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Изменить проданные бутылки</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2 }}>
+          Курьер: <b style={{ color: TEXT }}>{courierName}</b> · продано: <b style={{ color: currentSold > 0 ? '#0077B6' : TEXT2 }}>{currentSold} бут.</b>
+        </div>
+        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <button onClick={() => setDelta(d => d - 1)} style={stepBtn({ background: '#F0FFF4', border: '1.5px solid rgba(46,184,89,0.3)', color: '#2B8A3E', fontSize: 22 })}>−</button>
+            <div style={{ textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: delta > 0 ? '#0077B6' : delta < 0 ? '#2B8A3E' : TEXT2, lineHeight: 1 }}>
+                {delta > 0 ? `+${delta}` : delta}
+              </div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>бут.</div>
+            </div>
+            <button onClick={() => setDelta(d => d + 1)} style={stepBtn({ background: '#E7F5FF', border: '1.5px solid rgba(0,119,182,0.25)', color: '#0077B6', fontSize: 22 })}>+</button>
+          </div>
+          {delta !== 0 && (
+            <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: TEXT2 }}>
+              Будет: <b style={{ color: preview > 0 ? '#0077B6' : '#2B8A3E' }}>{preview} бут.</b>
+            </div>
+          )}
+        </div>
+        <input
+          style={{ border: '1.5px solid rgba(60,60,67,0.12)', borderRadius: 12, padding: '12px 12px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }}
+          value={note} onChange={e => setNote(e.target.value)} placeholder="Причина (необязательно)"
+        />
+        {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+        <button
+          style={{ padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #0077B6, #005F92)', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,119,182,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
+          disabled={delta === 0 || loading} onClick={handle}
+        >
+          {loading ? 'Сохраняю...' : 'Применить изменение'}
+        </button>
+      </div>
     </div>
   )
 }

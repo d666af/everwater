@@ -7,6 +7,7 @@ import {
   getFactoryStats,
   getIssueBatches, cancelIssueBatch,
   adjustWarehouseCourierDebt, adjustWarehouseFactoryDebt,
+  adjustWarehouseCourierSold,
 } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
@@ -36,6 +37,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   const [reportModal, setReportModal] = useState(null) // courier object
   const [cancelModal, setCancelModal] = useState(null) // { label } to show batches for
   const [debtAdjModal, setDebtAdjModal] = useState(null) // courier object for debt adjustment
+  const [soldAdjModal, setSoldAdjModal] = useState(null) // courier object for sold-bottle adjustment
 
   const load = () => {
     setLoading(true)
@@ -86,6 +88,11 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
     load()
   }
 
+  const submitSoldAdj = async (entity, delta, note) => {
+    await adjustWarehouseCourierSold(entity.id, delta, note, actor, 'warehouse')
+    load()
+  }
+
   const _q = searchQ.trim().toLowerCase()
   const visOther = factories.filter(f => (f.category === 'other' || f.name === 'НАХТ') && (!_q || (f.name || '').toLowerCase().includes(_q)))
   const visFactories = factories.filter(f => f.category !== 'other' && f.name !== 'НАХТ' && (!_q || (f.name || '').toLowerCase().includes(_q)))
@@ -123,6 +130,17 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
           onSave={async (delta, note) => {
             await submitDebtAdj(debtAdjModal, delta, note)
             setDebtAdjModal(null)
+          }}
+        />
+      )}
+      {soldAdjModal && (
+        <SoldAdjustModal
+          name={soldAdjModal.name}
+          currentSold={soldAdjModal.bottles_sold || 0}
+          onClose={() => setSoldAdjModal(null)}
+          onSave={async (delta, note) => {
+            await submitSoldAdj(soldAdjModal, delta, note)
+            setSoldAdjModal(null)
           }}
         />
       )}
@@ -237,7 +255,7 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {visCouriers.map(c => (
-                  <CourierCard key={c.id} c={c} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} />
+                  <CourierCard key={c.id} c={c} onReport={() => setReportModal(c)} onCancel={() => setCancelModal({ label: c.name })} onDebtAdj={() => setDebtAdjModal(c)} onSoldAdj={() => setSoldAdjModal(c)} />
                 ))}
               </div>
             </>
@@ -248,9 +266,10 @@ export default function WarehouseCouriers({ Layout = WarehouseLayout, title = '�
   )
 }
 
-function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
+function CourierCard({ c, onReport, onCancel, onDebtAdj, onSoldAdj }) {
   const retBottles = c.bottles_returned_today || 0
   const mustBottles = c.bottles_must_return || 0
+  const soldBottles = c.bottles_sold || 0
   const issuedProducts = Object.entries(c.issued_products || {}).filter(([, q]) => q > 0)
 
   return (
@@ -290,7 +309,7 @@ function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
         </div>
 
         {/* Bottles 19L */}
-        <div style={{ flex: 0, flexBasis: 110, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '8px 10px' }}>
+        <div style={{ flex: 0, flexBasis: 150, background: mustBottles > 0 ? '#EEF6FF' : '#F8F9FA', borderRadius: 12, padding: '8px 10px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#1971C2', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Бут. 19л</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
             <div style={{ flex: 1, textAlign: 'center' }}>
@@ -301,6 +320,11 @@ function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
             <div style={{ flex: 1, textAlign: 'center' }}>
               <div style={{ fontSize: 18, fontWeight: 800, color: mustBottles > 0 ? TEXT : TEXT2, lineHeight: 1 }}>{mustBottles}</div>
               <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>должен</div>
+            </div>
+            <div style={{ width: 1, height: 24, background: '#C0D8F0', alignSelf: 'center' }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: soldBottles > 0 ? '#0077B6' : TEXT2, lineHeight: 1 }}>{soldBottles}</div>
+              <div style={{ fontSize: 9, color: TEXT2, marginTop: 2 }}>продано</div>
             </div>
           </div>
         </div>
@@ -326,6 +350,16 @@ function CourierCard({ c, onReport, onCancel, onDebtAdj }) {
         }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
           Долг
+        </button>
+        <button onClick={onSoldAdj} style={{
+          padding: '8px 10px', borderRadius: 10,
+          border: '1px solid rgba(0,119,182,0.25)', background: '#E7F5FF', color: '#0077B6',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          whiteSpace: 'nowrap',
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+          Продано
         </button>
         <button onClick={onCancel} style={{
           flex: 1, padding: '8px 12px', borderRadius: 10,
@@ -684,6 +718,84 @@ function DebtAdjustModal({ name, currentDebt, entityLabel = 'Курьер', onCl
 
         <button
           style={{ ...st.primaryBtn, background: 'linear-gradient(135deg, #E03131, #C92A2A)', boxShadow: '0 4px 14px rgba(224,49,49,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}), padding: 14 }}
+          disabled={delta === 0 || loading}
+          onClick={handle}
+        >
+          {loading ? 'Сохраняю...' : 'Применить изменение'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SoldAdjustModal({ name, currentSold, onClose, onSave }) {
+  const [delta, setDelta] = useState(0)
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handle = async () => {
+    if (delta === 0) return
+    setError('')
+    setLoading(true)
+    try {
+      await onSave(delta, note.trim() || null)
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка')
+      setLoading(false)
+    }
+  }
+
+  const stepBtn = (base = {}) => ({
+    width: 36, height: 36, borderRadius: 10, fontSize: 20, fontWeight: 700,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none',
+    ...base,
+  })
+
+  const preview = Math.max(0, currentSold + delta)
+
+  return (
+    <div style={st.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...st.sheet, gap: 12 }}>
+        <div style={st.handle} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>Изменить проданные бутылки</div>
+          <button onClick={onClose} style={{ background: '#F2F2F7', border: 'none', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', color: TEXT2, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2 }}>
+          Курьер: <b style={{ color: TEXT }}>{name}</b> · продано: <b style={{ color: currentSold > 0 ? '#0077B6' : TEXT }}>{currentSold} бут.</b>
+        </div>
+
+        <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменение</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <button onClick={() => setDelta(d => d - 1)} style={stepBtn({ background: '#F0FFF4', border: '1.5px solid rgba(46,184,89,0.3)', color: '#2B8A3E', fontSize: 22 })}>−</button>
+            <div style={{ textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: delta > 0 ? '#0077B6' : delta < 0 ? '#2B8A3E' : TEXT2, lineHeight: 1 }}>
+                {delta > 0 ? `+${delta}` : delta}
+              </div>
+              <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>бут.</div>
+            </div>
+            <button onClick={() => setDelta(d => d + 1)} style={stepBtn({ background: '#E7F5FF', border: '1.5px solid rgba(0,119,182,0.25)', color: '#0077B6', fontSize: 22 })}>+</button>
+          </div>
+          {delta !== 0 && (
+            <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: TEXT2 }}>
+              Будет: <b style={{ color: preview > 0 ? '#0077B6' : '#2B8A3E' }}>{preview} бут.</b>
+            </div>
+          )}
+        </div>
+
+        <input
+          style={{ ...st.input }}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Причина (необязательно)"
+        />
+
+        {error && <div style={{ padding: '8px 12px', borderRadius: 10, background: '#FFF5F5', border: '1px solid #FFB4B4', fontSize: 12, color: '#C92A2A', fontWeight: 600 }}>{error}</div>}
+
+        <button
+          style={{ ...st.primaryBtn, background: 'linear-gradient(135deg, #0077B6, #005F92)', boxShadow: '0 4px 14px rgba(0,119,182,0.3)', ...(delta === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}), padding: 14 }}
           disabled={delta === 0 || loading}
           onClick={handle}
         >

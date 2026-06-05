@@ -47,6 +47,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
   const [cancelConfirm, setCancelConfirm] = useState(null) // batch_id being confirmed
   const [cancelling, setCancelling] = useState(null) // batch_id currently cancelling
   const [debtAdj, setDebtAdj] = useState([])
+  const [soldAdj, setSoldAdj] = useState([])
 
   useEffect(() => {
     getWarehouseCouriers()
@@ -71,6 +72,7 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
       .catch(console.error)
     getCancelledBatches().then(data => setCancelledBatches(Array.isArray(data) ? data : [])).catch(console.error)
     getWarehouseDebtAdjustments({ target_type: 'courier', limit: 100 }).then(data => setDebtAdj(Array.isArray(data) ? data : [])).catch(() => {})
+    getWarehouseDebtAdjustments({ target_type: 'courier_sold', limit: 100 }).then(data => setSoldAdj(Array.isArray(data) ? data : [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -400,6 +402,28 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
                       <div style={{ fontSize: 10, color: TEXT2 }}>{dt}</div>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: a.delta > 0 ? '#E03131' : '#2B8A3E', flexShrink: 0 }}>
+                      {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {soldAdj.length > 0 && (
+            <div style={{ background: '#E7F5FF', borderRadius: 14, padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Изменения проданных бутылок · {soldAdj.length}</div>
+              {soldAdj.map((a, i) => {
+                const dt = a.created_at ? new Date(a.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+                return (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '5px 0', borderBottom: i < soldAdj.length - 1 ? '1px solid rgba(0,119,182,0.12)' : 'none' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {a.target_name || '—'} · <span style={{ color: TEXT2, fontWeight: 500 }}>{a.performed_by || '—'}</span>
+                      </div>
+                      {a.note && <div style={{ fontSize: 10, color: TEXT2 }}>{a.note}</div>}
+                      <div style={{ fontSize: 10, color: TEXT2 }}>{dt}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: a.delta > 0 ? '#0077B6' : '#2B8A3E', flexShrink: 0 }}>
                       {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
                     </div>
                   </div>
