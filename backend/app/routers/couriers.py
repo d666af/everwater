@@ -804,6 +804,27 @@ async def courier_create_order(body: CourierOrderCreate, db: AsyncSession = Depe
     bottle_surcharge = body.bottle_surcharge or 0.0
     total = max(0.0, subtotal + bottle_surcharge)
 
+    # ── Idempotency guard ─────────────────────────────────────────────────────
+    # Protect against duplicate orders from double-taps / double-submits: if an
+    # identical order (same recipient, address, total, creator) was just created
+    # seconds ago, return it instead of creating another one.
+    from datetime import timedelta as _timedelta
+    _dup_cutoff = datetime.utcnow() - _timedelta(seconds=15)
+    _dup = (await db.execute(
+        select(Order)
+        .where(
+            Order.recipient_phone == body.phone,
+            Order.address == body.address,
+            Order.total == total,
+            Order.return_bottles_count == body.return_bottles_count,
+            Order.created_at >= _dup_cutoff,
+        )
+        .order_by(Order.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if _dup is not None:
+        return {"ok": True, "order_id": _dup.id, "id": _dup.id, "duplicate": True}
+
     try:
         order = Order(
             user_id=user.id if user else None,

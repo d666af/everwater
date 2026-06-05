@@ -2498,6 +2498,9 @@ async def admin_co_select_addr(call: CallbackQuery, state: FSMContext):
         await call.answer("Ошибка выбора")
         return
     lat, lng = _aco_addr_coords(data.get("aco_client"), addr)
+    # Keep a manually-dropped location if re-selecting the same address.
+    if (lat is None or lng is None) and addr == data.get("aco_address"):
+        lat, lng = data.get("aco_lat"), data.get("aco_lng")
     await state.update_data(aco_address=addr, aco_lat=lat, aco_lng=lng)
     await call.answer()
     await _aco_show_confirm(call, state)
@@ -2505,8 +2508,12 @@ async def admin_co_select_addr(call: CallbackQuery, state: FSMContext):
 
 @router.message(AdminOrderCreate.waiting_address)
 async def admin_co_address(message: Message, state: FSMContext):
-    # Newly typed address has no saved map point yet.
-    await state.update_data(aco_address=message.text.strip(), aco_lat=None, aco_lng=None)
+    new_addr = message.text.strip()
+    data = await state.get_data()
+    if new_addr == data.get("aco_address"):
+        await state.update_data(aco_address=new_addr)  # unchanged → keep any location
+    else:
+        await state.update_data(aco_address=new_addr, aco_lat=None, aco_lng=None)
     await _aco_show_confirm(message, state)
 
 

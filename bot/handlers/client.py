@@ -2021,6 +2021,17 @@ async def cart_menu(message: Message, state: FSMContext):
     await show_cart(message, state)
 
 
+@router.callback_query()
+async def _fallback_callback(call: CallbackQuery):
+    """Catch-all for callbacks whose handler no longer matches — e.g. an FSM
+    flow whose state was lost after a server restart. Without this the button
+    would spin forever; instead we acknowledge it so the spinner stops."""
+    try:
+        await call.answer("⚠️ Сессия устарела. Откройте меню заново — /start", show_alert=True)
+    except Exception:
+        pass
+
+
 @router.message(F.text & ~F.text.startswith("/") & ~F.text.in_(_MENU_TEXTS))
 async def forward_to_support(message: Message, state: FSMContext):
     """Catch-all: forward unhandled text to support chat."""
