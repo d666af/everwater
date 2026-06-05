@@ -407,6 +407,21 @@ async def mgr_mark_delivered(call: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("mgr:cancel_order:"))
+async def mgr_cancel_order_confirm(call: CallbackQuery):
+    await call.answer()
+    if not await is_manager(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    await call.message.answer(
+        f"⚠️ Точно отменить заказ #{order_id}?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"mgr:cxlyes:{order_id}"),
+            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("mgr:cxlyes:"))
 async def mgr_cancel_order_cb(call: CallbackQuery):
     await call.answer()
     if not await is_manager(call.from_user.id):
@@ -419,14 +434,12 @@ async def mgr_cancel_order_cb(call: CallbackQuery):
                                rejected_by_name=db_name_mc or call.from_user.full_name, rejected_by_role="manager")
     except Exception as e:
         if getattr(e, "status", None) == 409:
-            await call.message.answer("⚠️ Заказ уже обработан.")
+            await call.message.edit_text("⚠️ Заказ уже обработан.")
             return
-
-    order = await api.get_order(order_id)
     try:
-        await call.message.edit_text(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
+        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
     except Exception:
-        await call.message.answer(_mgr_order_text(order), reply_markup=_mgr_order_kb(order), parse_mode="HTML")
+        pass
 
 
 

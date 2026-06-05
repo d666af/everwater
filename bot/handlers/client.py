@@ -1542,6 +1542,22 @@ async def subscriptions(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("sub_del:"))
+async def sub_cancel_confirm(call: CallbackQuery):
+    if not await api.is_subscriptions_enabled():
+        await call.answer("Подписки отключены", show_alert=True)
+        return
+    sub_id = int(call.data.split(":")[1])
+    await call.answer()
+    await call.message.answer(
+        f"⚠️ Точно отменить подписку #{sub_id}?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"sub_delyes:{sub_id}"),
+            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("sub_delyes:"))
 async def sub_cancel(call: CallbackQuery, state: FSMContext):
     if not await api.is_subscriptions_enabled():
         await call.answer("Подписки отключены", show_alert=True)

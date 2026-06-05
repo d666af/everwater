@@ -272,6 +272,20 @@ async def admin_mark_delivered(call: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("order:cancel:"))
+async def order_cancel_confirm(call: CallbackQuery):
+    """Ask for confirmation before cancelling (unified admin/manager order card)."""
+    order_id = int(call.data.split(":")[2])
+    await call.answer()
+    await call.message.answer(
+        f"⚠️ Точно отменить заказ #{order_id}?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"order:cxlyes:{order_id}"),
+            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("order:cxlyes:"))
 async def order_cancel_unified(call: CallbackQuery):
     """Unified cancel handler for courier-order notifications sent to both admins and managers."""
     from handlers.manager import is_manager as _is_manager
@@ -293,10 +307,29 @@ async def order_cancel_unified(call: CallbackQuery):
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
         return
+    try:
+        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
+    except Exception:
+        pass
     await call.answer("❌ Заказ отменён")
 
 
 @router.callback_query(F.data.startswith("admin:cancel_order:"))
+async def admin_cancel_order_confirm(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        return
+    order_id = int(call.data.split(":")[2])
+    await call.answer()
+    await call.message.answer(
+        f"⚠️ Точно отменить заказ #{order_id}?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"admin:cxlyes:{order_id}"),
+            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:cxlyes:"))
 async def admin_cancel_order_cb(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
@@ -311,9 +344,8 @@ async def admin_cancel_order_cb(call: CallbackQuery):
         else:
             await call.answer("❌ Ошибка. Попробуйте ещё раз.", show_alert=True)
         return
-    order = await api.get_order(order_id)
     try:
-        await call.message.edit_text(_admin_order_text(order), reply_markup=_admin_order_kb(order), parse_mode="HTML")
+        await call.message.edit_text(f"❌ Заказ #{order_id} отменён.")
     except Exception:
         pass
     await call.answer("❌ Заказ отменён")
