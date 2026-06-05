@@ -20,6 +20,7 @@ from app.models.warehouse import CourierWater, WaterTransaction, BottleDebtAdjus
 from app.models.product import Product
 from app.models.user import User
 from app.services import bottle_debt
+from app.services import sold_bottles
 from app.routers.orders import _order_opts, _order_to_out
 
 router = APIRouter(prefix="/couriers", tags=["couriers"])
@@ -99,6 +100,8 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
 
     # Bottle debt — single source of truth (app.services.bottle_debt)
     bottles_must_return = await bottle_debt.courier_debt(db, courier.id)
+    # Sold bottles (проданные бутылки) — single source of truth (app.services.sold_bottles)
+    bottles_sold = await sold_bottles.courier_sold(db, courier.id)
 
     # Bottle debt value: bottles_must_return × bottle_surcharge of the 19L product
     surcharge_q = await db.execute(
@@ -138,6 +141,7 @@ async def get_courier_stats(telegram_id: int, db: AsyncSession = Depends(get_db)
         "review_count": review_count or 0,
         "active_orders": active_orders,
         "bottles_must_return": bottles_must_return,
+        "bottles_sold": bottles_sold,
         "bottle_debt_value": round(bottle_debt_value, 2),
         "reserved_items": reserved_items,
     }

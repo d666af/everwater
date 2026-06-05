@@ -194,6 +194,21 @@ export default function CourierStats() {
         )}
       </div>
 
+      {/* ── Sold bottles (проданные бутылки) ── */}
+      {stats.bottles_sold > 0 && (
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid rgba(0,119,182,0.25)`, padding: '14px 16px', borderLeft: '3px solid #0077B6', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 3h6l1 4H8L9 3z" stroke="#0077B6" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M8 7c0 0-2 2-2 7a6 6 0 0012 0c0-5-2-7-2-7" stroke="#0077B6" strokeWidth="1.7" strokeLinecap="round"/>
+              <path d="M12 11v4M10 13h4" stroke="#0077B6" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4 }}>Продано бутылок</span>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: '#0077B6', lineHeight: 1 }}>{stats.bottles_sold} <span style={{ fontSize: 14, fontWeight: 600 }}>шт.</span></div>
+        </div>
+      )}
+
       {/* ── 3. Rating (full width, horizontal) ── */}
       <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${BORDER}`, padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{ flexShrink: 0 }}>

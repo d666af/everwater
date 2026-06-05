@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
 import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments } from '../../api'
+const getSoldAdjustments = (params = {}) => getDebtAdjustments({ ...params, target_type: 'courier_sold' })
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
 const C = '#8DC63F'
@@ -503,6 +504,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
   const [lentRole, setLentRole] = useState(null)
   const [loading, setLoading] = useState(true)
   const [debtAdj, setDebtAdj] = useState([])
+  const [soldAdj, setSoldAdj] = useState([])
 
   const isToday = dateFrom === todayISO() && dateTo === todayISO()
 
@@ -525,6 +527,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
       getAdminStats(dateParams).then(setStats).catch(console.error),
       getStatsLentBottles(dateParams).then(setLentData).catch(console.error),
       getDebtAdjustments({ limit: 100 }).then(setDebtAdj).catch(() => setDebtAdj([])),
+      getSoldAdjustments({ limit: 100 }).then(setSoldAdj).catch(() => setSoldAdj([])),
     ]
     if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
     Promise.all(calls).finally(() => setLoading(false))
@@ -895,6 +898,35 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                           <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>{dt}</div>
                         </div>
                         <div style={{ fontSize: 15, fontWeight: 900, color: a.delta > 0 ? '#E03131' : '#2B8A3E', flexShrink: 0 }}>
+                          {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Sold-bottle adjustments log */}
+          {soldAdj.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения проданных бутылок</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {soldAdj.map((a, i) => {
+                  const roleLabel = { warehouse: 'Склад', admin: 'Админ', manager: 'Менеджер' }[a.performed_by_role] || a.performed_by_role || '?'
+                  const dt = a.created_at ? new Date(a.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+                  return (
+                    <div key={a.id} style={{ padding: '8px 0', borderBottom: i < soldAdj.length - 1 ? '1px solid rgba(60,60,67,0.07)' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: TEXT2 }}>{roleLabel}</span> {a.performed_by || '—'} → <span style={{ color: '#0077B6' }}>Курьер</span> {a.target_name || '—'}
+                          </div>
+                          {a.note && <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{a.note}</div>}
+                          <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>{dt}</div>
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 900, color: a.delta > 0 ? '#0077B6' : '#2B8A3E', flexShrink: 0 }}>
                           {a.delta > 0 ? `+${a.delta}` : a.delta} бут.
                         </div>
                       </div>

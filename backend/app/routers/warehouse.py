@@ -21,6 +21,7 @@ from app.config import settings as app_settings
 from app.services.invoice import generate_invoice_png
 from app.services.settings_service import is_subscriptions_enabled
 from app.services import bottle_debt
+from app.services import sold_bottles
 from sqlalchemy import update as sa_update
 from app.services.tg_notify import tg_send_photo
 
@@ -1354,6 +1355,8 @@ async def get_couriers_water(
 
     # Bottle debt — single source of truth (computed once for all couriers)
     debt_map = await bottle_debt.courier_debt_map(db)
+    # Sold bottles (проданные бутылки) — single source of truth
+    sold_map = await sold_bottles.courier_sold_map(db)
 
     result = []
 
@@ -1373,6 +1376,8 @@ async def get_couriers_water(
 
         # Bottle debt — single source of truth (app.services.bottle_debt)
         bottles_must_return = debt_map.get(c.id, 0)
+        # Sold bottles (проданные бутылки) — single source of truth
+        bottles_sold = sold_map.get(c.id, 0)
 
         # Active orders with items
         act_q = await db.execute(
@@ -1483,6 +1488,7 @@ async def get_couriers_water(
             "to_pickup": to_pickup,
             "water": water_dict,
             "bottles_must_return": bottles_must_return,
+            "bottles_sold": bottles_sold,
             "bottles_returned_today": bottles_returned_period,
             "issued_products": issued_products_period,
             # Keep legacy format for bot compatibility
@@ -2109,6 +2115,30 @@ async def adjust_factory_debt_wh(
     return {"ok": True, "id": adj.id}
 
 
+@router.post("/couriers/{courier_id}/sold_adjust")
+async def adjust_courier_sold(
+    courier_id: int,
+    data: BottleDebtAdjustRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually adjust a courier's sold-bottle (проданные бутылки) count."""
+    courier = (await db.execute(select(Courier).where(Courier.id == courier_id))).scalar_one_or_none()
+    if not courier:
+        raise HTTPException(status_code=404, detail="Courier not found")
+    adj = BottleDebtAdjustment(
+        target_type="courier_sold",
+        courier_id=courier_id,
+        delta=data.delta,
+        note=data.note,
+        performed_by=data.performed_by,
+        performed_by_role=data.performed_by_role,
+    )
+    db.add(adj)
+    await db.commit()
+    await db.refresh(adj)
+    return {"ok": True, "id": adj.id}
+
+
 @router.get("/debt_adjustments")
 async def get_debt_adjustments_wh(
     limit: int = 100,
@@ -2119,6 +2149,9 @@ async def get_debt_adjustments_wh(
     q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
     if target_type:
         q = q.where(BottleDebtAdjustment.target_type == target_type)
+    else:
+        # Sold-bottle adjustments have their own log; keep them out of the debt log.
+        q = q.where(BottleDebtAdjustment.target_type != "courier_sold")
     rows = (await db.execute(q)).scalars().all()
     result = []
     for r in rows:

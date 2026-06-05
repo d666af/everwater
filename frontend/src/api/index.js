@@ -1699,3 +1699,21 @@ export const getWarehouseDebtAdjustments = (params = {}) =>
     () => http.get('/warehouse/debt_adjustments', { params }).then(r => r.data),
     () => []
   )
+
+// ─── Sold-bottle adjustments (проданные бутылки) ────────────────────────────
+
+export const adjustCourierSold = (courierId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/admin/couriers/${courierId}/sold_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const adjustWarehouseCourierSold = (courierId, delta, note, performedBy, performedByRole) =>
+  safeCall(
+    () => http.post(`/warehouse/couriers/${courierId}/sold_adjust`, {
+      delta, note: note || null, performed_by: performedBy || null, performed_by_role: performedByRole || null,
+    }).then(r => r.data),
+    () => ({ ok: true })
+  )
