@@ -759,11 +759,13 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
             )
           })()}
 
-          {/* Agent earnings card */}
+          {/* Agent earnings card — orders created by agents only */}
           {(() => {
-            const agentRows = (stats.product_sales || []).filter(p => (p.agent_earning || 0) > 0)
-            const totalAgentEarning = (stats.product_sales || []).reduce((s, p) => s + (p.agent_earning || 0), 0)
-            if (totalAgentEarning <= 0) return null
+            const agentRows = stats.agent_sales || []
+            if (agentRows.length === 0) return null
+            const totalQty = agentRows.reduce((s, p) => s + (p.qty || 0), 0)
+            const totalAmt = agentRows.reduce((s, p) => s + (p.total || 0), 0)
+            const totalAgentEarning = agentRows.reduce((s, p) => s + (p.agent_earning || 0), 0)
             return (
               <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Заработок агентов</div>
@@ -777,8 +779,44 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   ))}
                 </div>
                 <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
-                  <div style={{ fontSize: 12, color: CD, fontWeight: 700 }}>
-                    Заработок агентов: +{Math.round(totalAgentEarning).toLocaleString('ru-RU')} сум
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
+                  </div>
+                  {totalAgentEarning > 0 && (
+                    <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 5 }}>
+                      Заработок агентов: +{Math.round(totalAgentEarning).toLocaleString('ru-RU')} сум
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Manager sales card — orders created by managers only */}
+          {(() => {
+            const mgrRows = stats.manager_sales || []
+            if (mgrRows.length === 0) return null
+            const totalQty = mgrRows.reduce((s, p) => s + (p.qty || 0), 0)
+            const totalAmt = mgrRows.reduce((s, p) => s + (p.total || 0), 0)
+            return (
+              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Продажи менеджеров</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {mgrRows.map((p, i) => (
+                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < mgrRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                      <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
                   </div>
                 </div>
               </div>

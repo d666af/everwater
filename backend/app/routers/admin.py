@@ -215,6 +215,58 @@ async def get_stats(
         for row in product_sales_q.all()
     ]
 
+    # Agent sales: per-product breakdown of orders CREATED BY AGENTS only (with agent earning)
+    agent_sales_q = await db.execute(
+        select(
+            Product.name,
+            func.sum(OrderItem.quantity).label("qty"),
+            func.sum(OrderItem.quantity * OrderItem.price).label("total"),
+            func.sum(
+                OrderItem.quantity * func.coalesce(_APE.earning, Product.agent_earning, 0)
+            ).label("agent_earning_total"),
+        )
+        .join(OrderItem, OrderItem.product_id == Product.id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .outerjoin(_APE, and_(
+            _APE.product_id == Product.id,
+            _APE.agent_id == Order.agent_id,
+        ))
+        .where(_order_time(Order.status == OrderStatus.DELIVERED, Order.creator_role == "agent"))
+        .group_by(Product.id, Product.name)
+        .order_by(func.sum(OrderItem.quantity).desc())
+    )
+    agent_sales = [
+        {
+            "name": row.name,
+            "qty": int(row.qty or 0),
+            "total": round(float(row.total or 0), 2),
+            "agent_earning": round(float(row.agent_earning_total or 0), 2),
+        }
+        for row in agent_sales_q.all()
+    ]
+
+    # Manager sales: per-product breakdown of orders CREATED BY MANAGERS only
+    manager_sales_q = await db.execute(
+        select(
+            Product.name,
+            func.sum(OrderItem.quantity).label("qty"),
+            func.sum(OrderItem.quantity * OrderItem.price).label("total"),
+        )
+        .join(OrderItem, OrderItem.product_id == Product.id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(_order_time(Order.status == OrderStatus.DELIVERED, Order.creator_role == "manager"))
+        .group_by(Product.id, Product.name)
+        .order_by(func.sum(OrderItem.quantity).desc())
+    )
+    manager_sales = [
+        {
+            "name": row.name,
+            "qty": int(row.qty or 0),
+            "total": round(float(row.total or 0), 2),
+        }
+        for row in manager_sales_q.all()
+    ]
+
     # Warehouse sales: items issued from warehouse in the period
     # market = qty * sale price; cost = qty * cost_price (for the header total)
     warehouse_sales_q = await db.execute(
@@ -317,6 +369,8 @@ async def get_stats(
         "bottles_surcharge_count": bottles_surcharge_count,
         "bottles_surcharge_total": bottles_surcharge_total,
         "product_sales": product_sales,
+        "agent_sales": agent_sales,
+        "manager_sales": manager_sales,
         "warehouse_sales": warehouse_sales,
         "factory_stats": factory_stats,
         "bottle_debt_count": bottle_debt_count,
