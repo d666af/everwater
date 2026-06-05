@@ -1284,18 +1284,21 @@ async def mark_delivered(order_id: int, body: DeliveredBody = DeliveredBody(), f
         user = result.scalar_one_or_none()
         if user:
             cfg = await get_all_settings(db)
+            bonus_program_enabled = cfg.get("bonus_program_enabled", True)
+            bottle_bonus_enabled = cfg.get("bottle_bonus_enabled", True)
             # Per-bottle bonus (ТЗ: N сум за каждую 19л бутылку)
             bonus_per_bottle = float(cfg.get("bonus_per_bottle") or 0)
             bottles_in_order = sum(
                 i.quantity for i in order.items if i.product and i.product.has_bottle_deposit
             )
-            if bonus_per_bottle > 0 and bottles_in_order > 0:
+            if bottle_bonus_enabled and bonus_per_bottle > 0 and bottles_in_order > 0:
                 bonus = bonus_per_bottle * bottles_in_order
-            else:
-                # Fallback: cashback % от суммы заказа
-                cashback_pct = float(cfg.get("cashback_percent") or 5)
-                bonus = order.total * cashback_pct / 100.0
-            user.bonus_points += bonus
+                user.bonus_points += bonus
+            elif bonus_program_enabled:
+                cashback_pct = float(cfg.get("cashback_percent") or 0)
+                if cashback_pct > 0:
+                    bonus = order.total * cashback_pct / 100.0
+                    user.bonus_points += bonus
             # Reset bonus expiry on award
             expiry_days = int(cfg.get("bonus_expiry_days") or 0)
             if expiry_days > 0:
