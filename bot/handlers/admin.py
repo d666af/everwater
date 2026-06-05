@@ -1,6 +1,6 @@
 import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -1871,6 +1871,7 @@ class AdminOrderCreate(StatesGroup):
     waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address = State()
+    waiting_location = State()
     confirming = State()
 
 
@@ -1910,6 +1911,18 @@ def _aco_bottles_step_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Одолжить бутылки", callback_data="aco:lent_bottles")]
     ])
+
+
+def _aco_addr_coords(client: dict | None, address: str):
+    """Return (lat, lng) of a saved address for this client, or (None, None)."""
+    if not client or not address:
+        return None, None
+    for a in (client.get("order_addresses") or []):
+        if isinstance(a, dict) and (a.get("address") or "").strip() == address.strip():
+            lat, lng = a.get("lat"), a.get("lng")
+            if lat is not None and lng is not None:
+                return lat, lng
+    return None, None
 
 
 def _aco_client_addrs(client: dict | None) -> list:
@@ -2032,6 +2045,8 @@ def _aco_confirm_text(data: dict, products: list) -> str:
     else:
         lines.append(f"👤 {phone}")
     lines.append(f"📍 {address}")
+    if data.get("aco_lat") is not None and data.get("aco_lng") is not None:
+        lines.append("🗺 Локация прикреплена ✓")
     lines.append("\nТовары:")
 
     total = 0
@@ -2057,16 +2072,19 @@ def _aco_confirm_text(data: dict, products: list) -> str:
     return "\n".join(lines)
 
 
-def _aco_confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def _aco_confirm_kb(has_location: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton(text="✏️ Состав", callback_data="aco:edit:items"),
             InlineKeyboardButton(text="♻️ Возврат", callback_data="aco:edit:bottles"),
             InlineKeyboardButton(text="📍 Адрес", callback_data="aco:edit:address"),
         ],
-        [InlineKeyboardButton(text="✅ Создать заказ", callback_data="aco:confirm")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="aco:cancel")],
-    ])
+    ]
+    if not has_location:
+        rows.append([InlineKeyboardButton(text="📍 Добавить локацию", callback_data="aco:add_location")])
+    rows.append([InlineKeyboardButton(text="✅ Создать заказ", callback_data="aco:confirm")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="aco:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _aco_addr_kb(options: list) -> InlineKeyboardMarkup:
@@ -2101,7 +2119,8 @@ async def _aco_show_confirm(target, state: FSMContext):
     data = await state.get_data()
     products = data.get("aco_products", [])
     text = _aco_confirm_text(data, products)
-    kb = _aco_confirm_kb()
+    has_loc = data.get("aco_lat") is not None and data.get("aco_lng") is not None
+    kb = _aco_confirm_kb(has_loc)
     await state.set_state(AdminOrderCreate.confirming)
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -2425,14 +2444,51 @@ async def admin_co_select_addr(call: CallbackQuery, state: FSMContext):
     except (ValueError, IndexError):
         await call.answer("Ошибка выбора")
         return
-    await state.update_data(aco_address=addr)
+    lat, lng = _aco_addr_coords(data.get("aco_client"), addr)
+    await state.update_data(aco_address=addr, aco_lat=lat, aco_lng=lng)
     await call.answer()
     await _aco_show_confirm(call, state)
 
 
 @router.message(AdminOrderCreate.waiting_address)
 async def admin_co_address(message: Message, state: FSMContext):
-    await state.update_data(aco_address=message.text.strip())
+    # Newly typed address has no saved map point yet.
+    await state.update_data(aco_address=message.text.strip(), aco_lat=None, aco_lng=None)
+    await _aco_show_confirm(message, state)
+
+
+# ─── Add location (geolocation) ───────────────────────────────────────────────
+
+@router.callback_query(AdminOrderCreate.confirming, F.data == "aco:add_location")
+async def admin_co_add_location(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminOrderCreate.waiting_location)
+    await call.answer()
+    await call.message.answer(
+        "📍 Отправьте геолокацию точки доставки кнопкой ниже — она будет прикреплена к адресу заказа.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+                [KeyboardButton(text="↩️ Без локации")],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(AdminOrderCreate.waiting_location, F.location)
+async def admin_co_location_received(message: Message, state: FSMContext):
+    await state.update_data(
+        aco_lat=message.location.latitude,
+        aco_lng=message.location.longitude,
+    )
+    await message.answer("✅ Локация прикреплена к адресу.", reply_markup=ReplyKeyboardRemove())
+    await _aco_show_confirm(message, state)
+
+
+@router.message(AdminOrderCreate.waiting_location)
+async def admin_co_location_skip(message: Message, state: FSMContext):
+    await message.answer("Продолжаем без локации.", reply_markup=ReplyKeyboardRemove())
     await _aco_show_confirm(message, state)
 
 
@@ -2488,6 +2544,8 @@ async def admin_co_confirm(call: CallbackQuery, state: FSMContext):
             "return_bottles_count": return_bottles,
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
+            "latitude": data.get("aco_lat"),
+            "longitude": data.get("aco_lng"),
             "creator_role": "admin",
             "creator_name": (await api.get_staff_db_name(call.from_user.id, True)) or call.from_user.full_name or "",
         })
