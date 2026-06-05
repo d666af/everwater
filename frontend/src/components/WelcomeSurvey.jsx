@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useUserStore } from '../store/user'
 import { getSettings } from '../api'
 
@@ -9,6 +10,7 @@ const LS_SURVEY_EXT = 'everwater_survey_company'
 
 export default function WelcomeSurvey() {
   const { survey_done, completeSurvey } = useUserStore()
+  const { pathname } = useLocation()
   const [step, setStep] = useState('ask') // ask | company | count
   const [company, setCompany] = useState(null)
   const [count, setCount] = useState(0)
@@ -22,7 +24,10 @@ export default function WelcomeSurvey() {
     }).catch(() => {})
   }, [])
 
-  if (survey_done) return null
+  // Client-only onboarding — never interrupt staff/auth flows.
+  const onNonClientRoute = pathname === '/login'
+    || ['/admin', '/courier', '/manager', '/warehouse', '/agent'].some(p => pathname.startsWith(p))
+  if (survey_done || onNonClientRoute) return null
 
   const finish = (bottles, companyName, source) => {
     if (companyName) localStorage.setItem(LS_SURVEY_EXT, JSON.stringify({ company: companyName, source }))

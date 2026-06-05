@@ -32,7 +32,7 @@ export default function CartWidget() {
 
   const hide = location.pathname === '/checkout'
     || location.pathname === '/login'
-    || ['/admin', '/courier', '/manager'].some(p => location.pathname.startsWith(p))
+    || ['/admin', '/courier', '/manager', '/warehouse', '/agent'].some(p => location.pathname.startsWith(p))
   if (hide || totalQty === 0) return null
 
   return (

@@ -51,6 +51,7 @@ export default function AutoReviewPopup() {
       || p.startsWith('/courier')
       || p.startsWith('/manager')
       || p.startsWith('/warehouse')
+      || p.startsWith('/agent')
   }, [location.pathname])
 
   // Make sure orders are fetched at least once when the client app boots

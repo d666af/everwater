@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuthStore } from './store/auth'
 import { useTelegramAuth } from './hooks/useTelegramAuth'
 import { useRoleRefresh } from './hooks/useRoleRefresh'
 import { useSubscriptionsEnabled } from './hooks/useSubscriptionsEnabled'
@@ -68,6 +69,15 @@ import WarehouseSubscriptions from './pages/warehouse/WarehouseSubscriptions'
 function SubscriptionsGuard({ children, redirectTo }) {
   const enabled = useSubscriptionsEnabled()
   if (enabled === false) return <Navigate to={redirectTo} replace />
+  return children
+}
+
+// Client-flow UI (catalog cart, client bottom-nav, welcome survey, review popup)
+// must be inaccessible to staff. Staff roles never include "client" (the backend
+// strips it), so we hide all client-flow widgets when the signed-in user is staff.
+function ClientOnly({ children }) {
+  const user = useAuthStore(s => s.user)
+  if (user?.roles && !user.roles.includes('client')) return null
   return children
 }
 
@@ -287,11 +297,13 @@ export default function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-      <CartWidget />
-      <BottomNav />
+      <ClientOnly>
+        <CartWidget />
+        <BottomNav />
+        <WelcomeSurvey />
+        <AutoReviewPopup />
+      </ClientOnly>
       <AgentBottomNav />
-      <WelcomeSurvey />
-      <AutoReviewPopup />
     </>
   )
 }
