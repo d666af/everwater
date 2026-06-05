@@ -1385,6 +1385,9 @@ async def mgr_co_select_addr(call: CallbackQuery, state: FSMContext):
         return
 
     lat, lng = _mco_addr_coords(data.get("mco_client"), addr)
+    # Keep a manually-dropped location if re-selecting the same address.
+    if (lat is None or lng is None) and addr == data.get("mco_address"):
+        lat, lng = data.get("mco_lat"), data.get("mco_lng")
     await state.update_data(mco_address=addr, mco_lat=lat, mco_lng=lng)
     await call.answer()
     await _mco_show_confirm(call, state)
@@ -1394,8 +1397,12 @@ async def mgr_co_select_addr(call: CallbackQuery, state: FSMContext):
 async def mgr_co_address(message: Message, state: FSMContext):
     if not await is_manager(message.from_user.id):
         return
-    # Newly typed address has no saved map point yet.
-    await state.update_data(mco_address=message.text.strip(), mco_lat=None, mco_lng=None)
+    new_addr = message.text.strip()
+    data = await state.get_data()
+    if new_addr == data.get("mco_address"):
+        await state.update_data(mco_address=new_addr)  # unchanged → keep any location
+    else:
+        await state.update_data(mco_address=new_addr, mco_lat=None, mco_lng=None)
     await _mco_show_confirm(message, state)
 
 

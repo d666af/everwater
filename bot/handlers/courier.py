@@ -1096,6 +1096,9 @@ async def courier_co_select_addr(call: CallbackQuery, state: FSMContext):
         return
 
     lat, lng = _cco_addr_coords(data.get("co_client"), addr)
+    # Keep a manually-dropped location if re-selecting the same address.
+    if (lat is None or lng is None) and addr == data.get("co_address"):
+        lat, lng = data.get("co_lat"), data.get("co_lng")
     await state.update_data(co_address=addr, co_lat=lat, co_lng=lng)
     await call.answer()
     await _cco_show_confirm(call, state)
@@ -1103,8 +1106,12 @@ async def courier_co_select_addr(call: CallbackQuery, state: FSMContext):
 
 @router.message(CourierOrderCreate.waiting_address)
 async def courier_co_address(message: Message, state: FSMContext):
-    # Newly typed address has no saved map point yet.
-    await state.update_data(co_address=message.text.strip(), co_lat=None, co_lng=None)
+    new_addr = message.text.strip()
+    data = await state.get_data()
+    if new_addr == data.get("co_address"):
+        await state.update_data(co_address=new_addr)  # unchanged → keep any location
+    else:
+        await state.update_data(co_address=new_addr, co_lat=None, co_lng=None)
     await _cco_show_confirm(message, state)
 
 
