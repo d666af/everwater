@@ -744,13 +744,35 @@ async def cancel_reason_cb(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cancel_order:"))
 async def cancel_order_cb(call: CallbackQuery):
-    # Legacy handler — now redirect to req_cancel
+    order_id = int(call.data.split(":")[1])
+    await call.answer()
+    await call.message.answer(
+        f"⚠️ Точно отменить заказ #{order_id}?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"cxl_order_yes:{order_id}"),
+            InlineKeyboardButton(text="↩️ Нет", callback_data="cxl:no"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("cxl_order_yes:"))
+async def cancel_order_yes_cb(call: CallbackQuery):
     order_id = int(call.data.split(":")[1])
     result = await api.cancel_order(order_id)
     if result:
         await call.message.edit_text("🚫 Заказ отменён.")
     else:
         await call.answer("Не удалось отменить заказ. Обратитесь в поддержку.", show_alert=True)
+    await call.answer()
+
+
+@router.callback_query(F.data == "cxl:no")
+async def cxl_dismiss_cb(call: CallbackQuery):
+    """Shared 'Нет' handler for cancel confirmations — just removes the prompt."""
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
     await call.answer()
 
 

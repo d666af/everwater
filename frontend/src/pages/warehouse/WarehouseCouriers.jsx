@@ -581,6 +581,7 @@ function CancelBatchModal({ label, onClose }) {
   useEffect(() => { load() }, [load])
 
   const doCancel = async (batchId) => {
+    if (!window.confirm('Отменить эту выдачу? Товар вернётся на склад. Действие необратимо.')) return
     setCancelling(batchId)
     try {
       await cancelIssueBatch(batchId)
