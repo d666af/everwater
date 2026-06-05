@@ -222,7 +222,7 @@ function OrderCard({ order, onEditItems }) {
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: TEXT }}>{(order.total || 0).toLocaleString()} сум</div>
-            {(order.agent_earning || 0) > 0 && (
+            {order.status === 'delivered' && (order.agent_earning || 0) > 0 && (
               <div style={{ fontSize: 12, fontWeight: 700, color: '#2B8A3E' }}>+{(order.agent_earning || 0).toLocaleString()} зар.</div>
             )}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginTop: 4, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>
