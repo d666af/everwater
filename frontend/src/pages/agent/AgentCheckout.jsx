@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { courierCreateOrder, lookupClientByPhone, getProducts } from '../../api'
 import { useAuthStore } from '../../store/auth'
+import MapPicker from '../../components/MapPicker'
 
 const tg = window.Telegram?.WebApp
 
@@ -73,6 +74,7 @@ export default function AgentCheckout() {
   const [extraInfo, setExtraInfo] = useState('')
   const [lat, setLat] = useState(null)
   const [lng, setLng] = useState(null)
+  const [showMap, setShowMap] = useState(false)
   const [products, setProducts] = useState([])
   const [selected, setSelected] = useState({})
   const [returnBottles, setReturnBottles] = useState(0)
@@ -260,7 +262,54 @@ export default function AgentCheckout() {
           <input style={{ border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '13px 15px', fontSize: 16, outline: 'none', background: '#FAFAFA', color: TEXT, width: '100%', boxSizing: 'border-box' }}
             placeholder="Ориентир (необязательно)" value={extraInfo}
             onChange={e => setExtraInfo(e.target.value)} />
+
+          {/* Map point — optional. For new addresses or saved ones without coords. */}
+          {address.trim() && <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setShowMap(true)}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                padding: '11px 14px', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: lat && lng ? `1.5px solid ${C}` : `1.5px solid ${BORDER}`,
+                background: lat && lng ? `${C}14` : '#FAFAFA',
+                color: lat && lng ? CD : TEXT2,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+                <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.8"/>
+              </svg>
+              {lat && lng ? 'Точка на карте указана — изменить' : 'Указать точку на карте'}
+            </button>
+            {lat && lng && (
+              <button
+                type="button"
+                onClick={() => { setLat(null); setLng(null) }}
+                title="Убрать точку"
+                style={{
+                  width: 40, height: 40, flexShrink: 0, borderRadius: 12, cursor: 'pointer',
+                  border: '1.5px solid rgba(224,49,49,0.25)', background: '#FFF5F5', color: '#E03131',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: TEXT2 }}>Необязательно</div>
+          </>}
         </div>
+
+        {showMap && (
+          <MapPicker
+            lat={lat}
+            lng={lng}
+            onChange={(la, ln) => { setLat(la); setLng(ln) }}
+            onClose={() => setShowMap(false)}
+          />
+        )}
 
         {/* Products */}
         <div style={{ background: '#fff', borderRadius: 16, padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>

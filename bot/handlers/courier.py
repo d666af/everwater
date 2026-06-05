@@ -3,7 +3,7 @@ from urllib.parse import quote
 
 from aiogram import Router, F
 from aiogram.types import (
-    Message, CallbackQuery, ReplyKeyboardRemove,
+    Message, CallbackQuery, ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
 )
 from aiogram.filters import Command
@@ -85,6 +85,7 @@ class CourierOrderCreate(StatesGroup):
     waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address = State()
+    waiting_location = State()
     confirming = State()
 
 
@@ -653,6 +654,18 @@ def _cco_qty_text(pid: str, products: list, items: dict) -> str:
     return "\n".join(lines)
 
 
+def _cco_addr_coords(client: dict | None, address: str):
+    """Return (lat, lng) of a saved address for this client, or (None, None)."""
+    if not client or not address:
+        return None, None
+    for a in (client.get("order_addresses") or []):
+        if isinstance(a, dict) and (a.get("address") or "").strip() == address.strip():
+            lat, lng = a.get("lat"), a.get("lng")
+            if lat is not None and lng is not None:
+                return lat, lng
+    return None, None
+
+
 def _cco_confirm_text(data: dict, products: list) -> str:
     client = data.get("co_client")
     phone = data.get("co_phone", "—")
@@ -670,6 +683,8 @@ def _cco_confirm_text(data: dict, products: list) -> str:
     else:
         lines.append(f"👤 {phone}")
     lines.append(f"📍 {address}")
+    if data.get("co_lat") is not None and data.get("co_lng") is not None:
+        lines.append("🗺 Локация прикреплена ✓")
     lines.append("\nТовары:")
 
     total = 0
@@ -695,16 +710,19 @@ def _cco_confirm_text(data: dict, products: list) -> str:
     return "\n".join(lines)
 
 
-def _cco_confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def _cco_confirm_kb(has_location: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton(text="✏️ Состав", callback_data="cco:edit:items"),
             InlineKeyboardButton(text="♻️ Возврат", callback_data="cco:edit:bottles"),
             InlineKeyboardButton(text="📍 Адрес", callback_data="cco:edit:address"),
         ],
-        [InlineKeyboardButton(text="✅ Создать заказ", callback_data="cco:confirm")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cco:cancel")],
-    ])
+    ]
+    if not has_location:
+        rows.append([InlineKeyboardButton(text="📍 Добавить локацию", callback_data="cco:add_location")])
+    rows.append([InlineKeyboardButton(text="✅ Создать заказ", callback_data="cco:confirm")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cco:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _cco_addr_kb(options: list) -> InlineKeyboardMarkup:
@@ -739,7 +757,8 @@ async def _cco_show_confirm(target, state: FSMContext):
     data = await state.get_data()
     products = data.get("co_products", [])
     text = _cco_confirm_text(data, products)
-    kb = _cco_confirm_kb()
+    has_loc = data.get("co_lat") is not None and data.get("co_lng") is not None
+    kb = _cco_confirm_kb(has_loc)
     await state.set_state(CourierOrderCreate.confirming)
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1076,14 +1095,51 @@ async def courier_co_select_addr(call: CallbackQuery, state: FSMContext):
         await call.answer("Ошибка выбора")
         return
 
-    await state.update_data(co_address=addr)
+    lat, lng = _cco_addr_coords(data.get("co_client"), addr)
+    await state.update_data(co_address=addr, co_lat=lat, co_lng=lng)
     await call.answer()
     await _cco_show_confirm(call, state)
 
 
 @router.message(CourierOrderCreate.waiting_address)
 async def courier_co_address(message: Message, state: FSMContext):
-    await state.update_data(co_address=message.text.strip())
+    # Newly typed address has no saved map point yet.
+    await state.update_data(co_address=message.text.strip(), co_lat=None, co_lng=None)
+    await _cco_show_confirm(message, state)
+
+
+# ─── Add location (geolocation) during order creation ─────────────────────────
+
+@router.callback_query(CourierOrderCreate.confirming, F.data == "cco:add_location")
+async def courier_co_add_location(call: CallbackQuery, state: FSMContext):
+    await state.set_state(CourierOrderCreate.waiting_location)
+    await call.answer()
+    await call.message.answer(
+        "📍 Отправьте геолокацию точки доставки кнопкой ниже — она будет прикреплена к адресу заказа.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+                [KeyboardButton(text="↩️ Без локации")],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(CourierOrderCreate.waiting_location, F.location)
+async def courier_co_location_received(message: Message, state: FSMContext):
+    await state.update_data(
+        co_lat=message.location.latitude,
+        co_lng=message.location.longitude,
+    )
+    await message.answer("✅ Локация прикреплена к адресу.", reply_markup=ReplyKeyboardRemove())
+    await _cco_show_confirm(message, state)
+
+
+@router.message(CourierOrderCreate.waiting_location)
+async def courier_co_location_skip(message: Message, state: FSMContext):
+    await message.answer("Продолжаем без локации.", reply_markup=ReplyKeyboardRemove())
     await _cco_show_confirm(message, state)
 
 
@@ -1142,6 +1198,8 @@ async def courier_co_confirm(call: CallbackQuery, state: FSMContext):
             "return_bottles_count": return_bottles,
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
+            "latitude": data.get("co_lat"),
+            "longitude": data.get("co_lng"),
             "courier_telegram_id": call.from_user.id,
             "creator_role": "courier",
             "creator_name": (courier_self or {}).get("name") or call.from_user.full_name or "",
