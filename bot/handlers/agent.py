@@ -55,6 +55,7 @@ class AcoOrderCreate(StatesGroup):
     waiting_lent_bottles = State()
     choosing_address = State()
     waiting_address  = State()
+    waiting_location = State()
     confirming       = State()
 
 
@@ -205,6 +206,18 @@ def _qty_text(pid: str, products: list, items: dict) -> str:
     return "\n".join(lines)
 
 
+def _addr_coords(client: dict | None, address: str):
+    """Return (lat, lng) of a saved address for this client, or (None, None)."""
+    if not client or not address:
+        return None, None
+    for a in (client.get("order_addresses") or []):
+        if isinstance(a, dict) and (a.get("address") or "").strip() == address.strip():
+            lat, lng = a.get("lat"), a.get("lng")
+            if lat is not None and lng is not None:
+                return lat, lng
+    return None, None
+
+
 def _confirm_text(data: dict, products: list) -> str:
     client = data.get("aco_client")
     phone = data.get("aco_phone", "—")
@@ -219,6 +232,8 @@ def _confirm_text(data: dict, products: list) -> str:
     _cname = client.get('name') or (client.get('order_addresses') or [{}])[0].get('address', '—') if client else None
     lines.append(f"👤 {_cname} · {phone}" if client else f"👤 {phone}")
     lines.append(f"📍 {address}")
+    if data.get("aco_lat") is not None and data.get("aco_lng") is not None:
+        lines.append("🗺 Локация прикреплена ✓")
     lines.append("\nТовары:")
 
     total = 0
@@ -244,16 +259,19 @@ def _confirm_text(data: dict, products: list) -> str:
     return "\n".join(lines)
 
 
-def _confirm_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def _confirm_kb(has_location: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton(text="✏️ Состав",  callback_data="aco:edit:items"),
             InlineKeyboardButton(text="♻️ Возврат", callback_data="aco:edit:bottles"),
             InlineKeyboardButton(text="📍 Адрес",   callback_data="aco:edit:address"),
         ],
-        [InlineKeyboardButton(text="✅ Создать заказ", callback_data="aco:confirm")],
-        [InlineKeyboardButton(text="❌ Отмена",        callback_data="aco:cancel")],
-    ])
+    ]
+    if not has_location:
+        rows.append([InlineKeyboardButton(text="📍 Добавить локацию", callback_data="aco:add_location")])
+    rows.append([InlineKeyboardButton(text="✅ Создать заказ", callback_data="aco:confirm")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="aco:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _addr_kb(options: list) -> InlineKeyboardMarkup:
@@ -288,7 +306,8 @@ async def _show_confirm(target, state: FSMContext):
     data = await state.get_data()
     products = data.get("aco_products", [])
     text = _confirm_text(data, products)
-    kb = _confirm_kb()
+    has_loc = data.get("aco_lat") is not None and data.get("aco_lng") is not None
+    kb = _confirm_kb(has_loc)
     await state.set_state(AcoOrderCreate.confirming)
     if isinstance(target, CallbackQuery):
         try:
@@ -593,14 +612,51 @@ async def aco_select_addr(call: CallbackQuery, state: FSMContext):
     except (ValueError, IndexError):
         await call.answer("Ошибка выбора")
         return
-    await state.update_data(aco_address=addr)
+    lat, lng = _addr_coords(data.get("aco_client"), addr)
+    await state.update_data(aco_address=addr, aco_lat=lat, aco_lng=lng)
     await call.answer()
     await _show_confirm(call, state)
 
 
 @router.message(AcoOrderCreate.waiting_address)
 async def aco_address(message: Message, state: FSMContext):
-    await state.update_data(aco_address=message.text.strip())
+    # Newly typed address has no saved map point yet.
+    await state.update_data(aco_address=message.text.strip(), aco_lat=None, aco_lng=None)
+    await _show_confirm(message, state)
+
+
+# ─── Add location (geolocation) ───────────────────────────────────────────────
+
+@router.callback_query(AcoOrderCreate.confirming, F.data == "aco:add_location")
+async def aco_add_location(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AcoOrderCreate.waiting_location)
+    await call.answer()
+    await call.message.answer(
+        "📍 Отправьте геолокацию точки доставки кнопкой ниже — она будет прикреплена к адресу заказа.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📍 Отправить геолокацию", request_location=True)],
+                [KeyboardButton(text="↩️ Без локации")],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(AcoOrderCreate.waiting_location, F.location)
+async def aco_location_received(message: Message, state: FSMContext):
+    await state.update_data(
+        aco_lat=message.location.latitude,
+        aco_lng=message.location.longitude,
+    )
+    await message.answer("✅ Локация прикреплена к адресу.", reply_markup=ReplyKeyboardRemove())
+    await _show_confirm(message, state)
+
+
+@router.message(AcoOrderCreate.waiting_location)
+async def aco_location_skip(message: Message, state: FSMContext):
+    await message.answer("Продолжаем без локации.", reply_markup=ReplyKeyboardRemove())
     await _show_confirm(message, state)
 
 
@@ -656,6 +712,8 @@ async def aco_confirm(call: CallbackQuery, state: FSMContext):
             "return_bottles_count": return_bottles,
             "bottles_lent": lent_bottles,
             "bottle_surcharge": surcharge,
+            "latitude": data.get("aco_lat"),
+            "longitude": data.get("aco_lng"),
             "creator_role": "agent",
             "creator_name": (agent_self or {}).get("name") or call.from_user.full_name or "",
             "agent_id": agent_id,
