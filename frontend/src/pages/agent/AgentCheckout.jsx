@@ -84,10 +84,17 @@ export default function AgentCheckout() {
   const [lastTotal, setLastTotal] = useState(0)
   const debounceRef = useRef(null)
 
+  const refreshProducts = useRef(() => {})
+  refreshProducts.current = () =>
+    getProducts().then(p => setProducts((p || []).filter(x => x.is_active !== false))).catch(() => {})
+
   useEffect(() => {
     tg?.ready?.()
     tg?.expand?.()
-    getProducts().then(p => setProducts((p || []).filter(x => x.is_active !== false))).catch(() => {})
+    refreshProducts.current()
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshProducts.current() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   const handlePhoneChange = (val) => {
@@ -155,6 +162,7 @@ export default function AgentCheckout() {
     setPhone(''); setClient(null); setNotFound(false)
     setAddress(''); setExtraInfo(''); setLat(null); setLng(null)
     setSelected({}); setReturnBottles(0); setLentBottles(0); setSuccess(false)
+    refreshProducts.current()
   }
 
   const handle = async () => {
