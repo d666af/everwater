@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getAdminCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, findOrCreateWarehouseCourier, createFactory } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getWarehouseOnlyCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, findOrCreateWarehouseCourier, createFactory } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -495,9 +495,11 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
     return [...cs, ...fs]
   }
 
+  const entityScrollRef = useRef(null)
+
   const loadAll = async () => {
     try {
-      const [cs, fs] = await Promise.all([getAdminCouriers(), getFactories()])
+      const [cs, fs] = await Promise.all([getWarehouseOnlyCouriers(), getFactories()])
       const all = buildEntities(cs, fs)
       setEntities(all)
       setSelectedKey(prev => (prev && all.find(e => e._key === prev)) ? prev : (all[0]?._key ?? null))
@@ -510,6 +512,12 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
       setCatalog((ps || []).filter(p => p.is_active !== false).map(p => ({ id: p.id, name: p.name })))
     }).catch(console.error)
   }, []) // eslint-disable-line
+
+  useEffect(() => {
+    if (!entityScrollRef.current || !selectedKey) return
+    const btn = entityScrollRef.current.querySelector(`[data-ekey="${selectedKey}"]`)
+    btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }, [selectedKey])
 
   const selectedEntity = entities.find(e => e._key === selectedKey) || null
   const isCourier = selectedEntity?.type === 'courier'
@@ -740,12 +748,12 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
               <button onClick={() => setEntitySearch('')} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: TEXT2, fontSize: 14, lineHeight: 1, padding: 2 }}>✕</button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+          <div ref={entityScrollRef} style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {entities.filter(e => !entitySearch.trim() || [e.name, e.phone].some(v => v && String(v).toLowerCase().includes(entitySearch.trim().toLowerCase()))).map(e => {
               const isSelected = selectedKey === e._key
               const isFac = e.type === 'factory'
               return (
-                <button key={e._key} onClick={() => selectEntity(e)} style={{
+                <button key={e._key} data-ekey={e._key} onClick={() => selectEntity(e)} style={{
                   padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
                   background: isSelected ? (isFac ? 'linear-gradient(135deg, #B14CD0, #9C36B5)' : GRAD) : '#F8F9FA',
                   color: isSelected ? '#fff' : TEXT,
