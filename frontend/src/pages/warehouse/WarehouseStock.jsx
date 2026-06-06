@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal, { toISODate } from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getWarehouseOnlyCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, findOrCreateWarehouseCourier, createFactory } from '../../api'
+import { getWarehouseOverview, addProduction, getSubscriptionsByPeriod, getProductionPlan, getProducts, issueBatchToCourier, adjustStock, getWarehouseCouriers, getInvoiceUrl, getFactories, factoryIssueBatch, factoryReturnBatch, findOrCreateWarehouseCourier, createFactory } from '../../api'
 import ReportModal from '../../components/warehouse/ReportModal'
 import { useAuthStore } from '../../store/auth'
 import { useSubscriptionsEnabled } from '../../hooks/useSubscriptionsEnabled'
@@ -499,7 +499,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
   const loadAll = async () => {
     try {
-      const [cs, fs] = await Promise.all([getWarehouseOnlyCouriers(), getFactories()])
+      const [cs, fs] = await Promise.all([getWarehouseCouriers(), getFactories()])
       const all = buildEntities(cs, fs)
       setEntities(all)
       setSelectedKey(prev => (prev && all.find(e => e._key === prev)) ? prev : (all[0]?._key ?? null))
