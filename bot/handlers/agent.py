@@ -672,9 +672,10 @@ async def aco_location_skip(message: Message, state: FSMContext):
 @router.callback_query(AcoOrderCreate.confirming, F.data == "aco:edit:items")
 async def aco_edit_items(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    products = data.get("aco_products", [])
+    products = await api.get_products()
+    products = [p for p in products if p.get("is_active", True)]
     items = data.get("aco_items", {})
-    await state.update_data(aco_edit_mode=True)
+    await state.update_data(aco_edit_mode=True, aco_products=products)
     await state.set_state(AcoOrderCreate.choosing_product)
     await call.message.edit_text(_grid_text(items, products), reply_markup=_grid_kb(products, items), parse_mode="HTML")
     await call.answer()
