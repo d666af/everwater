@@ -330,41 +330,43 @@ function CourierCard({ c, onReport, onCancel, onDebtAdj, onSoldAdj }) {
         </div>
       </div>
 
-      {/* Action buttons row */}
-      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-        <button onClick={onReport} style={{
-          flex: 1, padding: '8px 12px', borderRadius: 10,
-          border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
-          fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-        }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-          Отчёт
-        </button>
-        <button onClick={onDebtAdj} style={{
-          padding: '8px 10px', borderRadius: 10,
-          border: '1px solid rgba(0,119,182,0.25)', background: '#E0F4FF', color: '#0077B6',
-          fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          whiteSpace: 'nowrap',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Долг
-        </button>
-        <button onClick={onSoldAdj} style={{
-          padding: '8px 10px', borderRadius: 10,
-          border: '1px solid rgba(0,119,182,0.25)', background: '#E7F5FF', color: '#0077B6',
-          fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          whiteSpace: 'nowrap',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
-          Продано
-        </button>
+      {/* Action buttons */}
+      <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onReport} style={{
+            flex: 1, padding: '8px 12px', borderRadius: 10,
+            border: `1px solid ${BORDER}`, background: '#FAFAFA', color: TEXT2,
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            Отчёт
+          </button>
+          <button onClick={onDebtAdj} style={{
+            padding: '8px 10px', borderRadius: 10,
+            border: '1px solid rgba(0,119,182,0.25)', background: '#E0F4FF', color: '#0077B6',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            whiteSpace: 'nowrap',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            Долг
+          </button>
+          <button onClick={onSoldAdj} style={{
+            padding: '8px 10px', borderRadius: 10,
+            border: '1px solid rgba(0,119,182,0.25)', background: '#E7F5FF', color: '#0077B6',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            whiteSpace: 'nowrap',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            Продано
+          </button>
+        </div>
         <button onClick={onCancel} style={{
-          flex: 1, padding: '8px 12px', borderRadius: 10,
+          width: '100%', padding: '8px 12px', borderRadius: 10,
           border: '1px solid rgba(224,49,49,0.2)', background: '#FFF5F5', color: '#E03131',
-          fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer', boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
