@@ -985,6 +985,22 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
     )
     last_order_map = {row.user_id: row.last_at for row in last_order_q.all()}
 
+    # Cooler debt per user: sum(price) - sum(payments) across all their coolers
+    from app.models.cooler import Cooler, CoolerPayment as _CoolerPayment
+    cooler_price_q = await db.execute(
+        select(Cooler.user_id, func.sum(Cooler.price).label('total_price'))
+        .where(Cooler.user_id.isnot(None))
+        .group_by(Cooler.user_id)
+    )
+    cooler_price_map = {row.user_id: float(row.total_price or 0) for row in cooler_price_q.all()}
+    cooler_paid_q = await db.execute(
+        select(Cooler.user_id, func.sum(_CoolerPayment.amount).label('total_paid'))
+        .join(_CoolerPayment, _CoolerPayment.cooler_id == Cooler.id)
+        .where(Cooler.user_id.isnot(None))
+        .group_by(Cooler.user_id)
+    )
+    cooler_paid_map = {row.user_id: float(row.total_paid or 0) for row in cooler_paid_q.all()}
+
     # Most recent order address per user (for nameless unregistered clients)
     from sqlalchemy import text as _text
     recent_addr_q = await db.execute(
@@ -1016,6 +1032,7 @@ async def get_all_users(db: AsyncSession = Depends(get_db)):
             "orders_count": orders_map.get(u.id, 0),
             "bottles_owed": bottles_map.get(u.id, 0),
             "lent_bottles": lent_map.get(u.id, 0),
+            "cooler_debt": max(0.0, cooler_price_map.get(u.id, 0.0) - cooler_paid_map.get(u.id, 0.0)),
             "last_order_at": last_order_map.get(u.id),
             "last_order_address": recent_addr_map.get(u.id),
             "customer_label": _label(u.id),
