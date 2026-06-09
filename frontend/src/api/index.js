@@ -1028,7 +1028,7 @@ export const getFactoryStats = (period = 'today', date = null, dateTo = null) =>
     () => []
   )
 
-export const factoryIssueBatch = (factoryName, items, performedBy, createdAt) =>
+export const factoryIssueBatch = (factoryName, items, performedBy, createdAt, bottleReturn = 0) =>
   safeCall(
     () => http.post('/warehouse/factory_issue_batch', {
       factory_name: factoryName,
@@ -1036,6 +1036,7 @@ export const factoryIssueBatch = (factoryName, items, performedBy, createdAt) =>
       performed_by: performedBy || undefined,
       performed_by_role: 'warehouse',
       created_at: createdAt || undefined,
+      bottle_return: bottleReturn || undefined,
     }).then(r => r.data),
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )

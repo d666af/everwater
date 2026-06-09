@@ -98,7 +98,7 @@ export default function WarehouseStock({ Layout = WarehouseLayout, title = 'Ск
           const res = await issueBatchToCourier(entity.id, items, actor, vt, vp, null, bottleReturn, createdAt)
           if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
         } else {
-          const res = await factoryIssueBatch(entity.name, items, actor, createdAt)
+          const res = await factoryIssueBatch(entity.name, items, actor, createdAt, type === 'other' ? bottleReturn : 0)
           if (res?.batch_id) setInvoiceModal({ batchId: res.batch_id, courierName: entity.name })
         }
         load()
@@ -491,7 +491,11 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
   const buildEntities = (couriers, factories) => {
     const cs = (couriers || []).filter(c => c.is_active !== false).map(c => ({ ...c, type: 'courier', _key: `c_${c.id}` }))
-    const fs = (factories || []).filter(f => f.is_active !== false).map(f => ({ ...f, type: 'factory', _key: `f_${f.id}` }))
+    const fs = (factories || []).filter(f => f.is_active !== false).map(f => ({
+      ...f,
+      type: (f.category === 'other' || f.name === 'НАХТ') ? 'other' : 'factory',
+      _key: `f_${f.id}`,
+    }))
     return [...cs, ...fs]
   }
 
@@ -521,6 +525,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
   const selectedEntity = entities.find(e => e._key === selectedKey) || null
   const isCourier = selectedEntity?.type === 'courier'
+  const isOther = selectedEntity?.type === 'other'
 
   const selectEntity = (e) => {
     setSelectedKey(e._key)
@@ -538,7 +543,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
   const parsedReturn = Math.max(0, Number(bottleReturn) || 0)
   const canSubmit = selectedEntity && (
-    isCourier ? (batchItems.length > 0 || parsedReturn > 0) : batchItems.length > 0
+    (isCourier || isOther) ? (batchItems.length > 0 || parsedReturn > 0) : batchItems.length > 0
   )
   const isBackdated = issueDate !== todayISO()
 
@@ -559,7 +564,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
         selectedEntity.type,
         selectedEntity,
         batchItems,
-        isCourier ? parsedReturn : 0,
+        (isCourier || isOther) ? parsedReturn : 0,
         isCourier ? (vehicleType.trim() || null) : null,
         isCourier ? (vehiclePlate.trim() || null) : null,
         'issue',
@@ -704,8 +709,8 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
 
         {/* Fixed footer */}
         <div style={{ padding: '8px 16px 28px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${BORDER}` }}>
-          {/* Bottle return — couriers only */}
-          {isCourier && <>
+          {/* Bottle return — couriers and "other" (e.g. НАХТ) */}
+          {(isCourier || isOther) && <>
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Возврат</div>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
@@ -751,7 +756,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
           <div ref={entityScrollRef} style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {entities.filter(e => !entitySearch.trim() || [e.name, e.phone].some(v => v && String(v).toLowerCase().includes(entitySearch.trim().toLowerCase()))).map(e => {
               const isSelected = selectedKey === e._key
-              const isFac = e.type === 'factory'
+              const isFac = e.type === 'factory' || e.type === 'other'
               return (
                 <button key={e._key} data-ekey={e._key} onClick={() => selectEntity(e)} style={{
                   padding: '7px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
@@ -762,7 +767,7 @@ function IssueToCourierModal({ onClose, onSave, onRefresh }) {
                 }}>
                   <span>{e.name}</span>
                   {!isFac && e.phone && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{e.phone}</span>}
-                  {isFac && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{e.category === 'other' ? 'Другое' : 'Завод'}</span>}
+                  {isFac && <span style={{ fontSize: 10, opacity: 0.8, fontWeight: 500 }}>{e.type === 'other' ? 'Другое' : 'Завод'}</span>}
                 </button>
               )
             })}
