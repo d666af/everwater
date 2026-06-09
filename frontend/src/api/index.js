@@ -835,6 +835,27 @@ export const getAgentOrders = (agentId, params = {}) =>
     () => []
   )
 
+export const getAgentBalance = (agentId) =>
+  safeCall(
+    () => http.get(`/agents/${agentId}/balance`).then(r => r.data),
+    () => ({ agent_id: agentId, earned: 0, paid_out: 0, owed: 0 })
+  )
+
+export const createAgentPayout = (agentId, data) =>
+  http.post(`/agents/${agentId}/payouts`, data).then(r => r.data)
+
+export const getAgentPayouts = (agentId, limit = 50) =>
+  safeCall(
+    () => http.get(`/agents/${agentId}/payouts`, { params: { limit } }).then(r => r.data),
+    () => []
+  )
+
+export const getAgentPayoutStats = () =>
+  safeCall(
+    () => http.get('/agents/payouts/stats').then(r => r.data),
+    () => ({ today_paid_out: 0, total_owed: 0, per_agent: [] })
+  )
+
 // ─── Warehouse Staff ──────────────────────────────────────────────────────────
 export const getWarehouseStaff = () =>
   safeCall(
@@ -1028,7 +1049,7 @@ export const getFactoryStats = (period = 'today', date = null, dateTo = null) =>
     () => []
   )
 
-export const factoryIssueBatch = (factoryName, items, performedBy, createdAt) =>
+export const factoryIssueBatch = (factoryName, items, performedBy, createdAt, bottleReturn = 0) =>
   safeCall(
     () => http.post('/warehouse/factory_issue_batch', {
       factory_name: factoryName,
@@ -1036,6 +1057,7 @@ export const factoryIssueBatch = (factoryName, items, performedBy, createdAt) =>
       performed_by: performedBy || undefined,
       performed_by_role: 'warehouse',
       created_at: createdAt || undefined,
+      bottle_return: bottleReturn || undefined,
     }).then(r => r.data),
     () => ({ ok: true, batch_id: 'mock-' + Date.now() })
   )

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { useAuthStore } from '../../store/auth'
 import AdminLayout from '../../components/admin/AdminLayout'
 import ManagerClients from '../manager/ManagerClients'
 import ManagerCouriers from '../manager/ManagerCouriers'
-import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deleteAgent, linkAgentTelegram, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders, getAdmins, addAdminUser, removeAdminUser, checkIsMainAdmin } from '../../api'
+import { getAdminManagers, createManager, deleteManager, broadcastMessage, getAgents, createAgent, deleteAgent, linkAgentTelegram, getWarehouseStaff, addWarehouseStaff, removeWarehouseStaff, getAgentOrders, getAdmins, addAdminUser, removeAdminUser, checkIsMainAdmin, getAgentBalance, createAgentPayout, getAgentPayouts } from '../../api'
 import { formatPhone } from '../../utils/phone'
 import AgentReportModal from '../../components/AgentReportModal'
 
@@ -313,15 +315,141 @@ function WarehouseTab() {
   )
 }
 
-function AgentCard({ agent: a, onDelete, onRefresh }) {
+function AgentPayoutModal({ agent, onClose, onSaved, performedBy, performedByRole }) {
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [history, setHistory] = useState([])
+  const [histLoading, setHistLoading] = useState(true)
+  const [showHistory, setShowHistory] = useState(false)
+
+  useEffect(() => {
+    getAgentPayouts(agent.id).then(setHistory).catch(() => {}).finally(() => setHistLoading(false))
+  }, [agent.id])
+
+  const ROLE_LABELS = { admin: 'Админ', manager: 'Менеджер', warehouse: 'Завсклада' }
+
+  const handleSave = async () => {
+    const num = parseFloat(amount)
+    if (!num || isNaN(num)) { setError('Введите сумму'); return }
+    setSaving(true); setError('')
+    try {
+      await createAgentPayout(agent.id, { amount: num, note: note.trim() || null, performed_by: performedBy, performed_by_role: performedByRole })
+      onSaved()
+      onClose()
+    } catch { setError('Ошибка при сохранении') } finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9200, display: 'flex', alignItems: 'flex-end' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '14px 20px 0', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 4, borderRadius: 99, background: '#E0E0E5', margin: '0 auto 14px' }} />
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, marginBottom: 4 }}>Выплата заработка</div>
+          <div style={{ fontSize: 13, color: TEXT2, marginBottom: 14 }}>{agent.name}</div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Сумма выплаты (сум)</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+            {[1000, 5000, 10000, 50000].map(v => (
+              <button key={v} onClick={() => setAmount(String((parseFloat(amount) || 0) + v))}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: `1.5px solid ${BORDER}`, background: '#F8F9FA', color: TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                +{(v/1000).toFixed(0)}к
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="0"
+            value={amount}
+            onChange={e => { setAmount(e.target.value); setError('') }}
+            style={{ width: '100%', fontSize: 22, fontWeight: 800, textAlign: 'center', padding: '12px 0', borderRadius: 14, border: `2px solid ${error ? '#FA5252' : BORDER}`, outline: 'none', color: TEXT, marginBottom: 12, boxSizing: 'border-box', fontFamily: 'inherit' }}
+          />
+          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Примечание (необязательно)</div>
+          <input
+            type="text"
+            placeholder="Например: за неделю"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            style={{ width: '100%', fontSize: 14, padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, outline: 'none', color: TEXT, marginBottom: 16, boxSizing: 'border-box', fontFamily: 'inherit' }}
+          />
+          {error && <div style={{ fontSize: 12, color: '#FA5252', marginBottom: 10 }}>{error}</div>}
+
+          <button onClick={() => setShowHistory(h => !h)}
+            style={{ width: '100%', padding: '10px 0', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: showHistory ? '#F0FFF4' : '#F8F9FA', color: showHistory ? CD : TEXT2, fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8v4l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/></svg>
+            История выплат
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: showHistory ? 'rotate(180deg)' : 'none' }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+
+          {showHistory && (
+            <div style={{ marginBottom: 16 }}>
+              {histLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', border: `2.5px solid ${C}30`, borderTop: `2.5px solid ${C}`, animation: 'spin 0.8s linear infinite' }} />
+                </div>
+              ) : history.length === 0 ? (
+                <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: '12px 0' }}>Выплат ещё не было</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {history.map((h, i) => {
+                    const dt = new Date(h.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                    const roleLabel = ROLE_LABELS[h.performed_by_role] || h.performed_by_role || ''
+                    return (
+                      <div key={h.id} style={{ padding: '8px 0', borderBottom: i < history.length - 1 ? `1px solid rgba(60,60,67,0.07)` : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: TEXT2 }}>
+                              {roleLabel && <span>{roleLabel} </span>}{h.performed_by || '—'}
+                            </div>
+                            {h.note && <div style={{ fontSize: 11, color: TEXT2, marginTop: 1 }}>{h.note}</div>}
+                            <div style={{ fontSize: 10, color: TEXT2, marginTop: 1 }}>{dt}</div>
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: h.amount >= 0 ? '#2B8A3E' : '#E03131', flexShrink: 0 }}>
+                            {h.amount >= 0 ? '+' : ''}{h.amount.toLocaleString()} сум
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: '12px 20px 32px', borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+          <button disabled={saving} onClick={handleSave}
+            style={{ padding: '15px 0', borderRadius: 14, border: 'none', background: saving ? '#C8D6BC' : `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontSize: 16, fontWeight: 800, cursor: saving ? 'default' : 'pointer', boxShadow: saving ? 'none' : '0 4px 14px rgba(141,198,63,0.35)' }}>
+            {saving ? 'Сохранение…' : '💵 Выдать заработок'}
+          </button>
+          <button onClick={onClose}
+            style={{ padding: '14px 0', borderRadius: 14, border: `1.5px solid ${BORDER}`, background: 'none', color: TEXT2, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function AgentCard({ agent: a, onDelete, onRefresh, performedBy, performedByRole }) {
   const [showReport, setShowReport] = useState(false)
+  const [showPayout, setShowPayout] = useState(false)
   const [orderCount, setOrderCount] = useState(null)
+  const [balance, setBalance] = useState(null)
   const [tgInput, setTgInput] = useState('')
   const [tgSaving, setTgSaving] = useState(false)
   const [tgError, setTgError] = useState('')
 
+  const loadBalance = () => getAgentBalance(a.id).then(setBalance).catch(() => {})
+
   useEffect(() => {
     getAgentOrders(a.id).then(r => setOrderCount((r || []).length)).catch(() => {})
+    loadBalance()
   }, [a.id])
 
   const handleLinkTelegram = async () => {
@@ -339,6 +467,7 @@ function AgentCard({ agent: a, onDelete, onRefresh }) {
   return (
     <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)', border: `1px solid ${BORDER}`, opacity: a.is_active ? 1 : 0.6 }}>
       {showReport && <AgentReportModal agentId={a.id} agentName={a.name} onClose={() => setShowReport(false)} />}
+      {showPayout && <AgentPayoutModal agent={a} onClose={() => setShowPayout(false)} onSaved={loadBalance} performedBy={performedBy} performedByRole={performedByRole} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: a.is_active ? `linear-gradient(135deg, ${C}, ${CD})` : '#E0E0E5', color: '#fff', fontWeight: 800, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {(a.name || 'А')[0].toUpperCase()}
@@ -386,7 +515,7 @@ function AgentCard({ agent: a, onDelete, onRefresh }) {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px' }}>
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: '#F0FFF4', border: '1px solid rgba(141,198,63,0.18)', flex: 1 }}>
           <span style={{ fontSize: 16 }}>📦</span>
           <div style={{ minWidth: 0 }}>
@@ -394,9 +523,41 @@ function AgentCard({ agent: a, onDelete, onRefresh }) {
             <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>Заказов</div>
           </div>
         </div>
+        {balance && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, background: balance.owed > 0 ? '#FFF8E7' : '#F8FFF4', border: `1px solid ${balance.owed > 0 ? 'rgba(230,119,0,0.2)' : 'rgba(141,198,63,0.18)'}`, flex: 1 }}>
+            <span style={{ fontSize: 16 }}>💰</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: balance.owed > 0 ? '#E67700' : CD, lineHeight: 1 }}>{(balance.owed || 0).toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>К выплате</div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+      {balance && (
+        <div style={{ display: 'flex', gap: 6, padding: '0 16px 12px' }}>
+          <div style={{ flex: 1, background: '#F8F9FA', borderRadius: 10, padding: '6px 10px' }}>
+            <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>Всего заработано</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{(balance.earned || 0).toLocaleString()} сум</div>
+          </div>
+          <div style={{ flex: 1, background: '#F8F9FA', borderRadius: 10, padding: '6px 10px' }}>
+            <div style={{ fontSize: 10, color: TEXT2, fontWeight: 600 }}>Уже выдано</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#2B8A3E' }}>{(balance.paid_out || 0).toLocaleString()} сум</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => setShowPayout(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1.5px solid ${C}`, background: `${C}15`, color: CD, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M2 10h20" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M6 15h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          Выплата
+        </button>
         <button style={ms.removeBtn} onClick={() => onDelete(a)} title="Удалить агента">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
@@ -411,6 +572,9 @@ function AgentCard({ agent: a, onDelete, onRefresh }) {
 }
 
 function AgentsTab() {
+  const { user } = useAuthStore()
+  const performedBy = user?.name || ''
+  const performedByRole = user?.role || 'admin'
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -499,13 +663,13 @@ function AgentsTab() {
         <>
           {activeAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} />)}
+              {activeAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} performedBy={performedBy} performedByRole={performedByRole} />)}
             </div>
           )}
           {inactiveAgents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Деактивированные · {inactiveAgents.length}</div>
-              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} />)}
+              {inactiveAgents.map(a => <AgentCard key={a.id} agent={a} onDelete={handleDelete} onRefresh={load} performedBy={performedBy} performedByRole={performedByRole} />)}
             </div>
           )}
         </>

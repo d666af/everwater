@@ -736,37 +736,14 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         })
 
     if bottle_return_qty > 0:
-        prod_19l_ids = [r[0] for r in (await db.execute(
-            select(Product.id).where(Product.volume >= 18.9)
-        )).all()]
-        c_issued = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "issue",
-                   WaterTransaction.batch_id.isnot(None),
-                   WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
-        )).scalar() or 0
-        c_returned = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "bottle_return",
-                   WaterTransaction.counts_for_debt != False)
-        )).scalar() or 0
-        # On the courier's very first transaction the return does not reduce debt
-        current_batch_19l = sum(qty for prod, qty in resolved if prod.volume >= 18.9)
-        is_first_transaction = (c_issued - current_batch_19l == 0 and c_returned == 0)
-        if is_first_transaction:
-            debt_after = max(0, c_issued - c_returned)
-        else:
-            debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         ret_tx = WaterTransaction(
-            counts_for_debt=not is_first_transaction,
+            counts_for_debt=True,
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
             transaction_type="bottle_return",
             quantity=bottle_return_qty,
-            note=f"Остаток долга: {debt_after} бут.",
+            note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
             performed_by=body.performed_by,
             performed_by_role=body.performed_by_role,
@@ -895,6 +872,7 @@ class FactoryIssueBatchBody(BaseModel):
     factory_id: int | None = None
     factory_name: str | None = None
     items: list[FactoryIssueItem] = []
+    bottle_return: int = 0
     note: str | None = None
     performed_by: str | None = None
     performed_by_role: str | None = None
@@ -903,8 +881,9 @@ class FactoryIssueBatchBody(BaseModel):
 
 @router.post("/factory_issue_batch")
 async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = Depends(get_db)):
-    """Issue water to a factory (no courier tracking, no bottle debt)."""
-    if not body.items:
+    """Issue water to a factory; optionally record bottle returns for 'other'-category factories."""
+    bottle_return_qty = max(0, body.bottle_return or 0)
+    if not body.items and bottle_return_qty == 0:
         raise HTTPException(400, "items is empty")
 
     # Resolve or create factory
@@ -928,7 +907,7 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
             continue
         prod = await _resolve_product(db, it.product_id, it.product_name)
         resolved.append((prod, it.quantity))
-    if not resolved:
+    if not resolved and bottle_return_qty == 0:
         raise HTTPException(400, "All items have zero quantity")
 
     batch_id = str(uuid.uuid4())
@@ -961,6 +940,23 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
             "name": prod.name, "unit": "Шт", "qty": qty,
             "bonus": 0, "price": price, "sum": qty * price,
         })
+
+    if bottle_return_qty > 0:
+        br_tx = WaterTransaction(
+            factory_id=factory.id,
+            courier_id=None,
+            order_id=None,
+            transaction_type="bottle_return",
+            quantity=bottle_return_qty,
+            note=_note_with_actor(body.note, body.performed_by),
+            batch_id=batch_id,
+            performed_by=body.performed_by,
+            performed_by_role=body.performed_by_role,
+            counts_for_debt=True,
+        )
+        if _ts:
+            br_tx.created_at = _ts
+        db.add(br_tx)
 
     if _ts:
         for prod, _ in resolved:

@@ -22,6 +22,7 @@ from app.models import manager, warehouse as warehouse_model, cash_debt  # noqa:
 from app.models import agent as agent_model  # noqa: F401
 from app.models import courier_product_earning as cpe_model  # noqa: F401
 from app.models import agent_product_earning as ape_model  # noqa: F401
+from app.models import agent_earning_payout as aep_model  # noqa: F401
 from app.models import factory as factory_model  # noqa: F401
 from app.models import admin_user as admin_user_model  # noqa: F401
 
@@ -184,6 +185,17 @@ async def lifespan(app: FastAPI):
             "agent_id INTEGER NOT NULL REFERENCES agents(id), "
             "product_id INTEGER NOT NULL REFERENCES products(id), "
             "earning FLOAT NOT NULL"
+            ")"
+        ))
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS agent_earning_payouts ("
+            "id SERIAL PRIMARY KEY, "
+            "agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE, "
+            "amount FLOAT NOT NULL, "
+            "note VARCHAR(500), "
+            "performed_by VARCHAR(255), "
+            "performed_by_role VARCHAR(50), "
+            "created_at TIMESTAMP DEFAULT NOW()"
             ")"
         ))
     async with AsyncSessionLocal() as db:

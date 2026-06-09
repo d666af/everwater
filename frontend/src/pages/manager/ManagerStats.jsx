@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments } from '../../api'
+import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments, getAgentPayoutStats } from '../../api'
 const getSoldAdjustments = (params = {}) => getDebtAdjustments({ ...params, target_type: 'courier_sold' })
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
@@ -494,6 +494,89 @@ function RevenueContext({ stats, revenueLabel }) {
   )
 }
 
+function AgentEarningsCard({ agentRows, totalQty, totalAmt, totalAgentEarning, payStats }) {
+  const [showPerAgent, setShowPerAgent] = useState(false)
+  const [showPayHistory, setShowPayHistory] = useState(false)
+  const ROLE_LABELS = { admin: 'Админ', manager: 'Менеджер', warehouse: 'Завсклада' }
+
+  const perAgent = payStats?.per_agent || []
+  const owedAgents = perAgent.filter(a => a.owed > 0)
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Заработок агентов</div>
+
+      {agentRows.length > 0 && (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {agentRows.map((p, i) => (
+              <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < agentRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
+                <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
+            </div>
+            {totalAgentEarning > 0 && (
+              <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 5 }}>
+                Заработок агентов: +{Math.round(totalAgentEarning).toLocaleString('ru-RU')} сум
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {payStats && (
+        <>
+          <div style={{ height: 1, background: 'rgba(60,60,67,0.08)', margin: '12px -16px' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div style={{ background: '#EBFBEE', borderRadius: 12, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#2B8A3E', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3 }}>Выдано сегодня</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: '#2B8A3E', lineHeight: 1 }}>{Math.round(payStats.today_paid_out).toLocaleString('ru-RU')}</div>
+              <div style={{ fontSize: 10, color: '#2B8A3E', marginTop: 2 }}>сум</div>
+            </div>
+            <div style={{ background: payStats.total_owed > 0 ? '#FFF8E7' : '#F8F9FA', borderRadius: 12, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: payStats.total_owed > 0 ? '#E67700' : TEXT2, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3 }}>Ещё не выдано</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: payStats.total_owed > 0 ? '#E67700' : TEXT2, lineHeight: 1 }}>{Math.round(payStats.total_owed).toLocaleString('ru-RU')}</div>
+              <div style={{ fontSize: 10, color: payStats.total_owed > 0 ? '#E67700' : TEXT2, marginTop: 2 }}>сум</div>
+            </div>
+          </div>
+
+          {owedAgents.length > 0 && (
+            <>
+              <button onClick={() => setShowPerAgent(v => !v)}
+                style={{ width: '100%', padding: '9px 0', borderRadius: 10, border: `1.5px solid rgba(60,60,67,0.1)`, background: showPerAgent ? `${C}12` : '#F8F9FA', color: showPerAgent ? CD : TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: showPerAgent ? 8 : 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.8"/><path d="M2 20c0-3 3.1-5.5 7-5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="17" cy="13" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M14 20c0-2.2 1.3-4 3-4s3 1.8 3 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                Список агентов ({owedAgents.length})
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ transition: 'transform 0.2s', transform: showPerAgent ? 'rotate(180deg)' : 'none' }}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {showPerAgent && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
+                  {owedAgents.map((a, i) => (
+                    <div key={a.agent_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < owedAgents.length - 1 ? `1px solid rgba(60,60,67,0.07)` : 'none' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{a.name}</div>
+                        <div style={{ fontSize: 11, color: TEXT2 }}>Заработано: {Math.round(a.earned).toLocaleString('ru-RU')} | Выдано: {Math.round(a.paid_out).toLocaleString('ru-RU')}</div>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#E67700', flexShrink: 0 }}>{Math.round(a.owed).toLocaleString('ru-RU')} сум</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ManagerStats({ Layout = ManagerLayout, title = 'Статистика', showExtended = false }) {
   const [dateFrom, setDateFrom] = useState(todayISO)
   const [dateTo, setDateTo] = useState(todayISO)
@@ -505,6 +588,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
   const [loading, setLoading] = useState(true)
   const [debtAdj, setDebtAdj] = useState([])
   const [soldAdj, setSoldAdj] = useState([])
+  const [agentPayoutStats, setAgentPayoutStats] = useState(null)
 
   const isToday = dateFrom === todayISO() && dateTo === todayISO()
 
@@ -528,6 +612,7 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
       getStatsLentBottles(dateParams).then(setLentData).catch(console.error),
       getDebtAdjustments({ limit: 100 }).then(setDebtAdj).catch(() => setDebtAdj([])),
       getSoldAdjustments({ limit: 100 }).then(setSoldAdj).catch(() => setSoldAdj([])),
+      getAgentPayoutStats().then(setAgentPayoutStats).catch(() => {}),
     ]
     if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
     Promise.all(calls).finally(() => setLoading(false))
@@ -762,35 +847,16 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           {/* Agent earnings card — orders created by agents only */}
           {(() => {
             const agentRows = stats.agent_sales || []
-            if (agentRows.length === 0) return null
+            if (agentRows.length === 0 && !agentPayoutStats) return null
             const totalQty = agentRows.reduce((s, p) => s + (p.qty || 0), 0)
             const totalAmt = agentRows.reduce((s, p) => s + (p.total || 0), 0)
             const totalAgentEarning = agentRows.reduce((s, p) => s + (p.agent_earning || 0), 0)
+            const payStats = agentPayoutStats
             return (
-              <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Заработок агентов</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  {agentRows.map((p, i) => (
-                    <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < agentRows.length - 1 ? `1px solid rgba(60,60,67,0.08)` : 'none' }}>
-                      <div style={{ flex: 1, fontSize: 14, fontWeight: 500, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>{p.qty} шт.</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, flexShrink: 0, minWidth: 80, textAlign: 'right' }}>{Math.round(p.total).toLocaleString('ru-RU')} сум</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1.5px solid rgba(60,60,67,0.1)` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: TEXT }}>Итого</div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: CD }}>{totalQty} шт.</div>
-                    <div style={{ fontSize: 14, fontWeight: 900, color: CD, minWidth: 80, textAlign: 'right' }}>{Math.round(totalAmt).toLocaleString('ru-RU')} сум</div>
-                  </div>
-                  {totalAgentEarning > 0 && (
-                    <div style={{ fontSize: 12, color: CD, fontWeight: 700, marginTop: 5 }}>
-                      Заработок агентов: +{Math.round(totalAgentEarning).toLocaleString('ru-RU')} сум
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AgentEarningsCard
+                agentRows={agentRows} totalQty={totalQty} totalAmt={totalAmt}
+                totalAgentEarning={totalAgentEarning} payStats={payStats}
+              />
             )
           })()}
 

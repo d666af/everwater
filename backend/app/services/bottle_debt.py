@@ -155,7 +155,7 @@ async def courier_debt(db: AsyncSession, courier_id: int) -> int:
 
 
 async def factory_debt_map(db: AsyncSession) -> dict[int, int]:
-    """Per-factory 19L bottle debt: factory_issue − factory_return + adjustments."""
+    """Per-factory 19L bottle debt: factory_issue − factory_return − bottle_return + adjustments."""
     ids19 = await get_19l_product_ids(db)
     if not ids19:
         issued_rows = []
@@ -177,6 +177,14 @@ async def factory_debt_map(db: AsyncSession) -> dict[int, int]:
         )).all()
     issued = {fid: int(q or 0) for fid, q in issued_rows}
     returned = {fid: int(q or 0) for fid, q in returned_rows}
+    # bottle_return transactions with factory_id (recorded alongside factory issues for "other" factories)
+    bottle_ret_rows = (await db.execute(
+        select(WaterTransaction.factory_id, func.sum(WaterTransaction.quantity))
+        .where(WaterTransaction.transaction_type == "bottle_return")
+        .where(WaterTransaction.factory_id.isnot(None))
+        .group_by(WaterTransaction.factory_id)
+    )).all()
+    bottle_ret = {fid: int(q or 0) for fid, q in bottle_ret_rows}
     adj_rows = (await db.execute(
         select(BottleDebtAdjustment.factory_id, func.sum(BottleDebtAdjustment.delta))
         .where(BottleDebtAdjustment.factory_id.isnot(None))
@@ -184,9 +192,9 @@ async def factory_debt_map(db: AsyncSession) -> dict[int, int]:
     )).all()
     adj = {fid: int(d or 0) for fid, d in adj_rows}
 
-    all_ids = set(issued) | set(returned) | set(adj)
+    all_ids = set(issued) | set(returned) | set(bottle_ret) | set(adj)
     return {
-        fid: max(0, issued.get(fid, 0) - returned.get(fid, 0) + adj.get(fid, 0))
+        fid: max(0, issued.get(fid, 0) - returned.get(fid, 0) - bottle_ret.get(fid, 0) + adj.get(fid, 0))
         for fid in all_ids
     }
 

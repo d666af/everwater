@@ -127,6 +127,21 @@ async def telegram_auth(body: InitDataBody, db: AsyncSession = Depends(get_db)):
         select(Agent).where(Agent.telegram_id == tg_id, Agent.is_active == True)
     )).scalar_one_or_none()
 
+    # Auto-link: if no agent found by telegram_id, try matching by phone via User record
+    if not agent and user and user.phone:
+        _suffix = user.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")[-9:]
+        unlinked = (await db.execute(
+            select(Agent).where(
+                Agent.phone.contains(_suffix),
+                Agent.is_active == True,
+                Agent.telegram_id.is_(None),
+            )
+        )).scalar_one_or_none()
+        if unlinked:
+            unlinked.telegram_id = tg_id
+            await db.commit()
+            agent = unlinked
+
     is_wh = await _check_warehouse(tg_id, db)
     is_adm = await _check_admin(tg_id, db)
 

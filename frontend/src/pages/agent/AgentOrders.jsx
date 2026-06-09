@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { getAgentOrders, updateOrderItems, getProducts } from '../../api'
+import { getAgentOrders, updateOrderItems, getProducts, getAgentBalance } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
@@ -313,6 +313,7 @@ export default function AgentOrders() {
   const [customDateTo, setCustomDateTo] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [allTimeOrders, setAllTimeOrders] = useState(null)
+  const [balance, setBalance] = useState(null)
   const [editOrder, setEditOrder] = useState(null)
 
   const { dateFrom, dateTo } = (() => {
@@ -345,6 +346,7 @@ export default function AgentOrders() {
     tg?.expand?.()
     if (agentId) {
       getAgentOrders(agentId).then(data => setAllTimeOrders(data || [])).catch(() => setAllTimeOrders([]))
+      getAgentBalance(agentId).then(setBalance).catch(() => {})
     }
   }, [agentId]) // eslint-disable-line
 
@@ -401,17 +403,33 @@ export default function AgentOrders() {
 
       {/* All-time summary card (above filter) */}
       {allTimeCount !== null && (
-        <div style={{ padding: '8px 16px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заказов</div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: CD }}>{allTimeCount}</div>
-            <div style={{ fontSize: 11, color: TEXT2 }}>за всё время</div>
+        <div style={{ padding: '8px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заказов</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: CD }}>{allTimeCount}</div>
+              <div style={{ fontSize: 11, color: TEXT2 }}>за всё время</div>
+            </div>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заработано</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{(allTimeEarned || 0).toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
+            </div>
           </div>
-          <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Всего заработано</div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{(allTimeEarned || 0).toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
-          </div>
+          {balance && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ background: balance.owed > 0 ? '#FFF8E7' : '#F8FFF4', borderRadius: 14, padding: '12px 14px', border: `1px solid ${balance.owed > 0 ? 'rgba(230,119,0,0.2)' : 'rgba(141,198,63,0.2)'}` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: balance.owed > 0 ? '#E67700' : TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Ещё не получено</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: balance.owed > 0 ? '#E67700' : TEXT2 }}>{(balance.owed || 0).toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: balance.owed > 0 ? '#E67700' : TEXT2 }}>сум</div>
+              </div>
+              <div style={{ background: '#F8FFF4', borderRadius: 14, padding: '12px 14px', border: `1px solid rgba(141,198,63,0.2)` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Уже выдано</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: CD }}>{(balance.paid_out || 0).toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: TEXT2 }}>сум</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
