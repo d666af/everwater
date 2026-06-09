@@ -825,6 +825,40 @@ async def list_all_couriers(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/debt_stats")
+async def get_debt_stats(db: AsyncSession = Depends(get_db)):
+    """Lightweight endpoint: per-courier and per-factory bottle debt only.
+    Used by WarehouseHistory summary to avoid loading all order history.
+    """
+    from app.services.bottle_debt import courier_debt_map, factory_debt_map
+
+    debt_c = await courier_debt_map(db)
+    debt_f = await factory_debt_map(db)
+
+    # Couriers with any debt
+    courier_ids = [cid for cid, d in debt_c.items() if d > 0]
+    couriers_q = await db.execute(select(Courier).where(Courier.id.in_(courier_ids))) if courier_ids else None
+    courier_rows = couriers_q.scalars().all() if couriers_q else []
+    courier_name_map = {c.id: c.name for c in courier_rows}
+
+    # Factories with any debt
+    factory_ids = [fid for fid, d in debt_f.items() if d > 0]
+    factories_q = await db.execute(select(Factory).where(Factory.id.in_(factory_ids))) if factory_ids else None
+    factory_rows = factories_q.scalars().all() if factories_q else []
+    factory_name_map = {f.id: f.name for f in factory_rows}
+
+    return {
+        "couriers": [
+            {"id": cid, "name": courier_name_map.get(cid, f"#{cid}"), "bottles_must_return": d}
+            for cid, d in debt_c.items() if d > 0
+        ],
+        "factories": [
+            {"id": fid, "name": factory_name_map.get(fid, f"#{fid}"), "bottles_must_return": d}
+            for fid, d in debt_f.items() if d > 0
+        ],
+    }
+
+
 @router.get("/factories")
 async def list_factories(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(Factory).order_by(Factory.name))).scalars().all()

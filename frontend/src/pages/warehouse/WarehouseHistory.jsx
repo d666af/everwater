@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout'
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
-import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseCourierStats, getFactoryStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments, adjustWarehouseCourierDebt, adjustWarehouseFactoryDebt } from '../../api'
+import { getWarehouseHistory, getWarehouseCouriers, getProducts, getWarehouseDebtStats, getFactoryStats, getInvoiceUrl, getFactories, cancelIssueBatch, getCancelledBatches, getWarehouseDebtAdjustments, adjustWarehouseCourierDebt, adjustWarehouseFactoryDebt } from '../../api'
 import { useAuthStore } from '../../store/auth'
 
 const C = '#8DC63F'
@@ -54,11 +54,11 @@ export default function WarehouseHistory({ Layout = WarehouseLayout, title = 'И
 
   // Reload the debt-related figures + adjustment logs (after a manual change)
   const reloadDebtData = () => {
-    getWarehouseCourierStats('all')
-      .then(cs => setCourierStats(cs || []))
-      .catch(console.error)
-    getFactoryStats('all')
-      .then(fs => setFactoryStatsAll(Array.isArray(fs) ? fs : []))
+    getWarehouseDebtStats()
+      .then(data => {
+        setCourierStats(data?.couriers || [])
+        setFactoryStatsAll(data?.factories || [])
+      })
       .catch(console.error)
     getWarehouseDebtAdjustments({ target_type: 'courier', limit: 100 }).then(data => setDebtAdj(Array.isArray(data) ? data : [])).catch(() => {})
     getWarehouseDebtAdjustments({ target_type: 'courier_sold', limit: 100 }).then(data => setSoldAdj(Array.isArray(data) ? data : [])).catch(() => {})

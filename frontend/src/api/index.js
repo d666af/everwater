@@ -1049,6 +1049,13 @@ export const getFactoryStats = (period = 'today', date = null, dateTo = null) =>
     () => []
   )
 
+// Lightweight: per-courier + per-factory bottle debt only (no order loading)
+export const getWarehouseDebtStats = () =>
+  safeCall(
+    () => http.get('/warehouse/debt_stats').then(r => r.data),
+    () => ({ couriers: [], factories: [] })
+  )
+
 export const factoryIssueBatch = (factoryName, items, performedBy, createdAt, bottleReturn = 0) =>
   safeCall(
     () => http.post('/warehouse/factory_issue_batch', {
