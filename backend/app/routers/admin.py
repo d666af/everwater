@@ -929,24 +929,19 @@ async def update_courier(courier_id: int, data: CourierUpdate, db: AsyncSession 
 async def get_all_users(db: AsyncSession = Depends(get_db)):
     from app.models.agent import Agent as _Agent
     from app.models.warehouse import WarehouseStaff as _WS
-    # Collect all telegram_ids that belong to staff so we can exclude them
-    staff_tid_rows = (await db.execute(
-        select(Courier.telegram_id).where(Courier.telegram_id.isnot(None))
-        .union(select(Manager.telegram_id).where(Manager.telegram_id.isnot(None), Manager.is_active == True))
-        .union(select(_Agent.telegram_id).where(_Agent.telegram_id.isnot(None), _Agent.is_active == True))
-        .union(select(_WS.telegram_id).where(_WS.telegram_id.isnot(None), _WS.is_active == True))
-    )).scalars().all()
-    staff_tids = set(staff_tid_rows) | set(app_settings.WAREHOUSE_IDS)
+    # Collect telegram_ids that belong to staff (separate queries — simpler/safer)
+    courier_tids = set((await db.execute(select(Courier.telegram_id).where(Courier.telegram_id.isnot(None)))).scalars().all())
+    manager_tids = set((await db.execute(select(Manager.telegram_id).where(Manager.telegram_id.isnot(None), Manager.is_active == True))).scalars().all())
+    agent_tids = set((await db.execute(select(_Agent.telegram_id).where(_Agent.telegram_id.isnot(None), _Agent.is_active == True))).scalars().all())
+    wh_tids = set((await db.execute(select(_WS.telegram_id).where(_WS.telegram_id.isnot(None), _WS.is_active == True))).scalars().all())
+    staff_tids = courier_tids | manager_tids | agent_tids | wh_tids | set(app_settings.WAREHOUSE_IDS)
 
-    base_filter = [User.phone.isnot(None), User.phone != ""]
-    if staff_tids:
-        base_filter.append(or_(User.telegram_id.is_(None), User.telegram_id.not_in(staff_tids)))
-    result = await db.execute(
+    all_users_q = await db.execute(
         select(User)
-        .where(*base_filter)
+        .where(User.phone.isnot(None), User.phone != "")
         .order_by(User.is_registered.desc(), User.created_at.desc())
     )
-    users = result.scalars().all()
+    users = [u for u in all_users_q.scalars().all() if not u.telegram_id or u.telegram_id not in staff_tids]
 
     orders_q = await db.execute(
         select(Order.user_id, func.count(Order.id).label('cnt')).group_by(Order.user_id)
