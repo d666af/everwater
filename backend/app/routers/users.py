@@ -7,6 +7,8 @@ from app.database import get_db
 from app.models.user import User
 from app.models.courier import Courier
 from app.models.manager import Manager
+from app.models.agent import Agent
+from app.models.warehouse import WarehouseStaff
 from app.models.order import Order, OrderStatus
 from app.schemas.user import UserCreate, UserUpdate, UserOut
 from app.config import settings as cfg
@@ -14,32 +16,40 @@ from app.services.phone import phone_digits_col
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-_ROLE_PRIORITY = ["admin", "manager", "courier", "client"]
+_ROLE_PRIORITY = ["admin", "warehouse", "manager", "courier", "agent", "client"]
+_STAFF_ROLES = {"warehouse", "manager", "courier", "agent"}
 
 
-def _build_full_user(telegram_id: int, user, courier, manager) -> dict:
+def _build_full_user(telegram_id: int, user, courier, manager, is_warehouse: bool = False, agent=None) -> dict:
     """Return user dict with role/roles — same shape as /auth/login response."""
     all_roles: list[str] = []
-    if telegram_id in cfg.ADMIN_IDS:
+    if telegram_id and telegram_id in cfg.ADMIN_IDS:
         all_roles.append("admin")
+    if is_warehouse:
+        all_roles.append("warehouse")
     if manager:
         all_roles.append("manager")
     if courier:
         all_roles.append("courier")
+    if agent:
+        all_roles.append("agent")
     if user:
         all_roles.append("client")
     if not all_roles:
         all_roles = ["client"]
+    # Staff roles don't grant client access; only admins can also be clients
+    if any(r in _STAFF_ROLES for r in all_roles) and "admin" not in all_roles:
+        all_roles = [r for r in all_roles if r != "client"]
     primary = next((r for r in _ROLE_PRIORITY if r in all_roles), "client")
     return {
-        "id": (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None),
+        "id": (user.id if user else None) or (courier.id if courier else None) or (manager.id if manager else None) or (agent.id if agent else None),
         "telegram_id": telegram_id,
-        "name": (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or "",
-        "phone": (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or "",
+        "name": (user.name if user else None) or (manager.name if manager else None) or (courier.name if courier else None) or (agent.name if agent else None) or "",
+        "phone": (user.phone if user else None) or (courier.phone if courier else None) or (manager.phone if manager else None) or (agent.phone if agent else None) or "",
         "role": primary,
         "roles": all_roles,
         "bonus_points": float(user.bonus_points) if user else 0.0,
-        "is_registered": user.is_registered if user else True,
+        "is_registered": True if any(r in _STAFF_ROLES for r in all_roles) else (user.is_registered if user else True),
         "saved_addresses": json.loads(user.saved_addresses) if user and user.saved_addresses else [],
         "created_at": user.created_at.isoformat() if user and user.created_at else None,
     }
@@ -143,21 +153,13 @@ async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_
     user = (await db.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
     courier = (await db.execute(select(Courier).where(Courier.telegram_id == telegram_id))).scalar_one_or_none()
     manager = (await db.execute(select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True))).scalar_one_or_none()
-    if not user and not courier and not manager:
+    agent = (await db.execute(select(Agent).where(Agent.telegram_id == telegram_id, Agent.is_active == True))).scalar_one_or_none()
+    is_warehouse = telegram_id in cfg.WAREHOUSE_IDS or (await db.execute(
+        select(WarehouseStaff).where(WarehouseStaff.telegram_id == telegram_id, WarehouseStaff.is_active == True)
+    )).scalar_one_or_none() is not None
+    if not user and not courier and not manager and not agent and not is_warehouse:
         raise HTTPException(status_code=404, detail="User not found")
-    # Courier/manager without a users-table record can't place orders — auto-create one.
-    if not user and (courier or manager):
-        entity = courier or manager
-        user = User(
-            telegram_id=telegram_id,
-            name=entity.name or "",
-            phone=entity.phone or None,
-            is_registered=True,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    result = _build_full_user(telegram_id, user, courier, manager)
+    result = _build_full_user(telegram_id, user, courier, manager, is_warehouse=is_warehouse, agent=agent)
     if user:
         count_row = await db.execute(
             select(func.count(Order.id)).where(Order.user_id == user.id, Order.status == OrderStatus.DELIVERED)
@@ -170,6 +172,16 @@ async def get_user_by_telegram(telegram_id: int, db: AsyncSession = Depends(get_
 
 @router.post("/", response_model=UserOut)
 async def create_or_get_user(data: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Block staff members from getting a client User record
+    if data.telegram_id:
+        is_courier = (await db.execute(select(Courier).where(Courier.telegram_id == data.telegram_id))).scalar_one_or_none()
+        is_manager = (await db.execute(select(Manager).where(Manager.telegram_id == data.telegram_id, Manager.is_active == True))).scalar_one_or_none()
+        is_agent = (await db.execute(select(Agent).where(Agent.telegram_id == data.telegram_id, Agent.is_active == True))).scalar_one_or_none()
+        is_wh = data.telegram_id in cfg.WAREHOUSE_IDS or (await db.execute(
+            select(WarehouseStaff).where(WarehouseStaff.telegram_id == data.telegram_id, WarehouseStaff.is_active == True)
+        )).scalar_one_or_none() is not None
+        if (is_courier or is_manager or is_agent or is_wh) and data.telegram_id not in cfg.ADMIN_IDS:
+            raise HTTPException(status_code=403, detail="Staff members cannot register as clients")
     result = await db.execute(select(User).where(User.telegram_id == data.telegram_id))
     user = result.scalar_one_or_none()
     if user:
@@ -201,6 +213,15 @@ async def create_or_get_user(data: UserCreate, db: AsyncSession = Depends(get_db
 
 @router.patch("/{telegram_id}", response_model=UserOut)
 async def update_user(telegram_id: int, data: UserUpdate, db: AsyncSession = Depends(get_db)):
+    # Block staff from completing client registration
+    is_staff_courier = (await db.execute(select(Courier).where(Courier.telegram_id == telegram_id))).scalar_one_or_none()
+    is_staff_manager = (await db.execute(select(Manager).where(Manager.telegram_id == telegram_id, Manager.is_active == True))).scalar_one_or_none()
+    is_staff_agent = (await db.execute(select(Agent).where(Agent.telegram_id == telegram_id, Agent.is_active == True))).scalar_one_or_none()
+    is_staff_wh = telegram_id in cfg.WAREHOUSE_IDS or (await db.execute(
+        select(WarehouseStaff).where(WarehouseStaff.telegram_id == telegram_id, WarehouseStaff.is_active == True)
+    )).scalar_one_or_none() is not None
+    if (is_staff_courier or is_staff_manager or is_staff_agent or is_staff_wh) and telegram_id not in cfg.ADMIN_IDS:
+        raise HTTPException(status_code=403, detail="Staff members cannot complete client registration")
     result = await db.execute(select(User).where(User.telegram_id == telegram_id))
     user = result.scalar_one_or_none()
     if not user:
