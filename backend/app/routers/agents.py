@@ -50,6 +50,25 @@ async def get_agent_by_telegram(telegram_id: int, db: AsyncSession = Depends(get
     )
     agent = result.scalar_one_or_none()
     if not agent:
+        # Auto-link: try matching by phone via User record
+        user = (await db.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )).scalar_one_or_none()
+        if user and user.phone:
+            _suffix = user.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")[-9:]
+            unlinked = (await db.execute(
+                select(Agent).where(
+                    Agent.phone.contains(_suffix),
+                    Agent.is_active == True,
+                    Agent.telegram_id.is_(None),
+                )
+            )).scalar_one_or_none()
+            if unlinked:
+                unlinked.telegram_id = telegram_id
+                await db.commit()
+                await db.refresh(unlinked)
+                agent = unlinked
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
 
