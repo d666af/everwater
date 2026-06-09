@@ -26,6 +26,7 @@ const FILTER_DEFS = [
   { key: 'inactive',      label: 'Не активные',            broadcastKey: 'clients:inactive' },
   { key: 'bonus',         label: 'С бонусами',             broadcastKey: 'clients:bonus' },
   { key: 'bottle_debt',   label: 'Должники',               broadcastKey: 'clients:bottle_debt' },
+  { key: 'cooler_debt',   label: 'Долг куллер',            broadcastKey: 'clients:cooler_debt' },
   { key: 'new',           label: 'Новые',                  broadcastKey: 'clients:new' },
 ]
 
@@ -560,6 +561,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     if (labelFilter === 'inactive') return u.customer_label === 'inactive'
     if (labelFilter === 'bonus') return (u.bonus_points || 0) > 0
     if (labelFilter === 'bottle_debt') return (u.bottles_owed || 0) > 0
+    if (labelFilter === 'cooler_debt') return (u.cooler_debt || 0) > 0
     if (labelFilter === 'new') return !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
     if (labelFilter.startsWith('tag:')) return (clientTags[u.id] || []).includes(labelFilter.slice(4))
     return true
