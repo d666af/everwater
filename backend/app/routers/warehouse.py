@@ -736,37 +736,14 @@ async def issue_batch(body: BatchIssueBody, db: AsyncSession = Depends(get_db)):
         })
 
     if bottle_return_qty > 0:
-        prod_19l_ids = [r[0] for r in (await db.execute(
-            select(Product.id).where(Product.volume >= 18.9)
-        )).all()]
-        c_issued = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "issue",
-                   WaterTransaction.batch_id.isnot(None),
-                   WaterTransaction.product_id.in_(prod_19l_ids) if prod_19l_ids else False)
-        )).scalar() or 0
-        c_returned = (await db.execute(
-            select(func.sum(WaterTransaction.quantity))
-            .where(WaterTransaction.courier_id == body.courier_id,
-                   WaterTransaction.transaction_type == "bottle_return",
-                   WaterTransaction.counts_for_debt != False)
-        )).scalar() or 0
-        # On the courier's very first transaction the return does not reduce debt
-        current_batch_19l = sum(qty for prod, qty in resolved if prod.volume >= 18.9)
-        is_first_transaction = (c_issued - current_batch_19l == 0 and c_returned == 0)
-        if is_first_transaction:
-            debt_after = max(0, c_issued - c_returned)
-        else:
-            debt_after = max(0, c_issued - c_returned - bottle_return_qty)
         ret_tx = WaterTransaction(
-            counts_for_debt=not is_first_transaction,
+            counts_for_debt=True,
             product_id=None,
             courier_id=body.courier_id,
             order_id=None,
             transaction_type="bottle_return",
             quantity=bottle_return_qty,
-            note=f"Остаток долга: {debt_after} бут.",
+            note=_note_with_actor(body.note, body.performed_by),
             batch_id=batch_id,
             performed_by=body.performed_by,
             performed_by_role=body.performed_by_role,
