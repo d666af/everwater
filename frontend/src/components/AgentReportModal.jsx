@@ -97,25 +97,33 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
           </div>
 
           {/* Summary card */}
-          {orders && (
-            <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', border: `1px solid ${BORDER}`, display: 'flex', gap: 0 }}>
-              <div style={{ flex: 1, textAlign: 'center', paddingRight: 12, borderRight: `1px solid ${BORDER}` }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: CD }}>{orders.length}</div>
-                <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Заказов</div>
-              </div>
-              <div style={{ flex: 2, paddingLeft: 12, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Заработано</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: CD, lineHeight: 1.2 }}>
-                  {orders.reduce((s, o) => s + (o.agent_earning || 0), 0).toLocaleString('ru-RU')} сум
+          {orders && (() => {
+            const deliveredOrders = orders.filter(o => o.status === 'delivered')
+            const totalEarned = deliveredOrders.reduce((s, o) => s + (o.agent_earning || 0), 0)
+            const totalSum = deliveredOrders.reduce((s, o) => s + (o.total || 0), 0)
+            return (
+              <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', border: `1px solid ${BORDER}`, display: 'flex', gap: 0 }}>
+                <div style={{ flex: 1, textAlign: 'center', paddingRight: 12, borderRight: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: CD }}>{deliveredOrders.length}</div>
+                  <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>Доставлено</div>
+                  {orders.length !== deliveredOrders.length && (
+                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>из {orders.length} заказов</div>
+                  )}
                 </div>
-                {orders.length > 0 && (
-                  <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
-                    Сумма заказов: {orders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString('ru-RU')} сум
+                <div style={{ flex: 2, paddingLeft: 12, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Заработано</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: CD, lineHeight: 1.2 }}>
+                    {totalEarned.toLocaleString('ru-RU')} сум
                   </div>
-                )}
+                  {deliveredOrders.length > 0 && (
+                    <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>
+                      Сумма заказов: {totalSum.toLocaleString('ru-RU')} сум
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Orders list */}
           {orders && orders.length === 0 && (
@@ -123,71 +131,91 @@ export default function AgentReportModal({ agentId, agentName, onClose }) {
               Заказов за период нет
             </div>
           )}
-          {orders && orders.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {orders.map(o => {
-                const clientName = o.client_name || o.user?.name || ''
-                const clientPhone = o.recipient_phone || o.client_phone || ''
-                const statusCfg = STATUS_CFG[o.status] || { label: o.status, bg: '#F2F2F7', color: TEXT2 }
-                return (
-                  <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, fontWeight: 700, background: statusCfg.bg, color: statusCfg.color, alignSelf: 'flex-start' }}>
-                          {statusCfg.label}
-                        </span>
-                        <div style={{ fontSize: 11, color: TEXT2 }}>{fmt(o.created_at)}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
-                          {(o.total || 0).toLocaleString('ru-RU')} сум
-                        </div>
-                        {(o.agent_earning || 0) > 0 && (
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#2B8A3E' }}>
-                            +{(o.agent_earning || 0).toLocaleString('ru-RU')} заработок
-                          </div>
-                        )}
-                      </div>
+          {orders && orders.length > 0 && (() => {
+            const delivered = orders.filter(o => o.status === 'delivered')
+            const other = orders.filter(o => o.status !== 'delivered')
+            const renderOrder = (o) => {
+              const clientName = o.client_name || o.user?.name || ''
+              const clientPhone = o.recipient_phone || o.client_phone || ''
+              const statusCfg = STATUS_CFG[o.status] || { label: o.status, bg: '#F2F2F7', color: TEXT2 }
+              return (
+                <div key={o.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', border: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, fontWeight: 700, background: statusCfg.bg, color: statusCfg.color, alignSelf: 'flex-start' }}>
+                        {statusCfg.label}
+                      </span>
+                      <div style={{ fontSize: 11, color: TEXT2 }}>{fmt(o.created_at)}</div>
                     </div>
-                    {o.address && (
-                      <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
-                        <span style={{ color: TEXT2, flexShrink: 0 }}>📍</span>
-                        <span>{o.address}</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: CD }}>
+                        {(o.total || 0).toLocaleString('ru-RU')} сум
                       </div>
-                    )}
-                    {(clientPhone || clientName) && (
-                      <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {clientPhone && <span style={{ color: TEXT2 }}>📞 {formatPhone(clientPhone)}</span>}
-                        {clientName && <span style={{ fontWeight: 600 }}>{clientName}</span>}
-                      </div>
-                    )}
-                    {o.items && o.items.length > 0 && (
-                      <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 6, borderTop: `1px solid ${BORDER}` }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 }}>Состав</div>
-                        {o.items.map((item, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: C, flexShrink: 0 }} />
-                            <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
-                            <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {(o.return_bottles_count > 0 || o.bottle_surcharge > 0) && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {o.return_bottles_count > 0 && (
-                          <div style={{ fontSize: 12, color: TEXT2 }}>♻️ Возврат: <strong>{o.return_bottles_count} шт.</strong></div>
-                        )}
-                        {o.bottle_surcharge > 0 && (
-                          <div style={{ fontSize: 12, color: '#E67700' }}>🫙 Надбавка: <strong>+{o.bottle_surcharge.toLocaleString('ru-RU')} сум</strong></div>
-                        )}
-                      </div>
-                    )}
+                      {o.status === 'delivered' && (o.agent_earning || 0) > 0 && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#2B8A3E' }}>
+                          +{(o.agent_earning || 0).toLocaleString('ru-RU')} заработок
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                  {o.address && (
+                    <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                      <span style={{ color: TEXT2, flexShrink: 0 }}>📍</span>
+                      <span>{o.address}</span>
+                    </div>
+                  )}
+                  {(clientPhone || clientName) && (
+                    <div style={{ fontSize: 12, color: TEXT, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {clientPhone && <span style={{ color: TEXT2 }}>📞 {formatPhone(clientPhone)}</span>}
+                      {clientName && <span style={{ fontWeight: 600 }}>{clientName}</span>}
+                    </div>
+                  )}
+                  {o.items && o.items.length > 0 && (
+                    <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 6, borderTop: `1px solid ${BORDER}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 }}>Состав</div>
+                      {o.items.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: C, flexShrink: 0 }} />
+                          <span style={{ flex: 1, color: TEXT, fontWeight: 500 }}>{item.product_name}</span>
+                          <span style={{ fontWeight: 700, color: TEXT2 }}>× {item.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(o.return_bottles_count > 0 || o.bottle_surcharge > 0) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {o.return_bottles_count > 0 && (
+                        <div style={{ fontSize: 12, color: TEXT2 }}>♻️ Возврат: <strong>{o.return_bottles_count} шт.</strong></div>
+                      )}
+                      {o.bottle_surcharge > 0 && (
+                        <div style={{ fontSize: 12, color: '#E67700' }}>🫙 Надбавка: <strong>+{o.bottle_surcharge.toLocaleString('ru-RU')} сум</strong></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {delivered.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#2B8A3E', textTransform: 'uppercase', letterSpacing: 0.4, paddingLeft: 4 }}>
+                      Завершённые ({delivered.length})
+                    </div>
+                    {delivered.map(renderOrder)}
+                  </>
+                )}
+                {other.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, paddingLeft: 4, marginTop: delivered.length > 0 ? 4 : 0 }}>
+                      Незавершённые и отменённые ({other.length})
+                    </div>
+                    {other.map(renderOrder)}
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </div>
       </div>
     </div>
