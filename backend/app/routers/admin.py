@@ -2180,6 +2180,8 @@ async def adjust_courier_sold_admin(
 async def get_debt_adjustments_admin(
     limit: int = 200,
     target_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
@@ -2188,6 +2190,12 @@ async def get_debt_adjustments_admin(
     else:
         # Sold-bottle adjustments have their own log; keep them out of the debt log.
         q = q.where(BottleDebtAdjustment.target_type != "courier_sold")
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        q = q.where(BottleDebtAdjustment.created_at >= datetime(df.year, df.month, df.day, 0, 0, 0))
+    if date_to:
+        dt_val = datetime.strptime(date_to, "%Y-%m-%d")
+        q = q.where(BottleDebtAdjustment.created_at <= datetime(dt_val.year, dt_val.month, dt_val.day, 23, 59, 59))
     rows = (await db.execute(q)).scalars().all()
     result = []
     for r in rows:
@@ -2216,6 +2224,28 @@ async def get_debt_adjustments_admin(
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
     return result
+
+
+# ─── Bonus management ────────────────────────────────────────────────────────
+
+@router.post("/users/reset_all_bonuses")
+async def reset_all_user_bonuses(db: AsyncSession = Depends(get_db)):
+    """Set bonus_points = 0 for every user."""
+    await db.execute(update(User).values(bonus_points=0.0, bonus_expires_at=None))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/reset_bonuses")
+async def reset_user_bonuses(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Set bonus_points = 0 for one user."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.bonus_points = 0.0
+    user.bonus_expires_at = None
+    await db.commit()
+    return {"ok": True, "user_id": user_id}
 
 
 # ─── Water Forecast ───────────────────────────────────────────────────────────

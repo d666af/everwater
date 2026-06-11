@@ -59,12 +59,11 @@ async def calculate_water_forecast(db: AsyncSession, cfg: dict) -> list[dict]:
         )
         order_volume_map = {row.order_id: float(row.vol or 0) for row in vol_q.all()}
 
-    # Most recent delivered-order address per user (fallback display name)
+    # Most recent order address per user (fallback display name for nameless clients)
     recent_addr_q = await db.execute(
         _text(
             "SELECT DISTINCT ON (user_id) user_id, address FROM orders "
-            "WHERE user_id IS NOT NULL AND status = 'delivered' "
-            "ORDER BY user_id, created_at DESC"
+            "WHERE user_id IS NOT NULL ORDER BY user_id, created_at DESC"
         )
     )
     recent_addr_map = {row.user_id: row.address for row in recent_addr_q.all()}

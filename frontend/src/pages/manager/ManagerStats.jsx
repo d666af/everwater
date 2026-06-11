@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments, getAgentPayoutStats, getWaterForecast } from '../../api'
+import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments, getAgentPayoutStats, getWaterForecast, resetAllBonuses } from '../../api'
 const getSoldAdjustments = (params = {}) => getDebtAdjustments({ ...params, target_type: 'courier_sold' })
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
@@ -693,6 +693,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
   const [debtAdj, setDebtAdj] = useState([])
   const [soldAdj, setSoldAdj] = useState([])
   const [agentPayoutStats, setAgentPayoutStats] = useState(null)
+  const [resettingAllBonuses, setResettingAllBonuses] = useState(false)
+  const [allBonusesReset, setAllBonusesReset] = useState(false)
 
   const isToday = dateFrom === todayISO() && dateTo === todayISO()
 
@@ -714,8 +716,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
     const calls = [
       getAdminStats(dateParams).then(setStats).catch(console.error),
       getStatsLentBottles(dateParams).then(setLentData).catch(console.error),
-      getDebtAdjustments({ limit: 100 }).then(setDebtAdj).catch(() => setDebtAdj([])),
-      getSoldAdjustments({ limit: 100 }).then(setSoldAdj).catch(() => setSoldAdj([])),
+      getDebtAdjustments({ limit: 100, ...dateParams }).then(setDebtAdj).catch(() => setDebtAdj([])),
+      getSoldAdjustments({ limit: 100, ...dateParams }).then(setSoldAdj).catch(() => setSoldAdj([])),
       getAgentPayoutStats().then(setAgentPayoutStats).catch(() => {}),
     ]
     if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
@@ -997,16 +999,42 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
           })()}
 
           {/* Bonus card */}
-          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16, display: 'flex', gap: 0 }}>
-            <div style={{ flex: 1, paddingRight: 16, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Начислено бонусов</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: C, lineHeight: 1 }}>{Math.round(stats.bonus_earned || 0).toLocaleString('ru-RU')}</div>
-              <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 0, marginBottom: 12 }}>
+              <div style={{ flex: 1, paddingRight: 16, borderRight: `1px solid rgba(60,60,67,0.08)` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Начислено бонусов</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: C, lineHeight: 1 }}>{Math.round(stats.bonus_earned || 0).toLocaleString('ru-RU')}</div>
+                <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум</div>
+              </div>
+              <div style={{ flex: 1, paddingLeft: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: CD, lineHeight: 1 }}>{Math.round(stats.bonus_used || 0).toLocaleString('ru-RU')}</div>
+                <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум скидки</div>
+              </div>
             </div>
-            <div style={{ flex: 1, paddingLeft: 16 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Использовано</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: CD, lineHeight: 1 }}>{Math.round(stats.bonus_used || 0).toLocaleString('ru-RU')}</div>
-              <div style={{ fontSize: 11, color: TEXT2, marginTop: 3 }}>сум скидки</div>
+            <div style={{ borderTop: `1px solid rgba(60,60,67,0.08)`, paddingTop: 10 }}>
+              {allBonusesReset ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#2B8A3E', fontSize: 13, fontWeight: 600, background: '#EBFBEE', padding: '8px 12px', borderRadius: 10 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="#2B8A3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Бонусы всех клиентов аннулированы
+                </div>
+              ) : (
+                <button
+                  disabled={resettingAllBonuses}
+                  onClick={async () => {
+                    if (!window.confirm('Аннулировать бонусы у ВСЕХ клиентов? Это действие нельзя отменить.')) return
+                    setResettingAllBonuses(true)
+                    try {
+                      await resetAllBonuses()
+                      setAllBonusesReset(true)
+                    } catch { alert('Ошибка при аннулировании бонусов') }
+                    finally { setResettingAllBonuses(false) }
+                  }}
+                  style={{ width: '100%', padding: '9px 14px', borderRadius: 10, border: '1.5px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {resettingAllBonuses ? 'Аннулирование...' : 'Аннулировать бонусы у всех'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -1089,10 +1117,12 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
             </div>
           )}
 
-          {/* Debt adjustments log */}
-          {debtAdj.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения долга бутылок</div>
+          {/* Debt adjustments log — always visible */}
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения долга бутылок</div>
+            {debtAdj.length === 0 ? (
+              <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: '10px 0' }}>Изменений нет</div>
+            ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {debtAdj.map((a, i) => {
                   const roleLabel = { warehouse: 'Склад', admin: 'Админ', manager: 'Менеджер' }[a.performed_by_role] || a.performed_by_role || '?'
@@ -1116,13 +1146,15 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   )
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Sold-bottle adjustments log */}
-          {soldAdj.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения проданных бутылок</div>
+          {/* Sold-bottle adjustments log — always visible */}
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения проданных бутылок</div>
+            {soldAdj.length === 0 ? (
+              <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: '10px 0' }}>Изменений нет</div>
+            ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {soldAdj.map((a, i) => {
                   const roleLabel = { warehouse: 'Склад', admin: 'Админ', manager: 'Менеджер' }[a.performed_by_role] || a.performed_by_role || '?'
@@ -1145,8 +1177,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   )
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </Layout>

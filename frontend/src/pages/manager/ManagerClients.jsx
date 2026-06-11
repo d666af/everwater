@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder, adjustClientDebt, getWaterForecast } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder, adjustClientDebt, getWaterForecast, resetUserBonuses } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
@@ -56,7 +56,7 @@ const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', b
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
 const TABS = ['Инфо', 'Заказы', 'Подписки', 'Адреса', 'Кулеры']
 
-function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = null }) {
+function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = null, onBonusReset }) {
   const { user: currentUser } = useAuthStore()
   const [tab, setTab] = useState(0)
   const [orders, setOrders] = useState([])
@@ -68,6 +68,8 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = n
   const [showCoolerForm, setShowCoolerForm] = useState(false)
   const [phoneModal, setPhoneModal] = useState(null)
   const [cancellingId, setCancellingId] = useState(null)
+  const [localBonusPoints, setLocalBonusPoints] = useState(user.bonus_points || 0)
+  const [resettingBonuses, setResettingBonuses] = useState(false)
   const subsEnabled = useSubscriptionsEnabled()
   const visibleTabs = TABS.map((label, idx) => ({ label, idx }))
     .filter(t => !(subsEnabled === false && t.label === 'Подписки'))
@@ -131,13 +133,58 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = n
         {[
           ['Телефон', user.phone ? formatPhone(user.phone) : '—'],
           ['Telegram ID', user.telegram_id || '—'],
-          ['Бонусы', `${Math.round(user.bonus_points || 0)}`],
         ].map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
             <span style={{ fontSize: 14, color: TEXT2 }}>{k}</span>
             <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{v}</span>
           </div>
         ))}
+        {/* Bonus row with annul button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+          <span style={{ fontSize: 14, color: TEXT2 }}>Бонусы</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: localBonusPoints > 0 ? '#E67700' : TEXT }}>{Math.round(localBonusPoints)}</span>
+            {localBonusPoints > 0 && (
+              <button
+                disabled={resettingBonuses}
+                onClick={async () => {
+                  if (!window.confirm('Аннулировать все бонусы клиента?')) return
+                  setResettingBonuses(true)
+                  try {
+                    await resetUserBonuses(user.id)
+                    setLocalBonusPoints(0)
+                    onBonusReset?.(user.id)
+                  } catch { alert('Ошибка при аннулировании бонусов') }
+                  finally { setResettingBonuses(false) }
+                }}
+                style={{ padding: '3px 10px', borderRadius: 8, border: '1.5px solid rgba(224,49,49,0.3)', background: '#FFF5F5', color: '#E03131', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+              >
+                {resettingBonuses ? '...' : 'Аннулировать'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Bottle balance section */}
+        {!loadingD && details && (
+          <div style={{ marginTop: 10, marginBottom: 2 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Расчеты по остаткам</div>
+            <div style={{ background: '#F8F9FA', borderRadius: 14, padding: '10px 14px', border: `1px solid ${BORDER}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}` }}>
+                <span style={{ fontSize: 13, color: TEXT2 }}>Долг бутылок</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: (details.bottles_owed || 0) > 0 ? '#C92A2A' : TEXT2 }}>{details.bottles_owed || 0} шт.</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER}` }}>
+                <span style={{ fontSize: 13, color: TEXT2 }}>Ожидается возврат</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: (details.pending_return || 0) > 0 ? '#E67700' : TEXT2 }}>{details.pending_return || 0} шт.</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                <span style={{ fontSize: 13, color: TEXT2 }}>Остаток (чистый долг)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: (details.available_bottles || 0) > 0 ? '#C92A2A' : '#2B8A3E' }}>{details.available_bottles || 0} шт.</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tag management */}
         <div style={{ marginTop: 4 }}>
@@ -686,7 +733,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   return (
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
-      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} forecast={forecastMap[selectedUser.id] || null} />}
+      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} forecast={forecastMap[selectedUser.id] || null} onBonusReset={(userId) => setUsers(prev => prev.map(u => u.id === userId ? { ...u, bonus_points: 0 } : u))} />}
       {debtAdjModal && (
         <ClientDebtAdjustModal
           user={debtAdjModal}
