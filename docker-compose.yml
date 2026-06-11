@@ -26,6 +26,8 @@ services:
       db:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - static_files:/app/static
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 5s
@@ -68,5 +70,6 @@ services:
 
 volumes:
   postgres_data:
+  static_files:
   caddy_data:
   caddy_config:
