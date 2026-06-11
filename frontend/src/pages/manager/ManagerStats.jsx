@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments, getAgentPayoutStats } from '../../api'
+import { getAdminStats, getAdminStatsExtended, getCancelledOrders, getStatsLentBottles, getDebtAdjustments, getAgentPayoutStats, getWaterForecast } from '../../api'
 const getSoldAdjustments = (params = {}) => getDebtAdjustments({ ...params, target_type: 'courier_sold' })
 import DateTimePickerModal from '../../components/warehouse/DateTimePickerModal'
 
@@ -296,6 +296,65 @@ function DeletedCard({ count, dateParams }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+function WaterForecastWidget() {
+  const [forecast, setForecast] = useState(null)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    getWaterForecast().then(setForecast).catch(() => setForecast([]))
+  }, [])
+
+  if (!forecast || forecast.length === 0) return null
+
+  const critical = forecast.filter(f => f.urgency === 'critical')
+  const warning = forecast.filter(f => f.urgency === 'warning')
+  const visible = expanded ? forecast : forecast.slice(0, 4)
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 11, background: critical.length > 0 ? '#FFF5F5' : '#FFFBEE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 20 }}>💧</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Прогноз воды</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
+            {critical.length > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#C92A2A', background: '#FFF5F5', padding: '1px 8px', borderRadius: 999 }}>🔴 {critical.length} критично</span>
+            )}
+            {warning.length > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFFBEE', padding: '1px 8px', borderRadius: 999 }}>🟡 {warning.length} скоро</span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {visible.map((f, i) => (
+          <div key={f.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < visible.length - 1 ? '1px solid rgba(60,60,67,0.07)' : 'none' }}>
+            <span style={{ fontSize: 14, flexShrink: 0 }}>{f.urgency === 'critical' ? '🔴' : '🟡'}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.phone || '—'}</div>
+              {f.name && f.phone && <div style={{ fontSize: 11, color: TEXT2 }}>{f.phone}</div>}
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: f.urgency === 'critical' ? '#C92A2A' : '#E67700' }}>~{f.days_until_empty} дн.</div>
+              <div style={{ fontSize: 10, color: TEXT2 }}>интервал {f.avg_interval_days}д</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {forecast.length > 4 && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{ marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 10, border: '1.5px solid rgba(60,60,67,0.1)', background: expanded ? '#F8F9FA' : '#fff', color: TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+        >
+          {expanded ? 'Свернуть' : `Ещё ${forecast.length - 4}`}
+        </button>
       )}
     </div>
   )
@@ -705,6 +764,9 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
         </div>
       ) : (
         <>
+          {/* Water forecast */}
+          <WaterForecastWidget />
+
           {/* Lent bottles card */}
           {lentData && (
             <div style={{ background: '#FFF8E7', borderRadius: 18, border: '1.5px solid #FFD87A', padding: '14px 16px', marginBottom: 12 }}>

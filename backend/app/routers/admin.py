@@ -2216,3 +2216,13 @@ async def get_debt_adjustments_admin(
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
     return result
+
+
+# ─── Water Forecast ───────────────────────────────────────────────────────────
+
+@router.get("/water-forecast")
+async def get_water_forecast(db: AsyncSession = Depends(get_db)):
+    from app.services.water_forecast import calculate_water_forecast
+    from app.services.settings_service import get_all_settings
+    cfg = await get_all_settings(db)
+    return await calculate_water_forecast(db, cfg)

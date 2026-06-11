@@ -514,6 +514,12 @@ export const getAdminUsers = () =>
     ]
   )
 
+export const getWaterForecast = () =>
+  safeCall(
+    () => http.get('/admin/water-forecast').then(r => r.data),
+    () => []
+  )
+
 // ─── Client details (bottles, transactions, subscriptions, addresses) ────────
 export const getClientDetails = (userId) =>
   safeCall(
