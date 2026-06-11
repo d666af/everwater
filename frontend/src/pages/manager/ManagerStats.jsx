@@ -318,8 +318,12 @@ function WaterForecastWidget() {
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, background: critical.length > 0 ? '#FFF5F5' : '#FFFBEE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 20 }}>💧</span>
+        <div style={{ width: 38, height: 38, borderRadius: 11, background: critical.length > 0 ? '#FFF5F5' : '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="20" height="22" viewBox="0 0 24 26" fill="none">
+            <path d="M12 2C12 2 3 12 3 17a9 9 0 0 0 18 0C21 12 12 2 12 2z"
+              stroke={critical.length > 0 ? '#C92A2A' : '#1971C2'} strokeWidth="1.8" strokeLinejoin="round"
+              fill={critical.length > 0 ? 'rgba(201,42,42,0.08)' : 'rgba(25,113,194,0.08)'}/>
+          </svg>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Прогноз воды</div>

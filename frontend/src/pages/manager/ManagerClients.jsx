@@ -206,6 +206,12 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = n
                   <span style={{ fontSize: 13, color: TEXT2 }}>Средний интервал</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{forecast.avg_interval_days} дн.</span>
                 </div>
+                {forecast.avg_daily_liters != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: TEXT2 }}>Потребление в день</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1971C2' }}>{forecast.avg_daily_liters} л/день</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 13, color: TEXT2 }}>Последний заказ</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
@@ -589,6 +595,8 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [sent, setSent] = useState(false)
   const [debtAdjModal, setDebtAdjModal] = useState(null) // user object
   const [forecastMap, setForecastMap] = useState({}) // user_id → forecast entry
+  const [forecastDaysMin, setForecastDaysMin] = useState('')
+  const [forecastDaysMax, setForecastDaysMax] = useState('')
 
   const setUserTags = (userId, tags) => {
     const next = { ...clientTags, [userId]: tags }
@@ -600,18 +608,26 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const allCustomTags = [...new Set(Object.values(clientTags).flat())]
 
   const matchesFilter = (u) => {
-    if (labelFilter === 'all') return true
-    if (labelFilter === 'registered') return u.is_registered === true
-    if (labelFilter === 'not_registered') return !u.is_registered
-    if (labelFilter === 'permanent') return u.customer_label === 'permanent'
-    if (labelFilter === 'inactive') return u.customer_label === 'inactive'
-    if (labelFilter === 'bonus') return (u.bonus_points || 0) > 0
-    if (labelFilter === 'bottle_debt') return (u.bottles_owed || 0) > 0
-    if (labelFilter === 'cooler_debt') return (u.cooler_debt || 0) > 0
-    if (labelFilter === 'new') return !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
-    if (labelFilter === 'forecast_warning') return forecastMap[u.id] != null
-    if (labelFilter === 'forecast_critical') return forecastMap[u.id]?.urgency === 'critical'
-    if (labelFilter.startsWith('tag:')) return (clientTags[u.id] || []).includes(labelFilter.slice(4))
+    // Label filter
+    if (labelFilter === 'registered' && !u.is_registered) return false
+    if (labelFilter === 'not_registered' && u.is_registered) return false
+    if (labelFilter === 'permanent' && u.customer_label !== 'permanent') return false
+    if (labelFilter === 'inactive' && u.customer_label !== 'inactive') return false
+    if (labelFilter === 'bonus' && !((u.bonus_points || 0) > 0)) return false
+    if (labelFilter === 'bottle_debt' && !((u.bottles_owed || 0) > 0)) return false
+    if (labelFilter === 'cooler_debt' && !((u.cooler_debt || 0) > 0)) return false
+    if (labelFilter === 'new' && !((!u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2))) return false
+    if (labelFilter === 'forecast_warning' && forecastMap[u.id] == null) return false
+    if (labelFilter === 'forecast_critical' && forecastMap[u.id]?.urgency !== 'critical') return false
+    if (labelFilter.startsWith('tag:') && !(clientTags[u.id] || []).includes(labelFilter.slice(4))) return false
+    // Days range filter (applied on top of any label filter)
+    if (forecastDaysMin !== '' || forecastDaysMax !== '') {
+      const fc = forecastMap[u.id]
+      if (!fc) return false
+      const days = fc.days_until_empty
+      if (forecastDaysMin !== '' && days < parseInt(forecastDaysMin)) return false
+      if (forecastDaysMax !== '' && days > parseInt(forecastDaysMax)) return false
+    }
     return true
   }
 
@@ -653,11 +669,19 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     }).catch(() => {})
   }, [])
 
-  const filtered = users.filter(u => {
+  const filteredBase = users.filter(u => {
     const q = search.toLowerCase()
     const matchText = !search || u.name?.toLowerCase().includes(q) || u.phone?.includes(search) || (!u.name && u.last_order_address?.toLowerCase().includes(q))
     return matchText && matchesFilter(u)
   })
+  const isForecastSort = labelFilter.startsWith('forecast_') || forecastDaysMin !== '' || forecastDaysMax !== ''
+  const filtered = isForecastSort
+    ? [...filteredBase].sort((a, b) => {
+        const da = forecastMap[a.id]?.days_until_empty ?? 9999
+        const db = forecastMap[b.id]?.days_until_empty ?? 9999
+        return da - db
+      })
+    : filteredBase
 
   return (
     <Layout title={title}>
@@ -705,6 +729,42 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
           ))}
         </div>
       </div>
+
+      {/* Days range filter — shown only when forecast data exists */}
+      {Object.keys(forecastMap).length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '8px 12px', background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <path d="M12 2C12 2 4 10 4 15a8 8 0 0 0 16 0C20 10 12 2 12 2z" stroke="#1971C2" strokeWidth="1.8" strokeLinejoin="round"/>
+          </svg>
+          <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2, flexShrink: 0 }}>Дней осталось:</span>
+          <span style={{ fontSize: 12, color: TEXT2 }}>от</span>
+          <input
+            type="number"
+            style={{ width: 52, padding: '4px 6px', borderRadius: 8, border: `1.5px solid ${forecastDaysMin !== '' ? C : BORDER}`, fontSize: 13, fontWeight: 700, textAlign: 'center', outline: 'none', color: TEXT, background: forecastDaysMin !== '' ? `${C}08` : '#fff' }}
+            value={forecastDaysMin}
+            onChange={e => setForecastDaysMin(e.target.value)}
+            placeholder="—"
+          />
+          <span style={{ fontSize: 12, color: TEXT2 }}>до</span>
+          <input
+            type="number"
+            style={{ width: 52, padding: '4px 6px', borderRadius: 8, border: `1.5px solid ${forecastDaysMax !== '' ? C : BORDER}`, fontSize: 13, fontWeight: 700, textAlign: 'center', outline: 'none', color: TEXT, background: forecastDaysMax !== '' ? `${C}08` : '#fff' }}
+            value={forecastDaysMax}
+            onChange={e => setForecastDaysMax(e.target.value)}
+            placeholder="—"
+          />
+          <span style={{ fontSize: 12, color: TEXT2 }}>дн.</span>
+          {(forecastDaysMin !== '' || forecastDaysMax !== '') && (
+            <button
+              onClick={() => { setForecastDaysMin(''); setForecastDaysMax('') }}
+              style={{ marginLeft: 4, background: '#F2F2F7', border: 'none', borderRadius: 6, cursor: 'pointer', padding: '3px 8px', color: TEXT2, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+              Сброс
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ fontSize: 12, color: TEXT2, fontWeight: 500, paddingLeft: 4, marginBottom: 8 }}>
         Клиентов: <b style={{ color: TEXT }}>{filtered.length}</b>
