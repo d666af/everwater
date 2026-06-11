@@ -140,9 +140,7 @@ export const setProductAgentEarnings = (productId, items) =>
 export const uploadProductPhoto = (file) => {
   const form = new FormData()
   form.append('file', file)
-  return http.post('/products/upload-photo', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(r => r.data.url)
+  return http.post('/products/upload-photo', form).then(r => r.data.url)
 }
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
