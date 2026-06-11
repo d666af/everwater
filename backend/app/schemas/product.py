@@ -51,6 +51,7 @@ class ProductOut(BaseModel):
     price: float
     type: str
     photo_url: str | None
+    tg_photo_file_id: str | None = None
     stock: int
     is_active: bool
     sort_order: int

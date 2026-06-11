@@ -62,11 +62,32 @@ async def update_product(product_id: int, data: ProductUpdate, db: AsyncSession 
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    for field, value in data.model_dump(exclude_none=True).items():
+    update_dict = data.model_dump(exclude_none=True)
+    # When photo changes, reset the cached Telegram file_id so the bot re-uploads it.
+    if "photo_url" in update_dict and update_dict["photo_url"] != product.photo_url:
+        product.tg_photo_file_id = None
+    for field, value in update_dict.items():
         setattr(product, field, value)
     await db.commit()
     await db.refresh(product)
     return product
+
+
+class TgPhotoRequest(BaseModel):
+    file_id: str
+
+
+@router.patch("/{product_id}/tg_photo")
+async def set_tg_photo(product_id: int, data: TgPhotoRequest, db: AsyncSession = Depends(get_db)):
+    """Called by the bot after it uploads a product photo to Telegram for the first time.
+    Stores the returned file_id so subsequent sends skip the download step."""
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.tg_photo_file_id = data.file_id
+    await db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{product_id}")

@@ -137,6 +137,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS bottle_surcharge INTEGER DEFAULT NULL"
         ))
         await conn.execute(text(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS tg_photo_file_id VARCHAR(200) DEFAULT NULL"
+        ))
+        await conn.execute(text(
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS bottle_surcharge FLOAT DEFAULT 0"
         ))
         await conn.execute(text(

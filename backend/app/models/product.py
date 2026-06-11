@@ -13,6 +13,7 @@ class Product(Base):
     volume: Mapped[float] = mapped_column(Float)  # литры
     price: Mapped[float] = mapped_column(Float)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tg_photo_file_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     stock: Mapped[int] = mapped_column(Integer, default=999)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
