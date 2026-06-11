@@ -155,7 +155,7 @@ function ProductForm({ form, setForm, onSave, onCancel, saving, error, couriers 
           {form.photo_url ? (
             <div style={s.photoPreviewWrap}>
               <img src={form.photo_url} alt="" style={s.imgPreview}
-                onError={e => e.target.style.display = 'none'} />
+                onError={() => setForm(p => ({ ...p, photo_url: '' }))} />
               <button style={s.removePhotoBtn}
                 onClick={() => setForm(p => ({ ...p, photo_url: '' }))}>✕</button>
             </div>
