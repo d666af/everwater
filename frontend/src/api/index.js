@@ -520,6 +520,18 @@ export const getWaterForecast = () =>
     () => []
   )
 
+export const resetUserBonuses = (userId) =>
+  safeCall(
+    () => http.post(`/admin/users/${userId}/reset_bonuses`).then(r => r.data),
+    () => ({ ok: true })
+  )
+
+export const resetAllBonuses = () =>
+  safeCall(
+    () => http.post('/admin/users/reset_all_bonuses').then(r => r.data),
+    () => ({ ok: true })
+  )
+
 // ─── Client details (bottles, transactions, subscriptions, addresses) ────────
 export const getClientDetails = (userId) =>
   safeCall(

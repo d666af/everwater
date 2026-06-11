@@ -2226,6 +2226,28 @@ async def get_debt_adjustments_admin(
     return result
 
 
+# ─── Bonus management ────────────────────────────────────────────────────────
+
+@router.post("/users/reset_all_bonuses")
+async def reset_all_user_bonuses(db: AsyncSession = Depends(get_db)):
+    """Set bonus_points = 0 for every user."""
+    await db.execute(update(User).values(bonus_points=0.0, bonus_expires_at=None))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/reset_bonuses")
+async def reset_user_bonuses(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Set bonus_points = 0 for one user."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.bonus_points = 0.0
+    user.bonus_expires_at = None
+    await db.commit()
+    return {"ok": True, "user_id": user_id}
+
+
 # ─── Water Forecast ───────────────────────────────────────────────────────────
 
 @router.get("/water-forecast")
