@@ -714,8 +714,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
     const calls = [
       getAdminStats(dateParams).then(setStats).catch(console.error),
       getStatsLentBottles(dateParams).then(setLentData).catch(console.error),
-      getDebtAdjustments({ limit: 100 }).then(setDebtAdj).catch(() => setDebtAdj([])),
-      getSoldAdjustments({ limit: 100 }).then(setSoldAdj).catch(() => setSoldAdj([])),
+      getDebtAdjustments({ limit: 100, ...dateParams }).then(setDebtAdj).catch(() => setDebtAdj([])),
+      getSoldAdjustments({ limit: 100, ...dateParams }).then(setSoldAdj).catch(() => setSoldAdj([])),
       getAgentPayoutStats().then(setAgentPayoutStats).catch(() => {}),
     ]
     if (showExtended) calls.push(getAdminStatsExtended(dateParams).then(setExtStats).catch(console.error))
@@ -1089,10 +1089,12 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
             </div>
           )}
 
-          {/* Debt adjustments log */}
-          {debtAdj.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения долга бутылок</div>
+          {/* Debt adjustments log — always visible */}
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения долга бутылок</div>
+            {debtAdj.length === 0 ? (
+              <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: '10px 0' }}>Изменений нет</div>
+            ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {debtAdj.map((a, i) => {
                   const roleLabel = { warehouse: 'Склад', admin: 'Админ', manager: 'Менеджер' }[a.performed_by_role] || a.performed_by_role || '?'
@@ -1116,13 +1118,15 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   )
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Sold-bottle adjustments log */}
-          {soldAdj.length > 0 && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginTop: 12, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения проданных бутылок</div>
+          {/* Sold-bottle adjustments log — always visible */}
+          <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0077B6', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>Изменения проданных бутылок</div>
+            {soldAdj.length === 0 ? (
+              <div style={{ fontSize: 13, color: TEXT2, textAlign: 'center', padding: '10px 0' }}>Изменений нет</div>
+            ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {soldAdj.map((a, i) => {
                   const roleLabel = { warehouse: 'Склад', admin: 'Админ', manager: 'Менеджер' }[a.performed_by_role] || a.performed_by_role || '?'
@@ -1145,8 +1149,8 @@ export default function ManagerStats({ Layout = ManagerLayout, title = 'Стат
                   )
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </Layout>

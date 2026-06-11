@@ -2180,6 +2180,8 @@ async def adjust_courier_sold_admin(
 async def get_debt_adjustments_admin(
     limit: int = 200,
     target_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     q = select(BottleDebtAdjustment).order_by(BottleDebtAdjustment.created_at.desc()).limit(limit)
@@ -2188,6 +2190,12 @@ async def get_debt_adjustments_admin(
     else:
         # Sold-bottle adjustments have their own log; keep them out of the debt log.
         q = q.where(BottleDebtAdjustment.target_type != "courier_sold")
+    if date_from:
+        df = datetime.strptime(date_from, "%Y-%m-%d")
+        q = q.where(BottleDebtAdjustment.created_at >= datetime(df.year, df.month, df.day, 0, 0, 0))
+    if date_to:
+        dt_val = datetime.strptime(date_to, "%Y-%m-%d")
+        q = q.where(BottleDebtAdjustment.created_at <= datetime(dt_val.year, dt_val.month, dt_val.day, 23, 59, 59))
     rows = (await db.execute(q)).scalars().all()
     result = []
     for r in rows:
