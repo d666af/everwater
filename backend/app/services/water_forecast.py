@@ -1,6 +1,6 @@
 """Water depletion forecast: predict when each client will run out of water."""
 from datetime import datetime, timedelta
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.order import Order, OrderStatus, OrderItem
 from app.models.product import Product
@@ -16,6 +16,9 @@ async def calculate_water_forecast(db: AsyncSession, cfg: dict) -> list[dict]:
     critical_days = int(cfg.get("forecast_critical_days", 2))
     lookback = int(cfg.get("forecast_orders_lookback", 5))
     default_interval = int(cfg.get("forecast_default_interval_days", 14))
+
+    # Guard against inverted thresholds (admin mis-set critical > warning)
+    critical_days = min(critical_days, max(0, warning_days - 1))
 
     users_q = await db.execute(
         select(User).where(User.phone.isnot(None), User.phone != "")
@@ -56,6 +59,16 @@ async def calculate_water_forecast(db: AsyncSession, cfg: dict) -> list[dict]:
         )
         order_volume_map = {row.order_id: float(row.vol or 0) for row in vol_q.all()}
 
+    # Most recent delivered-order address per user (fallback display name)
+    recent_addr_q = await db.execute(
+        _text(
+            "SELECT DISTINCT ON (user_id) user_id, address FROM orders "
+            "WHERE user_id IS NOT NULL AND status = 'delivered' "
+            "ORDER BY user_id, created_at DESC"
+        )
+    )
+    recent_addr_map = {row.user_id: row.address for row in recent_addr_q.all()}
+
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     results = []
 
@@ -86,10 +99,15 @@ async def calculate_water_forecast(db: AsyncSession, cfg: dict) -> list[dict]:
         total_liters = sum(order_volume_map.get(oid, 0) for oid, _ in order_list_sorted)
         avg_daily_liters = round(total_liters / max(1.0, span_days), 1) if total_liters > 0 else None
 
+        # display_name: registered name → last order address → phone
+        display_name = u.name or recent_addr_map.get(uid) or u.phone
+
         results.append({
             "user_id": uid,
             "name": u.name,
+            "display_name": display_name,
             "phone": u.phone,
+            "orders_used": len(order_list_sorted),
             "last_order_at": last_order_date.isoformat(),
             "avg_interval_days": round(avg_interval, 1),
             "estimated_empty_at": estimated_empty.isoformat(),
@@ -98,6 +116,6 @@ async def calculate_water_forecast(db: AsyncSession, cfg: dict) -> list[dict]:
             "avg_daily_liters": avg_daily_liters,
         })
 
-    # Sort ascending by days remaining (smallest = most urgent = first)
+    # Sort ascending: fewest days first (most urgent at top)
     results.sort(key=lambda r: r["days_until_empty"])
     return results

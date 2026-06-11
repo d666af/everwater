@@ -313,11 +313,16 @@ function WaterForecastWidget() {
 
   const critical = forecast.filter(f => f.urgency === 'critical')
   const warning = forecast.filter(f => f.urgency === 'warning')
-  const visible = expanded ? forecast : forecast.slice(0, 4)
+  const visible = expanded ? forecast : forecast.slice(0, 5)
+
+  const fmtDate = (iso) => new Date(iso).toLocaleDateString('ru-RU', {
+    timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short',
+  })
 
   return (
     <div style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <div style={{ width: 38, height: 38, borderRadius: 11, background: critical.length > 0 ? '#FFF5F5' : '#E8F4FD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="20" height="22" viewBox="0 0 24 26" fill="none">
             <path d="M12 2C12 2 3 12 3 17a9 9 0 0 0 18 0C21 12 12 2 12 2z"
@@ -327,37 +332,73 @@ function WaterForecastWidget() {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4 }}>Прогноз воды</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
             {critical.length > 0 && (
               <span style={{ fontSize: 11, fontWeight: 700, color: '#C92A2A', background: '#FFF5F5', padding: '1px 8px', borderRadius: 999 }}>🔴 {critical.length} критично</span>
             )}
             {warning.length > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFFBEE', padding: '1px 8px', borderRadius: 999 }}>🟡 {warning.length} скоро</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#E67700', background: '#FFFBEE', padding: '1px 8px', borderRadius: 999 }}>🟡 {warning.length} скоро закончится</span>
             )}
           </div>
         </div>
       </div>
+
+      {/* List — sorted ascending by days_until_empty */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {visible.map((f, i) => (
-          <div key={f.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: i < visible.length - 1 ? '1px solid rgba(60,60,67,0.07)' : 'none' }}>
-            <span style={{ fontSize: 14, flexShrink: 0 }}>{f.urgency === 'critical' ? '🔴' : '🟡'}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.phone || '—'}</div>
-              {f.name && f.phone && <div style={{ fontSize: 11, color: TEXT2 }}>{f.phone}</div>}
+        {visible.map((f, i) => {
+          const isCrit = f.urgency === 'critical'
+          const accentColor = isCrit ? '#C92A2A' : '#E67700'
+          const accentBg = isCrit ? '#FFF5F5' : '#FFFBEE'
+          return (
+            <div key={f.user_id} style={{ padding: '10px 0', borderBottom: i < visible.length - 1 ? '1px solid rgba(60,60,67,0.07)' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                {/* Urgency badge */}
+                <div style={{ marginTop: 1, background: accentBg, borderRadius: 8, padding: '2px 7px', flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: accentColor }}>{isCrit ? '🔴' : '🟡'} {f.days_until_empty}д</span>
+                </div>
+                {/* Name + meta */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.display_name || f.phone || '—'}
+                  </div>
+                  {/* Show phone separately if display_name is not the phone */}
+                  {f.phone && f.display_name !== f.phone && (
+                    <div style={{ fontSize: 11, color: TEXT2 }}>{f.phone}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, color: TEXT2 }}>
+                      последний заказ {fmtDate(f.last_order_at)}
+                    </span>
+                    <span style={{ fontSize: 10, color: TEXT2 }}>
+                      интервал {f.avg_interval_days} дн.
+                    </span>
+                    {f.avg_daily_liters != null && (
+                      <span style={{ fontSize: 10, color: '#1971C2', fontWeight: 700 }}>
+                        {f.avg_daily_liters} л/день
+                      </span>
+                    )}
+                    <span style={{ fontSize: 10, color: TEXT2 }}>
+                      {f.orders_used} {f.orders_used === 1 ? 'заказ' : 'заказов'}
+                    </span>
+                  </div>
+                </div>
+                {/* Estimated empty date */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: TEXT2, marginBottom: 1 }}>закончится</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: accentColor }}>{fmtDate(f.estimated_empty_at)}</div>
+                </div>
+              </div>
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: f.urgency === 'critical' ? '#C92A2A' : '#E67700' }}>~{f.days_until_empty} дн.</div>
-              <div style={{ fontSize: 10, color: TEXT2 }}>интервал {f.avg_interval_days}д</div>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
-      {forecast.length > 4 && (
+
+      {forecast.length > 5 && (
         <button
           onClick={() => setExpanded(v => !v)}
           style={{ marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 10, border: '1.5px solid rgba(60,60,67,0.1)', background: expanded ? '#F8F9FA' : '#fff', color: TEXT2, fontSize: 12, fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
         >
-          {expanded ? 'Свернуть' : `Ещё ${forecast.length - 4}`}
+          {expanded ? 'Свернуть' : `Ещё ${forecast.length - 5} клиентов`}
         </button>
       )}
     </div>
