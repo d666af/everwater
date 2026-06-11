@@ -3,6 +3,7 @@ from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+    BufferedInputFile,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -418,10 +419,17 @@ async def _render_qty_picker(call: CallbackQuery, state: FSMContext, pid: str):
     if text is None:
         await call.answer("Товар не найден", show_alert=True)
         return
-    try:
-        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    data = await state.get_data()
+    if data.get("picker_is_photo"):
+        try:
+            await call.message.edit_caption(caption=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+    else:
+        try:
+            await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 def _update_cart_qty(cart: dict, pid: str, products: list, qty: int) -> None:
@@ -553,11 +561,43 @@ async def cart_pick(call: CallbackQuery, state: FSMContext):
     if not data.get("products"):
         products = await api.get_products() or []
         await state.update_data(products=products)
+        data = await state.get_data()
+
     await state.set_state(CatalogState.waiting_custom_qty)
+    await state.update_data(pending_qty_pid=pid)
+
+    products = data.get("products") or []
+    p = next((x for x in products if str(x["id"]) == pid), None)
+    photo_url = (p.get("photo_url") or "") if p else ""
+
+    if photo_url:
+        photo_bytes = await api.download_file(settings.API_BASE_URL + photo_url)
+        if photo_bytes:
+            text, kb = await _build_qty_picker_view(state, pid)
+            if text is not None:
+                try:
+                    await call.message.delete()
+                except Exception:
+                    pass
+                sent = await call.message.answer_photo(
+                    photo=BufferedInputFile(photo_bytes, filename="product.jpg"),
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+                await state.update_data(
+                    picker_msg_id=sent.message_id,
+                    picker_chat_id=sent.chat.id,
+                    picker_is_photo=True,
+                )
+                await call.answer()
+                return
+
+    # No photo or download failed → text-based picker
     await state.update_data(
-        pending_qty_pid=pid,
         picker_msg_id=call.message.message_id,
         picker_chat_id=call.message.chat.id,
+        picker_is_photo=False,
     )
     await _render_qty_picker(call, state, pid)
     await call.answer()
@@ -597,10 +637,18 @@ async def qty_remove(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     cart = data.get("cart", {})
     cart.pop(pid, None)
-    await state.update_data(cart=cart, pending_qty_pid=None)
+    picker_is_photo = data.get("picker_is_photo", False)
+    await state.update_data(cart=cart, pending_qty_pid=None, picker_is_photo=False)
     await state.set_state(None)
     await call.answer("Убрано")
-    await _render_catalog(call, state, edit=True)
+    if picker_is_photo:
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        await _render_catalog(call, state, edit=False)
+    else:
+        await _render_catalog(call, state, edit=True)
 
 
 @router.message(CatalogState.waiting_custom_qty)
@@ -640,13 +688,22 @@ async def qty_custom_input(message: Message, state: FSMContext):
         text, kb = await _build_qty_picker_view(state, pid)
         if text is not None:
             try:
-                await message.bot.edit_message_text(
-                    chat_id=picker_chat_id,
-                    message_id=picker_msg_id,
-                    text=text,
-                    reply_markup=kb,
-                    parse_mode="HTML",
-                )
+                if data.get("picker_is_photo"):
+                    await message.bot.edit_message_caption(
+                        chat_id=picker_chat_id,
+                        message_id=picker_msg_id,
+                        caption=text,
+                        reply_markup=kb,
+                        parse_mode="HTML",
+                    )
+                else:
+                    await message.bot.edit_message_text(
+                        chat_id=picker_chat_id,
+                        message_id=picker_msg_id,
+                        text=text,
+                        reply_markup=kb,
+                        parse_mode="HTML",
+                    )
             except Exception:
                 pass
 
@@ -716,8 +773,17 @@ async def back_catalog(call: CallbackQuery, state: FSMContext):
     cur = await state.get_state()
     if cur == CatalogState.waiting_custom_qty.state:
         await state.set_state(None)
-    await state.update_data(pending_qty_pid=None)
-    await _render_catalog(call, state, edit=True)
+    data = await state.get_data()
+    await state.update_data(pending_qty_pid=None, picker_is_photo=False)
+    if data.get("picker_is_photo"):
+        # Current message is a photo — delete it and send a fresh text catalog
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        await _render_catalog(call, state, edit=False)
+    else:
+        await _render_catalog(call, state, edit=True)
     await call.answer()
 
 

@@ -144,6 +144,18 @@ async def get_products():
         return []
 
 
+async def download_file(url: str) -> bytes | None:
+    """Download a file by absolute URL and return its bytes (used for product photos)."""
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                if r.status == 200:
+                    return await r.read()
+    except Exception:
+        pass
+    return None
+
+
 async def upload_product_photo(data: bytes, filename: str = "product.jpg") -> str | None:
     try:
         form = aiohttp.FormData()
