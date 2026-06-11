@@ -92,6 +92,7 @@ const s = {
   },
   img: {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+    objectPosition: 'center 65%',
   },
   placeholder: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
