@@ -156,6 +156,14 @@ async def download_file(url: str) -> bytes | None:
     return None
 
 
+async def set_product_tg_photo(product_id: int, file_id: str) -> None:
+    """Cache the Telegram file_id for a product photo so the bot can reuse it."""
+    try:
+        await _patch(f"/products/{product_id}/tg_photo", {"file_id": file_id})
+    except Exception:
+        pass
+
+
 async def upload_product_photo(data: bytes, filename: str = "product.jpg") -> str | None:
     try:
         form = aiohttp.FormData()

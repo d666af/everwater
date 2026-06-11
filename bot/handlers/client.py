@@ -570,9 +570,16 @@ async def cart_pick(call: CallbackQuery, state: FSMContext):
     p = next((x for x in products if str(x["id"]) == pid), None)
     photo_url = (p.get("photo_url") or "") if p else ""
 
-    if photo_url:
-        photo_bytes = await api.download_file(settings.API_BASE_URL + photo_url)
-        if photo_bytes:
+    tg_file_id = (p.get("tg_photo_file_id") or "") if p else ""
+    if tg_file_id or photo_url:
+        # Use cached file_id directly, or download+upload on first use
+        if tg_file_id:
+            photo_input = tg_file_id
+        else:
+            photo_bytes = await api.download_file(settings.API_BASE_URL + photo_url)
+            photo_input = BufferedInputFile(photo_bytes, filename="product.jpg") if photo_bytes else None
+
+        if photo_input:
             text, kb = await _build_qty_picker_view(state, pid)
             if text is not None:
                 try:
@@ -580,11 +587,16 @@ async def cart_pick(call: CallbackQuery, state: FSMContext):
                 except Exception:
                     pass
                 sent = await call.message.answer_photo(
-                    photo=BufferedInputFile(photo_bytes, filename="product.jpg"),
+                    photo=photo_input,
                     caption=text,
                     reply_markup=kb,
                     parse_mode="HTML",
                 )
+                # On first send, save the file_id Telegram assigned so future
+                # sends skip the download entirely.
+                if not tg_file_id and p:
+                    new_file_id = sent.photo[-1].file_id
+                    await api.set_product_tg_photo(p["id"], new_file_id)
                 await state.update_data(
                     picker_msg_id=sent.message_id,
                     picker_chat_id=sent.chat.id,
