@@ -48,6 +48,14 @@ DEFAULTS: dict[str, Any] = {
     "permanent_customer_min_orders": 5,   # delivered orders threshold for "постоянный"
     "permanent_customer_period_days": 90, # within last N days (0 = all-time)
     "inactive_customer_days": 60,         # days since last delivered order for "не активный"
+    # Water depletion forecast
+    "forecast_enabled": True,
+    "forecast_warning_days": 5,           # <= N days until empty → warning
+    "forecast_critical_days": 2,          # <= N days until empty → critical
+    "forecast_orders_lookback": 5,        # use last N delivered orders to calc avg interval
+    "forecast_default_interval_days": 14, # fallback if client has <2 orders
+    "forecast_notify_time": "08:00",      # HH:MM local time (UTC+5) for daily bot notify
+    "forecast_notify_enabled": True,      # send daily Telegram notification
 }
 
 

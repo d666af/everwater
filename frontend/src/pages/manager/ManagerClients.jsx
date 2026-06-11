@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManagerLayout from '../../components/manager/ManagerLayout'
-import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder, adjustClientDebt } from '../../api'
+import { getAdminUsers, getUserOrders, getClientDetails, getClientCoolers, addClientCooler, removeClientCooler, addCoolerPayment, broadcastMessage, deleteUser, rejectOrder, deleteOrder, adjustClientDebt, getWaterForecast } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import PhonePopup from '../../components/PhonePopup'
 import { formatPhone } from '../../utils/phone'
@@ -19,15 +19,17 @@ const PRESET_TAGS = ['VIP', 'Офис', 'Оптовик', 'Проблемный'
 
 // filter key → broadcast target key mapping
 const FILTER_DEFS = [
-  { key: 'all',           label: 'Все',                    broadcastKey: 'clients' },
-  { key: 'registered',    label: 'Зарегистрированные',     broadcastKey: 'clients:registered' },
-  { key: 'not_registered',label: 'Не зарегистрированные',  broadcastKey: 'clients:not_registered' },
-  { key: 'permanent',     label: 'Постоянные',             broadcastKey: 'clients:permanent' },
-  { key: 'inactive',      label: 'Не активные',            broadcastKey: 'clients:inactive' },
-  { key: 'bonus',         label: 'С бонусами',             broadcastKey: 'clients:bonus' },
-  { key: 'bottle_debt',   label: 'Должники',               broadcastKey: 'clients:bottle_debt' },
-  { key: 'cooler_debt',   label: 'Долг куллер',            broadcastKey: 'clients:cooler_debt' },
-  { key: 'new',           label: 'Новые',                  broadcastKey: 'clients:new' },
+  { key: 'all',              label: 'Все',                    broadcastKey: 'clients' },
+  { key: 'registered',       label: 'Зарегистрированные',     broadcastKey: 'clients:registered' },
+  { key: 'not_registered',   label: 'Не зарегистрированные',  broadcastKey: 'clients:not_registered' },
+  { key: 'permanent',        label: 'Постоянные',             broadcastKey: 'clients:permanent' },
+  { key: 'inactive',         label: 'Не активные',            broadcastKey: 'clients:inactive' },
+  { key: 'bonus',            label: 'С бонусами',             broadcastKey: 'clients:bonus' },
+  { key: 'bottle_debt',      label: 'Должники',               broadcastKey: 'clients:bottle_debt' },
+  { key: 'cooler_debt',      label: 'Долг куллер',            broadcastKey: 'clients:cooler_debt' },
+  { key: 'new',              label: 'Новые',                  broadcastKey: 'clients:new' },
+  { key: 'forecast_warning', label: '💧 Скоро закончится',    broadcastKey: 'clients' },
+  { key: 'forecast_critical',label: '🔴 Критично',            broadcastKey: 'clients' },
 ]
 
 const loadStoredTags = () => {
@@ -54,7 +56,7 @@ const TX_COLORS = { payment: '#E03131', topup: '#2B8A3E', cashback: '#1971C2', b
 const TX_LABELS = { payment: 'Оплата', topup: 'Пополнение', cashback: 'Кэшбэк', bonus_used: 'Бонусы' }
 const TABS = ['Инфо', 'Заказы', 'Подписки', 'Адреса', 'Кулеры']
 
-function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
+function ClientDetail({ user, onClose, userTags = [], onTagsChange, forecast = null }) {
   const { user: currentUser } = useAuthStore()
   const [tab, setTab] = useState(0)
   const [orders, setOrders] = useState([])
@@ -177,6 +179,49 @@ function ClientDetail({ user, onClose, userTags = [], onTagsChange }) {
             </button>
           </div>
         </div>
+
+        {/* Water forecast section */}
+        {forecast && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Прогноз запасов воды</div>
+            <div style={{
+              borderRadius: 14, padding: '12px 14px',
+              background: forecast.urgency === 'critical' ? '#FFF5F5' : '#FFFBEE',
+              border: `1.5px solid ${forecast.urgency === 'critical' ? 'rgba(224,49,49,0.2)' : 'rgba(230,119,0,0.2)'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>{forecast.urgency === 'critical' ? '🔴' : '🟡'}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: forecast.urgency === 'critical' ? '#C92A2A' : '#E67700' }}>
+                  {forecast.urgency === 'critical' ? 'Критично' : 'Скоро закончится'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: TEXT2 }}>Осталось дней</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: forecast.urgency === 'critical' ? '#C92A2A' : '#E67700' }}>
+                    ~{forecast.days_until_empty} дн.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: TEXT2 }}>Средний интервал</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{forecast.avg_interval_days} дн.</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: TEXT2 }}>Последний заказ</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
+                    {new Date(forecast.last_order_at).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, color: TEXT2 }}>Прогноз окончания</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
+                    {new Date(forecast.estimated_empty_at).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
 
@@ -543,6 +588,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [debtAdjModal, setDebtAdjModal] = useState(null) // user object
+  const [forecastMap, setForecastMap] = useState({}) // user_id → forecast entry
 
   const setUserTags = (userId, tags) => {
     const next = { ...clientTags, [userId]: tags }
@@ -563,6 +609,8 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     if (labelFilter === 'bottle_debt') return (u.bottles_owed || 0) > 0
     if (labelFilter === 'cooler_debt') return (u.cooler_debt || 0) > 0
     if (labelFilter === 'new') return !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
+    if (labelFilter === 'forecast_warning') return forecastMap[u.id] != null
+    if (labelFilter === 'forecast_critical') return forecastMap[u.id]?.urgency === 'critical'
     if (labelFilter.startsWith('tag:')) return (clientTags[u.id] || []).includes(labelFilter.slice(4))
     return true
   }
@@ -596,7 +644,14 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
     } catch { alert('Ошибка при удалении') }
   }
 
-  useEffect(() => { getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false)) }, [])
+  useEffect(() => {
+    getAdminUsers().then(setUsers).catch(console.error).finally(() => setLoading(false))
+    getWaterForecast().then(list => {
+      const map = {}
+      list.forEach(f => { map[f.user_id] = f })
+      setForecastMap(map)
+    }).catch(() => {})
+  }, [])
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
@@ -607,7 +662,7 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
   return (
     <Layout title={title}>
       {phoneModal && <PhonePopup number={phoneModal.number} label={phoneModal.label} onClose={() => setPhoneModal(null)} />}
-      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} />}
+      {selectedUser && <ClientDetail user={selectedUser} onClose={() => setSelectedUser(null)} userTags={clientTags[selectedUser.id] || []} onTagsChange={(tags) => setUserTags(selectedUser.id, tags)} forecast={forecastMap[selectedUser.id] || null} />}
       {debtAdjModal && (
         <ClientDebtAdjustModal
           user={debtAdjModal}
@@ -722,8 +777,9 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
           {filtered.map(u => {
             const tags = clientTags[u.id] || []
             const isNew = !u.customer_label && (u.orders_count || 0) > 0 && (u.orders_count || 0) <= 2
+            const fc = forecastMap[u.id]
             return (
-              <div key={u.id} style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
+              <div key={u.id} style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: fc ? `1.5px solid ${fc.urgency === 'critical' ? 'rgba(224,49,49,0.3)' : 'rgba(230,119,0,0.3)'}` : `1px solid ${BORDER}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }} onClick={() => setSelectedUser(u)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: `linear-gradient(135deg, ${C}, ${CD})`, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{(u.name || u.last_order_address || '?')[0].toUpperCase()}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -740,6 +796,12 @@ export default function ManagerClients({ Layout = ManagerLayout, title = 'Кли
                       )}
                       {!u.is_registered && (
                         <span style={{ fontSize: 10, color: '#E67700', background: '#FFF8E6', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>Не регистр.</span>
+                      )}
+                      {fc?.urgency === 'critical' && (
+                        <span style={{ fontSize: 10, color: '#C92A2A', background: '#FFF5F5', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>🔴 ~{fc.days_until_empty}д</span>
+                      )}
+                      {fc?.urgency === 'warning' && (
+                        <span style={{ fontSize: 10, color: '#E67700', background: '#FFFBEE', padding: '1px 7px', borderRadius: 999, fontWeight: 700, flexShrink: 0 }}>💧 ~{fc.days_until_empty}д</span>
                       )}
                     </div>
                     {u.phone && <div style={{ fontSize: 12, color: TEXT2, marginTop: 1 }}>{formatPhone(u.phone)}</div>}

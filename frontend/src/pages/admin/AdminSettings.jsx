@@ -81,6 +81,13 @@ export default function AdminSettings() {
     permanent_customer_min_orders: 5,
     permanent_customer_period_days: 90,
     inactive_customer_days: 60,
+    forecast_enabled: true,
+    forecast_warning_days: 5,
+    forecast_critical_days: 2,
+    forecast_orders_lookback: 5,
+    forecast_default_interval_days: 14,
+    forecast_notify_time: '08:00',
+    forecast_notify_enabled: true,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -753,6 +760,96 @@ export default function AdminSettings() {
               ? <>{form.permanent_customer_min_orders}+ доставленных заказов за последние <b>{form.permanent_customer_period_days} дн.</b></>
               : <>{form.permanent_customer_min_orders}+ доставленных заказов за всё время.</>}
             {' '}<b>Неактивный</b>: нет заказов более <b>{form.inactive_customer_days} дн.</b>
+          </div>
+        </Section>
+
+        {/* Water forecast */}
+        <Section
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C12 2 4 10 4 15a8 8 0 0 0 16 0C20 10 12 2 12 2z" stroke="#1971C2" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M12 19v-4M9 16l3 3 3-3" stroke="#1971C2" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          }
+          title="Прогноз запасов воды"
+          hint="Система предупреждает, когда у клиента скоро закончится вода, на основе истории заказов"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Прогноз включён</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.forecast_enabled
+                  ? 'Система рассчитывает средний интервал заказов и предупреждает о клиентах с низким запасом'
+                  : 'Прогноз отключён — значки в CRM и виджет на статистике не отображаются'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, forecast_enabled: !p.forecast_enabled }))}
+              style={{ width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer', background: form.forecast_enabled ? C : '#ddd', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
+            >
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: form.forecast_enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+            </button>
+          </div>
+
+          <div style={s.formGrid}>
+            <div style={s.field}>
+              <div style={s.label}>Предупреждение (дней)</div>
+              <input style={{ ...s.input, maxWidth: 180, opacity: form.forecast_enabled ? 1 : 0.4 }}
+                type="number" min="1" max="30" {...f('forecast_warning_days')} disabled={!form.forecast_enabled} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Критично (дней)</div>
+              <input style={{ ...s.input, maxWidth: 180, opacity: form.forecast_enabled ? 1 : 0.4 }}
+                type="number" min="0" max="10" {...f('forecast_critical_days')} disabled={!form.forecast_enabled} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Кол-во заказов для расчёта</div>
+              <input style={{ ...s.input, maxWidth: 180, opacity: form.forecast_enabled ? 1 : 0.4 }}
+                type="number" min="2" max="20" {...f('forecast_orders_lookback')} disabled={!form.forecast_enabled} />
+            </div>
+            <div style={s.field}>
+              <div style={s.label}>Интервал по умолчанию (дней)</div>
+              <input style={{ ...s.input, maxWidth: 180, opacity: form.forecast_enabled ? 1 : 0.4 }}
+                type="number" min="1" max="90" {...f('forecast_default_interval_days')} disabled={!form.forecast_enabled} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>Ежедневное уведомление в бот</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>
+                {form.forecast_notify_enabled
+                  ? `Каждый день в ${form.forecast_notify_time} список клиентов отправляется в Telegram`
+                  : 'Уведомления в Telegram отключены'}
+              </div>
+            </div>
+            <button
+              onClick={() => setForm(p => ({ ...p, forecast_notify_enabled: !p.forecast_notify_enabled }))}
+              style={{ width: 50, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer', background: form.forecast_notify_enabled ? C : '#ddd', position: 'relative', transition: 'background 0.2s', flexShrink: 0, opacity: form.forecast_enabled ? 1 : 0.4 }}
+              disabled={!form.forecast_enabled}
+            >
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: form.forecast_notify_enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+            </button>
+          </div>
+          <div style={s.field}>
+            <div style={s.label}>Время уведомления (ЧЧ:ММ, UTC+5)</div>
+            <input style={{ ...s.input, maxWidth: 120, opacity: form.forecast_enabled && form.forecast_notify_enabled ? 1 : 0.4 }}
+              type="time" {...f('forecast_notify_time')} disabled={!form.forecast_enabled || !form.forecast_notify_enabled} />
+          </div>
+
+          <div style={s.preview}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={C} strokeWidth="1.5"/>
+              <path d="M12 8v4M12 16h.01" stroke={C} strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            {form.forecast_enabled
+              ? <>
+                  <b>🟡 Предупреждение</b>: ≤ {form.forecast_warning_days} дн.{' '}
+                  <b>🔴 Критично</b>: ≤ {form.forecast_critical_days} дн.{' '}
+                  Расчёт по последним <b>{form.forecast_orders_lookback}</b> заказам.{' '}
+                  {form.forecast_notify_enabled && <>Уведомление ежедневно в <b>{form.forecast_notify_time}</b>.</>}
+                </>
+              : <span style={{ color: TEXT2 }}>Прогноз <b>выключен</b>.</span>}
           </div>
         </Section>
 

@@ -1,4 +1,4 @@
-"""Periodic background tasks: subscription reminders, bonus expiry."""
+"""Periodic background tasks: subscription reminders, bonus expiry, water forecast."""
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -15,6 +15,7 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 _REMINDER_INTERVAL = 3600  # check every hour
+_last_forecast_notify_date: str | None = None
 
 
 async def _send_tg(chat_id: int, text: str) -> None:
@@ -88,6 +89,86 @@ async def _run_bonus_expiry() -> None:
             await db.commit()
 
 
+async def _run_water_forecast_notify() -> None:
+    """Send daily Telegram notification about clients whose water is running low."""
+    global _last_forecast_notify_date
+    from app.services.settings_service import get_all_settings
+    from app.services.water_forecast import calculate_water_forecast
+    from app.services.tg_notify import get_all_admin_ids
+    from app.models.manager import Manager
+
+    now_utc = datetime.utcnow()
+    now_local = now_utc + timedelta(hours=5)  # UTC+5 Tashkent
+    today_str = now_local.strftime("%Y-%m-%d")
+
+    if _last_forecast_notify_date == today_str:
+        return
+
+    async with AsyncSessionLocal() as db:
+        cfg_data = await get_all_settings(db)
+        if not cfg_data.get("forecast_enabled", True):
+            return
+        if not cfg_data.get("forecast_notify_enabled", True):
+            _last_forecast_notify_date = today_str
+            return
+
+        notify_time = str(cfg_data.get("forecast_notify_time", "08:00"))
+        try:
+            notify_hour = int(notify_time.split(":")[0])
+        except Exception:
+            notify_hour = 8
+        if now_local.hour < notify_hour:
+            return
+
+        results = await calculate_water_forecast(db, cfg_data)
+        _last_forecast_notify_date = today_str
+
+        if not results:
+            return
+
+        admin_ids = await get_all_admin_ids(db)
+        managers_q = await db.execute(
+            select(Manager).where(Manager.is_active == True, Manager.telegram_id.isnot(None))
+        )
+        managers = managers_q.scalars().all()
+
+        critical = [r for r in results if r["urgency"] == "critical"]
+        warning = [r for r in results if r["urgency"] == "warning"]
+
+        lines = ["💧 Прогноз воды\n"]
+        if critical:
+            lines.append(f"🔴 Критично ({len(critical)} клиентов):")
+            for r in critical[:10]:
+                name = r["name"] or r["phone"] or "?"
+                days = r["days_until_empty"]
+                lines.append(f"  • {name}: ~{days} дн.")
+            if len(critical) > 10:
+                lines.append(f"  ...и ещё {len(critical) - 10}")
+        if warning:
+            lines.append(f"\n🟡 Скоро закончится ({len(warning)} клиентов):")
+            for r in warning[:10]:
+                name = r["name"] or r["phone"] or "?"
+                days = r["days_until_empty"]
+                lines.append(f"  • {name}: ~{days} дн.")
+            if len(warning) > 10:
+                lines.append(f"  ...и ещё {len(warning) - 10}")
+
+        text = "\n".join(lines)
+        seen: set[int] = set()
+        for aid in admin_ids:
+            if aid not in seen:
+                seen.add(aid)
+                await _send_tg(aid, text)
+        for m in managers:
+            if m.telegram_id:
+                tid = int(m.telegram_id)
+                if tid not in seen:
+                    seen.add(tid)
+                    await _send_tg(tid, text)
+
+        logger.info("Sent water forecast to %d recipients", len(seen))
+
+
 async def background_loop() -> None:
     """Main loop that runs periodic tasks."""
     while True:
@@ -99,4 +180,8 @@ async def background_loop() -> None:
             await _run_bonus_expiry()
         except Exception as e:
             logger.error("Bonus expiry error: %s", e)
+        try:
+            await _run_water_forecast_notify()
+        except Exception as e:
+            logger.error("Water forecast notify error: %s", e)
         await asyncio.sleep(_REMINDER_INTERVAL)
