@@ -991,6 +991,13 @@ async def factory_issue_batch(body: FactoryIssueBatchBody, db: AsyncSession = De
         if _ts:
             br_tx.created_at = _ts
         db.add(br_tx)
+        invoice_items.insert(0, {
+            "name": "Возврат бутылок",
+            "unit": "Шт",
+            "qty": bottle_return_qty,
+            "is_return": True,
+            "bonus": 0, "price": 0, "sum": 0,
+        })
 
     if _ts:
         for prod, _ in resolved:
